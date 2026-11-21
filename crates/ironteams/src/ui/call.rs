@@ -33,14 +33,15 @@ fn view_after_share(mode: &str, was: bool, now: bool) -> Option<&'static str> {
 
 /// Switches the layout when a share started or ended since `was`, as Teams does.
 fn follow_share(s: &CallStore, was: bool) {
-    let now = !s.get_presenter().is_empty() || s.get_has_content();
+    let now = shared(s);
     if let Some(mode) = view_after_share(&s.get_view_mode(), was, now) {
         s.set_view_mode(mode.into());
     }
 }
 
+/// Someone else's share is up: never our own (see `CallStore.content-shared`).
 fn shared(s: &CallStore) -> bool {
-    !s.get_presenter().is_empty() || s.get_has_content()
+    !s.get_sharing() && (!s.get_presenter().is_empty() || s.get_has_content())
 }
 
 fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {

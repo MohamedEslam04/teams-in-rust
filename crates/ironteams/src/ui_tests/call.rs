@@ -603,6 +603,51 @@ fn a_share_takes_the_stage_and_names_who_presents() {
 }
 
 #[test]
+fn while_we_present_the_call_says_so_and_never_waits_for_a_shared_screen() {
+    use super::responsive::{WIDTHS, assert_fits, resize};
+    for width in WIDTHS {
+        let c = CallHarness::new();
+        resize(&c.h.app, width);
+        c.connected();
+        c.fake.emit(Event::Roster(vec![
+            Person {
+                name: "Ada Lovelace".into(),
+                ..Default::default()
+            },
+            Person {
+                name: "Me".into(),
+                me: true,
+                ..Default::default()
+            },
+        ]));
+        // The roster names the other side as the presenter (as it did for our own share)...
+        c.fake.emit(Event::Presenter("Ada Lovelace".into()));
+        assert_eq!(cs(&c.h.app).get_view_mode(), "content");
+        // ...then our share starts: no stage waiting for a picture, no one named presenter.
+        c.fake.emit(Event::Share {
+            available: true,
+            sharing: true,
+        });
+        assert!(!c.shows("Waiting for the shared screen…"), "{width}px");
+        assert!(!c.shows("Ada Lovelace is presenting"), "{width}px");
+        assert!(c.shows("You're sharing your screen"), "{width}px");
+        assert_eq!(
+            cs(&c.h.app).get_view_mode(),
+            "gallery",
+            "people stay in view"
+        );
+        // A late roster update that still names them changes nothing.
+        c.fake.emit(Event::Presenter("Ada Lovelace".into()));
+        assert!(!c.shows("Waiting for the shared screen…"), "{width}px");
+        assert_eq!(cs(&c.h.app).get_view_mode(), "gallery");
+        assert_fits(&c.h.app, width, "the presenting call");
+        // The banner stops the share like the toolbar does.
+        click(&c.button("Stop presenting"));
+        assert_eq!(c.sent().last().map(String::as_str), Some("share"));
+    }
+}
+
+#[test]
 fn more_and_the_mic_dropdown_switch_devices_in_the_call() {
     let c = CallHarness::new();
     c.connected();

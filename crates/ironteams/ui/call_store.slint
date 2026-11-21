@@ -180,9 +180,10 @@ export global CallStore {
     // The conversation is a meeting's chat (its header shows Join).
     pure callback is-meeting-chat(string) -> bool;
 
-    // Someone else shares a screen: the roster says so, or its picture came.
+    // Someone else shares a screen: the roster says so, or its picture came. Never while we
+    // share ourselves: that is "You're sharing your screen", not a stage waiting for a picture.
     public pure function content-shared() -> bool {
-        return presenter != "" || has-content;
+        return !sharing && (presenter != "" || has-content);
     }
 
     // A person's name, followed by "(External)" or "(Guest)" when they are outside our organization.
