@@ -328,24 +328,33 @@ Where the links come from (live 1:1 dump, names only):
    - The GUI opens Transfer with the call on hold, as Teams on the web does. Consult first (a
      second call, then `replacementDetails` naming its leg) is not built.
 
-## Live reactions (built 2026-11-21, UNVERIFIED live)
+## Live reactions (built 2026-11-21; receiving verified live, sending fixed per a Teams web capture)
 
 - **Not a published state.** Raise hand is `POST publishState` (`raiseHands`) with a `removeState`
   later; a reaction is a one-off message that floats and goes, so it has no state to remove.
-- **Send:** `POST sendMessage` (the conversation's link, else `<controller>/sendMessage`) with
-  `{from, messageContent: [{operationId, type: "Reaction", scope: "all", to: [], payload:
-  {values: [{id, name, count: 1, attributes: {skinTone}}]}}]}`. Names: `like`, `heart`, `laugh`,
-  `surprised`, `applause`; `like` and `applause` carry `skinTone: 2`, the others `null`.
-  - Source: rusty-teams `reaction.rs` `reaction_message` and `signaling.rs` `send_reaction` (MIT).
-  - IronTeams: `controls::reaction_body`, `NgcClient::send_reaction`, which logs the answer at
-    debug level (`calling=debug`).
+- **Send:** `POST <conversation>/sendMessage` with `{from, messageContent: [{operationId, type:
+  "Reaction", scope: "all", to: [], payload: {values: [{id, name, count: 1, attributes:
+  {skinTone: null}}]}}]}`. Names: `like`, `heart`, `laugh`, `surprised`, `applause`.
+  - Teams web, captured live 2026-11-21 (ids replaced): `POST
+    https://api.flightproxy.teams.microsoft.com/api/v2/ep/<conv-host>.conv.skype.com/conv/<conversation-id>/sendMessage?i=…&e=…`,
+    `from {displayName, endpointId, id, languageId, participantId}`, Laugh as `name: "laugh"` with
+    `skinTone: null`. IronTeams sends the same body (no skin tone on any reaction; rusty-teams sent
+    2 for like and applause).
+  - First live run (build efca219): IronTeams floated its own reaction, but the Teams web
+    participant saw none and IronTeams logged nothing (success was logged at debug). The URL
+    came from the call's merged link map, which also holds the call leg's links (acceptance, media
+    answer, renegotiation); IronTeams now takes a `sendMessage` link only when it names the same
+    `conv/<id>` as the controller, else `<controller>/sendMessage`.
+  - IronTeams: `controls::reaction_body`, `controls::send_message_url`, `NgcClient::send_reaction`,
+    which logs each send at info (`reaction sent`, with the status and the URL's path); a refusal
+    is a warning (`reaction not sent`) with the status and the start of the answer.
+  - To confirm live: that the Teams web participant now sees IronTeams's reaction.
 - **Receive:** the `conversation/receiveMessage` callback (already in our callback links) with
   the same `messageContent` items; the sender is the item's `from.id`, else the message's.
+  Verified live 2026-11-21: a Teams web Like floated in IronTeams with the sender's name.
   - Source: rusty-teams `trouter_events.rs` (`receiveMessage` → `parse_reactions`).
   - IronTeams: `controls::parse_reactions`; the live driver logs each body at debug level and
     drops our own echo.
-- **To confirm live:** that the service answers `sendMessage` with 2xx, that another client sees
-  the reaction, and the received body's shape (`IRONTEAMS_CALL_DUMP` keeps the raw push).
 - **The window:** at most one reaction a second; each rises over the stage for 2.5 s (2 s standing
   still with reduced motion) and shows on the sender's tile and People row meanwhile.
 

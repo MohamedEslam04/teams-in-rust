@@ -13,15 +13,17 @@
 //!   `SetHandRaised` (facts only).
 //!
 //! - **Reactions** (like, heart, applause, laugh, surprised) are a message, not a state: `POST
-//!   sendMessage` with one `Reaction` item in `messageContent`. No sequence number and no
-//!   `removeState` follow: the reaction floats and goes. Facts: rusty-teams
-//!   `crates/calling/src/reaction.rs` `reaction_message` and `signaling.rs` `send_reaction` (MIT);
-//!   no other reference sends one. UNVERIFIED live (no meetings tonight).
+//!   <conversation>/sendMessage` with one `Reaction` item in `messageContent`. No sequence number
+//!   and no `removeState` follow: the reaction floats and goes. The body and URL follow what Teams
+//!   web sends (captured live 2026-11-21): `conv/<id>/sendMessage` on the conversation service,
+//!   our full identity in `from`, `skinTone: null`. Facts also: rusty-teams
+//!   `crates/calling/src/reaction.rs` `reaction_message` (MIT).
 //!   Other people's reactions come the same way, as our `conversation/receiveMessage` callback
-//!   ([`parse_reactions`]; rusty-teams `parse_reactions`, also UNVERIFIED live).
+//!   ([`parse_reactions`]; verified live 2026-11-21: a Teams web reaction floats in IronTeams).
 //!
 //! Each operation goes to the conversation's link of the same name, else to
-//! `<controller>/<name>` (mautrix-teams addresses them that way).
+//! `<controller>/<name>` (mautrix-teams addresses them that way). A reaction takes a
+//! `sendMessage` link only when it names this conversation ([`send_message_url`]).
 //!
 //! Server-side mute by an organizer shows as `serverMuted` on a roster stream (see
 //! [`super::roster`]); the organizer operations (`mute` link) are not modelled here.
@@ -109,19 +111,11 @@ impl Reaction {
             _ => return None,
         })
     }
-
-    /// Hand-shaped reactions carry a skin tone (rusty-teams sends 2, the default yellow);
-    /// the others carry none.
-    fn skin_tone(self) -> Value {
-        match self {
-            Reaction::Like | Reaction::Applause => json!(2),
-            _ => Value::Null,
-        }
-    }
 }
 
-/// `POST sendMessage`: a reaction everyone in the meeting sees float up. `operation_id` and
-/// `value_id` are fresh UUIDs per send ([`reaction_request`] makes them).
+/// `POST sendMessage`: a reaction everyone in the meeting sees float up, shaped as Teams web
+/// sends it. `operation_id` and `value_id` are fresh UUIDs per send ([`reaction_request`] makes
+/// them). No skin tone: Teams web sends `null` (rusty-teams sent 2 for like and applause).
 pub fn reaction_body(
     s: &CallSession,
     reaction: Reaction,
@@ -140,15 +134,14 @@ pub fn reaction_body(
                     "id": value_id,
                     "name": reaction.wire_name(),
                     "count": 1,
-                    "attributes": {"skinTone": reaction.skin_tone()},
+                    "attributes": {"skinTone": null},
                 }],
             },
         }],
     })
 }
 
-/// The `sendMessage` request for one reaction: the conversation's link, else
-/// `<controller>/sendMessage`.
+/// The `sendMessage` request for one reaction ([`send_message_url`]).
 pub fn reaction_request(
     s: &CallSession,
     links: &Links,
@@ -157,9 +150,26 @@ pub fn reaction_request(
 ) -> (String, Value) {
     let id = || uuid::Uuid::new_v4().to_string();
     (
-        control_url(links, controller, "sendMessage"),
+        send_message_url(links, controller),
         reaction_body(s, reaction, &id(), &id()),
     )
+}
+
+/// Where a conversation message goes: `<controller>/sendMessage` (`.../conv/<id>/sendMessage`,
+/// as Teams web posts it), or a `sendMessage` link that names the same conversation. The call's
+/// link map also holds the call leg's links (acceptance, media answer, renegotiation): a
+/// `sendMessage` there is not the conversation's, and a message posted to it reaches no one.
+pub fn send_message_url(links: &Links, controller: &str) -> String {
+    let own = insert_path(controller, "/sendMessage");
+    let path = |url: &str| url.split('?').next().unwrap_or_default().to_owned();
+    let ours = path(&own);
+    let Some(at) = ours.find("/conv/") else {
+        return control_url(links, controller, "sendMessage");
+    };
+    links
+        .get("sendMessage")
+        .filter(|link| path(link).ends_with(&ours[at..]))
+        .map_or(own, str::to_owned)
 }
 
 /// A reaction someone sent, from a `conversation/receiveMessage` callback.
@@ -174,9 +184,9 @@ pub struct ReceivedReaction {
 /// `messageContent`, or the body itself when it is one item. Other item types, unknown reaction
 /// names and items with no sender are skipped.
 ///
-/// UNVERIFIED live: the shape mirrors what [`reaction_body`] sends (rusty-teams
-/// `reaction.rs` `parse_reactions` reads it the same way); no capture of a received reaction
-/// exists yet. The live driver logs every `receiveMessage` body at debug level to confirm it.
+/// Verified live 2026-11-21: a Teams web reaction is read this way and floats in IronTeams with
+/// its sender's name (rusty-teams `reaction.rs` `parse_reactions` reads it the same way). The
+/// live driver logs every `receiveMessage` body at debug level.
 pub fn parse_reactions(body: &Value) -> Vec<ReceivedReaction> {
     let items: Vec<&Value> = match body["messageContent"].as_array() {
         Some(items) => items.iter().collect(),
@@ -339,46 +349,90 @@ mod tests {
         }
     }
 
+    /// What Teams web posts for its Laugh reaction (captured live 2026-11-21, ids replaced):
+    /// one `Reaction` item to everyone, our full identity in `from`, and no skin tone.
     #[test]
-    fn a_reaction_is_one_reaction_item_sent_to_everyone() {
+    fn a_reaction_is_the_body_teams_web_sends() {
         let s = session();
-        let b = reaction_body(&s, Reaction::Applause, "op-1", "val-1");
-        assert_eq!(b["from"], s.me.wire());
-        let item = &b["messageContent"][0];
-        assert_eq!(b["messageContent"].as_array().unwrap().len(), 1);
-        assert_eq!(item["operationId"], "op-1");
-        assert_eq!(item["type"], "Reaction");
-        assert_eq!(item["scope"], "all");
-        assert_eq!(item["to"], json!([]));
-        let v = &item["payload"]["values"][0];
-        assert_eq!(v["id"], "val-1");
-        assert_eq!(v["name"], "applause");
-        assert_eq!(v["count"], 1);
-        assert_eq!(v["attributes"]["skinTone"], 2);
-        let heart = reaction_body(&s, Reaction::Heart, "o", "v");
+        let b = reaction_body(&s, Reaction::Laugh, "op-1", "val-1");
         assert_eq!(
-            heart["messageContent"][0]["payload"]["values"][0]["attributes"]["skinTone"],
-            Value::Null
+            b,
+            json!({
+                "from": {
+                    "displayName": "Self Example",
+                    "endpointId": "sess-1",
+                    "id": "8:orgid:00000000-0000-0000-0000-0000000000b2",
+                    "languageId": "en-US",
+                    "participantId": "part-1",
+                },
+                "messageContent": [{
+                    "operationId": "op-1",
+                    "payload": {"values": [{
+                        "id": "val-1",
+                        "name": "laugh",
+                        "count": 1,
+                        "attributes": {"skinTone": null},
+                    }]},
+                    "scope": "all",
+                    "to": [],
+                    "type": "Reaction",
+                }],
+            })
         );
     }
 
     #[test]
-    fn the_reaction_goes_to_the_send_message_link_with_fresh_ids() {
+    fn no_reaction_carries_a_skin_tone() {
+        let s = session();
+        for r in Reaction::ALL {
+            let b = reaction_body(&s, r, "o", "v");
+            let v = &b["messageContent"][0]["payload"]["values"][0];
+            assert_eq!(v["name"], r.wire_name());
+            assert_eq!(v["attributes"]["skinTone"], Value::Null, "{r:?}");
+        }
+    }
+
+    #[test]
+    fn the_reaction_goes_to_the_conversations_send_message_with_fresh_ids() {
         let s = session();
         let mut links = Links::default();
         let (url, a) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
-        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
+        assert_eq!(
+            url,
+            "https://api.flightproxy.skype.com/api/v2/cp/conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1"
+        );
         let (_, b) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
         assert_ne!(
             a["messageContent"][0]["operationId"], b["messageContent"][0]["operationId"],
             "each send is a new operation"
         );
+        // The conversation's own link, when it names one, as the service handed it.
+        let own = "https://conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1&e=2";
+        links.0.insert("sendMessage".into(), own.into());
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
+        assert_eq!(url, own);
+    }
+
+    /// The call's link map also holds the call leg's links (acceptance, media answer,
+    /// renegotiation): a `sendMessage` there is not the conversation's, and a reaction sent to
+    /// it reaches no one.
+    #[test]
+    fn a_call_leg_send_message_link_does_not_take_the_reaction() {
+        let s = session();
+        let mut links = Links::default();
         links.0.insert(
             "sendMessage".into(),
-            "https://conv.example.invalid/send".into(),
+            "https://api.flightproxy.teams.microsoft.com/api/v2/ep/cc-example.cc.skype.com/cc/v1/forked/LEG1/sendMessage".into(),
         );
-        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
-        assert_eq!(url, "https://conv.example.invalid/send");
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Heart);
+        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
+        // Nor a link of another conversation.
+        links.0.insert(
+            "sendMessage".into(),
+            "https://conv-example.conv.skype.com/conv/BBBB/sendMessage?i=1".into(),
+        );
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Heart);
+        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
     }
 
     #[test]

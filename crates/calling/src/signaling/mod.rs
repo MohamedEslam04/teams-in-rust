@@ -684,9 +684,10 @@ impl NgcClient {
             .map(|_| true)
     }
 
-    /// Sends a live reaction everyone in the meeting sees float up (`sendMessage`; see
-    /// [`controls`]). UNVERIFIED live: the service's answer is logged at debug level, so a live
-    /// run shows whether it took the reaction.
+    /// Sends a live reaction everyone in the meeting sees float up (`POST
+    /// <conversation>/sendMessage`, as Teams web does; see [`controls`]). Each send is logged at
+    /// info with the service's status and the URL's path (never its query or a token), so a live
+    /// run shows where it went and whether the service took it; a refusal comes back as the error.
     pub async fn send_reaction(
         &self,
         s: &CallSession,
@@ -696,10 +697,12 @@ impl NgcClient {
     ) -> Result<()> {
         let (url, body) = controls::reaction_request(s, links, controller, reaction);
         let r = self.post("send_message", s, &url, &body).await?;
-        tracing::debug!(
+        let answer: String = r.body.to_string().chars().take(200).collect();
+        tracing::info!(
             reaction = reaction.wire_name(),
             status = r.status,
-            answer = %r.body,
+            to = url.split('?').next().unwrap_or_default(),
+            %answer,
             "reaction sent"
         );
         Ok(())
