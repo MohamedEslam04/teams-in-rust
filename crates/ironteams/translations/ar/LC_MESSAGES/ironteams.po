@@ -540,6 +540,12 @@ msgstr "{} يتحكم في شاشتك"
 msgid "{} is presenting"
 msgstr "{} يقدّم العرض"
 
+msgid "You're sharing your screen"
+msgstr "أنت تشارك شاشتك"
+
+msgid "Stop presenting"
+msgstr "إيقاف العرض"
+
 msgid "{} is removed for everyone in the channel. Its content stays where it is."
 msgstr "ستتم إزالة {} لكل من في القناة. يبقى محتواه في مكانه."
 

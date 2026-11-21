@@ -1215,7 +1215,8 @@ impl CallModel {
             sharing: self.sharing,
             can_camera: self.can_camera && self.phase.active(),
             camera: self.camera,
-            presenter: if self.phase.active() {
+            // While we present, nobody else does (a meeting has one presenter).
+            presenter: if self.phase.active() && !self.sharing {
                 self.presenter.clone()
             } else {
                 String::new()
@@ -3087,6 +3088,30 @@ mod tests {
         m.apply(Event::Presenter("Bo".into()), now);
         m.leave(now);
         assert_eq!(m.data(now).presenter, "");
+    }
+
+    #[test]
+    fn no_one_else_presents_while_we_share() {
+        let mut m = ready();
+        m.joining().unwrap();
+        let now = Instant::now();
+        m.apply(Event::Presenter("Ada".into()), now);
+        m.apply(
+            Event::Share {
+                available: true,
+                sharing: true,
+            },
+            now,
+        );
+        assert_eq!(m.data(now).presenter, "", "our share is not Ada's");
+        m.apply(
+            Event::Share {
+                available: true,
+                sharing: false,
+            },
+            now,
+        );
+        assert_eq!(m.data(now).presenter, "Ada");
     }
 
     #[test]

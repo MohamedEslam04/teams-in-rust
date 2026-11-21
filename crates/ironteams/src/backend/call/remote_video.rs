@@ -149,6 +149,9 @@ pub struct RemoteVideo {
     router: Option<JoinHandle<()>>,
     /// The presenter's name the UI was last told.
     presenter: Option<String>,
+    /// We present a screen ourselves: a meeting has one presenter, so nobody else does, and the
+    /// roster must not make our own share look like someone else's (see [`presenter_mri`]).
+    own_share: bool,
 }
 
 impl RemoteVideo {
@@ -271,7 +274,11 @@ impl RemoteVideo {
         }
         self.held = next;
         if let Some((mid, msid)) = &self.share_line {
-            let sharer = roster.screen_sharer(me);
+            let sharer = if self.own_share {
+                None
+            } else {
+                roster.screen_sharer(me)
+            };
             if sharer != self.share_held {
                 out.push(SourceRequest {
                     mid: mid.clone(),
@@ -327,11 +334,17 @@ impl RemoteVideo {
         }
     }
 
+    /// Tells whether we present a screen ourselves; true when that changed (the subscription and
+    /// the presenter's name are then due again).
+    pub fn set_own_share(&mut self, on: bool) -> bool {
+        std::mem::replace(&mut self.own_share, on) != on
+    }
+
     /// The presenter's name when it changed since last told: someone else in the roster shares
     /// a screen, or the roster names them the content-sharing session's presenter
     /// (`contentSharing`, UNVERIFIED) before their stream sends (empty: nobody).
     pub fn presenter_changed(&mut self, roster: &Roster, me: &str) -> Option<String> {
-        let name = presenter_mri(roster, me)
+        let name = presenter_mri(roster, me, self.own_share)
             .and_then(|mri| roster.get(&mri).map(|p| p.display_name.clone()))
             .map(|n| {
                 if n.is_empty() {
@@ -348,8 +361,13 @@ impl RemoteVideo {
     }
 }
 
-/// Who else presents: the one whose share sends, else the content-sharing presenter.
-pub fn presenter_mri(roster: &Roster, me: &str) -> Option<String> {
+/// Who else presents: the one whose share sends, else the content-sharing presenter. Nobody
+/// while we present (`own_share`): the meeting has one content-sharing session, and whatever the
+/// roster shows of it then (the other side's endpoint mirrors our own share) is not their screen.
+pub fn presenter_mri(roster: &Roster, me: &str, own_share: bool) -> Option<String> {
+    if own_share {
+        return None;
+    }
     roster
         .screen_sharer(me)
         .map(|(mri, _)| mri)
@@ -525,8 +543,60 @@ mod tests {
             "8:a": {"version": 1, "state": "active", "details": {"displayName": "Ada"},
                     "contentSharing": {}, "endpoints": {"ep": {"call": {}}}},
         }));
-        assert_eq!(presenter_mri(&r, "8:me").as_deref(), Some("8:a"));
+        assert_eq!(presenter_mri(&r, "8:me", false).as_deref(), Some("8:a"));
         assert_eq!(v.presenter_changed(&r, "8:me").as_deref(), Some("Ada"));
+    }
+
+    /// A meeting where the other person's endpoint shows a share and a content-sharing object
+    /// while WE present (how the live service's roster looked during our own share).
+    fn own_share_roster() -> Roster {
+        roster(json!({
+            "8:me": person("Me", None, Some(20)),
+            "8:a": {"version": 1, "state": "active", "details": {"displayName": "Ada"},
+                    "contentSharing": {},
+                    "endpoints": {"ep": {"call": {"mediaStreams": [
+                        {"type": "applicationsharing-video", "direction": "sendrecv",
+                         "sourceId": 21}]}}}},
+        }))
+    }
+
+    #[test]
+    fn our_own_share_is_never_subscribed_nor_attributed_to_the_other_side() {
+        let mut v = with_lines(0, true);
+        let r = own_share_roster();
+        // The roster alone would name Ada...
+        assert_eq!(presenter_mri(&r, "8:me", false).as_deref(), Some("8:a"));
+        // ...but while we present, nobody else does.
+        assert!(v.set_own_share(true));
+        assert!(!v.set_own_share(true), "unchanged");
+        assert_eq!(presenter_mri(&r, "8:me", true), None);
+        assert!(
+            v.plan(&r, "8:me", |_| 0, |_| {}).is_empty(),
+            "no subscription"
+        );
+        assert_eq!(
+            v.presenter_changed(&r, "8:me").as_deref(),
+            Some(""),
+            "nobody"
+        );
+        assert_eq!(v.share_held, None);
+        // Once we stop, a real share of theirs is subscribed and named after them.
+        assert!(v.set_own_share(false));
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!((asked[0].mid.as_str(), asked[0].source), ("2", Some(21)));
+        assert_eq!(v.presenter_changed(&r, "8:me").as_deref(), Some("Ada"));
+    }
+
+    #[test]
+    fn our_share_ends_a_subscription_to_someone_else_s() {
+        let mut v = with_lines(0, true);
+        let r = own_share_roster();
+        v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(v.presenter_changed(&r, "8:me").as_deref(), Some("Ada"));
+        v.set_own_share(true);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!((asked.len(), asked[0].source), (1, None));
+        assert_eq!(v.presenter_changed(&r, "8:me").as_deref(), Some(""));
     }
 
     #[test]

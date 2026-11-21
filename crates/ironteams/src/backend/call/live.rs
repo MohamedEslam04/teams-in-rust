@@ -1453,7 +1453,9 @@ impl Call {
                     }
                 }
             }
-            if roster_changed {
+            // Our own share changes who the stage may show (never our own screen).
+            let own_share_changed = self.video.set_own_share(self.share.sharing());
+            if roster_changed || own_share_changed {
                 if self.meeting {
                     let spoke = |m: &str| talk.last.get(m).copied().unwrap_or(0);
                     self.video.reselect(
@@ -1676,10 +1678,12 @@ impl Call {
             can_give: self.share.sharing(),
             input_allowed: self.control.can_inject(),
             // From the roster: a 1:1 call has none, so control is a meeting feature for now.
-            presenter: remote_video::presenter_mri(&self.roster, me).map(|mri| {
-                let name = self.person_name(&mri);
-                (mri, name)
-            }),
+            presenter: remote_video::presenter_mri(&self.roster, me, self.share.sharing()).map(
+                |mri| {
+                    let name = self.person_name(&mri);
+                    (mri, name)
+                },
+            ),
         }
     }
 
@@ -1794,9 +1798,10 @@ impl Call {
         if step == Step::default() {
             return;
         }
-        let presenter_links = remote_video::presenter_mri(&self.roster, &self.s.me.mri)
-            .and_then(|mri| self.roster.get(&mri).map(|p| p.sharing_links.clone()))
-            .unwrap_or_default();
+        let presenter_links =
+            remote_video::presenter_mri(&self.roster, &self.s.me.mri, self.share.sharing())
+                .and_then(|mri| self.roster.get(&mri).map(|p| p.sharing_links.clone()))
+                .unwrap_or_default();
         let channel = NgcControlChannel {
             ngc: self.ngc.clone(),
             s: self.s.clone(),

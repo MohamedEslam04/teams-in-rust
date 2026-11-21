@@ -547,6 +547,43 @@ component ContentStage inherits Rectangle {
     }
 }
 
+// While we present: the people stay in view, and this says so (our own screen is never shown
+// back to us, as Teams does).
+component SharingBanner inherits Rectangle {
+    height: 44px;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    Icon {
+        source: @image-url("icons/screen-share.svg");
+        tint: Theme.accent;
+        x: 14px;
+        y: (root.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+    }
+    Text {
+        text: @tr("You're sharing your screen");
+        color: Theme.fg;
+        font-size: 13px * Theme.font-scale;
+        font-weight: 600;
+        overflow: elide;
+        vertical-alignment: center;
+        accessible-role: text;
+        x: 38px;
+        y: 0px;
+        height: root.height;
+        width: max(0px, stop.x - self.x - 8px);
+    }
+    stop := CallAction {
+        x: root.width - self.width - 5px;
+        y: (root.height - self.height) / 2;
+        label: @tr("Stop presenting");
+        clicked => { CallStore.command("share", ""); }
+    }
+}
+
 // What fills the middle: the lobby, connecting, the participants' tiles, or a shared screen.
 component Stage inherits Rectangle {
     property <bool> content: CallStore.view-mode == "content" && CallStore.content-shared();
@@ -555,7 +592,9 @@ component Stage inherits Rectangle {
     property <int> rows: Math.ceil(count / cols);
     property <length> gap: 8px;
     property <length> tile-w: (root.width - 32px - (cols - 1) * gap) / cols;
-    property <length> tile-h: min(tile-w * 9 / 16, (root.height - 32px - (rows - 1) * gap) / rows);
+    // The room under the "You're sharing your screen" banner while we present.
+    property <length> top: CallStore.sharing ? 60px : 0px;
+    property <length> tile-h: min(tile-w * 9 / 16, (root.height - top - 32px - (rows - 1) * gap) / rows);
     // The speaker view: the others in a strip under the speaker's tile, at most eight.
     property <int> strip-n: max(0, min(CallStore.speaker-people.length - 1, 8));
     property <length> strip-h: min(120px, root.height / 4);
@@ -595,6 +634,11 @@ component Stage inherits Rectangle {
             width: root.width;
             height: root.height;
         }
+        if CallStore.sharing: SharingBanner {
+            x: 16px;
+            y: 12px;
+            width: root.width - 32px;
+        }
         // Gallery, also for "content" while nobody shares.
         if !root.content && CallStore.view-mode != "speaker": Rectangle {
             for p[i] in CallStore.people: Tile {
@@ -603,7 +647,7 @@ component Stage inherits Rectangle {
                 width: root.tile-w;
                 height: root.tile-h;
                 x: 16px + Math.mod(i, root.cols) * (root.tile-w + root.gap);
-                y: (root.height - root.rows * root.tile-h - (root.rows - 1) * root.gap) / 2
+                y: root.top + (root.height - root.top - root.rows * root.tile-h - (root.rows - 1) * root.gap) / 2
                     + Math.floor(i / root.cols) * (root.tile-h + root.gap);
             }
         }
@@ -612,9 +656,9 @@ component Stage inherits Rectangle {
                 p: CallStore.speaker-people[0];
                 avatar-size: 128px;
                 x: 16px;
-                y: 16px;
+                y: 16px + root.top;
                 width: root.width - 32px;
-                height: root.height - 32px - (root.strip-n > 0 ? root.strip-h + root.gap : 0px);
+                height: root.height - root.top - 32px - (root.strip-n > 0 ? root.strip-h + root.gap : 0px);
                 accessible-role: text;
                 accessible-label: "Active speaker: " + CallStore.speaker-people[0].name;
             }
