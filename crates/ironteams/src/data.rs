@@ -192,6 +192,8 @@ pub struct MsgData {
     pub receipt: String,
     /// Who has seen it (`"seen"` only).
     pub receipt_names: String,
+    /// Every reader's name, in the order they read it (empty in a 1:1 chat): the "Seen by" list.
+    pub receipt_readers: Vec<String>,
     /// The row a jump from the pinned banner landed on.
     pub flash: bool,
     /// Arrived live a moment ago: the row fades in.

@@ -3,11 +3,20 @@
 //!
 //! The portal (D-Bus, through `ashpd`) asks the user once and hands back a file descriptor for a
 //! PipeWire connection that only shows camera nodes. As for the screen ([`super::screencast`]),
-//! `gst-launch-1.0` reads it: `pipewiresrc` on fd 0 with no node named, so it connects to the
-//! first camera that connection offers (UNVERIFIED on a machine with several cameras). The V4L2
-//! fallback runs `v4l2src` on a device path instead. Either way `decodebin` turns a camera's
-//! MJPEG into raw video, and GStreamer scales to a fixed size and rate (black borders keep a 4:3
-//! camera's shape in the 16:9 frame).
+//! `gst-launch-1.0` reads it: `pipewiresrc` on fd 0. With no node named, PipeWire 1.x connects to
+//! the default video target from its session metadata, which the portal's restricted connection
+//! cannot see (`stream error: target not found`). So the camera node is looked up first with
+//! `pw-dump` (node ids and serials are global, [`pipewire_camera_target`]: the chosen device's
+//! node, else the one with role Camera, else any `Video/Source`) and named as
+//! `target-object=<object.serial>`. Without `pw-dump`, or without a node in its output, nothing
+//! is named, as before. If the portal pipeline then ends before its first frame, outside a
+//! Flatpak the camera is read again through V4L2 (the user already allowed the camera in the
+//! portal); the log says which path was used. The V4L2 path runs `v4l2src` on a device path.
+//! Either way `decodebin` turns a camera's MJPEG into raw video, and GStreamer scales to a fixed
+//! size and rate (black borders keep a 4:3 camera's shape in the 16:9 frame).
+//!
+//! UNVERIFIED live: that `target-object` makes `pipewiresrc` connect on the portal's fd (it does
+//! for the screen share's `path=`); the V4L2 retry is the net under it.
 //!
 //! Runtime needs GStreamer's PipeWire plugin (`pipewire-gstreamer` on Fedora,
 //! `gstreamer1.0-pipewire` on Debian/Ubuntu) for the portal, `gstreamer1-plugins-good`
@@ -17,6 +26,8 @@
 //! `avfvideosrc`); runtime needs the GStreamer runtime installed (gstreamer.freedesktop.org).
 
 use std::process::Stdio;
+#[cfg(target_os = "linux")]
+use std::time::Duration;
 
 #[cfg(target_os = "linux")]
 use ashpd::desktop::camera::Camera;
@@ -32,8 +43,9 @@ use crate::Result;
 /// Where the frames come from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CameraSource {
-    /// The Camera portal's PipeWire remote.
-    Portal,
+    /// The Camera portal's PipeWire remote, and the camera node's `object.serial` when `pw-dump`
+    /// found one ([`pipewire_camera_target`]).
+    Portal(Option<u64>),
     /// A V4L2 device such as `/dev/video0`.
     V4l2(String),
     /// The system's default camera through its own GStreamer source (Windows, macOS).
@@ -148,6 +160,94 @@ async fn portal() -> Result<Portal> {
     Ok(Portal::Remote(fd))
 }
 
+/// How long the portal pipeline has to deliver its first frame before it counts as not started
+/// (when it only is slow, the camera is kept).
+#[cfg(target_os = "linux")]
+const PORTAL_FIRST_FRAME: Duration = Duration::from_secs(5);
+
+/// `pw-dump`'s JSON on stdout, `None` when it is not installed, fails or hangs.
+#[cfg(target_os = "linux")]
+async fn pw_dump() -> Option<String> {
+    let run = tokio::process::Command::new("pw-dump")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    match tokio::time::timeout(Duration::from_secs(3), run).await {
+        Ok(Ok(out)) if out.status.success() => {
+            Some(String::from_utf8_lossy(&out.stdout).into_owned())
+        }
+        Ok(Ok(out)) => {
+            tracing::info!(status = %out.status, "pw-dump failed: no camera node named");
+            None
+        }
+        Ok(Err(e)) => {
+            tracing::info!(%e, "no pw-dump: no camera node named");
+            None
+        }
+        Err(_) => {
+            tracing::info!("pw-dump timed out: no camera node named");
+            None
+        }
+    }
+}
+
+/// The device path a PipeWire node reads (`api.v4l2.path`, else `object.path` as `v4l2:<path>`).
+fn node_device(props: &serde_json::Value) -> Option<&str> {
+    props["api.v4l2.path"]
+        .as_str()
+        .or_else(|| props["object.path"].as_str()?.strip_prefix("v4l2:"))
+}
+
+/// The `object.serial` of the camera node in `pw-dump`'s JSON: the node reading `device` (a
+/// `/dev/videoN`) when it is given and found, else a `Video/Source` node with role `Camera`, else
+/// any `Video/Source` node; the first of its kind. `None` when there is none (or the text is not
+/// JSON).
+pub fn pipewire_camera_target(pw_dump: &str, device: Option<&str>) -> Option<u64> {
+    let objects: Vec<serde_json::Value> = serde_json::from_str(pw_dump).ok()?;
+    let mut best: Option<(u8, u64)> = None;
+    for object in &objects {
+        if object["type"] != "PipeWire:Interface:Node" {
+            continue;
+        }
+        let props = &object["info"]["props"];
+        if !props["media.class"]
+            .as_str()
+            .is_some_and(|c| c.starts_with("Video/Source"))
+        {
+            continue;
+        }
+        let serial = &props["object.serial"];
+        let Some(serial) = serial
+            .as_u64()
+            .or_else(|| serial.as_str().and_then(|s| s.parse().ok()))
+        else {
+            continue;
+        };
+        let rank = if device.is_some_and(|d| node_device(props) == Some(d)) {
+            0
+        } else if props["media.role"] == "Camera" {
+            1
+        } else {
+            2
+        };
+        if best.is_none_or(|(r, _)| rank < r) {
+            best = Some((rank, serial));
+        }
+    }
+    best.map(|(_, serial)| serial)
+}
+
+/// Whether the camera's pipeline got going: its first frame came (and is dropped, the next one
+/// follows in 1/15 s), or it is only slow. `false` when it ended before any frame.
+#[cfg(target_os = "linux")]
+async fn started(frames: &mut mpsc::Receiver<I420Frame>) -> bool {
+    !matches!(
+        tokio::time::timeout(PORTAL_FIRST_FRAME, frames.recv()).await,
+        Ok(None)
+    )
+}
+
 /// Starts the camera: through the portal, or `v4l2_device` (default `/dev/video0`) when the
 /// portal has none.
 pub async fn open(v4l2_device: Option<&str>, settings: CameraSettings) -> Result<CameraCapture> {
@@ -179,7 +279,17 @@ pub async fn open_choice(
         {
             (CameraSource::V4l2(device.clone()), Stdio::null())
         }
-        (Portal::Remote(fd), _) => (CameraSource::Portal, Stdio::from(fd)),
+        (Portal::Remote(fd), choice) => {
+            // The chosen camera's node, when the portal's camera is named by its V4L2 device.
+            let device = match choice {
+                CameraChoice::V4l2(d) => Some(d.as_str()),
+                _ => None,
+            };
+            let target = pw_dump()
+                .await
+                .and_then(|dump| pipewire_camera_target(&dump, device));
+            (CameraSource::Portal(target), Stdio::from(fd))
+        }
         (Portal::NoCamera(why), _) => {
             let device = match choice {
                 CameraChoice::V4l2(d) => d.clone(),
@@ -189,12 +299,40 @@ pub async fn open_choice(
             (CameraSource::V4l2(device), Stdio::null())
         }
     };
-    let g = super::gst::spawn(
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    let mut g = super::gst::spawn(
         gstreamer_args(&source, settings.size, settings.fps),
         stdin,
         settings.size,
         "camera capture",
     )?;
+    #[cfg(target_os = "linux")]
+    let (source, g) = if matches!(source, CameraSource::Portal(_)) && !started(&mut g.frames).await
+    {
+        if std::path::Path::new("/.flatpak-info").exists() {
+            // No `/dev/video*` in the sandbox: nothing to fall back to.
+            tracing::warn!(?source, "the portal camera ended before its first frame");
+            (source, g)
+        } else {
+            let device = match choice {
+                CameraChoice::V4l2(d) => d.clone(),
+                _ => v4l2_fallback.unwrap_or("/dev/video0").to_owned(),
+            };
+            tracing::info!(?source, %device, "the portal camera ended before its first frame: V4L2");
+            // Dropping the first pipeline stops it.
+            drop(g);
+            let source = CameraSource::V4l2(device);
+            let g = super::gst::spawn(
+                gstreamer_args(&source, settings.size, settings.fps),
+                Stdio::null(),
+                settings.size,
+                "camera capture",
+            )?;
+            (source, g)
+        }
+    } else {
+        (source, g)
+    };
     tracing::info!(?source, size = ?settings.size, "camera started");
     Ok(CameraCapture {
         frames: g.frames,
@@ -213,15 +351,13 @@ pub fn gstreamer_args(source: &CameraSource, size: (u32, u32), fps: u32) -> Vec<
     );
     let mut args: Vec<String> = vec!["-q".into()];
     match source {
-        CameraSource::Portal => args.extend(
-            [
-                "pipewiresrc",
-                "fd=0",
-                "do-timestamp=true",
-                "always-copy=true",
-            ]
-            .map(String::from),
-        ),
+        CameraSource::Portal(target) => {
+            args.extend(["pipewiresrc", "fd=0"].map(String::from));
+            if let Some(serial) = target {
+                args.push(format!("target-object={serial}"));
+            }
+            args.extend(["do-timestamp=true", "always-copy=true"].map(String::from));
+        }
         CameraSource::V4l2(device) => {
             args.extend(["v4l2src".into(), format!("device={device}")]);
         }
@@ -396,15 +532,85 @@ Device found:
     }
 
     #[test]
-    fn the_portal_pipeline_reads_fd_0_without_naming_a_node() {
-        let args = gstreamer_args(&CameraSource::Portal, (640, 360), 15);
-        assert_eq!(args[..3], ["-q", "pipewiresrc", "fd=0"]);
+    fn the_portal_pipeline_reads_fd_0_and_names_the_camera_node() {
+        let args = gstreamer_args(&CameraSource::Portal(Some(3014)), (640, 360), 15);
+        assert_eq!(
+            args[..4],
+            ["-q", "pipewiresrc", "fd=0", "target-object=3014"]
+        );
         assert!(!args.iter().any(|a| a.starts_with("path=")));
         assert!(
             args.iter()
                 .any(|a| a.contains("width=640,height=360,framerate=15/1"))
         );
         assert_eq!(args.last().map(String::as_str), Some("sync=false"));
+    }
+
+    #[test]
+    fn the_portal_pipeline_names_no_node_without_a_target() {
+        let args = gstreamer_args(&CameraSource::Portal(None), (640, 360), 15);
+        assert_eq!(
+            args[..4],
+            ["-q", "pipewiresrc", "fd=0", "do-timestamp=true"]
+        );
+        assert!(!args.iter().any(|a| a.contains("target-object")));
+    }
+
+    /// A trimmed `pw-dump`: an audio sink, a plain video source, the laptop's camera and a USB
+    /// camera, with made-up serials.
+    const PW_DUMP: &str = r#"[
+      {"id": 1, "type": "PipeWire:Interface:Core", "info": {"props": {}}},
+      {"id": 40, "type": "PipeWire:Interface:Node", "info": {"props": {
+        "media.class": "Audio/Sink", "object.serial": 2001, "node.description": "Speakers"}}},
+      {"id": 59, "type": "PipeWire:Interface:Node", "info": {"props": {
+        "media.class": "Video/Source", "object.serial": 3020,
+        "node.description": "Capture card"}}},
+      {"id": 60, "type": "PipeWire:Interface:Node", "info": {"props": {
+        "media.class": "Video/Source", "media.role": "Camera", "object.serial": 3014,
+        "node.description": "Integrated Camera (V4L2)",
+        "api.v4l2.path": "/dev/video0", "object.path": "v4l2:/dev/video0"}}},
+      {"id": 62, "type": "PipeWire:Interface:Node", "info": {"props": {
+        "media.class": "Video/Source", "media.role": "Camera", "object.serial": "3030",
+        "node.description": "USB Camera (V4L2)", "object.path": "v4l2:/dev/video2"}}}
+    ]"#;
+
+    #[test]
+    fn the_camera_node_is_the_one_with_role_camera() {
+        assert_eq!(pipewire_camera_target(PW_DUMP, None), Some(3014));
+    }
+
+    #[test]
+    fn the_chosen_devices_node_is_preferred() {
+        assert_eq!(
+            pipewire_camera_target(PW_DUMP, Some("/dev/video2")),
+            Some(3030),
+            "matched by object.path, with a string serial"
+        );
+        assert_eq!(
+            pipewire_camera_target(PW_DUMP, Some("/dev/video0")),
+            Some(3014)
+        );
+        assert_eq!(
+            pipewire_camera_target(PW_DUMP, Some("/dev/video9")),
+            Some(3014),
+            "an unknown device falls back to the Camera node"
+        );
+    }
+
+    #[test]
+    fn a_video_source_without_the_camera_role_is_the_last_resort() {
+        let dump = r#"[{"type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Video/Source", "object.serial": 7}}}]"#;
+        assert_eq!(pipewire_camera_target(dump, None), Some(7));
+    }
+
+    #[test]
+    fn no_camera_node_or_no_json_names_no_target() {
+        let dump = r#"[{"type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Source", "object.serial": 9}}}]"#;
+        assert_eq!(pipewire_camera_target(dump, None), None);
+        assert_eq!(pipewire_camera_target("[]", Some("/dev/video0")), None);
+        assert_eq!(pipewire_camera_target("pw-dump: not found", None), None);
     }
 
     #[test]

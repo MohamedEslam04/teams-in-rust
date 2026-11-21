@@ -1,0 +1,94 @@
+// The "Seen by N" list: everyone who has seen my message, one per row, opened from the line under
+// my message and from the message menu's "Read by".
+import { Theme } from "theme.slint";
+import { ReaderItem } from "types.slint";
+import { Motion } from "motion.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component SeenByList inherits Rectangle {
+    in property <[ReaderItem]> readers;
+    // Esc.
+    callback close();
+
+    width: 280px;
+    // The header and the rows, at most 320px: a long list scrolls.
+    height: min(320px, 44px + root.readers.length * 36px + 8px);
+    border-radius: 6px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000090;
+    // Fades in and grows from 0.97 (150 ms) each time it opens.
+    property <bool> shown: Theme.reduced-motion;
+    opacity: root.shown ? 1.0 : 0.0;
+    transform-scale: root.shown ? 1.0 : Motion.pop-from;
+    animate opacity { duration: Motion.fast; easing: ease-out; }
+    animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    Timer {
+        interval: 16ms;
+        running: !root.shown;
+        triggered => { root.shown = true; }
+    }
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape { root.close(); return accept; }
+            reject
+        }
+    }
+
+    VerticalLayout {
+        Rectangle {
+            height: 44px;
+            accessible-role: text;
+            accessible-label: @tr("Seen by {}", "" + root.readers.length);
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                Text {
+                    text: @tr("Seen by {}", "" + root.readers.length);
+                    color: Theme.fg;
+                    font-size: 14px * Theme.font-scale;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                padding-bottom: 8px;
+                width: parent.width - 14px;
+                for rd in root.readers: Rectangle {
+                    height: 36px;
+                    accessible-role: text;
+                    accessible-label: rd.name;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 10px;
+                        Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            y: 6px;
+                            border-radius: 12px;
+                            background: rd.color;
+                            Text { text: rd.initials; color: #ffffff; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text {
+                            text: rd.name;
+                            color: Theme.fg;
+                            font-size: 13px * Theme.font-scale;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

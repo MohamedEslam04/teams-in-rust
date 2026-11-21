@@ -62,6 +62,8 @@ export component MessageRow inherits TouchArea {
     // "More reactions" and the "…" menu, anchored at window coordinates.
     callback more-reactions(length, length);
     callback menu(length, length);
+    // The "Seen by" line was pressed: the line's right edge, top and bottom (window coordinates).
+    callback show-readers(length, length, length);
     callback toggle-select();
     callback open-url(string);
     callback open-thread();
@@ -472,6 +474,7 @@ export component MessageRow inherits TouchArea {
         if root.m.receipt != "" || (root.m.mine && root.m.pending && !root.m.failed): receipt-mark := Rectangle {
             property <bool> sending: root.m.pending;
             property <bool> seen: !self.sending && root.m.receipt == "seen";
+            property <string> seen-line: root.m.receipt-names != "" ? @tr("Seen by {}", root.m.receipt-names) : @tr("Seen");
             height: 16px;
             accessible-role: text;
             accessible-label: self.sending ? @tr("Sending") : (self.seen ? (root.m.receipt-names != "" ? @tr("Seen by {}", root.m.receipt-names) : @tr("Seen")) : @tr("Sent"));
@@ -526,12 +529,33 @@ export component MessageRow inherits TouchArea {
                     from-scale: 1.0;
                     width: seen-text.preferred-width;
                     seen-text := Text {
-                        text: root.m.receipt-names != "" ? @tr("Seen by {}", root.m.receipt-names) : @tr("Seen");
+                        text: receipt-mark.seen-line;
                         color: Theme.fg-subtle;
                         font-size: 11px * Theme.font-scale;
                         vertical-alignment: center;
                     }
                 }
+            }
+            // The whole line (photos, eye and names) opens the list of everyone who saw it. It
+            // sits over the right-aligned content: three photos overlap to 12px * n + 4px, then
+            // the eye, then the text, 4px apart.
+            if receipt-mark.seen && root.m.reader-list.length > 0: readers-link := TouchArea {
+                width: min(receipt-mark.width, 12px * min(root.m.readers.length, 3) + 4px + 4px + 12px + 4px + measure.preferred-width);
+                x: receipt-mark.width - self.width;
+                mouse-cursor: pointer;
+                accessible-role: button;
+                accessible-label: @tr("Show who saw this");
+                clicked => {
+                    root.show-readers(self.absolute-position.x + self.width, self.absolute-position.y, self.absolute-position.y + self.height);
+                }
+            }
+            // Measures the line's text for the link above (the line's own text sits in a layout).
+            measure := Text {
+                visible: false;
+                width: 0px;
+                height: 0px;
+                text: receipt-mark.seen-line;
+                font-size: 11px * Theme.font-scale;
             }
         }
     }

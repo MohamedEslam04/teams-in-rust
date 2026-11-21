@@ -1017,6 +1017,13 @@ msgstr "تمت المشاهدة"
 msgid "Sent"
 msgstr "تم الإرسال"
 
+# The list of everyone who saw my message (ui/seen_by.slint): its header reuses "Seen by {}".
+msgid "Read by"
+msgstr "قُرئت بواسطة"
+
+msgid "Show who saw this"
+msgstr "عرض من شاهد الرسالة"
+
 # Typing, loading and sending states (ui/motion.slint).
 msgid "{} is typing…"
 msgstr "{} يكتب…"

@@ -102,18 +102,15 @@ fn styled(markdown: &str) -> StyledText {
     StyledText::from_markdown(markdown).unwrap_or_else(|_| StyledText::from_plain_text(markdown))
 }
 
-/// The little photos under my newest message: one circle of initials per name in the "seen by"
-/// line (`A, B, C +2`; the "+2" is not a person).
-fn readers(names: &str) -> Vec<ReaderItem> {
-    let names = match names.rsplit_once(" +") {
-        Some((head, n)) if n.chars().all(|c| c.is_ascii_digit()) => head,
-        _ => names,
-    };
+/// Everyone who has seen my newest message: a circle of initials and the full name each. The
+/// line under the message draws the first three (`Msg.readers`); the "Seen by" list shows them
+/// all (`Msg.reader_list`).
+fn readers(names: &[String]) -> Vec<ReaderItem> {
     names
-        .split(", ")
+        .iter()
         .filter(|n| !n.trim().is_empty())
-        .take(3)
         .map(|n| ReaderItem {
+            name: n.as_str().into(),
             initials: crate::data::initials(n).into(),
             color: rgb(crate::data::color_for(n)),
         })
@@ -122,7 +119,7 @@ fn readers(names: &str) -> Vec<ReaderItem> {
 
 fn msg(m: MsgData) -> Msg {
     let (avatar, has_avatar) = img(&m.avatar);
-    let readers = readers(&m.receipt_names);
+    let readers = readers(&m.receipt_readers);
     Msg {
         id: m.id.into(),
         sender: m.sender.into(),
@@ -198,7 +195,8 @@ fn msg(m: MsgData) -> Msg {
         receipt_names: m.receipt_names.into(),
         flash: m.flash,
         fresh: m.fresh,
-        readers: model(readers),
+        readers: model(readers.iter().take(3).cloned().collect()),
+        reader_list: model(readers),
         card: channels::card_rows(m.card),
         headline: m.headline.into(),
         importance: m.importance.into(),
@@ -749,11 +747,22 @@ mod tests {
     use super::readers;
 
     #[test]
-    fn readers_are_the_names_of_the_seen_by_line() {
-        let r = readers("Mia Stone, Omar Haddad, Lena Voss +2");
+    fn every_reader_reaches_the_model_with_a_full_name() {
+        let names: Vec<String> = [
+            "Reader One",
+            "Reader Two",
+            "Reader Three",
+            "Reader Four",
+            "Reader Five",
+        ]
+        .iter()
+        .map(|n| n.to_string())
+        .collect();
+        let r = readers(&names);
+        let got: Vec<String> = r.iter().map(|x| x.name.to_string()).collect();
+        assert_eq!(got, names, "every one of the five is there");
         let initials: Vec<String> = r.iter().map(|x| x.initials.to_string()).collect();
-        assert_eq!(initials, ["MS", "OH", "LV"], "the +2 is not a person");
-        assert_eq!(readers("Mia Stone").len(), 1);
-        assert!(readers("").is_empty(), "a 1:1 chat names nobody");
+        assert_eq!(initials, ["RO", "RT", "RT", "RF", "RF"]);
+        assert!(readers(&[]).is_empty(), "a 1:1 chat names nobody");
     }
 }

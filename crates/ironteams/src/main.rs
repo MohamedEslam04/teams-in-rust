@@ -8,6 +8,8 @@ mod composer;
 mod composer_format;
 mod data;
 mod demo;
+#[cfg(target_os = "linux")]
+mod desktop_entry;
 mod external;
 mod find_data;
 mod language;
@@ -287,6 +289,10 @@ fn main() -> anyhow::Result<()> {
     // Before anything opens the store, the session or the preferences: the first run after the
     // rename from kelma moves the old directories.
     compat::migrate_legacy_dirs();
+    // Before anything talks to the desktop portal: it registers the app id only for an installed
+    // desktop file, and nothing installs one for a cargo run or the AppImage.
+    #[cfg(target_os = "linux")]
+    desktop_entry::ensure(APP_ID);
     // Before anything opens the store or the config: a new version backs up the old data, and
     // the crash-loop guard counts this start. Demo mode keeps its hands off the real data.
     let data_dir = session::Paths::new()
