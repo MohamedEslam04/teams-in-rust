@@ -339,46 +339,90 @@ mod tests {
         }
     }
 
+    /// What Teams web posts for its Laugh reaction (captured live 2026-11-21, ids replaced):
+    /// one `Reaction` item to everyone, our full identity in `from`, and no skin tone.
     #[test]
-    fn a_reaction_is_one_reaction_item_sent_to_everyone() {
+    fn a_reaction_is_the_body_teams_web_sends() {
         let s = session();
-        let b = reaction_body(&s, Reaction::Applause, "op-1", "val-1");
-        assert_eq!(b["from"], s.me.wire());
-        let item = &b["messageContent"][0];
-        assert_eq!(b["messageContent"].as_array().unwrap().len(), 1);
-        assert_eq!(item["operationId"], "op-1");
-        assert_eq!(item["type"], "Reaction");
-        assert_eq!(item["scope"], "all");
-        assert_eq!(item["to"], json!([]));
-        let v = &item["payload"]["values"][0];
-        assert_eq!(v["id"], "val-1");
-        assert_eq!(v["name"], "applause");
-        assert_eq!(v["count"], 1);
-        assert_eq!(v["attributes"]["skinTone"], 2);
-        let heart = reaction_body(&s, Reaction::Heart, "o", "v");
+        let b = reaction_body(&s, Reaction::Laugh, "op-1", "val-1");
         assert_eq!(
-            heart["messageContent"][0]["payload"]["values"][0]["attributes"]["skinTone"],
-            Value::Null
+            b,
+            json!({
+                "from": {
+                    "displayName": "Self Example",
+                    "endpointId": "sess-1",
+                    "id": "8:orgid:00000000-0000-0000-0000-0000000000b2",
+                    "languageId": "en-US",
+                    "participantId": "part-1",
+                },
+                "messageContent": [{
+                    "operationId": "op-1",
+                    "payload": {"values": [{
+                        "id": "val-1",
+                        "name": "laugh",
+                        "count": 1,
+                        "attributes": {"skinTone": null},
+                    }]},
+                    "scope": "all",
+                    "to": [],
+                    "type": "Reaction",
+                }],
+            })
         );
     }
 
     #[test]
-    fn the_reaction_goes_to_the_send_message_link_with_fresh_ids() {
+    fn no_reaction_carries_a_skin_tone() {
+        let s = session();
+        for r in Reaction::ALL {
+            let b = reaction_body(&s, r, "o", "v");
+            let v = &b["messageContent"][0]["payload"]["values"][0];
+            assert_eq!(v["name"], r.wire_name());
+            assert_eq!(v["attributes"]["skinTone"], Value::Null, "{r:?}");
+        }
+    }
+
+    #[test]
+    fn the_reaction_goes_to_the_conversations_send_message_with_fresh_ids() {
         let s = session();
         let mut links = Links::default();
         let (url, a) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
-        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
+        assert_eq!(
+            url,
+            "https://api.flightproxy.skype.com/api/v2/cp/conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1"
+        );
         let (_, b) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
         assert_ne!(
             a["messageContent"][0]["operationId"], b["messageContent"][0]["operationId"],
             "each send is a new operation"
         );
+        // The conversation's own link, when it names one, as the service handed it.
+        let own = "https://conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1&e=2";
+        links.0.insert("sendMessage".into(), own.into());
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
+        assert_eq!(url, own);
+    }
+
+    /// The call's link map also holds the call leg's links (acceptance, media answer,
+    /// renegotiation): a `sendMessage` there is not the conversation's, and a reaction sent to
+    /// it reaches no one.
+    #[test]
+    fn a_call_leg_send_message_link_does_not_take_the_reaction() {
+        let s = session();
+        let mut links = Links::default();
         links.0.insert(
             "sendMessage".into(),
-            "https://conv.example.invalid/send".into(),
+            "https://api.flightproxy.teams.microsoft.com/api/v2/ep/cc-example.cc.skype.com/cc/v1/forked/LEG1/sendMessage".into(),
         );
-        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Like);
-        assert_eq!(url, "https://conv.example.invalid/send");
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Heart);
+        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
+        // Nor a link of another conversation.
+        links.0.insert(
+            "sendMessage".into(),
+            "https://conv-example.conv.skype.com/conv/BBBB/sendMessage?i=1".into(),
+        );
+        let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Heart);
+        assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
     }
 
     #[test]

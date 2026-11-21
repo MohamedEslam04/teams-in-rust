@@ -2125,6 +2125,15 @@ mod tests {
         assert!(Reoffer::Share(false).refused().is_empty());
     }
 
+    /// The React menu's picks reach `send_reaction`: each one the window sends
+    /// (`Control::React`) is a reaction the call knows, so none is skipped quietly.
+    #[test]
+    fn every_react_menu_pick_is_a_reaction_the_call_sends() {
+        for (name, ..) in super::super::REACTIONS {
+            assert_eq!(Reaction::parse(name).map(Reaction::wire_name), Some(name));
+        }
+    }
+
     #[test]
     fn a_direct_call_learns_its_controller_from_the_conversation_push() {
         let push = json!({
