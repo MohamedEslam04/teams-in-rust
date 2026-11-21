@@ -163,10 +163,12 @@ fn my_message_reads_sending_then_sent_and_seen_adds_the_readers() {
 
     let readers = ModelRc::new(VecModel::from(vec![
         crate::ReaderItem {
+            name: "Mia Stone".into(),
             initials: "MS".into(),
             color: slint::Color::from_rgb_u8(0x5b, 0x5f, 0xc7),
         },
         crate::ReaderItem {
+            name: "Omar Haddad".into(),
             initials: "OH".into(),
             color: slint::Color::from_rgb_u8(0xc4, 0x31, 0x4b),
         },

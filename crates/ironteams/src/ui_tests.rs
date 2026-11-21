@@ -54,6 +54,7 @@ mod people;
 pub(crate) mod responsive;
 mod saved;
 mod scroll;
+mod seen_by;
 mod settings;
 mod shortcuts;
 mod snippets;

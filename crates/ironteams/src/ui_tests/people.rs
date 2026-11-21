@@ -1367,6 +1367,12 @@ fn a_group_receipt_names_who_has_seen_it() {
         .find(|m| m.receipt == "seen")
         .unwrap();
     assert_eq!(row.receipt_names, "Sara Hassan, Omar Khaled");
+    let listed: Vec<String> = row.reader_list.iter().map(|r| r.name.to_string()).collect();
+    assert_eq!(
+        listed,
+        ["Sara Hassan", "Omar Khaled"],
+        "the list has full names"
+    );
     assert_eq!(
         touch(&h.app, "MessageRow::receipt-mark")
             .accessible_label()
