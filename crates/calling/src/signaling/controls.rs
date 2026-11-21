@@ -13,15 +13,17 @@
 //!   `SetHandRaised` (facts only).
 //!
 //! - **Reactions** (like, heart, applause, laugh, surprised) are a message, not a state: `POST
-//!   sendMessage` with one `Reaction` item in `messageContent`. No sequence number and no
-//!   `removeState` follow: the reaction floats and goes. Facts: rusty-teams
-//!   `crates/calling/src/reaction.rs` `reaction_message` and `signaling.rs` `send_reaction` (MIT);
-//!   no other reference sends one. UNVERIFIED live (no meetings tonight).
+//!   <conversation>/sendMessage` with one `Reaction` item in `messageContent`. No sequence number
+//!   and no `removeState` follow: the reaction floats and goes. The body and URL follow what Teams
+//!   web sends (captured live 2026-11-21): `conv/<id>/sendMessage` on the conversation service,
+//!   our full identity in `from`, `skinTone: null`. Facts also: rusty-teams
+//!   `crates/calling/src/reaction.rs` `reaction_message` (MIT).
 //!   Other people's reactions come the same way, as our `conversation/receiveMessage` callback
-//!   ([`parse_reactions`]; rusty-teams `parse_reactions`, also UNVERIFIED live).
+//!   ([`parse_reactions`]; verified live 2026-11-21: a Teams web reaction floats in IronTeams).
 //!
 //! Each operation goes to the conversation's link of the same name, else to
-//! `<controller>/<name>` (mautrix-teams addresses them that way).
+//! `<controller>/<name>` (mautrix-teams addresses them that way). A reaction takes a
+//! `sendMessage` link only when it names this conversation ([`send_message_url`]).
 //!
 //! Server-side mute by an organizer shows as `serverMuted` on a roster stream (see
 //! [`super::roster`]); the organizer operations (`mute` link) are not modelled here.
@@ -109,19 +111,11 @@ impl Reaction {
             _ => return None,
         })
     }
-
-    /// Hand-shaped reactions carry a skin tone (rusty-teams sends 2, the default yellow);
-    /// the others carry none.
-    fn skin_tone(self) -> Value {
-        match self {
-            Reaction::Like | Reaction::Applause => json!(2),
-            _ => Value::Null,
-        }
-    }
 }
 
-/// `POST sendMessage`: a reaction everyone in the meeting sees float up. `operation_id` and
-/// `value_id` are fresh UUIDs per send ([`reaction_request`] makes them).
+/// `POST sendMessage`: a reaction everyone in the meeting sees float up, shaped as Teams web
+/// sends it. `operation_id` and `value_id` are fresh UUIDs per send ([`reaction_request`] makes
+/// them). No skin tone: Teams web sends `null` (rusty-teams sent 2 for like and applause).
 pub fn reaction_body(
     s: &CallSession,
     reaction: Reaction,
@@ -140,15 +134,14 @@ pub fn reaction_body(
                     "id": value_id,
                     "name": reaction.wire_name(),
                     "count": 1,
-                    "attributes": {"skinTone": reaction.skin_tone()},
+                    "attributes": {"skinTone": null},
                 }],
             },
         }],
     })
 }
 
-/// The `sendMessage` request for one reaction: the conversation's link, else
-/// `<controller>/sendMessage`.
+/// The `sendMessage` request for one reaction ([`send_message_url`]).
 pub fn reaction_request(
     s: &CallSession,
     links: &Links,
@@ -157,9 +150,26 @@ pub fn reaction_request(
 ) -> (String, Value) {
     let id = || uuid::Uuid::new_v4().to_string();
     (
-        control_url(links, controller, "sendMessage"),
+        send_message_url(links, controller),
         reaction_body(s, reaction, &id(), &id()),
     )
+}
+
+/// Where a conversation message goes: `<controller>/sendMessage` (`.../conv/<id>/sendMessage`,
+/// as Teams web posts it), or a `sendMessage` link that names the same conversation. The call's
+/// link map also holds the call leg's links (acceptance, media answer, renegotiation): a
+/// `sendMessage` there is not the conversation's, and a message posted to it reaches no one.
+pub fn send_message_url(links: &Links, controller: &str) -> String {
+    let own = insert_path(controller, "/sendMessage");
+    let path = |url: &str| url.split('?').next().unwrap_or_default().to_owned();
+    let ours = path(&own);
+    let Some(at) = ours.find("/conv/") else {
+        return control_url(links, controller, "sendMessage");
+    };
+    links
+        .get("sendMessage")
+        .filter(|link| path(link).ends_with(&ours[at..]))
+        .map_or(own, str::to_owned)
 }
 
 /// A reaction someone sent, from a `conversation/receiveMessage` callback.
@@ -174,9 +184,9 @@ pub struct ReceivedReaction {
 /// `messageContent`, or the body itself when it is one item. Other item types, unknown reaction
 /// names and items with no sender are skipped.
 ///
-/// UNVERIFIED live: the shape mirrors what [`reaction_body`] sends (rusty-teams
-/// `reaction.rs` `parse_reactions` reads it the same way); no capture of a received reaction
-/// exists yet. The live driver logs every `receiveMessage` body at debug level to confirm it.
+/// Verified live 2026-11-21: a Teams web reaction is read this way and floats in IronTeams with
+/// its sender's name (rusty-teams `reaction.rs` `parse_reactions` reads it the same way). The
+/// live driver logs every `receiveMessage` body at debug level.
 pub fn parse_reactions(body: &Value) -> Vec<ReceivedReaction> {
     let items: Vec<&Value> = match body["messageContent"].as_array() {
         Some(items) => items.iter().collect(),

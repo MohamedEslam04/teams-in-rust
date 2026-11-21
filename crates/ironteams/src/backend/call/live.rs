@@ -1049,14 +1049,16 @@ impl Call {
                     sink.send(Event::Hand(true));
                 }
             }
-            Control::React(name) => {
-                if let Some(r) = Reaction::parse(name)
-                    && let Err(e) = self.ngc.send_reaction(s, links, controller, r).await
-                {
-                    tracing::warn!(%e, "reaction not sent");
-                    sink.send(Event::Error("Couldn't send your reaction.".into()));
+            Control::React(name) => match Reaction::parse(name) {
+                // The error names the status and the start of the service's answer.
+                Some(r) => {
+                    if let Err(e) = self.ngc.send_reaction(s, links, controller, r).await {
+                        tracing::warn!(%e, "reaction not sent");
+                        sink.send(Event::Error("Couldn't send your reaction.".into()));
+                    }
                 }
-            }
+                None => tracing::warn!(name, "reaction not sent: not a live reaction"),
+            },
             Control::Devices { mic, speaker } => {
                 if let Err(e) = audio.start(mic.as_deref(), speaker.as_deref()) {
                     sink.send(Event::Error(format!("Audio device: {e:#}")));
@@ -1398,8 +1400,8 @@ impl Call {
                             }
                             self.step_bots(&sink).await;
                         }
-                        // Live reactions (UNVERIFIED live: the body is logged so a run confirms
-                        // its shape; see `controls::parse_reactions`).
+                        // Live reactions (verified live 2026-11-21: a Teams web reaction floats
+                        // here with its sender's name; see `controls::parse_reactions`).
                         CallEvent::Other { scope, event, body }
                             if scope == "conversation" && event == "receiveMessage" =>
                         {
