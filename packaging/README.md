@@ -28,6 +28,14 @@ program is not on the portal's `PATH`. `xdg-desktop-portal` runs as a systemd us
 install to `/usr/bin`, which is on that `PATH`. `install.sh` writes the full path of
 `~/.local/bin/ironteams` into the per-user desktop file for the same reason.
 
+Runs that no package installed (`cargo run`, a tarball, the Velopack AppImage) have no desktop file at
+all, and the portal then gets an empty app id (KDE may silently deny the camera). So on startup, before
+anything talks to the portal, IronTeams writes `~/.local/share/applications/<app-id>.desktop` (and the
+icon under `icons/hicolor/scalable/apps/`) unless it runs in Flatpak or a data dir already has the file.
+`Exec=` is `$APPIMAGE` or the running binary, and the file carries `X-IronTeams-Generated=true`: only
+files with that marker are ever rewritten (when the AppImage or binary moves). The code is
+`crates/ironteams/src/desktop_entry.rs`.
+
 ## Native build dependencies
 
 | Need | Why | Fedora | Arch | Freedesktop SDK |
