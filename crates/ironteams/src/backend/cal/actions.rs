@@ -194,6 +194,23 @@ fn synth_event(f: &FormFields, id: &str, existing: Option<&Event>) -> Option<Eve
 }
 
 /// A read-only look: events of other calendars cannot be answered or changed from here.
+/// The meeting link pasted into the Join with an ID field, with `https://` added when only the
+/// host and path were copied. `None` for a meeting ID.
+fn pasted_link(field: &str) -> Option<String> {
+    let t = field.trim();
+    if t.contains("://") {
+        return Some(t.to_owned());
+    }
+    [
+        "teams.microsoft.com/",
+        "teams.cloud.microsoft/",
+        "teams.live.com/",
+    ]
+    .iter()
+    .any(|h| t.to_ascii_lowercase().starts_with(h))
+    .then(|| format!("https://{t}"))
+}
+
 fn read_only(mut p: PeekData) -> PeekData {
     p.can_respond = false;
     p.can_edit = false;
@@ -486,17 +503,33 @@ impl Engine {
             CalCmd::RoomList { email, slot } => self.cal_rooms(&email, &slot).await,
 
             CalCmd::MeetNow(subject) => self.cal_meet_now(subject.trim()).await,
-            CalCmd::JoinId { id, passcode } => match join_by_id_url(&id, &passcode) {
-                Some(url) => {
-                    if !self.call_prejoin_code(&id, &passcode) {
-                        let _ = crate::external::open(&url);
+            // The first field takes a meeting ID or a pasted meeting link.
+            CalCmd::JoinId { id, passcode } => {
+                if let Some(link) = pasted_link(&id) {
+                    if ::render::is_meeting_link(&link) {
+                        if !self.call_prejoin_link("Meeting", &link) {
+                            let _ = crate::external::open(&link);
+                        }
+                        self.ui.cal_modal("");
+                    } else {
+                        self.ui.cal_prompt_error(
+                            "That doesn't look like a Teams meeting link.".into(),
+                        );
                     }
-                    self.ui.cal_modal("");
+                } else {
+                    match join_by_id_url(&id, &passcode) {
+                        Some(url) => {
+                            if !self.call_prejoin_code(&id, &passcode) {
+                                let _ = crate::external::open(&url);
+                            }
+                            self.ui.cal_modal("");
+                        }
+                        None => self.ui.cal_prompt_error(
+                            "That doesn't look like a meeting ID or link.".into(),
+                        ),
+                    }
                 }
-                None => self
-                    .ui
-                    .cal_prompt_error("That doesn't look like a meeting ID.".into()),
-            },
+            }
             CalCmd::CopyMeetLink => {
                 if let Some(link) = self.cal.lock().meet_link.clone() {
                     let _ = arboard::Clipboard::new().and_then(|mut c| c.set_text(link));
@@ -2376,6 +2409,68 @@ mod tests {
             },
         });
         assert_eq!(g.get_rooms().row_count(), 3);
+    }
+
+    /// A join went to the pre-join screen, or (native calls off) to the browser.
+    fn was_joined(r: &Rig, link: &str) -> bool {
+        r.engine.calls.is_in_meeting(link)
+            || crate::external::suppressed_targets()
+                .iter()
+                .any(|t| t == link)
+    }
+
+    #[test]
+    fn join_with_an_id_takes_a_pasted_meeting_link() {
+        let r = Rig::new();
+        let s = r.app.global::<CalStore>();
+        let link =
+            "https://teams.microsoft.com/l/meetup-join/19%3ameeting_pastedlink%40thread.v2/0";
+        s.set_modal("prompt".into());
+        r.run(CalCmd::JoinId {
+            id: format!("  {link}  "),
+            passcode: String::new(),
+        });
+        assert_eq!(s.get_modal(), "", "the dialog closes once it joins");
+        assert!(was_joined(&r, link));
+
+        // A copy without the scheme works too.
+        let bare = "teams.live.com/meet/1234567890123?p=PastedPass01";
+        s.set_modal("prompt".into());
+        r.run(CalCmd::JoinId {
+            id: bare.into(),
+            passcode: String::new(),
+        });
+        assert_eq!(s.get_modal(), "");
+        assert!(was_joined(&r, &format!("https://{bare}")));
+    }
+
+    #[test]
+    fn join_with_an_id_refuses_a_link_that_is_not_a_meeting() {
+        let r = Rig::new();
+        let s = r.app.global::<CalStore>();
+        let other = "https://example.invalid/not-a-meeting-link";
+        s.set_modal("prompt".into());
+        r.run(CalCmd::JoinId {
+            id: other.into(),
+            passcode: String::new(),
+        });
+        assert!(s.get_prompt_error().contains("meeting link"));
+        assert_eq!(s.get_modal(), "prompt");
+        assert!(!was_joined(&r, other));
+    }
+
+    #[test]
+    fn pasted_links_are_told_from_meeting_ids() {
+        assert_eq!(pasted_link("123 456 789"), None);
+        assert_eq!(pasted_link("ab12cd34"), None);
+        assert_eq!(
+            pasted_link(" https://teams.microsoft.com/meet/1 ").as_deref(),
+            Some("https://teams.microsoft.com/meet/1")
+        );
+        assert_eq!(
+            pasted_link("teams.cloud.microsoft/meet/1").as_deref(),
+            Some("https://teams.cloud.microsoft/meet/1")
+        );
     }
 
     #[test]

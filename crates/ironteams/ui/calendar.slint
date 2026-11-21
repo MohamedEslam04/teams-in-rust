@@ -613,7 +613,7 @@ export component CalendarView inherits Rectangle {
                         HorizontalLayout {
                             spacing: 6px;
                             CalButton { label: "Meet now"; horizontal-stretch: 1; clicked => { CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-                            CalButton { label: "Join with an ID"; horizontal-stretch: 1; clicked => { CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation.", "Meeting ID", "Passcode", "", "Join"); } }
+                            CalButton { label: "Join with an ID"; horizontal-stretch: 1; clicked => { CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
                         }
                     }
                     MiniMonth { }
@@ -736,7 +736,7 @@ export component CalendarView inherits Rectangle {
         VerticalLayout {
             padding: 4px;
             CalMenuItem { label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-            CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation.", "Meeting ID", "Passcode", "", "Join"); } }
+            CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
         }
     }
     if CalStore.popup == "add-calendar": AddCalendarMenu { z: 41; x: 12px; y: 240px; }

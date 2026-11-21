@@ -128,7 +128,7 @@ export component MoreMenu inherits CalCard {
     VerticalLayout {
         padding: 4px;
         if root.meet: CalMenuItem { label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-        if root.meet: CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation.", "Meeting ID", "Passcode", "", "Join"); } }
+        if root.meet: CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
         CalMenuItem { label: "Share calendar…"; clicked => { CalStore.popup = ""; CalStore.command("share-open", ""); } }
         CalMenuItem { label: "Print to PDF"; clicked => { CalStore.popup = ""; CalStore.command("print-pdf", ""); } }
         CalMenuItem { label: "Export visible range (.ics)"; clicked => { CalStore.popup = ""; CalStore.command("export-ics", ""); } }
@@ -215,24 +215,31 @@ export component PromptDialog inherits Modal {
 // The link of a Meet now meeting.
 export component MeetLinkDialog inherits Modal {
     dismissed => { CalStore.modal = ""; }
+    // The link has no spaces, so it wraps by character; the card grows with it, which keeps the
+    // link text clear of the button row (Copy link must never sit under, or act as, the link).
+    property <bool> copied;
     CalCard {
         width: 460px;
-        height: 170px;
+        height: body.preferred-height + 32px;
         x: (parent.width - self.width) / 2;
         y: max(24px, (parent.height - self.height) / 3);
         accessible-role: groupbox;
         accessible-label: "Meeting ready";
         TouchArea { }
-        VerticalLayout {
-            padding: 16px;
-            spacing: 10px;
+        body := VerticalLayout {
+            x: 16px;
+            y: 16px;
+            width: parent.width - 32px;
+            spacing: 12px;
+            alignment: start;
             Text { text: "Your meeting is ready"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; }
-            Text { text: CalStore.meet-link; color: Theme.accent; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; }
+            Text { text: CalStore.meet-link; color: Theme.accent; font-size: 13px * Theme.font-scale; wrap: char-wrap; accessible-role: text; }
             HorizontalLayout {
-                spacing: 8px;
+                spacing: 12px;
                 alignment: end;
                 CalButton { label: "Close"; clicked => { CalStore.modal = ""; } }
-                CalButton { label: "Copy link"; clicked => { CalStore.command("copy-meet-link", ""); } }
+                // Only copies: the dialog stays open and nothing is opened.
+                CalButton { label: root.copied ? "Link copied" : "Copy link"; clicked => { root.copied = true; CalStore.command("copy-meet-link", ""); } }
                 CalButton { label: "Join now"; primary: true; clicked => { CalStore.modal = ""; CalStore.command("join", CalStore.meet-link); } }
             }
         }

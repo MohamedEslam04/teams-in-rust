@@ -4,7 +4,7 @@
 
 use super::{UiHandle, model, msg};
 use crate::data::MsgData;
-use crate::{AppWindow, ChatWindow, MediaStore, Theme};
+use crate::{AppWindow, CalStore, ChatWindow, MediaStore, Theme};
 use slint::{CloseRequestResponse, ComponentHandle, Model};
 use std::cell::RefCell;
 
@@ -68,6 +68,13 @@ fn new_window(app: &AppWindow) -> Option<ChatWindow> {
     cw.global::<MediaStore>().on_command(move |name, arg| {
         if let Some(app) = main.upgrade() {
             app.global::<MediaStore>().invoke_command(name, arg);
+        }
+    });
+    // The Join of a meeting link in a message runs the main window's calendar join.
+    let main = app.as_weak();
+    cw.global::<CalStore>().on_command(move |name, arg| {
+        if let Some(app) = main.upgrade() {
+            app.global::<CalStore>().invoke_command(name, arg);
         }
     });
     // A right button going up opens the "…" menu of the message under the pointer, as in the main

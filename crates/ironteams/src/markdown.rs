@@ -252,10 +252,11 @@ fn table_md(table: &RichTable) -> String {
 /// built from the richer [`RichDoc`] (a heading becomes a bold line, a table aligned monospace
 /// rows, a color a `<font>` span). `r.markdown` is left alone for a plain message.
 pub fn upgrade_rich(r: &mut Rendered, html: &str) {
-    let doc = render::parse_rich_html(html);
+    let mut doc = render::parse_rich_html(html);
     if !needs_rich(&doc) {
         return;
     }
+    render::linkify_doc(&mut doc);
     let mut md: Vec<String> = Vec::new();
     for (i, b) in doc.blocks.iter().enumerate() {
         match b {
@@ -415,6 +416,31 @@ mod tests {
 
     fn r(html: &str) -> Rendered {
         render_blocks(&render::parse_teams_html(html))
+    }
+
+    #[test]
+    fn a_plain_text_url_becomes_a_markdown_link() {
+        let mut rich = render::parse_teams_html("<p>see https://a.example/x, ok</p>");
+        render::linkify(&mut rich);
+        let x = render_blocks(&rich);
+        assert_eq!(
+            x.markdown,
+            "see [https://a.example/x](https://a.example/x), ok"
+        );
+        assert_eq!(x.plain, "see https://a.example/x, ok");
+    }
+
+    #[test]
+    fn a_plain_text_url_in_a_rich_message_becomes_a_markdown_link() {
+        let html = "<h1>Notes</h1><p>https://a.example/x</p>";
+        let mut x = render_blocks(&render::parse_teams_html(html));
+        upgrade_rich(&mut x, html);
+        assert!(
+            x.markdown
+                .contains("[https://a.example/x](https://a.example/x)"),
+            "{}",
+            x.markdown
+        );
     }
 
     #[test]

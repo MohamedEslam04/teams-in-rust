@@ -1754,6 +1754,47 @@ mod tests {
     }
 
     #[test]
+    fn join_with_an_id_also_takes_a_pasted_meeting_link() {
+        let app = app(View::WorkWeek, &[]);
+        let log = commands(&app);
+        let store = app.global::<CalStore>();
+        click(&button(&app, "Join with an ID"));
+        assert_eq!(store.get_prompt_kind(), "join-id");
+        assert_eq!(store.get_prompt_label1(), "Meeting ID or link");
+        assert!(store.get_prompt_message().contains("paste a meeting link"));
+        let link = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0";
+        store.set_prompt_text1(link.into());
+        click(&button(&app, "Join"));
+        assert_eq!(log_of(&log), [format!("join-id {link}||0")]);
+    }
+
+    #[test]
+    fn copy_link_in_the_meeting_dialog_only_copies_and_clears_the_link_text() {
+        let app = app(View::WorkWeek, &[]);
+        let log = commands(&app);
+        let store = app.global::<CalStore>();
+        // A real link is long: it wraps inside the card instead of running into the buttons.
+        let link = format!(
+            "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context={}",
+            "%7b%22Tid%22%3a%22aaaa-1111%22%7d".repeat(6)
+        );
+        store.set_meet_link(link.as_str().into());
+        store.set_modal("meet-link".into());
+        let text = ElementHandle::find_by_accessible_label(&app, &link)
+            .next()
+            .expect("the link text");
+        let copy = button(&app, "Copy link");
+        assert!(
+            text.absolute_position().y + text.size().height <= copy.absolute_position().y,
+            "the link text ends above the button row"
+        );
+        click(&copy);
+        assert_eq!(log_of(&log), ["copy-meet-link "], "only the copy command");
+        assert_eq!(store.get_modal(), "meet-link", "the dialog stays open");
+        assert!(has_button(&app, "Link copied"));
+    }
+
+    #[test]
     fn the_date_range_picker_sends_the_first_and_last_day() {
         let evs: Vec<Event> = vec![];
         let app = app(View::WorkWeek, &evs);

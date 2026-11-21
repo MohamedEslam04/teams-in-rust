@@ -134,6 +134,7 @@ export struct Msg {
     pinned: bool,          // pinned for everyone: the menu offers Unpin
     urls: [string],        // the links in the text (menu: Open link, Copy link)
     loops: [LoopCard],     // Loop components, drawn as cards
+    joins: [string],       // Teams meeting links, drawn as cards with a Join button
     voices: [VoiceItem],   // voice messages, drawn as players
     videos: [VideoClipItem], // video clips, drawn as cards
     meeting: [MeetingCard], // a call, recording or transcript event drawn as a card (at most one)

@@ -231,6 +231,7 @@ fn msg(m: MsgData) -> Msg {
                 })
                 .collect(),
         ),
+        joins: model(m.joins.into_iter().map(SharedString::from).collect()),
         voices: model(
             m.voices
                 .into_iter()

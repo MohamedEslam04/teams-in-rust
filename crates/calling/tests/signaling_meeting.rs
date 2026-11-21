@@ -112,6 +112,15 @@ fn long_join_links_carry_thread_and_context() {
 }
 
 #[test]
+fn a_link_pasted_from_the_cloud_host_reads_like_the_classic_one() {
+    let url = "https://teams.cloud.microsoft/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%3a%22tenant-1%22%2c%22Oid%22%3a%22organizer-1%22%7d";
+    let t = meeting_from_join_url(url).unwrap();
+    assert_eq!(t.thread_id.as_deref(), Some("19:meeting_abc@thread.v2"));
+    assert_eq!(t.tenant_id.as_deref(), Some("tenant-1"));
+    assert_eq!(t.organizer_id.as_deref(), Some("organizer-1"));
+}
+
+#[test]
 fn foreign_or_malformed_links_are_not_meetings() {
     for bad in [
         "https://evil.example/meet/123?p=x",

@@ -2140,3 +2140,15 @@ msgstr "الحصول على التحديثات التجريبية"
 
 msgid "Restart to update"
 msgstr "إعادة التشغيل للتحديث"
+
+msgid "Meeting link"
+msgstr "رابط الاجتماع"
+
+msgid "Teams meeting"
+msgstr "اجتماع Teams"
+
+msgid "Join"
+msgstr "انضمام"
+
+msgid "Join meeting"
+msgstr "الانضمام إلى الاجتماع"
