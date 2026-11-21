@@ -1520,7 +1520,10 @@ export component AppWindow inherits Window {
     }
     }
 
+    // The chat popups (message menu, Seen by list, reaction picker) draw above the floating call
+    // window (z 45), which can sit over the message they were opened from.
     if root.login-state == "ready" && root.menu-open: Rectangle {
+        z: 46;
         width: root.width;
         height: root.height;
         TouchArea {
@@ -1600,6 +1603,7 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.readers-open: Rectangle {
+        z: 46;
         width: root.width;
         height: root.height;
         TouchArea {
@@ -1651,6 +1655,7 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.picker-open: Rectangle {
+        z: 46;
         width: root.width;
         height: root.height;
         TouchArea {
