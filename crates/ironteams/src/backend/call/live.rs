@@ -24,7 +24,7 @@ use super::{
     CallDriver, CallHandle, Caption, Control, ControlAction, Device, Devices, Event, EventSink,
     JoinOptions, JoinTarget, Link, Person, Phase, live_phase, reaction_named, recording_state,
 };
-use crate::backend::outsider::classify as classify_outsider;
+use crate::backend::outsider::{Standing, classify as classify_outsider};
 use anyhow::Context;
 use calling::audio::{
     AudioProcessor, Capture, Playback, ProcessingOptions, echo_cancelled, spawn_capture_encoder,
@@ -48,12 +48,13 @@ use calling::signaling::roster::{Presence, roster_snapshot};
 use calling::signaling::{CallSession, Controls, NgcClient, Roster};
 use calling::video::remote_input::InputInjector;
 use calling::{CallInvitation, IceServer, Links, Modality, OpusPacket, SdpBlob};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use teams_proto::Client;
+use teams_proto::mt::Profile;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
@@ -870,10 +871,13 @@ fn speaker_name(roster: &Roster, user_id: &str) -> String {
         .unwrap_or_default()
 }
 
+/// The people of the call. `standing` is what profile lookups said about them (the roster alone
+/// seldom marks a guest of our organization: same `8:orgid:` MRI and tenant as a colleague).
 fn people(
     roster: &Roster,
     me: &str,
     own_tenant: Option<&str>,
+    standing: &HashMap<String, Standing>,
     talk: &Talk,
     video: &RemoteVideo,
 ) -> Vec<Person> {
@@ -898,7 +902,15 @@ fn people(
             outsider: if p.mri == me {
                 None
             } else {
-                classify_outsider(&p.mri, p.tenant_id.as_deref(), own_tenant, p.guest)
+                let looked_up = standing.get(&p.mri);
+                classify_outsider(
+                    &p.mri,
+                    p.tenant_id
+                        .as_deref()
+                        .or(looked_up.and_then(|s| s.tenant.as_deref())),
+                    own_tenant,
+                    p.guest || looked_up.is_some_and(|s| s.guest),
+                )
             },
         })
         .collect()
@@ -1266,10 +1278,16 @@ impl Call {
         let mut hang_up = false;
         let (share_tx, mut share_rx) = mpsc::unbounded_channel();
         let (camera_tx, mut camera_rx) = mpsc::unbounded_channel();
+        // Who the roster leaves unlabelled is looked up once per person (profile lookups run
+        // off the loop and come back here).
+        let (standing_tx, mut standing_rx) = mpsc::unbounded_channel::<Vec<Profile>>();
+        let mut standing: HashMap<String, Standing> = HashMap::new();
+        let mut standing_asked: HashSet<String> = HashSet::new();
         // Joined with the camera on: it starts once the call can send it.
         let mut camera_wanted = opts.camera;
         let ended: Option<String> = loop {
             let mut roster_changed = false;
+            let mut standing_changed = false;
             tokio::select! {
                 c = ctl.recv() => match c {
                     None | Some(Control::Leave) => break None,
@@ -1295,6 +1313,12 @@ impl Call {
                     }
                 }
                 Some(m) = camera_rx.recv() => self.camera_msg(m, &camera_tx, &sink).await,
+                Some(found) = standing_rx.recv() => {
+                    for p in &found {
+                        standing.insert(p.mri.clone(), Standing::from(p));
+                    }
+                    standing_changed = true;
+                }
                 heard = speakers_rx.changed(), if speakers_open => match heard {
                     Ok(()) => {
                         let sources = speakers_rx.borrow_and_update().clone();
@@ -1453,6 +1477,16 @@ impl Call {
                     }
                 }
             }
+            if standing_changed && !roster_changed {
+                sink.send(Event::Roster(people(
+                    &self.roster,
+                    &me,
+                    own_tenant.as_deref(),
+                    &standing,
+                    &talk,
+                    &self.video,
+                )));
+            }
             if roster_changed {
                 if self.meeting {
                     let spoke = |m: &str| talk.last.get(m).copied().unwrap_or(0);
@@ -1472,9 +1506,29 @@ impl Call {
                     &self.roster,
                     &me,
                     own_tenant.as_deref(),
+                    &standing,
                     &talk,
                     &self.video,
                 )));
+                let unknown: Vec<String> = self
+                    .roster
+                    .participants()
+                    .iter()
+                    .filter(|p| p.mri != me && p.mri.starts_with("8:orgid:") && !p.guest)
+                    .filter(|p| standing_asked.insert(p.mri.clone()))
+                    .map(|p| p.mri.clone())
+                    .collect();
+                if !unknown.is_empty() {
+                    let (hub, tx) = (self.hub.clone(), standing_tx.clone());
+                    tokio::spawn(async move {
+                        match hub.client.profiles(&unknown).await {
+                            Ok(found) => {
+                                let _ = tx.send(found);
+                            }
+                            Err(err) => tracing::debug!(%err, "no profiles for the call's people"),
+                        }
+                    });
+                }
                 if let Some(p) = self.roster.get(&me) {
                     in_lobby = p.presence == Presence::Lobby;
                     let hand = p.hand.is_some();
@@ -2269,6 +2323,7 @@ mod tests {
             &r,
             "8:orgid:me",
             None,
+            &HashMap::new(),
             &Talk::default(),
             &RemoteVideo::default(),
         );
@@ -2276,6 +2331,69 @@ mod tests {
         assert!(me.muted && !me.lobby);
         let guest = p.iter().find(|p| !p.me).unwrap();
         assert_eq!((guest.name.as_str(), guest.lobby), ("Unknown", true));
+    }
+
+    #[test]
+    fn a_looked_up_guest_and_outsiders_are_labelled_in_the_call() {
+        use crate::backend::outsider::Outsider;
+        let mut r = Roster::default();
+        r.apply(&json!({"participants": {
+            "8:orgid:me": {"version": 1, "state": "active", "details": {"displayName": "Me"}},
+            "8:orgid:guest": {"version": 1, "state": "active", "details": {"displayName": "guest.user"}},
+            "8:orgid:other": {"version": 1, "state": "active", "details": {"displayName": "Other Org"}},
+            "8:orgid:colleague": {"version": 1, "state": "active", "details": {"displayName": "Colleague"}},
+            "8:teamsvisitor:anon": {"version": 1, "state": "active", "details": {"displayName": "Visitor"}}
+        }}));
+        let standing: HashMap<String, Standing> = [
+            (
+                "8:orgid:guest".to_owned(),
+                Standing {
+                    guest: true,
+                    tenant: Some("t-1".into()),
+                },
+            ),
+            (
+                "8:orgid:other".to_owned(),
+                Standing {
+                    guest: false,
+                    tenant: Some("t-2".into()),
+                },
+            ),
+            (
+                "8:orgid:colleague".to_owned(),
+                Standing {
+                    guest: false,
+                    tenant: Some("t-1".into()),
+                },
+            ),
+        ]
+        .into();
+        let label = |standing: &HashMap<String, Standing>, mri: &str| {
+            people(
+                &r,
+                "8:orgid:me",
+                Some("t-1"),
+                standing,
+                &Talk::default(),
+                &RemoteVideo::default(),
+            )
+            .into_iter()
+            .find(|p| p.mri == mri)
+            .unwrap()
+            .outsider
+        };
+        // Before the lookups answer, the roster alone says nothing about the guest.
+        let none = HashMap::new();
+        assert_eq!(label(&none, "8:orgid:guest"), None);
+        assert_eq!(label(&none, "8:teamsvisitor:anon"), Some(Outsider::Guest));
+        assert_eq!(label(&standing, "8:orgid:guest"), Some(Outsider::Guest));
+        assert_eq!(label(&standing, "8:orgid:other"), Some(Outsider::External));
+        assert_eq!(label(&standing, "8:orgid:colleague"), None);
+        assert_eq!(
+            label(&standing, "8:orgid:me"),
+            None,
+            "never labelled ourselves"
+        );
     }
 
     #[test]

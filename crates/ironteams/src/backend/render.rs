@@ -195,11 +195,11 @@ impl Engine {
             .collect()
     }
 
-    /// Whether the other person of a 1:1 chat is outside our organization, as far as their MRI
-    /// and stored sign-in name say (a stored profile has no tenant id: an organization user of
-    /// another tenant shows no label here).
+    /// Whether a person of a chat is outside our organization, as far as their MRI, stored
+    /// sign-in name and the profile lookup (`resolve_standing`) say. Our own tenant id is not
+    /// known here: an organization user of another tenant shows no label.
     pub(super) fn outsider_of(&self, mri: &str) -> Option<Outsider> {
-        let guest = self
+        let stored = self
             .store
             .lock()
             .unwrap()
@@ -208,6 +208,7 @@ impl Engine {
             .flatten()
             .and_then(|u| u.email)
             .is_some_and(|e| is_guest_upn(&e));
+        let guest = stored || self.standing_of(mri).is_some_and(|s| s.guest);
         classify(mri, None, None, guest)
     }
 
@@ -276,6 +277,7 @@ impl Engine {
         let mut meetings = vec![];
         let mut chans = vec![];
         let mut by_section: HashMap<String, Vec<ChatData>> = HashMap::new();
+        let mut partners: Vec<String> = vec![];
         for r in rows {
             if r.kind == ConvKind::Channel && r.last_activity_ms == 0 {
                 continue;
@@ -300,6 +302,11 @@ impl Engine {
                 ConvKind::Notes => Some(self.me.clone()),
                 _ => None,
             };
+            if r.kind == ConvKind::OneOnOne
+                && let Some(m) = &avatar_mri
+            {
+                partners.push(m.clone());
+            }
             // A channel shows its team's picture and, when private, a lock.
             let chan = match r.kind {
                 ConvKind::Channel => self.channel_info(&r.id),
@@ -408,6 +415,7 @@ impl Engine {
         // The Meetings section's rows end the main list (see `UiHandle::chats`).
         main.extend(meetings);
         self.ui.chats(fav, main, chans);
+        self.want_standing(partners);
         self.push_sections(by_section);
         // The chat list draws first after sign-in: our own photo opens our card from then on.
         self.ui.me_id(self.me.clone());
@@ -468,7 +476,7 @@ impl Engine {
         self.ui.teams(data);
     }
 
-    fn render_header(self: &Arc<Self>) {
+    pub(super) fn render_header(self: &Arc<Self>) {
         let (cur, thread, title_override) = {
             let v = self.view.lock().unwrap();
             (
