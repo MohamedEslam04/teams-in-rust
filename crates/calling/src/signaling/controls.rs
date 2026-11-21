@@ -4,7 +4,9 @@
 //!   `endpointState.state.isMuted` and a rising `endpointStateSequenceNumber`; the change shows in
 //!   everyone's roster as our endpoint's `endpointState`. It does not stop the audio: the caller
 //!   also stops sending microphone packets while muted (rusty-teams disables the track and posts
-//!   the state, `call/audio_switch.rs` `apply_mute`). Facts: rusty-teams `signaling.rs`
+//!   the state, `call/audio_switch.rs` `apply_mute`), sending [`crate::audio::OPUS_SILENCE`] in
+//!   their place: with no RTP at all the service ends the call (`410`/`301005`
+//!   `MediaConnectivityFailure`). Facts: rusty-teams `signaling.rs`
 //!   `update_endpoint_state` (MIT), mautrix-teams `calls.go` `updateEndpointState` and
 //!   `teams-webclient.yaml` `/updateEndpointState` (AGPL, facts only).
 //! - **Hand** is a published state: `POST publishState` with a user-level `raiseHands` state,
