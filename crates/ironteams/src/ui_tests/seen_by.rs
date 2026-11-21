@@ -118,7 +118,8 @@ fn a_long_list_scrolls_and_stays_inside_a_narrow_window() {
     let (p, s) = (list.absolute_position(), list.size());
     assert!(p.x >= 0.0 && p.x + s.width <= 760.0, "{p:?} {s:?}");
     assert!(p.y >= 0.0 && p.y + s.height <= 800.0, "{p:?} {s:?}");
-    assert!(has(&app, "Reader 20"), "the last reader is in the list");
+    assert!(has(&app, "Seen by 20"), "the header counts all of them");
+    assert!(has(&app, "Reader 1"), "the list starts at the first reader");
 }
 
 #[test]
