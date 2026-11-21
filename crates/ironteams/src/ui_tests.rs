@@ -49,6 +49,7 @@ mod motion;
 mod msg_extras;
 mod not_member;
 pub(crate) mod overflow;
+mod overlay_order;
 mod palette;
 mod people;
 pub(crate) mod responsive;
