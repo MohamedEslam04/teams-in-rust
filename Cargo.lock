@@ -3650,6 +3650,7 @@ dependencies = [
  "spellbook",
  "store",
  "teams-proto",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
