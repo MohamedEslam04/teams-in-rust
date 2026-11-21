@@ -4,7 +4,7 @@
 
 use std::process::Stdio;
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -63,15 +63,26 @@ fn installed_gst_launch() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Whether a line `gst-launch-1.0` wrote to stderr reports a failed pipeline
+/// (`ERROR: from element ...`, `ERROR: pipeline doesn't want to preroll.`).
+pub(crate) fn is_error_line(line: &str) -> bool {
+    line.contains("ERROR:")
+}
+
 /// A running `gst-launch-1.0` and the frames it writes.
 pub(crate) struct GstFrames {
     pub frames: mpsc::Receiver<I420Frame>,
+    /// Its stderr lines that report an error ([`is_error_line`]); `gst-launch-1.0` can print one
+    /// and then keep its pipes open for a long time, with no frame and no end of file.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub errors: mpsc::Receiver<String>,
     pub child: Child,
     pub reader: JoinHandle<()>,
 }
 
 /// Starts `gst-launch-1.0 <args>` with `stdin` as its fd 0 and reads `size` I420 frames from its
-/// stdout. `what` names the capture in logs.
+/// stdout. Its stderr is logged at info, error lines also go to [`GstFrames::errors`]. `what`
+/// names the capture in logs.
 pub(crate) fn spawn(
     args: Vec<String>,
     stdin: Stdio,
@@ -86,7 +97,7 @@ pub(crate) fn spawn(
         .args(args)
         .stdin(stdin)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|e| {
@@ -99,10 +110,31 @@ pub(crate) fn spawn(
                 }
             ))
         })?;
+    let (err_tx, errors) = mpsc::channel(1);
     let mut out = child
         .stdout
         .take()
         .ok_or_else(|| Error::Media("gst-launch-1.0 has no stdout".into()))?;
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(async move {
+            let mut stderr = BufReader::new(stderr);
+            let mut raw = Vec::new();
+            loop {
+                raw.clear();
+                match stderr.read_until(b'\n', &mut raw).await {
+                    Ok(0) | Err(_) => return,
+                    Ok(_) => {}
+                }
+                let line = String::from_utf8_lossy(&raw);
+                let line = line.trim_end();
+                tracing::info!("{what} (gst-launch-1.0): {line}");
+                if is_error_line(line) {
+                    // Only the first one matters, and nobody may be listening.
+                    let _ = err_tx.try_send(line.to_owned());
+                }
+            }
+        });
+    }
     let (tx, frames) = mpsc::channel(FRAME_QUEUE);
     let (w, h) = (size.0 as usize, size.1 as usize);
     let reader = tokio::spawn(async move {
@@ -125,7 +157,26 @@ pub(crate) fn spawn(
     });
     Ok(GstFrames {
         frames,
+        errors,
         child,
         reader,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_lines_of_gst_launch_are_told_from_the_rest() {
+        assert!(is_error_line(
+            "ERROR: from element /GstPipeline:pipeline0/GstPipeWireSrc:pipewiresrc0: stream error: target not found"
+        ));
+        assert!(is_error_line("ERROR: pipeline doesn't want to preroll."));
+        assert!(!is_error_line("Setting pipeline to PAUSED ..."));
+        assert!(!is_error_line(
+            "WARNING: from element /GstPipeline:pipeline0: Could not read"
+        ));
+        assert!(!is_error_line(""));
+    }
 }

@@ -1,26 +1,33 @@
-//! The camera, as raw I420 frames: the xdg-desktop-portal Camera portal first, a V4L2 device
-//! when the portal has no camera (or no Camera interface at all).
+//! The camera, as raw I420 frames: a V4L2 device on Linux, behind the xdg-desktop-portal Camera
+//! portal's consent; the portal's PipeWire remote when there is no V4L2 device (or in a Flatpak).
 //!
-//! The portal (D-Bus, through `ashpd`) asks the user once and hands back a file descriptor for a
-//! PipeWire connection that only shows camera nodes. As for the screen ([`super::screencast`]),
-//! `gst-launch-1.0` reads it: `pipewiresrc` on fd 0. With no node named, PipeWire 1.x connects to
-//! the default video target from its session metadata, which the portal's restricted connection
-//! cannot see (`stream error: target not found`). So the camera node is looked up first with
-//! `pw-dump` (node ids and serials are global, [`pipewire_camera_target`]: the chosen device's
-//! node, else the one with role Camera, else any `Video/Source`) and named as
-//! `target-object=<object.serial>`. Without `pw-dump`, or without a node in its output, nothing
-//! is named, as before. If the portal pipeline then ends before its first frame, outside a
-//! Flatpak the camera is read again through V4L2 (the user already allowed the camera in the
-//! portal); the log says which path was used. The V4L2 path runs `v4l2src` on a device path.
-//! Either way `decodebin` turns a camera's MJPEG into raw video, and GStreamer scales to a fixed
+//! Outside a Flatpak the portal (D-Bus, through `ashpd`) is only the consent gate: it asks the
+//! user once, a refusal is a refusal, and once it allows the camera `gst-launch-1.0` opens the
+//! V4L2 device itself (`v4l2src`): the one chosen in Settings or the picker, else the first
+//! capture device found, else `/dev/video0`. The portal's PipeWire connection is restricted to
+//! camera nodes, and on some KDE/WirePlumber setups it does not show the camera node at all
+//! (`stream error: target not found`, even with the node named), so it is only the last resort
+//! there ([`camera_sources`] lists the sources in order). In a Flatpak there is no
+//! `/dev/video*`, and the portal's remote is the way: `pipewiresrc` on fd 0, as for the screen
+//! ([`super::screencast`]), with the camera node looked up with `pw-dump` and named as
+//! `target-object=<object.serial>` ([`pipewire_camera_target`]: the chosen device's node, else
+//! the one with role Camera, else any `Video/Source`; node ids and serials are global), because
+//! PipeWire 1.x otherwise connects to the default video target from session metadata the
+//! restricted connection cannot see.
+//!
+//! A source counts as failed when `gst-launch-1.0` ends before its first frame, writes an
+//! `ERROR:` line to stderr (it can then keep its pipes open for a long time) or delivers nothing
+//! within [`FIRST_FRAME`]; it is killed and the next source is tried. The log says which source
+//! was used. `decodebin` turns a camera's MJPEG into raw video, and GStreamer scales to a fixed
 //! size and rate (black borders keep a 4:3 camera's shape in the 16:9 frame).
 //!
-//! UNVERIFIED live: that `target-object` makes `pipewiresrc` connect on the portal's fd (it does
-//! for the screen share's `path=`); the V4L2 retry is the net under it.
+//! UNVERIFIED live: the V4L2-first order on the KDE machine that showed `target not found`, and
+//! that `target-object` makes `pipewiresrc` connect on the portal's fd in a Flatpak (it does for
+//! the screen share's `path=`).
 //!
-//! Runtime needs GStreamer's PipeWire plugin (`pipewire-gstreamer` on Fedora,
-//! `gstreamer1.0-pipewire` on Debian/Ubuntu) for the portal, `gstreamer1-plugins-good`
-//! (`gstreamer1.0-plugins-good`) for V4L2 and a JPEG decoder.
+//! Runtime needs `gstreamer1-plugins-good` (`gstreamer1.0-plugins-good`) for V4L2 and a JPEG
+//! decoder, and GStreamer's PipeWire plugin (`pipewire-gstreamer` on Fedora,
+//! `gstreamer1.0-pipewire` on Debian/Ubuntu) for the portal pipeline.
 //!
 //! Windows and macOS read the system's default camera with GStreamer's own source (`mfvideosrc`,
 //! `avfvideosrc`); runtime needs the GStreamer runtime installed (gstreamer.freedesktop.org).
@@ -58,8 +65,8 @@ pub enum CameraSource {
 /// Which camera to open.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum CameraChoice {
-    /// The portal's camera on Linux (a V4L2 device when the portal has none), the system's
-    /// default elsewhere.
+    /// The default camera: on Linux the first V4L2 device (outside a Flatpak) or the portal's
+    /// camera, the system's default elsewhere.
     #[default]
     Default,
     /// This V4L2 device (Linux). With a Camera portal, only once it allowed the camera.
@@ -160,10 +167,13 @@ async fn portal() -> Result<Portal> {
     Ok(Portal::Remote(fd))
 }
 
-/// How long the portal pipeline has to deliver its first frame before it counts as not started
-/// (when it only is slow, the camera is kept).
+/// How long a pipeline has to deliver its first frame before it counts as not started.
 #[cfg(target_os = "linux")]
-const PORTAL_FIRST_FRAME: Duration = Duration::from_secs(5);
+const FIRST_FRAME: Duration = Duration::from_secs(4);
+
+/// Exists in a Flatpak sandbox.
+#[cfg(target_os = "linux")]
+const FLATPAK_INFO: &str = "/.flatpak-info";
 
 /// `pw-dump`'s JSON on stdout, `None` when it is not installed, fails or hangs.
 #[cfg(target_os = "linux")]
@@ -238,101 +248,97 @@ pub fn pipewire_camera_target(pw_dump: &str, device: Option<&str>) -> Option<u64
     best.map(|(_, serial)| serial)
 }
 
-/// Whether the camera's pipeline got going: its first frame came (and is dropped, the next one
-/// follows in 1/15 s), or it is only slow. `false` when it ended before any frame.
-#[cfg(target_os = "linux")]
-async fn started(frames: &mut mpsc::Receiver<I420Frame>) -> bool {
-    !matches!(
-        tokio::time::timeout(PORTAL_FIRST_FRAME, frames.recv()).await,
-        Ok(None)
-    )
+/// The sources to try on Linux, in order. `chosen` is the V4L2 device picked in Settings or the
+/// picker, `first` the first capture device found, `portal_granted` whether the Camera portal
+/// allowed the camera (it has a PipeWire remote then).
+///
+/// Outside a Flatpak the V4L2 device comes first (`chosen`, else `first`, else `/dev/video0`; a
+/// chosen device that does not open is followed by `first`) and the portal's remote only after
+/// it. In a Flatpak, where `/dev/video*` is not visible, the portal's remote is the only source
+/// once the camera is allowed; without the portal, V4L2 as outside.
+pub fn camera_sources(
+    flatpak: bool,
+    chosen: Option<&str>,
+    first: Option<&str>,
+    portal_granted: bool,
+) -> Vec<CameraSource> {
+    if flatpak && portal_granted {
+        return vec![CameraSource::Portal(None)];
+    }
+    let mut devices: Vec<&str> = chosen.into_iter().chain(first).collect();
+    devices.dedup();
+    if devices.is_empty() {
+        devices.push("/dev/video0");
+    }
+    let mut sources: Vec<CameraSource> = devices
+        .into_iter()
+        .map(|d| CameraSource::V4l2(d.to_owned()))
+        .collect();
+    if portal_granted {
+        sources.push(CameraSource::Portal(None));
+    }
+    sources
 }
 
-/// Starts the camera: through the portal, or `v4l2_device` (default `/dev/video0`) when the
-/// portal has none.
+/// How a source's start went.
+#[cfg(target_os = "linux")]
+enum Start {
+    /// The first frame came (and is dropped, the next one follows in 1/15 s).
+    Frame,
+    /// Nothing within [`FIRST_FRAME`], and no error either.
+    Slow,
+    /// `gst-launch-1.0` ended or reported an error; the reason for the log.
+    Failed(String),
+}
+
+/// Waits for the first frame of the pipeline in `g`, its end, or an `ERROR:` line on its stderr.
+#[cfg(target_os = "linux")]
+async fn started(g: &mut super::gst::GstFrames) -> Start {
+    tokio::select! {
+        frame = g.frames.recv() => match frame {
+            Some(_) => Start::Frame,
+            None => Start::Failed("it ended before its first frame".into()),
+        },
+        Some(line) = g.errors.recv() => Start::Failed(line),
+        () = tokio::time::sleep(FIRST_FRAME) => Start::Slow,
+    }
+}
+
+/// Starts the default camera: on Linux V4L2 `v4l2_device` (default the first found, else
+/// `/dev/video0`) or the portal, see [`open_choice`].
 pub async fn open(v4l2_device: Option<&str>, settings: CameraSettings) -> Result<CameraCapture> {
     open_choice(&CameraChoice::Default, v4l2_device, settings).await
 }
 
 /// Starts the camera `choice` names. On Linux the Camera portal asks first either way (the user
-/// answers; a refusal is an error, with no V4L2 behind their back); once it allows the camera a
-/// chosen V4L2 device is read directly (the portal's PipeWire remote does not say which node is
-/// which camera; UNVERIFIED in a Flatpak sandbox, where `/dev/video*` is not visible). Without a
-/// portal camera, the chosen device, else `v4l2_fallback` (default `/dev/video0`).
+/// answers; a refusal is an error, with no V4L2 behind their back); once it allows the camera the
+/// sources of [`camera_sources`] are tried in order: outside a Flatpak the chosen V4L2 device,
+/// else `v4l2_fallback` (the first one found; else `/dev/video0`) and the portal's PipeWire
+/// remote last, in a Flatpak (no `/dev/video*`) the remote only. Without a portal camera, V4L2.
 pub async fn open_choice(
     choice: &CameraChoice,
     v4l2_fallback: Option<&str>,
     settings: CameraSettings,
 ) -> Result<CameraCapture> {
-    #[cfg(not(target_os = "linux"))]
-    let (source, stdin) = {
-        let _ = v4l2_fallback;
-        match choice {
-            CameraChoice::Device(source) => (CameraSource::Device(source.clone()), Stdio::null()),
-            _ => (CameraSource::System, Stdio::null()),
-        }
+    open_sources(choice, v4l2_fallback, settings).await
+}
+
+#[cfg(not(target_os = "linux"))]
+async fn open_sources(
+    choice: &CameraChoice,
+    _v4l2_fallback: Option<&str>,
+    settings: CameraSettings,
+) -> Result<CameraCapture> {
+    let source = match choice {
+        CameraChoice::Device(source) => CameraSource::Device(source.clone()),
+        _ => CameraSource::System,
     };
-    #[cfg(target_os = "linux")]
-    let (source, stdin) = match (portal().await?, choice) {
-        (Portal::Remote(_), CameraChoice::V4l2(device))
-            if std::path::Path::new(device).exists() =>
-        {
-            (CameraSource::V4l2(device.clone()), Stdio::null())
-        }
-        (Portal::Remote(fd), choice) => {
-            // The chosen camera's node, when the portal's camera is named by its V4L2 device.
-            let device = match choice {
-                CameraChoice::V4l2(d) => Some(d.as_str()),
-                _ => None,
-            };
-            let target = pw_dump()
-                .await
-                .and_then(|dump| pipewire_camera_target(&dump, device));
-            (CameraSource::Portal(target), Stdio::from(fd))
-        }
-        (Portal::NoCamera(why), _) => {
-            let device = match choice {
-                CameraChoice::V4l2(d) => d.clone(),
-                _ => v4l2_fallback.unwrap_or("/dev/video0").to_owned(),
-            };
-            tracing::info!(%why, %device, "camera from V4L2");
-            (CameraSource::V4l2(device), Stdio::null())
-        }
-    };
-    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
-    let mut g = super::gst::spawn(
+    let g = super::gst::spawn(
         gstreamer_args(&source, settings.size, settings.fps),
-        stdin,
+        Stdio::null(),
         settings.size,
         "camera capture",
     )?;
-    #[cfg(target_os = "linux")]
-    let (source, g) = if matches!(source, CameraSource::Portal(_)) && !started(&mut g.frames).await
-    {
-        if std::path::Path::new("/.flatpak-info").exists() {
-            // No `/dev/video*` in the sandbox: nothing to fall back to.
-            tracing::warn!(?source, "the portal camera ended before its first frame");
-            (source, g)
-        } else {
-            let device = match choice {
-                CameraChoice::V4l2(d) => d.clone(),
-                _ => v4l2_fallback.unwrap_or("/dev/video0").to_owned(),
-            };
-            tracing::info!(?source, %device, "the portal camera ended before its first frame: V4L2");
-            // Dropping the first pipeline stops it.
-            drop(g);
-            let source = CameraSource::V4l2(device);
-            let g = super::gst::spawn(
-                gstreamer_args(&source, settings.size, settings.fps),
-                Stdio::null(),
-                settings.size,
-                "camera capture",
-            )?;
-            (source, g)
-        }
-    } else {
-        (source, g)
-    };
     tracing::info!(?source, size = ?settings.size, "camera started");
     Ok(CameraCapture {
         frames: g.frames,
@@ -341,6 +347,73 @@ pub async fn open_choice(
         child: g.child,
         reader: g.reader,
     })
+}
+
+#[cfg(target_os = "linux")]
+async fn open_sources(
+    choice: &CameraChoice,
+    v4l2_fallback: Option<&str>,
+    settings: CameraSettings,
+) -> Result<CameraCapture> {
+    let chosen = match choice {
+        CameraChoice::V4l2(d) => Some(d.as_str()),
+        _ => None,
+    };
+    let (mut fd, why) = match portal().await? {
+        Portal::Remote(fd) => (Some(fd), None),
+        Portal::NoCamera(why) => (None, Some(why)),
+    };
+    if let Some(why) = &why {
+        tracing::info!(%why, "camera from V4L2");
+    }
+    let flatpak = std::path::Path::new(FLATPAK_INFO).exists();
+    let sources = camera_sources(flatpak, chosen, v4l2_fallback, fd.is_some());
+    let count = sources.len();
+    let mut failure = String::new();
+    for (i, source) in sources.into_iter().enumerate() {
+        let (source, stdin) = match source {
+            CameraSource::Portal(_) => {
+                let Some(fd) = fd.take() else { continue };
+                // The chosen camera's node, when the portal's camera is named by its V4L2 device.
+                let target = pw_dump()
+                    .await
+                    .and_then(|dump| pipewire_camera_target(&dump, chosen));
+                (CameraSource::Portal(target), Stdio::from(fd))
+            }
+            source => (source, Stdio::null()),
+        };
+        let mut g = super::gst::spawn(
+            gstreamer_args(&source, settings.size, settings.fps),
+            stdin,
+            settings.size,
+            "camera capture",
+        )?;
+        let last = i + 1 == count;
+        failure = match started(&mut g).await {
+            Start::Frame => String::new(),
+            // The last source is kept when it is only slow: nothing else to try.
+            Start::Slow if last => {
+                tracing::warn!(?source, "no camera frame yet");
+                String::new()
+            }
+            Start::Slow => format!("no frame within {FIRST_FRAME:?}"),
+            Start::Failed(why) => why,
+        };
+        if failure.is_empty() {
+            tracing::info!(?source, size = ?settings.size, "camera started");
+            return Ok(CameraCapture {
+                frames: g.frames,
+                size: settings.size,
+                source,
+                child: g.child,
+                reader: g.reader,
+            });
+        }
+        tracing::info!(?source, %failure, "the camera did not start");
+        g.reader.abort();
+        let _ = g.child.kill().await;
+    }
+    Err(Error::Media(format!("camera did not start: {failure}")))
 }
 
 /// The `gst-launch-1.0` arguments reading `source` as I420 frames of `size` at `fps` on fd 1.
@@ -611,6 +684,55 @@ Device found:
         assert_eq!(pipewire_camera_target(dump, None), None);
         assert_eq!(pipewire_camera_target("[]", Some("/dev/video0")), None);
         assert_eq!(pipewire_camera_target("pw-dump: not found", None), None);
+    }
+
+    #[test]
+    fn outside_a_flatpak_v4l2_comes_first_and_the_portal_last() {
+        let v4l2 = |d: &str| CameraSource::V4l2(d.into());
+        assert_eq!(
+            camera_sources(false, Some("/dev/video2"), Some("/dev/video0"), true),
+            [
+                v4l2("/dev/video2"),
+                v4l2("/dev/video0"),
+                CameraSource::Portal(None)
+            ],
+            "the chosen device, then the first one found"
+        );
+        assert_eq!(
+            camera_sources(false, Some("/dev/video0"), Some("/dev/video0"), true),
+            [v4l2("/dev/video0"), CameraSource::Portal(None)],
+            "a device is not tried twice"
+        );
+        assert_eq!(
+            camera_sources(false, None, Some("/dev/video1"), true),
+            [v4l2("/dev/video1"), CameraSource::Portal(None)],
+            "no choice: the first one found"
+        );
+        assert_eq!(
+            camera_sources(false, None, None, true),
+            [v4l2("/dev/video0"), CameraSource::Portal(None)],
+            "nothing found: /dev/video0"
+        );
+    }
+
+    #[test]
+    fn without_the_portals_grant_there_is_no_portal_source() {
+        assert_eq!(
+            camera_sources(false, None, None, false),
+            [CameraSource::V4l2("/dev/video0".into())]
+        );
+        assert_eq!(
+            camera_sources(true, None, Some("/dev/video3"), false),
+            [CameraSource::V4l2("/dev/video3".into())]
+        );
+    }
+
+    #[test]
+    fn in_a_flatpak_the_portal_is_the_source() {
+        assert_eq!(
+            camera_sources(true, Some("/dev/video2"), Some("/dev/video0"), true),
+            [CameraSource::Portal(None)]
+        );
     }
 
     #[test]
