@@ -240,7 +240,75 @@ fn a_loop_link_is_drawn_as_a_card_that_opens_in_loop() {
     assert_eq!(*opened.borrow(), ["https://loop.cloud.microsoft/p/abc"]);
 }
 
+#[test]
+fn a_meeting_link_is_a_card_whose_join_runs_the_calendar_join_with_that_link() {
+    let url = "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0";
+    let mut m = msg("m1", "join us", false);
+    m.joins = urls(&[url]);
+    let app = app_with_messages(vec![m]);
+    let asked = Log::default();
+    let a = asked.clone();
+    app.global::<crate::CalStore>()
+        .on_command(move |n, arg| a.borrow_mut().push(format!("{n} {arg}")));
+    assert!(has_label(&app, "Meeting link"));
+    find_label(&app, "Join meeting")
+        .into_iter()
+        .find(|e| e.accessible_role() == Some(testing::AccessibleRole::Button))
+        .expect("a Join button")
+        .invoke_accessible_default_action();
+    assert_eq!(*asked.borrow(), [format!("join {url}")]);
+}
+
+#[test]
+fn a_message_without_a_meeting_link_has_no_join_card() {
+    let app = app_with_messages(vec![msg("m1", "see https://example.com/a", false)]);
+    assert!(!has_label(&app, "Meeting link"));
+    assert!(!has_label(&app, "Join meeting"));
+}
+
 // ---- engine-backed ----------------------------------------------------------------------
+
+#[test]
+fn a_pasted_meeting_link_gets_a_join_card_and_is_a_link_of_the_message() {
+    let url = "https://teams.cloud.microsoft/l/meetup-join/19%3ameeting_x%40thread.v2/0";
+    let other = "https://example.invalid/docs";
+    let h = Harness::new();
+    h.engine.test_store(|st| {
+        st.upsert_message(&store::MessageRow {
+            id: "link-1".into(),
+            conversation_id: NOTES.into(),
+            parent_id: None,
+            sender_mri: "8:orgid:00000000-0000-0000-0000-000000000002".into(),
+            sender_name: "Ahmed Ali".into(),
+            compose_ms: 1_795_000_000_000,
+            edited_ms: None,
+            deleted: false,
+            message_type: "RichText/Html".into(),
+            // Plain text, not an <a>: the way a pasted link can arrive.
+            content_html: format!("<p>join {url} and read {other}.</p>"),
+            client_message_id: None,
+            reactions_json: "{}".into(),
+        })
+        .unwrap();
+    });
+    h.select(NOTES);
+    let m = h
+        .app
+        .get_messages()
+        .iter()
+        .find(|m| m.id == "link-1")
+        .expect("listed");
+    assert_eq!(
+        m.joins.iter().map(|u| u.to_string()).collect::<Vec<_>>(),
+        [url]
+    );
+    assert_eq!(
+        m.urls.iter().map(|u| u.to_string()).collect::<Vec<_>>(),
+        [url, other],
+        "both are links of the message, the full stop is not part of the second"
+    );
+    assert!(has_label(&h.app, "Meeting link"));
+}
 
 /// Sends `MediaStore` commands to the engine the way `main.rs` wires them.
 fn wire_media(h: &Harness) {

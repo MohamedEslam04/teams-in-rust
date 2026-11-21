@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { Msg } from "types.slint";
-import { Avatar, FileCard, Icon, IconButton, LoopCardView, ReactionChip } from "widgets.slint";
+import { Avatar, FileCard, Icon, IconButton, LoopCardView, MeetLinkCard, ReactionChip } from "widgets.slint";
+import { CalStore } from "calendar_store.slint";
 import { CardView } from "card_view.slint";
 import { LinkCardView, MediaStore } from "media.slint";
 import { VoicePlayer } from "voice_player.slint";
@@ -336,6 +337,14 @@ export component MessageRow inherits TouchArea {
                         url: l.url;
                         min-width: min(320px, root.max-bubble - 28px);
                         open(u) => { root.open-url(u); }
+                    }
+
+                    // A Teams meeting link: a card whose Join opens the pre-join screen, as the
+                    // calendar's Join does.
+                    for u in root.m.joins: MeetLinkCard {
+                        url: u;
+                        min-width: min(320px, root.max-bubble - 28px);
+                        join(link) => { CalStore.command("join", link); }
                     }
 
                     // Voice messages play in place (ui/voice_player.slint).

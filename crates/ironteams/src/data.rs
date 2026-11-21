@@ -214,6 +214,8 @@ pub struct MsgData {
     /// The links in the text, for the menu's Open link and Copy link.
     pub urls: Vec<String>,
     pub loops: Vec<LoopData>,
+    /// Teams meeting links in the text, each drawn with a Join button.
+    pub joins: Vec<String>,
     pub voices: Vec<VoiceData>,
     pub videos: Vec<VideoClipData>,
     /// A meeting event's card (at most one).

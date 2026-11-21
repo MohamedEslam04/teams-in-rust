@@ -734,8 +734,15 @@ impl Engine {
                 Some((rest, clips)) => (rest.as_str(), self.clip_rows(clips)),
                 None => (html, Vec::new()),
             };
-            let rich = render::parse_teams_html(html);
+            let mut rich = render::parse_teams_html(html);
+            // A URL typed or pasted as plain text is a link too.
+            render::linkify(&mut rich);
             let urls = render::links(&rich);
+            let joins: Vec<String> = urls
+                .iter()
+                .filter(|u| render::is_meeting_link(u))
+                .cloned()
+                .collect();
             let loops: Vec<LoopData> = urls
                 .iter()
                 .filter(|u| render::is_loop_link(u))
@@ -820,7 +827,7 @@ impl Engine {
             );
             let mut links = self.link_cards(&props);
             // A Loop component gets its own card instead of a link preview.
-            links.retain(|l| !loops.iter().any(|x| x.url == l.url));
+            links.retain(|l| !loops.iter().any(|x| x.url == l.url) && !joins.contains(&l.url));
             let sender = if r.sender_name.is_empty() {
                 self.store
                     .lock()
@@ -914,6 +921,7 @@ impl Engine {
                 pinned: self.is_pinned(&r.conversation_id, &r.id),
                 urls,
                 loops,
+                joins,
                 voices,
                 videos,
                 meeting: meetings.get(&r.id).cloned().flatten().into_iter().collect(),
