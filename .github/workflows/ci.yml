@@ -36,6 +36,14 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
+      # clippy checks the GUI crate's binary and test targets at once; that outgrows the runner's
+      # memory and GitHub kills the runner (exit 143, "shutdown signal"). Extra swap absorbs it.
+      - name: More swap
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
+          free -h
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold
       - uses: Swatinem/rust-cache@v2
