@@ -24,8 +24,8 @@ pub(super) struct MsgMarks<'a> {
     pub failed: Option<&'a HashSet<String>>,
     /// Index (among the non-control rows) where the unread divider sits.
     pub divider: Option<usize>,
-    /// My newest message and its read receipt: `(id, "sent" | "seen", names)`.
-    pub receipt: Option<&'a (String, String, String)>,
+    /// My newest message and its read receipt.
+    pub receipt: Option<&'a super::people::ReceiptMark>,
     /// Messages that arrived live a moment ago: the row fades in.
     pub fresh: Option<&'a HashMap<String, Instant>>,
 }
@@ -717,6 +717,7 @@ impl Engine {
         let open_in = std::cell::OnceCell::new();
         for (i, r) in visible.iter().copied().enumerate() {
             let system = system_text(r);
+            let this_receipt = receipt.filter(|x| x.msg_id == r.id);
             let props: Value =
                 serde_json::from_str(&r.reactions_json).unwrap_or_else(|_| json!({}));
             let mine = r.sender_mri == self.me;
@@ -886,14 +887,9 @@ impl Engine {
                 },
                 sender_id: r.sender_mri.clone(),
                 mentions_me: super::mentions::mentions_me(&props, &self.me),
-                receipt: receipt
-                    .filter(|x| x.0 == r.id)
-                    .map(|x| x.1.clone())
-                    .unwrap_or_default(),
-                receipt_names: receipt
-                    .filter(|x| x.0 == r.id)
-                    .map(|x| x.2.clone())
-                    .unwrap_or_default(),
+                receipt: this_receipt.map(|x| x.state.clone()).unwrap_or_default(),
+                receipt_names: this_receipt.map(|x| x.names.clone()).unwrap_or_default(),
+                receipt_readers: this_receipt.map(|x| x.readers.clone()).unwrap_or_default(),
                 flash: false,
                 fresh: fresh.is_some_and(|f| {
                     f.get(&r.id)

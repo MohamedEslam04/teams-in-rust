@@ -61,6 +61,8 @@ export component MessageMenu inherits Rectangle {
     in property <bool> pinned: false;
     // The links in the text (Open link, Copy link).
     in property <[string]> urls;
+    // How many people have seen my message (`Msg.reader-list`): "Read by" shows when there are some.
+    in property <int> reader-count: 0;
     // Opened from the Activity preview: only what works outside the open chat.
     in property <bool> preview: false;
     callback unpin();
@@ -79,6 +81,7 @@ export component MessageMenu inherits Rectangle {
     callback toggle-save();
     callback pin();
     callback mark-unread();
+    callback show-readers();
     // "Remind me": 20m, 1h, 3h or tomorrow.
     callback remind(string);
     callback follow();
@@ -171,6 +174,7 @@ export component MessageMenu inherits Rectangle {
             clicked => { root.toggle-follow(); }
         }
         if !root.preview: MenuItem { label: @tr("Mark as unread"); icon: @image-url("icons/unread.svg"); clicked => { root.mark-unread(); } }
+        if root.mine && !root.preview && root.reader-count > 0: MenuItem { label: @tr("Read by"); icon: @image-url("icons/eye.svg"); clicked => { root.show-readers(); } }
         MenuItem { label: @tr("Remind me"); icon: @image-url("icons/history.svg"); chevron: true; clicked => { root.remind-open = !root.remind-open; } }
         if root.remind-open: MenuItem { label: @tr("In 20 minutes"); indent: true; clicked => { root.remind("20m"); } }
         if root.remind-open: MenuItem { label: @tr("In 1 hour"); indent: true; clicked => { root.remind("1h"); } }

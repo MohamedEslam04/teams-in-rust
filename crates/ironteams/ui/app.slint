@@ -9,6 +9,7 @@ import { MessageRow } from "message_row.slint";
 export { MessagePointer } from "message_row.slint";
 import { Composer, EmojiApi } from "composer.slint";
 import { MessageMenu } from "message_menu.slint";
+import { SeenByList } from "seen_by.slint";
 import { ReactionPicker } from "reaction_picker.slint";
 import { ForwardDialog } from "forward_dialog.slint";
 import { SelectBar } from "select_bar.slint";
@@ -230,6 +231,18 @@ export component AppWindow inherits Window {
     in-out property <Msg> menu-msg;
     // The menu was opened from the Activity preview (not the open chat).
     in-out property <bool> menu-preview: false;
+    // The "Seen by" list of one of my messages (`Msg.reader-list`), opened from the line under it
+    // or from the menu's "Read by": it opens below `readers-bottom` (above `readers-top` when
+    // there is no room), its right edge at `readers-x`. 280px wide (seen_by.slint); `readers-h` is
+    // what the popup measures, like the menu's.
+    in-out property <bool> readers-open: false;
+    in-out property <Msg> readers-msg;
+    in-out property <length> readers-x;
+    in-out property <length> readers-top;
+    in-out property <length> readers-bottom;
+    property <length> readers-h;
+    property <length> readers-left: max(8px, min(root.readers-x - 280px, root.width - 288px));
+    property <length> readers-y: root.readers-bottom + 4px + root.readers-h > root.height - 8px ? max(8px, root.readers-top - 4px - root.readers-h) : root.readers-bottom + 4px;
     // Immersive Reader of a message.
     in-out property <bool> reader-open: false;
     in-out property <Msg> reader-msg;
@@ -460,6 +473,9 @@ export component AppWindow inherits Window {
     public function pointer-pressed(x: length, y: length) {
         if root.menu-open && (x < root.menu-left || x > root.menu-left + root.menu-w || y < root.menu-top || y > root.menu-top + root.menu-h) {
             root.menu-open = false;
+        }
+        if root.readers-open && (x < root.readers-left || x > root.readers-left + 280px || y < root.readers-y || y > root.readers-y + root.readers-h) {
+            root.readers-open = false;
         }
         // The profile panel: 300px wide, 8px from the right edge, 46px from the top (settings.slint).
         root.profile-closed-by-press = false;
@@ -1219,6 +1235,13 @@ export component AppWindow inherits Window {
                                         root.menu-open = true;
                                         if root.current-is-channel { FindStore.command("menu-follow", m.id); }
                                     }
+                                    show-readers(x, top, bottom) => {
+                                        root.readers-msg = m;
+                                        root.readers-x = x;
+                                        root.readers-top = top;
+                                        root.readers-bottom = bottom;
+                                        root.readers-open = true;
+                                    }
                                     toggle-select => { root.toggle-select(m.id); }
                                     retry-send => { root.retry-send(m.id); }
                                     discard-send => { root.discard-send(m.id); }
@@ -1527,6 +1550,15 @@ export component AppWindow inherits Window {
             can-follow: !root.menu-preview && root.current-is-channel && root.thread-root == "";
             pinned: root.menu-msg.pinned;
             urls: root.menu-msg.urls;
+            reader-count: root.menu-msg.reader-list.length;
+            show-readers => {
+                root.menu-open = false;
+                root.readers-msg = root.menu-msg;
+                root.readers-x = root.menu-left + root.menu-w;
+                root.readers-top = root.menu-top;
+                root.readers-bottom = root.menu-top - 4px;
+                root.readers-open = true;
+            }
             preview: root.menu-preview;
             unpin => { root.menu-open = false; PeopleStore.command("pin-unpin", root.menu-msg.id); }
             open-link(u) => { root.menu-open = false; root.open-url(u); }
@@ -1564,6 +1596,27 @@ export component AppWindow inherits Window {
             remind(delay) => { root.menu-open = false; RemindStore.command("remind", root.menu-msg.id + "\u{9}" + delay); }
             edit => { root.menu-open = false; root.edit(root.menu-msg.id); }
             delete => { root.menu-open = false; root.delete(root.menu-msg.id); }
+        }
+    }
+
+    if root.login-state == "ready" && root.readers-open: Rectangle {
+        width: root.width;
+        height: root.height;
+        TouchArea {
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    root.readers-open = false;
+                }
+            }
+        }
+        SeenByList {
+            x: root.readers-left;
+            y: root.readers-y;
+            readers: root.readers-msg.reader-list;
+            init => { root.readers-h = self.height; }
+            changed height => { root.readers-h = self.height; }
+            // Esc: the window's keys do not see it (the popup is not inside them).
+            close => { root.readers-open = false; root.focus-tick += 1; }
         }
     }
 

@@ -292,8 +292,20 @@ pub(super) fn sort_pins(pins: &mut [teams_proto::actions::PinnedMessage]) {
     pins.sort_by(|a, b| b.pinned_at.cmp(&a.pinned_at));
 }
 
-/// The receipt state of my newest message: `("sent", "")` until someone has read it, then
-/// `("seen", "Name, Name")`. `name_of` gives the display name of a member.
+/// My newest message and its read receipt, as `receipt` works it out.
+pub(super) struct ReceiptMark {
+    pub msg_id: String,
+    /// `"sent"` or `"seen"`.
+    pub state: String,
+    /// The "Seen by" line: the first three names and `+N`.
+    pub names: String,
+    /// Every reader's name.
+    pub readers: Vec<String>,
+}
+
+/// The receipt state of my newest message: `("sent", "", [])` until someone has read it, then
+/// `("seen", "Name, Name +N", [every reader's name])`. The line names the first three; the list
+/// is what the "Seen by" popup shows. `name_of` gives the display name of a member.
 pub(super) fn receipt(
     horizons: &[Horizon],
     me: &str,
@@ -301,21 +313,20 @@ pub(super) fn receipt(
     msg_ms: i64,
     one_on_one: bool,
     name_of: impl Fn(&str) -> String,
-) -> (String, String) {
+) -> (String, String, Vec<String>) {
     let seen = seen_by(horizons, me, msg_id, msg_ms);
     if seen.is_empty() {
-        return ("sent".into(), String::new());
+        return ("sent".into(), String::new(), Vec::new());
     }
-    let names = if one_on_one {
-        String::new()
-    } else {
-        let shown: Vec<String> = seen.iter().take(3).map(|m| name_of(m)).collect();
-        match seen.len() - shown.len() {
-            0 => shown.join(", "),
-            n => format!("{} +{n}", shown.join(", ")),
-        }
+    if one_on_one {
+        return ("seen".into(), String::new(), Vec::new());
+    }
+    let all: Vec<String> = seen.iter().map(|m| name_of(m)).collect();
+    let line = match all.len() - all.len().min(3) {
+        0 => all.join(", "),
+        n => format!("{} +{n}", all[..3].join(", ")),
     };
-    ("seen".into(), names)
+    ("seen".into(), line, all)
 }
 
 fn is_chat(kind: ConvKind) -> bool {
@@ -1618,13 +1629,9 @@ impl Engine {
         }
     }
 
-    /// `(message id, state, names)` for my newest message in `conv`, or `None` when receipts are
-    /// off, do not apply to this chat, or the newest message is still being sent.
-    pub(super) fn receipt_mark(
-        &self,
-        conv: &str,
-        rows: &[&MessageRow],
-    ) -> Option<(String, String, String)> {
+    /// The receipt of my newest message in `conv`, or `None` when receipts are off, do not apply
+    /// to this chat, or the newest message is still being sent.
+    pub(super) fn receipt_mark(&self, conv: &str, rows: &[&MessageRow]) -> Option<ReceiptMark> {
         if !self.receipts_enabled() || !self.receipts_apply(conv) {
             return None;
         }
@@ -1644,10 +1651,16 @@ impl Engine {
             .cloned()
             .unwrap_or_default();
         let one = self.conv_kind(conv) == Some(ConvKind::OneOnOne);
-        let (state, names) = receipt(&horizons, &self.me, &mine.id, mine.compose_ms, one, |m| {
-            self.name_of(m)
-        });
-        Some((mine.id.clone(), state, names))
+        let (state, names, readers) =
+            receipt(&horizons, &self.me, &mine.id, mine.compose_ms, one, |m| {
+                self.name_of(m)
+            });
+        Some(ReceiptMark {
+            msg_id: mine.id.clone(),
+            state,
+            names,
+            readers,
+        })
     }
 
     // ---- chat list marker ----------------------------------------------------
@@ -1879,11 +1892,14 @@ mod tests {
     fn receipt_is_sent_until_someone_reads_it_then_seen_with_names() {
         let name = |m: &str| if m == A { "Sara".into() } else { "Omar".into() };
         let none = receipt(&[], ME, "100", 100, false, name);
-        assert_eq!(none, ("sent".into(), String::new()));
+        assert_eq!(none, ("sent".into(), String::new(), vec![]));
         let older = receipt(&[horizon(A, "90")], ME, "100", 100, false, name);
         assert_eq!(older.0, "sent", "read up to an older message only");
         let seen = receipt(&[horizon(A, "100")], ME, "100", 100, false, name);
-        assert_eq!(seen, ("seen".into(), "Sara".into()));
+        assert_eq!(
+            seen,
+            ("seen".into(), "Sara".into(), vec!["Sara".to_string()])
+        );
         let two = receipt(
             &[horizon(A, "120"), horizon(B, "100"), horizon(ME, "999")],
             ME,
@@ -1895,7 +1911,7 @@ mod tests {
         assert_eq!(two.1, "Sara, Omar", "our own horizon is not a reader");
         // 1:1 says just "Seen".
         let one = receipt(&[horizon(A, "100")], ME, "100", 100, true, name);
-        assert_eq!(one, ("seen".into(), String::new()));
+        assert_eq!(one, ("seen".into(), String::new(), vec![]));
     }
 
     #[test]
@@ -1903,5 +1919,10 @@ mod tests {
         let hs: Vec<Horizon> = (0..5).map(|i| horizon(&format!("m{i}"), "100")).collect();
         let r = receipt(&hs, ME, "100", 100, false, |m| m.to_uppercase());
         assert_eq!(r.1, "M0, M1, M2 +2");
+        assert_eq!(
+            r.2,
+            ["M0", "M1", "M2", "M3", "M4"],
+            "the popup lists every reader, not just the three in the line"
+        );
     }
 }

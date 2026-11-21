@@ -82,8 +82,8 @@ export struct MeetingPerson { name: string, initials: string, color: color }
 // Recap tab the card opens ("" offers none). `more`: people beyond the ones in `people`.
 export struct MeetingCard { kind: string, title: string, detail: string, people: [MeetingPerson], more: int, state: string, url: string, recap-chat: string }
 
-// One person who has seen my message: their initials in a small coloured circle.
-export struct ReaderItem { initials: string, color: color }
+// One person who has seen my message: their initials in a small coloured circle, and their name.
+export struct ReaderItem { initials: string, color: color, name: string }
 
 export struct Msg {
     id: string,
@@ -121,7 +121,8 @@ export struct Msg {
     receipt-names: string, // who has seen it
     flash: bool,           // the row a jump (pinned banner) landed on
     fresh: bool,           // arrived live a moment ago: the row fades in
-    readers: [ReaderItem], // who has seen my newest message (up to three), for the little photos
+    readers: [ReaderItem], // who has seen my newest message (first three), for the little photos
+    reader-list: [ReaderItem], // everyone who has seen it, for the "Seen by" list
     card: [CardRow],       // an Adaptive Card drawn like Teams does (empty: show the text body)
     headline: string,      // headline of an announcement post
     importance: string,    // "" | "high" | "urgent": a red IMPORTANT! or URGENT! label
