@@ -13,6 +13,13 @@ pub struct Profile {
     pub email: Option<String>,
     pub job_title: Option<String>,
     pub department: Option<String>,
+    /// The sign-in name (`userPrincipalName`) when the answer has one: a guest's carries `#EXT#`
+    /// while `email` may be their home address.
+    pub upn: Option<String>,
+    /// `userType` (`Member`, `Guest`), when the answer has it.
+    pub user_type: Option<String>,
+    /// The person's home tenant (`tenantId`), when the answer has it.
+    pub tenant_id: Option<String>,
 }
 
 /// Parses a `fetchShortProfile` response.
@@ -56,6 +63,9 @@ pub fn parse_profiles(v: &Value) -> Vec<Profile> {
                         email,
                         job_title: opt("jobTitle"),
                         department: opt("department"),
+                        upn: opt("userPrincipalName"),
+                        user_type: opt("userType"),
+                        tenant_id: opt("tenantId"),
                     })
                 })
                 .collect()
@@ -216,5 +226,27 @@ mod tests {
         assert_eq!(p[1].job_title, None);
         assert_eq!(p[1].display_name, "Omar Khaled");
         assert_eq!(p[2].display_name, "8:orgid:c");
+    }
+
+    #[test]
+    fn parses_what_a_profile_says_about_a_guest() {
+        let p = parse_profiles(&json!({"value": [
+            {"mri": "8:orgid:g", "displayName": "Guest User", "email": "guest.user@home.example",
+             "userPrincipalName": "guest.user_home.example#EXT#@contoso.example",
+             "userType": "Guest", "tenantId": "tenant-1"},
+            {"mri": "8:orgid:m", "displayName": "Member", "userPrincipalName": "member@contoso.example"}
+        ]}));
+        assert_eq!(p[0].email.as_deref(), Some("guest.user@home.example"));
+        assert_eq!(
+            p[0].upn.as_deref(),
+            Some("guest.user_home.example#EXT#@contoso.example")
+        );
+        assert_eq!(p[0].user_type.as_deref(), Some("Guest"));
+        assert_eq!(p[0].tenant_id.as_deref(), Some("tenant-1"));
+        assert_eq!(p[1].upn.as_deref(), Some("member@contoso.example"));
+        assert_eq!(
+            (p[1].user_type.as_deref(), p[1].tenant_id.as_deref()),
+            (None, None)
+        );
     }
 }

@@ -271,6 +271,10 @@ impl Engine {
         self.restore_draft(&id);
         self.push_attachments();
         self.on_chat_opened(&id);
+        // The header (title, avatar and member count) switches to this chat at once, from its
+        // list row: left to the render tick, the members' answer showed this chat's count under
+        // the previous chat's title.
+        self.render_header();
         self.find_chat_opened(&id);
         self.scheduled_chat_opened();
         // The header and the posts the store has show at once (the next render tick); the

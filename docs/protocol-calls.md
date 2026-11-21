@@ -807,6 +807,15 @@ token. Without a tenant id for them nothing is claimed. Chats and cards only kno
 stored sign-in name (no tenant id is stored), so they label consumer accounts and `#EXT#` guests
 but not another organization's `8:orgid:` users.
 
+Live 2026-11-21: a B2B guest of our tenant joined with the plain `8:orgid:` MRI and no label,
+because the roster carried no guest flag or tenant id for them. So the call, and the chat list,
+headers and participants panel, look each `8:orgid:` person up once per session with
+`fetchShortProfile` (`Client::profiles`, already used for names): `userType` `Guest`, or `#EXT#` in
+`userPrincipalName` or `email`, makes a guest (a guest's `email` may be their home address, so the
+sign-in name is read too); a `tenantId` in the answer, if the service sends one (UNVERIFIED), lets
+a call label another organization's user external. The lookup answers asynchronously: the label
+appears when it lands. A failed lookup is not retried in the same call or session.
+
 ## Audio-only fallback of a meeting join (2026-11-21, UNVERIFIED live)
 
 Meeting joins declare their video lines by default (`IRONTEAMS_MEETING_VIDEO_DESCRIBE=0` goes back

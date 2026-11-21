@@ -6,6 +6,8 @@
 //! an organization user whose tenant id differs from ours is external. Without a tenant id for
 //! them nothing is claimed.
 
+use teams_proto::mt::Profile;
+
 /// How someone relates to our organization when they are not part of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outsider {
@@ -54,6 +56,33 @@ pub fn classify(
 /// A guest's sign-in name carries `#EXT#` (`name_home.com#EXT#@tenant.onmicrosoft.com`).
 pub fn is_guest_upn(email: &str) -> bool {
     email.to_ascii_uppercase().contains("#EXT#")
+}
+
+/// What a profile lookup (`fetchShortProfile`) says about someone's standing in our organization.
+/// The call roster and the stored profiles often lack both: a guest's MRI is `8:orgid:` like a
+/// colleague's and their display name is plain.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Standing {
+    /// `userType` is `Guest`, or a sign-in name carries `#EXT#`.
+    pub guest: bool,
+    /// Their home tenant, when the profile names it.
+    pub tenant: Option<String>,
+}
+
+impl From<&Profile> for Standing {
+    fn from(p: &Profile) -> Self {
+        Standing {
+            guest: p
+                .user_type
+                .as_deref()
+                .is_some_and(|t| t.eq_ignore_ascii_case("guest"))
+                || [&p.email, &p.upn]
+                    .into_iter()
+                    .flatten()
+                    .any(|e| is_guest_upn(e)),
+            tenant: p.tenant_id.clone(),
+        }
+    }
 }
 
 /// `name` with its label, as a chat title shows it: `Sara Example (External)`.
@@ -138,6 +167,64 @@ mod tests {
             "sara_home.example#ext#@contoso.onmicrosoft.com"
         ));
         assert!(!is_guest_upn("sara@contoso.example"));
+    }
+
+    fn profile(user_type: Option<&str>, email: Option<&str>, upn: Option<&str>) -> Profile {
+        Profile {
+            mri: ORG.into(),
+            display_name: "Guest User".into(),
+            email: email.map(Into::into),
+            job_title: None,
+            department: None,
+            upn: upn.map(Into::into),
+            user_type: user_type.map(Into::into),
+            tenant_id: None,
+        }
+    }
+
+    #[test]
+    fn a_profile_with_a_guest_user_type_is_a_guest() {
+        assert!(Standing::from(&profile(Some("Guest"), None, None)).guest);
+        assert!(Standing::from(&profile(Some("guest"), None, None)).guest);
+        assert!(!Standing::from(&profile(Some("Member"), None, None)).guest);
+    }
+
+    #[test]
+    fn a_profile_whose_sign_in_name_has_ext_is_a_guest_even_with_a_home_email() {
+        // `email` is the home address (a personal mailbox): only the sign-in name says guest.
+        let p = profile(
+            None,
+            Some("guest.user@home.example"),
+            Some("guest.user_home.example#EXT#@contoso.example"),
+        );
+        assert!(Standing::from(&p).guest);
+        assert!(!Standing::from(&profile(None, Some("a@contoso.example"), None)).guest);
+    }
+
+    #[test]
+    fn a_profiles_tenant_makes_another_organizations_user_external() {
+        let mut p = profile(None, None, None);
+        p.tenant_id = Some("t-2".into());
+        let s = Standing::from(&p);
+        assert_eq!(
+            classify(ORG, s.tenant.as_deref(), Some("t-1"), s.guest),
+            Some(Outsider::External)
+        );
+    }
+
+    #[test]
+    fn a_looked_up_guest_gets_the_label_a_bare_roster_entry_lacks() {
+        // The roster alone: an `8:orgid:` MRI, no tenant, no flag.
+        assert_eq!(classify(ORG, None, Some("t-1"), false), None);
+        let s = Standing::from(&profile(
+            None,
+            None,
+            Some("g_home.example#EXT#@contoso.example"),
+        ));
+        assert_eq!(
+            classify(ORG, s.tenant.as_deref(), Some("t-1"), s.guest),
+            Some(Outsider::Guest)
+        );
     }
 
     #[test]

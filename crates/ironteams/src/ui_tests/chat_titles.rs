@@ -9,6 +9,11 @@ const GROUP: &str = "19:unnamed@thread.v2";
 const BARE_GROUP: &str = "19:bare@thread.v2";
 const CHANNEL: &str = "19:nameless@thread.tacv2";
 const MEETING: &str = "19:meeting_sprint@thread.v2";
+const TITLED_GROUP: &str = "19:design_review@thread.v2";
+// A guest whose stored profile has no `#EXT#` sign-in name: only a profile lookup says guest.
+const LOOKED_UP_GUEST_CHAT: &str =
+    "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-0000000000e3@unq.gbl.spaces";
+const LOOKED_UP_GUEST: &str = "8:orgid:00000000-0000-0000-0000-0000000000e3";
 // 1:1 chats with a guest of the organization (a `#EXT#` sign-in name) and with a colleague.
 const GUEST_CHAT: &str =
     "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-0000000000e1@unq.gbl.spaces";
@@ -78,7 +83,18 @@ fn harness() -> Harness {
             })
             .unwrap();
     }
+    store
+        .upsert_user(&UserRow {
+            mri: LOOKED_UP_GUEST.into(),
+            display_name: "guest.user".into(),
+            email: Some("guest.user@home.example".into()),
+            avatar: None,
+            updated_ms: 0,
+        })
+        .unwrap();
     for r in [
+        row(LOOKED_UP_GUEST_CHAT, ConvKind::OneOnOne, "guest.user"),
+        row(TITLED_GROUP, ConvKind::Group, "Design review"),
         row(GUEST_CHAT, ConvKind::OneOnOne, "Sara Example"),
         row(COLLEAGUE_CHAT, ConvKind::OneOnOne, "Omar Example"),
         row(GROUP, ConvKind::Group, ""),
@@ -95,6 +111,16 @@ fn harness() -> Harness {
         .set_size(slint::LogicalSize::new(1200., 2400.));
     h.engine
         .test_set_members(GROUP, &[demo::ME, "8:orgid:m1", "8:orgid:m2"]);
+    h.engine.test_set_members(
+        TITLED_GROUP,
+        &[
+            demo::ME,
+            "8:orgid:m1",
+            "8:orgid:m2",
+            "8:orgid:m3",
+            "8:orgid:m4",
+        ],
+    );
     h.runner()(Cmd::SetFilter("all".into()));
     h
 }
@@ -120,6 +146,53 @@ fn a_one_on_one_chat_with_a_guest_says_so_in_the_list_and_the_header() {
     assert_eq!(h.app.get_current_title(), "Sara Example (Guest)");
     h.select(COLLEAGUE_CHAT);
     assert_eq!(h.app.get_current_title(), "Omar Example");
+}
+
+#[test]
+fn a_guest_found_by_a_profile_lookup_is_labelled_in_the_list_header_and_members() {
+    let h = harness();
+    // Before the lookup the stored profile (a home address, no `#EXT#`) says nothing.
+    assert_eq!(titles(&h.app)[LOOKED_UP_GUEST_CHAT], "guest.user");
+
+    h.engine.test_set_standing(
+        LOOKED_UP_GUEST,
+        crate::backend::outsider::Standing {
+            guest: true,
+            tenant: None,
+        },
+    );
+    h.runner()(Cmd::SetFilter("all".into()));
+    assert_eq!(titles(&h.app)[LOOKED_UP_GUEST_CHAT], "guest.user (Guest)");
+    h.select(LOOKED_UP_GUEST_CHAT);
+    assert_eq!(h.app.get_current_title(), "guest.user (Guest)");
+    assert_eq!(
+        h.engine.test_member_name(LOOKED_UP_GUEST),
+        "guest.user (Guest)",
+        "the participants panel too"
+    );
+}
+
+#[test]
+fn the_header_title_and_member_count_switch_together() {
+    let h = harness();
+    h.select(COLLEAGUE_CHAT);
+    assert_eq!(h.app.get_current_title(), "Omar Example");
+
+    // Selected, but no render tick yet: the header is already the new chat's, not the previous
+    // chat's title with the new chat's member count.
+    h.rt.block_on(
+        h.engine
+            .clone()
+            .handle(Cmd::SelectChat(TITLED_GROUP.into())),
+    );
+    h.rt.block_on(tokio::task::yield_now());
+    assert_eq!(h.app.get_current_title(), "Design review");
+    assert_eq!(h.app.get_current_id(), TITLED_GROUP);
+    assert_eq!(
+        h.app.global::<crate::PeopleStore>().get_member_count(),
+        5,
+        "the member count is the new chat's"
+    );
 }
 
 #[test]

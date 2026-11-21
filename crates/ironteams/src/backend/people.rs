@@ -5,7 +5,7 @@
 use super::Engine;
 use super::mentions::{self, Entry};
 use super::outbox::PENDING_PREFIX;
-use super::outsider::{Outsider, classify, is_guest_upn};
+use super::outsider::{Outsider, Standing, classify, is_guest_upn, tagged};
 use super::util::{AVATAR_PX, decode_image, one_on_one_members};
 use crate::data::{CardData, PersonData, PinnedData};
 use serde_json::{Value, json};
@@ -125,6 +125,10 @@ pub(super) struct State {
     card_email: Option<String>,
     /// The person the profile card shows.
     card_mri: Option<String>,
+    /// Who a profile lookup found to be a guest (or from another tenant), by person.
+    standing: HashMap<String, Standing>,
+    /// People whose standing lookup was already started (once each per session).
+    standing_asked: BTreeSet<String>,
     /// What profile cards learned, by person: a second card for them shows it at once.
     profiles: HashMap<String, (CardFacts, std::time::Instant)>,
     pins: HashMap<String, Vec<PinnedData>>,
@@ -563,10 +567,12 @@ impl Engine {
             name: if mri == self.me {
                 format!("{} (You)", self.my_name)
             } else {
-                user.as_ref()
+                let name = user
+                    .as_ref()
                     .map(|u| u.display_name.clone())
                     .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| "Someone".into())
+                    .unwrap_or_else(|| "Someone".into());
+                tagged(&name, self.outsider_of(mri))
             },
             subtitle: user.and_then(|u| u.email).unwrap_or_default(),
             avatar: self.avatar(mri),
@@ -1092,10 +1098,69 @@ impl Engine {
         };
         let members = self.ensure_members(&conv).await;
         self.resolve_names(&members).await;
+        self.resolve_standing(&members).await;
         self.people.lock().unwrap().add_results.clear();
         let data = members.iter().map(|m| self.member_data(m)).collect();
         self.ui.members(data, vec![]);
         Ok(())
+    }
+
+    /// What a profile lookup said about `mri`, once it was asked.
+    pub(super) fn standing_of(&self, mri: &str) -> Option<Standing> {
+        self.people.lock().unwrap().standing.get(mri).cloned()
+    }
+
+    /// Looks up, once per session, whether the organization people among `mris` are guests: the
+    /// stored profile has no user type and a guest's display name and MRI look like a
+    /// colleague's. Returns whether somebody was found to be a guest.
+    pub(super) async fn resolve_standing(&self, mris: &[String]) -> bool {
+        if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        let todo: Vec<String> = {
+            let mut p = self.people.lock().unwrap();
+            mris.iter()
+                .filter(|m| m.starts_with("8:orgid:") && **m != self.me)
+                .filter(|m| p.standing_asked.insert((*m).clone()))
+                .cloned()
+                .collect()
+        };
+        if todo.is_empty() {
+            return false;
+        }
+        let Ok(found) = self.client.profiles(&todo).await else {
+            return false;
+        };
+        let mut guest = false;
+        let mut p = self.people.lock().unwrap();
+        for f in &found {
+            let s = Standing::from(f);
+            guest |= s.guest;
+            p.standing.insert(f.mri.clone(), s);
+        }
+        guest
+    }
+
+    /// Starts the lookup for the people of the chat list's 1:1 chats; the list and the header
+    /// are drawn again when somebody turns out to be a guest.
+    pub(super) fn want_standing(self: &Arc<Self>, mris: Vec<String>) {
+        let any_new = {
+            let p = self.people.lock().unwrap();
+            mris.iter()
+                .any(|m| m.starts_with("8:orgid:") && !p.standing_asked.contains(m))
+        };
+        if !any_new || self.offline.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let e = self.clone();
+        tokio::spawn(async move {
+            if e.resolve_standing(&mris).await {
+                e.mark(|d| {
+                    d.chats = true;
+                    d.header = true;
+                });
+            }
+        });
     }
 
     async fn add_query(self: &Arc<Self>, q: String) -> anyhow::Result<()> {
@@ -1703,6 +1768,20 @@ impl Engine {
         let data = members.iter().map(|m| self.member_data(m)).collect();
         let add = found.iter().map(|f| self.person_data(f)).collect();
         self.ui.members(data, add);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_member_name(self: &Arc<Self>, mri: &str) -> String {
+        self.member_data(mri).name
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_set_standing(&self, mri: &str, standing: Standing) {
+        self.people
+            .lock()
+            .unwrap()
+            .standing
+            .insert(mri.into(), standing);
     }
 
     #[cfg(test)]
