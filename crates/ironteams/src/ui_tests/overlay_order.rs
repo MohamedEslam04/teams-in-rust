@@ -59,7 +59,7 @@ fn the_seen_by_list_is_above_the_floating_call() {
         }])),
         ..msg("m1", "mine", true)
     });
-    app.set_readers_x(400.);
+    app.set_readers_x(800.);
     app.set_readers_top(300.);
     app.set_readers_bottom(296.);
     app.set_readers_open(true);
