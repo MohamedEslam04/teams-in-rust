@@ -42,6 +42,9 @@ build() {
   cd "${_pkgname}"
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR=target
+  # One codegen unit for the large GUI crate needs more memory than many machines (and the CI
+  # runner) have; rustc gets killed. A few units cost little speed and fit in about 8 GB.
+  export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=8
   cargo build --frozen --release -p ironteams
 }
 

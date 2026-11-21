@@ -1,12 +1,27 @@
 # Installable builds for every system, attached to a GitHub release for a `v*` tag (a manual run
-# only uploads them as workflow artifacts):
-#   Linux    x86_64 tar.gz and AppImage, plus the RPM and Flatpak of packaging.yml
-#   Windows  x86_64 MSI installer and portable zip
-#   macOS    <name>.app in a .dmg, Apple Silicon (arm64) and Intel (x86_64), ad-hoc signed
+# or a ci/release-* branch only uploads them as workflow artifacts):
+#   Windows  Velopack Setup.exe (per-user install that updates itself) and a portable zip
+#   macOS    Velopack .pkg with <name>.app, Apple Silicon (arm64) and Intel (x86_64)
+#   Linux    Velopack AppImage (updates itself) and tar.gz, plus the RPM and Flatpak of
+#            packaging.yml (their package managers update those)
+# Velopack also writes the full and delta .nupkg packages and the releases.<channel>.json feed of
+# each channel (win, osx-arm64, osx-x64, linux); installed copies read them from the published
+# release and download only what changed.
+#
+# Nothing is published unless the whole CI gate (fmt, clippy and every test on Linux, Windows and
+# both macOS runners) passes and every packaged app passes `--self-check --packaged`. A tag with a
+# pre-release suffix (v1.2.0-beta.1) is published as a GitHub pre-release: only copies with
+# "Get beta updates" on take it.
+#
+# Signing is optional: with the secrets below it signs (and notarizes on macOS), without them it
+# warns and ships unsigned.
+#   Windows  WINDOWS_CERT_PFX (base64 .pfx), WINDOWS_CERT_PASSWORD
+#   macOS    APPLE_CERT_P12 (base64 .p12 with both Developer ID certificates), APPLE_CERT_PASSWORD,
+#            APPLE_APP_IDENTITY, APPLE_INSTALLER_IDENTITY, APPLE_ID, APPLE_TEAM_ID,
+#            APPLE_APP_PASSWORD (an app-specific password for notarytool)
 # Icons are rendered from packaging/<APP_ID>.svg; the Windows and macOS packages also ship the
 # English and Arabic Hunspell dictionaries (packaging/release/). The product name, app id and
-# binary come from the env block below, so renaming the app is a change there (plus the files
-# named after the app id in packaging/).
+# binary come from the env block below.
 name: Release
 
 on:
@@ -24,18 +39,21 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # The name users see (MSI product, .app bundle, Start menu, artifact file names).
+  # The name users see (.app bundle, Start menu, artifact file names) and the Velopack pack id.
   APP_NAME: IronTeams
   # Reverse-DNS id: macOS bundle identifier, and the name of the .desktop, .svg and .metainfo.xml.
   APP_ID: io.github.mohamedeslam04.ironteams
   # The cargo package and binary that is shipped.
   BIN: ironteams
+  # The Velopack CLI; the same version as the `velopack` crate in crates/ironteams/Cargo.toml.
+  VPK_VERSION: 1.2.161
 
 jobs:
   meta:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v5
       - id: v
@@ -43,6 +61,14 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v=${GITHUB_REF_NAME#v}
           else v=$(sed -n 's/^version = "\(.*\)"/\1/p' "crates/$BIN/Cargo.toml" | head -1); fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          # v1.2.0-beta.1 and the like: a GitHub pre-release, for beta updates only.
+          if [[ "$v" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
+
+  # fmt, clippy and the full test suite on Linux, Windows and both macOS runners.
+  gate:
+    uses: ./.github/workflows/ci.yml
+    with:
+      all-platforms: true
 
   icons:
     runs-on: ubuntu-latest
@@ -57,46 +83,66 @@ jobs:
           path: |
             icons/app.ico
             icons/app.icns
+            icons/app-512.png
             dictionaries/
 
   linux:
-    needs: meta
+    needs: [meta, icons]
     # The oldest supported runner, so the binary runs on older glibc too.
     runs-on: ubuntu-22.04
     env:
       VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config libfuse2
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config squashfs-tools
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+      - uses: actions/download-artifact@v7
+        with:
+          name: shared-assets
+          path: assets
       - name: tar.gz
         run: |
           d=$APP_NAME-$VERSION-linux-x86_64
           mkdir -p "$d"
           cp "target/release/$BIN" "packaging/$APP_ID.desktop" "packaging/$APP_ID.svg" "packaging/$APP_ID.metainfo.xml" LICENSE README.md "$d/"
           tar -czf "$d.tar.gz" "$d"
-      - name: AppImage
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack AppImage
         run: |
-          curl -fsSL -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
-          chmod +x linuxdeploy
-          LDAI_OUTPUT=$APP_NAME-$VERSION-linux-x86_64.AppImage ./linuxdeploy --appimage-extract-and-run \
-            --appdir AppDir -e "target/release/$BIN" \
-            -d "packaging/$APP_ID.desktop" -i "packaging/$APP_ID.svg" --output appimage
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          mkdir -p pack
+          cp "target/release/$BIN" LICENSE pack/
+          bash packaging/release/velopack.sh linux pack "$BIN" assets/icons/app-512.png \
+            --runtime linux-x64 --categories 'Network;Chat;InstantMessaging;'
+      - name: Smoke test (the packaged AppImage)
+        run: |
+          img=$(realpath "$(ls velopack-out/*.AppImage | head -1)")
+          chmod +x "$img"
+          mkdir smoke && cd smoke
+          "$img" --appimage-extract >/dev/null
+          APPIMAGE=$img ./squashfs-root/usr/bin/$BIN --self-check --packaged
       - uses: actions/upload-artifact@v6
         with:
           name: release-linux
           path: |
             *.tar.gz
-            *.AppImage
+            velopack-out/*
 
   windows:
     needs: [meta, icons]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: bash
@@ -120,19 +166,38 @@ jobs:
       - name: Portable zip
         shell: pwsh
         run: Compress-Archive -Path stage\* -DestinationPath "$env:APP_NAME-$env:VERSION-windows-x86_64-portable.zip"
-      - name: MSI (WiX 5)
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack Setup.exe
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
-          dotnet tool install --global wix --version 5.0.2
+          dotnet tool install -g vpk --version "$VPK_VERSION"
           export PATH="$PATH:$HOME/.dotnet/tools"
-          # MSI versions are numeric: drop a pre-release suffix such as -rc1.
-          wix build packaging/windows/app.wxs -arch x64 -d "Version=${VERSION%%-*}" -d Stage=stage \
-            -d "AppName=$APP_NAME" -d "Exe=$BIN.exe" -o "$APP_NAME-$VERSION-windows-x86_64.msi"
+          sign=()
+          if [[ -n "$WINDOWS_CERT_PFX" ]]; then
+            echo "$WINDOWS_CERT_PFX" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+            sign=(--signParams "/f \"$RUNNER_TEMP/cert.pfx\" /p \"$WINDOWS_CERT_PASSWORD\" /fd sha256 /tr http://timestamp.digicert.com /td sha256")
+          else
+            echo "::warning::No Windows signing certificate (WINDOWS_CERT_PFX): Setup.exe is unsigned and SmartScreen warns on first install."
+          fi
+          # Without --runtime vpk assumes x86 and ships the 32-bit Setup.exe stub.
+          bash packaging/release/velopack.sh win stage "$BIN.exe" assets/icons/app.ico --runtime win-x64 ${sign[@]+"${sign[@]}"}
+          rm -f "$RUNNER_TEMP/cert.pfx"
+      - name: Smoke test (the packaged app)
+        run: |
+          mkdir smoke
+          unzip -q "$(ls velopack-out/*Portable.zip | head -1)" -d smoke
+          exe=$(find smoke -path '*current*' -name "$BIN.exe" | head -1)
+          "$exe" --self-check --packaged
       - uses: actions/upload-artifact@v6
         with:
           name: release-windows
           path: |
             *.zip
-            *.msi
+            velopack-out/*
 
   macos:
     needs: [meta, icons]
@@ -142,11 +207,15 @@ jobs:
         include:
           - runner: macos-latest
             arch: arm64
+            channel: osx-arm64
           - runner: macos-15-intel
             arch: x86_64
+            channel: osx-x64
     runs-on: ${{ matrix.runner }}
     env:
       VERSION: ${{ needs.meta.outputs.version }}
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -160,7 +229,7 @@ jobs:
           path: assets
       - name: App bundle
         run: |
-          app=dmg/$APP_NAME.app/Contents
+          app=bundle/$APP_NAME.app/Contents
           mkdir -p "$app/MacOS" "$app/Resources/dictionaries"
           cp "target/release/$BIN" "$app/MacOS/"
           sed -e "s/@VERSION@/$VERSION/g" -e "s/@APP_NAME@/$APP_NAME/g" -e "s/@APP_ID@/$APP_ID/g" \
@@ -168,42 +237,93 @@ jobs:
           cp assets/icons/app.icns "$app/Resources/app.icns"
           cp assets/dictionaries/* "$app/Resources/dictionaries/"
           cp LICENSE "$app/Resources/"
-          # Ad-hoc signature: Apple Silicon refuses unsigned code. Not notarized (needs an Apple
-          # Developer ID): the first start needs right click > Open, or System Settings > Privacy.
-          codesign --force --deep --sign - "dmg/$APP_NAME.app"
-          codesign --verify --deep --strict "dmg/$APP_NAME.app"
-          ln -s /Applications dmg/Applications
-      - name: dmg
-        run: hdiutil create -volname "$APP_NAME" -srcfolder dmg -ov -format UDZO "$APP_NAME-$VERSION-macos-${{ matrix.arch }}.dmg"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack .pkg
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_APP_IDENTITY: ${{ secrets.APPLE_APP_IDENTITY }}
+          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          sign=()
+          if [[ -n "$APPLE_CERT_P12" && -n "$APPLE_APP_IDENTITY" && -n "$APPLE_INSTALLER_IDENTITY" ]]; then
+            kc="$RUNNER_TEMP/signing.keychain-db"
+            kcpass=$(uuidgen)
+            echo "$APPLE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$kcpass" "$kc"
+            security set-keychain-settings -lut 21600 "$kc"
+            security unlock-keychain -p "$kcpass" "$kc"
+            security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+            security list-keychain -d user -s "$kc"
+            rm -f "$RUNNER_TEMP/cert.p12"
+            sign=(--signAppIdentity "$APPLE_APP_IDENTITY" --signInstallIdentity "$APPLE_INSTALLER_IDENTITY" --keychain "$kc")
+            if [[ -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_PASSWORD" ]]; then
+              xcrun notarytool store-credentials ironteams-notary --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$kc"
+              sign+=(--notaryProfile ironteams-notary)
+            else
+              echo "::warning::No notarization credentials (APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD): signed but not notarized."
+            fi
+          else
+            echo "::warning::No Apple Developer ID (APPLE_CERT_P12, APPLE_APP_IDENTITY, APPLE_INSTALLER_IDENTITY): the .pkg is unsigned and not notarized; Gatekeeper asks before the first install."
+            # Apple Silicon refuses unsigned code: an ad-hoc signature at least.
+            codesign --force --deep --sign - "bundle/$APP_NAME.app"
+          fi
+          bash packaging/release/velopack.sh ${{ matrix.channel }} "bundle/$APP_NAME.app" "$BIN" assets/icons/app.icns \
+            --runtime ${{ matrix.channel }} ${sign[@]+"${sign[@]}"}
+      - name: Smoke test (the packaged app)
+        run: |
+          mkdir smoke
+          ditto -x -k "$(ls velopack-out/*Portable.zip | head -1)" smoke
+          app=$(find smoke -maxdepth 2 -name '*.app' | head -1)
+          "$app/Contents/MacOS/$BIN" --self-check --packaged
       - uses: actions/upload-artifact@v6
         with:
           name: release-macos-${{ matrix.arch }}
-          path: '*.dmg'
+          path: velopack-out/*
 
   # The RPM and the Flatpak (and the AUR package check) as packaging.yml builds them.
   packages:
     uses: ./.github/workflows/packaging.yml
 
   publish:
-    # Only when every build succeeded, so a release never goes out with missing packages.
+    # Only when the gate, every build and every smoke test succeeded: a release never goes out
+    # untested or with missing packages.
     if: startsWith(github.ref, 'refs/tags/v') && success()
-    needs: [linux, windows, macos, packages]
+    needs: [meta, gate, linux, windows, macos, packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/download-artifact@v7
         with:
-          # Everything this run uploaded (also packaging.yml's RPM and Flatpak); only package
-          # files are attached below.
+          # Everything this run uploaded (also packaging.yml's RPM and Flatpak), one folder per
+          # artifact; only package files are attached below.
           path: out
-          merge-multiple: true
-      - run: ls -la out
       - name: Release
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
+          mapfile -t files < <(find out -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.rpm' \
+            -o -name '*.flatpak' -o -name '*.AppImage' -o -name '*.nupkg' -o -name '*.exe' -o -name '*.pkg' \
+            -o -name 'releases.*.json' -o -name 'RELEASES*' \) | sort)
+          printf '%s\n' "${files[@]}"
+          # Two assets with one name would overwrite each other (and mix up two channels' feeds).
+          dups=$(printf '%s\n' "${files[@]}" | xargs -n1 basename | sort | uniq -d)
+          if [[ -n "$dups" ]]; then echo "::error::assets with the same name: $dups"; exit 1; fi
+          pre=()
+          [[ "$PRERELEASE" == true ]] && pre=(--prerelease)
+          # A draft while the files upload; clients only see it once it is published.
           gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "$APP_NAME $GITHUB_REF_NAME" --notes "Builds for Linux, Windows and macOS." --draft
-          find out -type f \( -name '*.tar.gz' -o -name '*.AppImage' -o -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.rpm' -o -name '*.flatpak' \) -print0 \
-            | xargs -0 gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber
+            || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
+                 --title "$APP_NAME $GITHUB_REF_NAME" --notes "Builds for Windows, macOS and Linux. Installed copies update themselves."
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+          gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft=false "${pre[@]}"

@@ -160,6 +160,12 @@ export global SettingsStore {
     in-out property <bool> update-checking: false;
     in-out property <bool> update-available: false;
     in-out property <string> update-status;
+    // Self-updates, for copies Velopack installed (`self-update`); others keep the opt-in check.
+    in-out property <bool> self-update: false;
+    in-out property <bool> auto-update: true;
+    in-out property <bool> beta-updates: false;
+    // A downloaded update waits for "Restart to update" (or the next quit).
+    in-out property <bool> update-ready: false;
 
     // The line under the Focus switch and in the indicator's description; "" when Focus is off.
     pure public function focus-label() -> string {

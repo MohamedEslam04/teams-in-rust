@@ -70,19 +70,54 @@ git clone https://github.com/MohamedEslam04/teams-in-rust && cd teams-in-rust
 | RPM (Fedora) | `packaging/rpm/ironteams.spec` | builds offline from vendored crates |
 
 Each folder says how to build the package. None of them is published to a repository yet, and
-updates come from your package manager. Settings › About has an opt-in check (off by default)
-that asks GitHub for the latest release once per start and never downloads anything.
+updates come from your package manager. For these Settings › About has an opt-in check (off by
+default) that asks GitHub for the latest release once per start and never downloads anything.
 
 Start **IronTeams** from your launcher. On first start it shows a code: open the link, enter the code
 and sign in with your work account.
 
-### Windows and macOS
+### Windows, macOS and the AppImage
 
-Tagged releases (`v*`, `.github/workflows/release.yml`) build a Windows MSI and a portable zip,
-and a macOS `.dmg` for Apple Silicon and for Intel, next to a Linux tarball, AppImage, RPM and
-Flatpak. To build yourself: `cargo build --release -p ironteams` with Rust and CMake (Windows: the
-MSVC build tools; macOS: the Xcode command line tools). The macOS app is ad-hoc signed, not
-notarized: open it with right click › Open the first time.
+Tagged releases (`v*`, `.github/workflows/release.yml`) build a Windows `Setup.exe` (a per-user
+install, no administrator needed) and a portable zip, a macOS `.pkg` for Apple Silicon and for
+Intel, and a Linux AppImage, next to the tarball, RPM and Flatpak. To build yourself:
+`cargo build --release -p ironteams` with Rust and CMake (Windows: the MSVC build tools; macOS:
+the Xcode command line tools). The installers are not signed yet: Windows SmartScreen asks once
+("More info › Run anyway"), and on macOS the `.pkg` opens with right click › Open.
+
+### Updates
+
+Copies installed from `Setup.exe`, the `.pkg` or the AppImage update themselves
+([Velopack](https://velopack.io)):
+
+- About 45 seconds after the start, then every 6 hours, IronTeams looks at the GitHub releases
+  for a newer version. It downloads it in the background, and only the parts that changed (a
+  delta package) when it can. Velopack checks the size and SHA-256 of every download, and the
+  feed is only read over HTTPS from github.com.
+- Nothing is installed while you work: a banner says "IronTeams <version> is ready" with
+  **Restart to update**; if you don't click it, the update is installed when you quit. If a
+  download or the install fails, the current version keeps running and the next check tries
+  again.
+- Before a new version first opens its data, the message caches and settings are copied to
+  `backup-<old version>` in the data folder (the last two are kept).
+- If a new version fails to start three times in a row, automatic updates pause and a banner
+  offers to go back to the version before (downloaded only when you click).
+- Settings › About › Updates: **Automatic updates** (on), **Get beta updates** (off),
+  **Check now**.
+
+Copies from the tarball, RPM, Flatpak, AUR or `cargo` never replace themselves. The first
+Velopack release has to be installed by hand once (also by users of an older MSI or `.dmg`);
+every release after it arrives on its own.
+
+To ship a release: `git tag vX.Y.Z && git push --tags`. The release workflow runs fmt, clippy and
+every test on Linux, Windows and both macOS runners, builds every package, starts each packaged
+app with `--self-check --packaged`, and only then publishes the release. A tag like
+`vX.Y.Z-beta.1` is published as a GitHub pre-release: only copies with **Get beta updates** on
+take it, so try a beta on your own machine first, then tag the stable version.
+
+Signing is optional in the workflow: it signs when the repository has the secrets listed at the
+top of `release.yml`, and warns otherwise. Free Windows signing for open-source projects:
+[SignPath Foundation](https://signpath.org). macOS notarization needs an Apple Developer ID.
 
 ## Platforms
 

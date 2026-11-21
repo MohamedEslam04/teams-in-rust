@@ -6,7 +6,7 @@ without network (as Fedora's Koji and COPR do).
 ```sh
 VERSION=0.1.0
 git archive --prefix=ironteams-$VERSION/ -o ~/rpmbuild/SOURCES/ironteams-$VERSION.tar.gz HEAD
-cargo vendor --locked ~/rpmbuild/vendor
+cargo vendor --locked --versioned-dirs ~/rpmbuild/vendor
 tar -C ~/rpmbuild -caf ~/rpmbuild/SOURCES/ironteams-$VERSION-vendor.tar.xz vendor
 rpmbuild -ba packaging/rpm/ironteams.spec
 ```

@@ -10,10 +10,17 @@ on:
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
   # A manual run (Actions tab, or `gh workflow run CI --ref dev`) also checks Windows and macOS.
   workflow_dispatch:
+  # release.yml runs the whole gate, every system included, before it publishes anything.
+  workflow_call:
+    inputs:
+      all-platforms:
+        type: boolean
+        default: false
 
 # A newer push to the same branch cancels the older run.
 concurrency:
-  group: ci-${{ github.ref }}
+  # Called from release.yml, `github.workflow` is "Release": its own group.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -67,10 +74,10 @@ jobs:
 
   # The same clippy and test gate on Windows and macOS (Apple Silicon and Intel). Formatting is
   # checked once, on Linux. UI tests run on Slint's testing backend, so no display is needed.
-  # A cold macOS build takes about an hour, so these run for pull requests and manual runs only;
-  # every push gets the fast Linux gate. release.yml builds all three systems again anyway.
+  # A cold macOS build takes about an hour, so these run for pull requests, manual runs and the
+  # release gate only; every push gets the fast Linux gate.
   platforms:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.all-platforms
     name: check (${{ matrix.os }})
     strategy:
       fail-fast: false

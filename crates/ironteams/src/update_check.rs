@@ -4,7 +4,8 @@
 //! `GET` to the GitHub releases API per start (and one more for each "Check now"). The request has
 //! no cookies, no token and nothing about the user: only an `Accept` header and the generic
 //! `User-Agent: ironteams`. The answer is compared with this build's version; IronTeams never downloads or
-//! installs anything (the package managers update the Flatpak, AUR and RPM installs).
+//! installs anything (the package managers update the Flatpak, AUR and RPM installs). Copies that
+//! can update themselves (Velopack installs) use `updater` instead.
 //!
 //! The version comparison and the JSON parsing are pure. The network call is skipped in demo
 //! mode (`IRONTEAMS_DEMO`) and in tests.
@@ -13,7 +14,7 @@ use std::cmp::Ordering;
 use std::time::Duration;
 
 pub const LATEST_URL: &str =
-    "https://api.github.com/repos/MohamedEslam04/ironteams/releases/latest";
+    "https://api.github.com/repos/MohamedEslam04/teams-in-rust/releases/latest";
 /// Where "Release notes" goes when the answer has no usable `html_url`.
 pub const RELEASES_URL: &str = "https://github.com/MohamedEslam04/teams-in-rust/releases";
 const USER_AGENT: &str = "ironteams";
@@ -232,6 +233,13 @@ mod tests {
         ] {
             assert!(Release::from_json(body).is_err(), "{body:?}");
         }
+    }
+
+    #[test]
+    fn both_urls_name_the_repository_of_the_update_feeds() {
+        let repo = crate::updater::REPO_URL.trim_start_matches("https://github.com/");
+        assert!(LATEST_URL.contains(&format!("/repos/{repo}/")));
+        assert!(RELEASES_URL.starts_with(crate::updater::REPO_URL));
     }
 
     #[test]

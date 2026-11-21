@@ -755,7 +755,32 @@ export component AboutPage inherits VerticalLayout {
         title: "IronTeams " + SettingsStore.version;
         Para { text: @tr("An unofficial native Microsoft Teams client written in Rust."); }
     }
-    SSection {
+    // A copy Velopack installed updates itself; any other copy only offers the opt-in check.
+    if SettingsStore.self-update: SSection {
+        title: @tr("Updates");
+        hint: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it.");
+        SSwitch {
+            label: @tr("Automatic updates");
+            on: SettingsStore.auto-update;
+            toggled(on) => { SettingsStore.command("auto-update", on ? "1" : "0"); }
+        }
+        SSwitch {
+            label: @tr("Get beta updates");
+            on: SettingsStore.beta-updates;
+            toggled(on) => { SettingsStore.command("beta-updates", on ? "1" : "0"); }
+        }
+        SButton {
+            label: @tr("Check now");
+            enabled: !SettingsStore.update-checking && !SettingsStore.update-ready;
+            clicked => { SettingsStore.command("check-now", ""); }
+        }
+        if SettingsStore.update-status != "": Para { text: SettingsStore.update-status; }
+        if SettingsStore.update-ready: SButton {
+            label: @tr("Restart to update");
+            clicked => { SettingsStore.command("restart-update", ""); }
+        }
+    }
+    if !SettingsStore.self-update: SSection {
         title: @tr("Updates");
         hint: @tr("Off by default. When on, IronTeams asks api.github.com for the latest release when it starts. The request has no cookies, no account and nothing about you. IronTeams never downloads or installs anything.");
         SSwitch {

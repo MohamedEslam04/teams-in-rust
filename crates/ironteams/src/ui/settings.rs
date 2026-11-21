@@ -16,7 +16,7 @@
 //! release-notes, status, work-location, status-note, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
 //! focus-duration, keyword-add, keyword-remove, open-chat-at, link-previews, photo-change,
-//! photo-remove, check-updates-menu.
+//! photo-remove, check-updates-menu, auto-update, beta-updates, restart-update.
 
 use super::{UiHandle, model, rgb};
 use crate::backend::Cmd;
@@ -27,6 +27,7 @@ use crate::backend::settings::{
     self as st, DeviceLists, Local, Look, OpenFilesIn, ServerData, SettingsCmd,
 };
 use crate::update_check::{self, Release};
+use crate::updater::{self, Event, Phase};
 use crate::{
     AppWindow, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg, SPerson, SToggle,
     SettingsStore, Theme,
@@ -101,8 +102,12 @@ pub struct Hooks {
     pub test_sound: PlaySound,
     pub mic_level: OpenMic,
     /// Asks for the latest release (blocking, runs on a thread). Only called when the user has
-    /// turned the update check on.
+    /// turned the update check on, in copies that cannot update themselves.
     pub check_update: Arc<dyn Fn() -> Result<Release, String> + Send + Sync>,
+    /// Self-updates: `Some` only in a Velopack install (`updater::system`).
+    pub updates: Option<Arc<dyn updater::Source>>,
+    /// Quits so the updater can install a downloaded update ("Restart to update").
+    pub quit: Box<dyn Fn()>,
 }
 
 pub struct SettingsEnv {
@@ -117,6 +122,8 @@ pub struct SettingsEnv {
     /// Apply the date and time format and "keep running on close" to the process-wide settings
     /// that the time helpers and the tray read. Off in tests, which share one process.
     pub apply_globals: bool,
+    /// What the crash-loop guard found at this start.
+    pub crash_loop: updater::guard::Verdict,
     pub hooks: Hooks,
 }
 
@@ -131,6 +138,7 @@ impl SettingsEnv {
             portal: true,
             background: true,
             apply_globals: true,
+            crash_loop: updater::guard::verdict(),
             hooks: Hooks {
                 autostart: Autostart::desktop(None),
                 test_notification: Box::new(|| {
@@ -183,6 +191,10 @@ impl SettingsEnv {
                     Ok(Box::new(move || s.latest().map(|l| l.peak)) as MicPoll)
                 }),
                 check_update: Arc::new(update_check::fetch_latest),
+                updates: updater::system(),
+                quit: Box::new(|| {
+                    let _ = slint::quit_event_loop();
+                }),
             },
         })
     }
@@ -205,6 +217,12 @@ struct Ctl {
     update_auto_done: bool,
     /// The release page of the newer version found, for "Release notes".
     update_url: Option<String>,
+    /// Self-updates (Velopack installs): the state and the schedule.
+    updater: updater::Core,
+    /// Runs the automatic update checks (kept alive here).
+    _update_timer: Option<slint::Timer>,
+    /// What the button of the banner does.
+    banner_action: BannerAction,
     /// "When I open a chat take me to", as the engine has it.
     open_chat_at: OpenChatAt,
     /// The status picked here with an end ("Reset status after"): `(availability, end ms)`, for
@@ -213,6 +231,15 @@ struct Ctl {
     /// What the menu showed before a status pick (presence, its "Until" line), put back when
     /// the service refuses the change.
     status_before: Option<(String, String)>,
+}
+
+/// What the button of the banner does, for the banners Settings shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BannerAction {
+    None,
+    ReleaseNotes,
+    RestartToUpdate,
+    GoBack(String),
 }
 
 type Shared = Rc<RefCell<Ctl>>;
@@ -311,6 +338,9 @@ pub fn install(
         checking: false,
         update_auto_done: false,
         update_url: None,
+        updater: updater::Core::new(Instant::now()),
+        _update_timer: None,
+        banner_action: BannerAction::None,
         open_chat_at,
         status_until: None,
         status_before: None,
@@ -328,11 +358,26 @@ pub fn install(
         .set_version(s(env!("CARGO_PKG_VERSION")));
     // Opt-in: only when the switch is on, and then once per start.
     check_updates(window, &mut shared.borrow_mut(), false);
-    let release_shared = shared.clone();
+    install_self_update(window, &mut shared.borrow_mut());
+    let banner_shared = shared.clone();
+    let banner_weak = window.as_weak();
     window.on_banner_action_clicked(move || {
-        let c = release_shared.borrow();
-        if let Some(url) = &c.update_url {
-            (c.env.hooks.open_url)(url);
+        let Some(w) = banner_weak.upgrade() else {
+            return;
+        };
+        let action = banner_shared.borrow().banner_action.clone();
+        match action {
+            BannerAction::None => {}
+            BannerAction::ReleaseNotes => {
+                let c = banner_shared.borrow();
+                if let Some(url) = &c.update_url {
+                    (c.env.hooks.open_url)(url);
+                }
+            }
+            BannerAction::RestartToUpdate => restart_to_update(&w, &mut banner_shared.borrow_mut()),
+            BannerAction::GoBack(version) => {
+                start_update(&w, &mut banner_shared.borrow_mut(), Some(version))
+            }
         }
     });
 
@@ -510,6 +555,9 @@ fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_system_time_zone(s(iana_time_zone::get_timezone().unwrap_or_default()));
     g.set_startup(toggles(st::startup_rows(gp)));
     g.set_check_updates(gp.check_updates);
+    g.set_self_update(c.env.hooks.updates.is_some());
+    g.set_auto_update(gp.auto_update);
+    g.set_beta_updates(gp.beta_updates);
     g.set_banner_photo(gp.banner_photo);
     g.set_banner_actions(gp.banner_actions);
     g.set_check_spelling(gp.check_spelling);
@@ -930,7 +978,10 @@ fn start_mic(w: &AppWindow, c: &mut Ctl) {
 /// Starts an update check if the switch is on and none is running. The automatic one happens at
 /// most once per start (`force` is false); "Check now" forces another.
 fn check_updates(w: &AppWindow, c: &mut Ctl, force: bool) {
-    if !c.local.general.check_updates || c.checking || (!force && c.update_auto_done) {
+    // A copy that updates itself has no use for the notice.
+    let self_update = c.env.hooks.updates.is_some();
+    if self_update || !c.local.general.check_updates || c.checking || (!force && c.update_auto_done)
+    {
         return;
     }
     if !force {
@@ -975,12 +1026,189 @@ fn update_checked(w: &AppWindow, c: &mut Ctl, r: Result<Release, String>) {
             w.set_banner_action(s("Release notes"));
             w.set_banner_info(true);
             c.update_url = Some(rel.url);
+            c.banner_action = BannerAction::ReleaseNotes;
         }
         Ok(_) => g.set_update_status(s("Up to date")),
         Err(e) => {
             tracing::debug!(error = %e, "update check failed");
             g.set_update_status(s("Could not check for updates"));
         }
+    }
+}
+
+/// Shows an info banner whose button does `action`.
+fn banner(w: &AppWindow, c: &mut Ctl, text: String, button: &str, action: BannerAction) {
+    w.set_banner(s(text));
+    w.set_banner_action(s(button));
+    w.set_banner_info(true);
+    c.banner_action = action;
+}
+
+/// The line under the update switches. Fixed sentences: errors only go to the log.
+pub fn update_line(phase: &Phase) -> String {
+    match phase {
+        Phase::Idle => String::new(),
+        Phase::Checking => "Checking for updates…".into(),
+        Phase::UpToDate => "Up to date".into(),
+        Phase::Downloading(p) => format!("Downloading the update… {p}%"),
+        Phase::Ready(v) => format!("IronTeams {v} is ready. Restart to update."),
+        Phase::Failed => "Could not update. IronTeams will try again later.".into(),
+    }
+}
+
+/// Shows the self-update state on the About page.
+fn push_update(w: &AppWindow, c: &Ctl) {
+    if c.env.hooks.updates.is_none() {
+        return;
+    }
+    let g = w.global::<SettingsStore>();
+    g.set_update_checking(c.updater.busy());
+    g.set_update_ready(c.updater.ready().is_some());
+    g.set_update_status(s(update_line(&c.updater.phase)));
+}
+
+/// Self-updates at the start: an update an earlier run downloaded is ready at once, the
+/// crash-loop guard may have paused them, and the automatic checks are scheduled.
+fn install_self_update(w: &AppWindow, c: &mut Ctl) {
+    let Some(src) = c.env.hooks.updates.clone() else {
+        return;
+    };
+    if let Some(found) = src.pending() {
+        c.updater.restore_pending(found);
+        ready_banner(w, c);
+    } else if c.env.crash_loop.paused {
+        let text =
+            "IronTeams did not start properly the last 3 times. Automatic updates are paused."
+                .to_string();
+        match c.env.crash_loop.previous.clone() {
+            Some(prev) => {
+                let button = format!("Go back to {prev}");
+                banner(w, c, text, &button, BannerAction::GoBack(prev));
+            }
+            None => banner(w, c, text, "", BannerAction::None),
+        }
+    }
+    if c.env.background {
+        let weak = w.as_weak();
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_secs(30),
+            move || {
+                let (Some(w), Some(shared)) = (weak.upgrade(), ctl()) else {
+                    return;
+                };
+                let mut c = shared.borrow_mut();
+                let (auto, paused) = (c.local.general.auto_update, c.env.crash_loop.paused);
+                if c.updater.due(Instant::now(), auto, paused) {
+                    start_update(&w, &mut c, None);
+                }
+            },
+        );
+        c._update_timer = Some(timer);
+    }
+    push_update(w, c);
+}
+
+fn ready_banner(w: &AppWindow, c: &mut Ctl) {
+    let Some(found) = c.updater.ready() else {
+        return;
+    };
+    let text = format!("IronTeams {} is ready", found.version);
+    banner(
+        w,
+        c,
+        text,
+        "Restart to update",
+        BannerAction::RestartToUpdate,
+    );
+}
+
+/// Checks for an update and downloads it (or, with `back_to`, downloads that older version).
+/// Runs on a thread; inline in tests.
+fn start_update(w: &AppWindow, c: &mut Ctl, back_to: Option<String>) {
+    let Some(src) = c.env.hooks.updates.clone() else {
+        return;
+    };
+    if !c.updater.begin(Instant::now()) {
+        push_update(w, c);
+        return;
+    }
+    push_update(w, c);
+    let beta = c.local.general.beta_updates;
+    let run = move |send: &dyn Fn(Event)| match &back_to {
+        Some(v) => updater::run_rollback(src.as_ref(), v, send),
+        None => updater::run_cycle(src.as_ref(), beta, send),
+    };
+    if c.env.background {
+        let weak = w.as_weak();
+        std::thread::spawn(move || {
+            run(&|e: Event| {
+                let _ = weak.upgrade_in_event_loop(move |w| {
+                    if let Some(shared) = ctl() {
+                        update_event(&w, &mut shared.borrow_mut(), e);
+                    }
+                });
+            })
+        });
+    } else {
+        let events = RefCell::new(vec![]);
+        run(&|e: Event| events.borrow_mut().push(e));
+        for e in events.into_inner() {
+            update_event(w, c, e);
+        }
+    }
+}
+
+/// One step of an update reported back on the UI thread.
+fn update_event(w: &AppWindow, c: &mut Ctl, e: Event) {
+    let was_ready = c.updater.ready().is_some();
+    c.updater.event(e);
+    if !was_ready && c.updater.ready().is_some() {
+        if c.updater.ready().is_some_and(|f| f.downgrade) {
+            // The user asked to go back: install the older version now.
+            restart_to_update(w, c);
+            return;
+        }
+        ready_banner(w, c);
+    }
+    push_update(w, c);
+}
+
+/// "Restart to update": the updater waits for IronTeams to quit, installs the update and starts
+/// it again. When it cannot start, this version keeps running.
+fn restart_to_update(w: &AppWindow, c: &mut Ctl) {
+    let Some(src) = c.env.hooks.updates.clone() else {
+        return;
+    };
+    let Some(found) = c.updater.take_for_apply() else {
+        return;
+    };
+    match src.apply_on_exit(&found, true) {
+        Ok(()) => (c.env.hooks.quit)(),
+        Err(e) => {
+            c.updater.apply_failed(&e);
+            if c.banner_action == BannerAction::RestartToUpdate {
+                banner(w, c, String::new(), "", BannerAction::None);
+                w.set_banner_info(false);
+            }
+            push_update(w, c);
+        }
+    }
+}
+
+/// On quit (`main`, after the event loop): a downloaded update is installed once the process
+/// has exited. Nothing when no update is ready or it was already handed over.
+pub fn apply_update_on_quit() {
+    let Some(shared) = ctl() else { return };
+    let mut c = shared.borrow_mut();
+    let Some(src) = c.env.hooks.updates.clone() else {
+        return;
+    };
+    if let Some(found) = c.updater.take_for_apply()
+        && let Err(e) = src.apply_on_exit(&found, false)
+    {
+        c.updater.apply_failed(&e);
     }
 }
 
@@ -1464,7 +1692,26 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
-        "check-now" => check_updates(w, &mut shared.borrow_mut(), true),
+        "check-now" => {
+            let mut c = shared.borrow_mut();
+            if c.env.hooks.updates.is_some() {
+                start_update(w, &mut c, None);
+            } else {
+                check_updates(w, &mut c, true);
+            }
+        }
+        "auto-update" | "beta-updates" => {
+            let mut c = shared.borrow_mut();
+            if name == "auto-update" {
+                c.local.general.auto_update = bit(arg);
+            } else {
+                c.local.general.beta_updates = bit(arg);
+            }
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
+        "restart-update" => restart_to_update(w, &mut shared.borrow_mut()),
         "release-notes" => {
             let c = shared.borrow();
             if let Some(url) = &c.update_url {
@@ -1634,9 +1881,14 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
         // The top bar menu's "Check for updates": the check is opt-in, so with the switch off it
         // only opens About, where the switch is.
         "check-updates-menu" => {
-            let on = shared.borrow().local.general.check_updates;
+            let (on, self_update) = {
+                let c = shared.borrow();
+                (c.local.general.check_updates, c.env.hooks.updates.is_some())
+            };
             g.invoke_show(s("about"));
-            if on {
+            if self_update {
+                start_update(w, &mut shared.borrow_mut(), None);
+            } else if on {
                 check_updates(w, &mut shared.borrow_mut(), true);
             } else {
                 notice(
@@ -1654,7 +1906,15 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let _ = tx.send(Cmd::Settings(SettingsCmd::RefreshLicense));
             notice(w, "Refreshing your license…");
         }
-        "restart" => (shared.borrow().env.hooks.restart)(),
+        "restart" => {
+            let mut c = shared.borrow_mut();
+            // With an update downloaded, the restart installs it.
+            if c.updater.ready().is_some() {
+                restart_to_update(w, &mut c);
+            } else {
+                (c.env.hooks.restart)();
+            }
+        }
         "sign-out" => {
             let c = shared.borrow();
             let Some(acct) = config(&c).and_then(|cfg| cfg.active_account().cloned()) else {

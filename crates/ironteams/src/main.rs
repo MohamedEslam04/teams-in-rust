@@ -30,6 +30,7 @@ mod ui;
 #[cfg(test)]
 mod ui_tests;
 mod update_check;
+mod updater;
 mod window_state;
 
 slint::include_modules!();
@@ -257,9 +258,17 @@ fn report_problem(args: &[String]) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    // First of all: Velopack's install, update and uninstall hooks run (and exit) here. A
+    // downloaded update is never applied at the start; only on "Restart to update" or on quit.
+    velopack::VelopackApp::build()
+        .set_auto_apply_on_startup(false)
+        .run();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--report-problem") {
         return report_problem(&args[1..]);
+    }
+    if args.first().map(String::as_str) == Some("--self-check") {
+        return updater::self_check::run(args.iter().any(|a| a == "--packaged"));
     }
     if args.iter().any(|a| a == "--call-demo") {
         // SAFETY: called at the start of main, before any other thread exists.
@@ -278,6 +287,21 @@ fn main() -> anyhow::Result<()> {
     // Before anything opens the store, the session or the preferences: the first run after the
     // rename from kelma moves the old directories.
     compat::migrate_legacy_dirs();
+    // Before anything opens the store or the config: a new version backs up the old data, and
+    // the crash-loop guard counts this start. Demo mode keeps its hands off the real data.
+    let data_dir = session::Paths::new()
+        .ok()
+        .filter(|_| compat::var_os("IRONTEAMS_DEMO").is_none())
+        .map(|paths| {
+            let version = env!("CARGO_PKG_VERSION");
+            match updater::backup::on_start(&paths, version) {
+                Ok(updater::backup::Outcome::Nothing) => {}
+                Ok(done) => tracing::info!(?done, "data of the previous version saved"),
+                Err(e) => tracing::warn!(error = %e, "could not back up the data"),
+            }
+            updater::guard::start(&paths.data_dir, version);
+            paths.data_dir
+        });
 
     // Software rendering keeps memory low (docs/adr/0001-ui-toolkit.md).
     // IRONTEAMS_RENDERER=femtovg switches to the GPU renderer.
@@ -625,6 +649,15 @@ fn main() -> anyhow::Result<()> {
         tx.clone(),
     );
     let hidden = args.iter().any(|a| a == "--hidden");
+    // A minute in the event loop: this start was clean (the crash-loop guard).
+    let healthy_timer = slint::Timer::default();
+    if let Some(dir) = data_dir {
+        healthy_timer.start(
+            slint::TimerMode::SingleShot,
+            updater::guard::HEALTHY_AFTER,
+            move || updater::guard::healthy_in(&dir),
+        );
+    }
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -634,6 +667,8 @@ fn main() -> anyhow::Result<()> {
     // Tray, close-to-tray and the event loop (stays up with the window hidden).
     tray_wiring::run(&window, hidden)?;
     window_state::finish(&window);
+    // A downloaded update is installed once this process has exited.
+    ui::settings::apply_update_on_quit();
     // Give the engine a moment to write a draft typed just before closing and to take this
     // device out of presence.
     let _ = tx.send(Cmd::Flush);

@@ -1022,6 +1022,16 @@ const INDEX: &[(&str, &str, &str)] = &[
         "Check for updates",
         "update upgrade new version release",
     ),
+    (
+        "about",
+        "Automatic updates",
+        "update upgrade new version release download install",
+    ),
+    (
+        "about",
+        "Get beta updates",
+        "update beta pre-release preview",
+    ),
     ("about", "Version", "about"),
 ];
 

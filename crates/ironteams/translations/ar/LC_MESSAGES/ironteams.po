@@ -2115,3 +2115,15 @@ msgstr "12 ساعة (1:30 م)"
 
 msgid "24-hour (13:30)"
 msgstr "24 ساعة (13:30)"
+
+msgid "IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it."
+msgstr "ينزّل IronTeams الإصدارات الجديدة من إصداراته على GitHub في الخلفية، الأجزاء التي تغيّرت فقط، ويثبّتها عند إعادة تشغيله أو إغلاقه."
+
+msgid "Automatic updates"
+msgstr "التحديثات التلقائية"
+
+msgid "Get beta updates"
+msgstr "الحصول على التحديثات التجريبية"
+
+msgid "Restart to update"
+msgstr "إعادة التشغيل للتحديث"

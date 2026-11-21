@@ -71,7 +71,7 @@ without network (as Koji and COPR do). To build locally without root:
 top=/data/ironteams-rpm; v=0.1.0
 mkdir -p $top/{SOURCES,BUILD,RPMS,SRPMS,BUILDROOT} /data/ironteams-vendor
 git archive --prefix=ironteams-$v/ -o $top/SOURCES/ironteams-$v.tar.gz HEAD
-cargo vendor --locked /data/ironteams-vendor/vendor
+cargo vendor --locked --versioned-dirs /data/ironteams-vendor/vendor
 tar -C /data/ironteams-vendor -c vendor | xz -T0 > $top/SOURCES/ironteams-$v-vendor.tar.xz
 rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
 ```

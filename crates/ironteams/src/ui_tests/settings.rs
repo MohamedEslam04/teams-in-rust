@@ -75,6 +75,7 @@ fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv
         portal: false,
         background: false,
         apply_globals: false,
+        crash_loop: Default::default(),
         hooks: Hooks {
             // The real autostart entry, written under the temp home instead of ~/.config.
             autostart: Autostart::desktop(Some(home.0.join("xdg"))),
@@ -105,6 +106,9 @@ fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv
             mic_level: Box::new(|_| Ok(Box::new(|| Some(0.5_f32)) as MicPoll)),
             // Never the network: a check that was not given a fake answer fails.
             check_update: Arc::new(|| Err("no network in tests".into())),
+            // Not a Velopack install unless a test gives it a fake source.
+            updates: None,
+            quit: Box::new(rec(log, "quit")),
         },
     }
 }
@@ -1542,6 +1546,206 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
             {
                 super::overflow::assert_texts_inside(&row, &format!("{kind} on the {page} page"));
             }
+        }
+    }
+}
+
+// --- Self-updates (Velopack installs), with a fake source: never the network ---
+
+use crate::updater::fake::FakeSource;
+
+/// A window of a Velopack install whose updates come from `src`.
+fn self_updating(home: Home, src: &Arc<FakeSource>) -> Ui {
+    let src = src.clone();
+    window_tweaked(home, move |e| {
+        e.hooks.updates = Some(src as Arc<dyn crate::updater::Source>);
+    })
+}
+
+#[test]
+fn a_copy_that_cannot_update_itself_keeps_the_opt_in_check() {
+    let ui = window(Home::new("self-update-none"));
+    let app = &ui.app;
+    open_page(app, "about");
+    assert!(!store(app).get_self_update());
+    assert!(!checked(app, "Check for updates"));
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Automatic updates")
+            .next()
+            .is_none()
+    );
+}
+
+#[test]
+fn check_now_downloads_the_update_and_restart_installs_it() {
+    let src = Arc::new(FakeSource::with_latest("999.1.0"));
+    let ui = self_updating(Home::new("self-update"), &src);
+    let app = &ui.app;
+    open_page(app, "about");
+    assert!(store(app).get_self_update());
+    assert!(checked(app, "Automatic updates"), "on by default");
+    assert!(!checked(app, "Get beta updates"), "betas are opt-in");
+    assert!(
+        src.calls().is_empty(),
+        "the first check waits for the timer"
+    );
+    assert_eq!(app.get_banner().as_str(), "");
+
+    press(app, "Check now");
+    assert_eq!(src.calls(), ["check beta=false", "download 999.1.0"]);
+    assert_eq!(app.get_banner().as_str(), "IronTeams 999.1.0 is ready");
+    assert_eq!(app.get_banner_action().as_str(), "Restart to update");
+    assert!(app.get_banner_info(), "a calm banner, not an error");
+    assert!(store(app).get_update_ready());
+    assert_eq!(
+        store(app).get_update_status().as_str(),
+        "IronTeams 999.1.0 is ready. Restart to update."
+    );
+
+    app.invoke_banner_action_clicked();
+    assert_eq!(
+        src.calls().last().map(String::as_str),
+        Some("apply 999.1.0 restart=true")
+    );
+    assert_eq!(*ui.log.borrow(), ["quit"]);
+    // Handed over once: quitting does not start the updater a second time.
+    crate::ui::settings::apply_update_on_quit();
+    assert_eq!(src.calls().len(), 3);
+}
+
+#[test]
+fn a_ready_update_is_installed_on_quit_without_a_restart() {
+    let src = Arc::new(FakeSource::with_latest("999.1.0"));
+    let ui = self_updating(Home::new("self-update-quit"), &src);
+    let app = &ui.app;
+    store(app).invoke_command("check-now".into(), "".into());
+    assert!(store(app).get_update_ready());
+    crate::ui::settings::apply_update_on_quit();
+    assert_eq!(
+        src.calls().last().map(String::as_str),
+        Some("apply 999.1.0 restart=false")
+    );
+    assert!(ui.log.borrow().is_empty(), "IronTeams was already quitting");
+}
+
+#[test]
+fn the_update_switches_are_stored_and_betas_ask_for_pre_releases() {
+    let home = Home::new("self-update-prefs");
+    let dir = home.paths().config_dir;
+    let src = Arc::new(FakeSource::default());
+    let ui = self_updating(home, &src);
+    let app = &ui.app;
+    open_page(app, "about");
+    press(app, "Automatic updates");
+    assert!(!Local::load(&dir).general.auto_update);
+    assert!(!checked(app, "Automatic updates"));
+    press(app, "Get beta updates");
+    assert!(Local::load(&dir).general.beta_updates);
+    press(app, "Check now");
+    assert_eq!(src.calls(), ["check beta=true"]);
+    assert_eq!(store(app).get_update_status().as_str(), "Up to date");
+    assert!(!store(app).get_update_ready());
+}
+
+#[test]
+fn a_failed_update_keeps_this_version_and_shows_no_raw_error() {
+    let src = Arc::new(FakeSource::with_latest("999.1.0"));
+    *src.fail_download.lock().unwrap() = true;
+    let ui = self_updating(Home::new("self-update-fail"), &src);
+    let app = &ui.app;
+    store(app).invoke_command("check-now".into(), "".into());
+    let status = store(app).get_update_status().to_string();
+    assert_eq!(status, "Could not update. IronTeams will try again later.");
+    assert!(!status.contains("checksum"));
+    assert_eq!(app.get_banner().as_str(), "");
+    crate::ui::settings::apply_update_on_quit();
+    assert!(
+        !src.calls().iter().any(|c| c.starts_with("apply")),
+        "nothing half-downloaded is installed"
+    );
+
+    // The updater cannot start: this version keeps running.
+    *src.fail_download.lock().unwrap() = false;
+    *src.fail_apply.lock().unwrap() = true;
+    store(app).invoke_command("check-now".into(), "".into());
+    store(app).invoke_command("restart-update".into(), "".into());
+    assert!(ui.log.borrow().is_empty(), "no quit");
+    assert_eq!(app.get_banner().as_str(), "");
+    assert_eq!(
+        store(app).get_update_status().as_str(),
+        "Could not update. IronTeams will try again later."
+    );
+}
+
+#[test]
+fn an_update_downloaded_by_an_earlier_run_is_ready_at_the_start() {
+    let src = Arc::new(FakeSource::default());
+    *src.pending.lock().unwrap() = Some("999.2.0".into());
+    let ui = self_updating(Home::new("self-update-pending"), &src);
+    let app = &ui.app;
+    assert_eq!(app.get_banner().as_str(), "IronTeams 999.2.0 is ready");
+    open_page(app, "about");
+    assert!(store(app).get_update_ready());
+    // The About page's button (the banner has one with the same label).
+    let button = ElementHandle::find_by_element_type_name(app, "SButton")
+        .find(|b| {
+            b.accessible_label()
+                .is_some_and(|l| l == "Restart to update")
+        })
+        .expect("Restart to update on the About page");
+    button.invoke_accessible_default_action();
+    assert_eq!(src.calls(), ["apply 999.2.0 restart=true"]);
+    assert_eq!(*ui.log.borrow(), ["quit"]);
+}
+
+#[test]
+fn a_crash_loop_pauses_updates_and_offers_the_previous_version() {
+    let src = Arc::new(FakeSource::with_latest("999.1.0"));
+    src.versions.lock().unwrap().push("0.0.9".into());
+    let s2 = src.clone();
+    let ui = window_tweaked(Home::new("self-update-crash"), move |e| {
+        e.hooks.updates = Some(s2 as Arc<dyn crate::updater::Source>);
+        e.crash_loop = crate::updater::guard::Verdict {
+            paused: true,
+            previous: Some("0.0.9".into()),
+        };
+    });
+    let app = &ui.app;
+    assert_eq!(
+        app.get_banner().as_str(),
+        "IronTeams did not start properly the last 3 times. Automatic updates are paused."
+    );
+    assert_eq!(app.get_banner_action().as_str(), "Go back to 0.0.9");
+    assert!(app.get_banner_info());
+    assert!(
+        src.calls().is_empty(),
+        "nothing is downloaded before the click"
+    );
+
+    app.invoke_banner_action_clicked();
+    assert_eq!(
+        src.calls(),
+        ["find 0.0.9", "download 0.0.9", "apply 0.0.9 restart=true"]
+    );
+    assert_eq!(*ui.log.borrow(), ["quit"]);
+}
+
+#[test]
+fn the_update_rows_stay_inside_a_narrow_window() {
+    let src = Arc::new(FakeSource::with_latest("999.1.0"));
+    let ui = self_updating(Home::new("self-update-narrow"), &src);
+    let app = &ui.app;
+    store(app).invoke_command("check-now".into(), "".into());
+    app.window().set_size(LogicalSize::new(760., 900.));
+    open_page(app, "about");
+    for _ in 0..3 {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    }
+    for kind in ["SSwitch", "SButton"] {
+        for row in ElementHandle::find_by_element_type_name(app, kind)
+            .filter(|r| !super::overflow::texts(r).is_empty())
+        {
+            super::overflow::assert_texts_inside(&row, &format!("{kind} on the about page"));
         }
     }
 }

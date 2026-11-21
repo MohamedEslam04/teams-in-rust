@@ -26,7 +26,9 @@ jobs:
           top=$PWD/rpmtop; v=0.1.0
           mkdir -p "$top"/{SOURCES,BUILD,RPMS,SRPMS,BUILDROOT}
           git archive --prefix=ironteams-$v/ -o "$top/SOURCES/ironteams-$v.tar.gz" HEAD
-          cargo vendor --locked vendor-dir/vendor
+          # Versioned dirs: a vendored crate named `xml` (velopack's) would otherwise sit at vendor/xml,
+          # where atspi-common's build-time D-Bus checks look for their XML files.
+          cargo vendor --locked --versioned-dirs vendor-dir/vendor
           tar -C vendor-dir -c vendor | xz -T0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
           rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
       - uses: actions/upload-artifact@v6
@@ -71,7 +73,10 @@ jobs:
           # Build the checked-out commit instead of the default branch of the upstream URL.
           git clone --bare . /home/builder/ironteams.git && chown -R builder /home/builder/ironteams.git
           sed -i 's|git+${url}.git|git+file:///home/builder/ironteams.git|' /home/builder/aur/PKGBUILD
-          su builder -c 'cd ~/aur && git config --global --add safe.directory "*" && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -f --noconfirm'
+          # The runner has ~16 GB and no swap we can add inside the container: thin LTO with one
+          # codegen unit gets rustc killed. This check only needs the package to build, so it
+          # links without LTO (the shipped release profile is unchanged).
+          su builder -c 'export CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*" && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -f --noconfirm'
       - name: .SRCINFO is current
         run: diff <(sed 's|file:///home/builder/ironteams.git|https://github.com/MohamedEslam04/teams-in-rust.git|' /tmp/srcinfo) packaging/aur/.SRCINFO
         shell: bash

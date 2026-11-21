@@ -10,7 +10,7 @@ License:        GPL-3.0-or-later
 URL:            https://github.com/MohamedEslam04/teams-in-rust
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 # Crates vendored from Cargo.lock, so the build needs no network (see packaging/rpm/README.md):
-#   cargo vendor && tar caf ironteams-%%{version}-vendor.tar.xz vendor
+#   cargo vendor --versioned-dirs && tar caf ironteams-%%{version}-vendor.tar.xz vendor
 Source1:        %{name}-%{version}-vendor.tar.xz
 
 # slint 1.19 needs Rust 1.95 or newer.
