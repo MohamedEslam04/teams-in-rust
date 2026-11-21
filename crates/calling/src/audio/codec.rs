@@ -8,6 +8,13 @@ const EXPECTED_LOSS_PERCENT: i32 = 10;
 /// A 20 ms frame never needs more than this at 32 kbit/s; leave generous headroom.
 const MAX_PACKET: usize = 1275;
 
+/// One 20 ms Opus frame of digital silence (TOC `0xF8`: CELT-only, fullband, 20 ms, mono, one
+/// frame; payload `0xFF 0xFE`: the silence flag). Sent in place of the microphone while muted:
+/// the media server ends a call that sends no RTP at all (`410`/`301005`
+/// `MediaConnectivityFailure`, seen live 2026-11-21 joined muted with the camera off), and a
+/// browser keeps sending silence for a disabled track. Nothing captured is in it.
+pub const OPUS_SILENCE: [u8; 3] = [0xF8, 0xFF, 0xFE];
+
 fn audio_err(what: &str, e: opus::Error) -> Error {
     Error::Audio(format!("opus {what}: {e}"))
 }

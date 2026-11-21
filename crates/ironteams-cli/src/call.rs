@@ -447,14 +447,15 @@ async fn run_call(
     let (sender_tx, sender_rx) = tokio::sync::watch::channel(media.audio_sender());
     let sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let sent_count = sent.clone();
-    // While muted the microphone's packets are dropped here: muting is also local, not only the
-    // state the service shows.
+    // While muted the microphone's packets are replaced here by digital silence: muting is also
+    // local, not only the state the service shows, yet the media keeps flowing (a call that sends
+    // no RTP at all is ended by the service as `MediaConnectivityFailure`).
     let mic_muted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let send_muted = mic_muted.clone();
     let send_task = tokio::spawn(async move {
-        while let Some(p) = encoded.recv().await {
+        while let Some(mut p) = encoded.recv().await {
             if send_muted.load(std::sync::atomic::Ordering::Relaxed) {
-                continue;
+                p = calling::audio::OPUS_SILENCE.to_vec();
             }
             let sender = sender_rx.borrow().clone();
             if sender.send(p).await.is_ok() {

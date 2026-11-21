@@ -27,8 +27,8 @@ use super::{
 use crate::backend::outsider::{Standing, classify as classify_outsider};
 use anyhow::Context;
 use calling::audio::{
-    AudioProcessor, Capture, Playback, ProcessingOptions, echo_cancelled, spawn_capture_encoder,
-    spawn_decoder_playback,
+    AudioProcessor, Capture, OPUS_SILENCE, Playback, ProcessingOptions, echo_cancelled,
+    spawn_capture_encoder, spawn_decoder_playback,
 };
 use calling::captions::{CAPTIONS_DATA_ID, DataMessage, Depacketizer, parse_caption_message};
 use calling::invitation::{CallEvent, NgcPush, classify};
@@ -730,10 +730,10 @@ impl Audio {
         let (sender, muted, held) = (self.sender.clone(), self.muted.clone(), self.held.clone());
         self.send_task = Some(tokio::spawn(async move {
             while let Some(p) = encoded.recv().await {
-                // Muting and hold are also local: the packets stop here.
-                if muted.load(Ordering::Relaxed) || held.load(Ordering::Relaxed) {
+                let (m, h) = (muted.load(Ordering::Relaxed), held.load(Ordering::Relaxed));
+                let Some(p) = outgoing(p, m, h) else {
                     continue;
-                }
+                };
                 let s = sender.borrow().clone();
                 let _ = s.send(p).await;
             }
@@ -754,6 +754,20 @@ impl Audio {
         if let Some(t) = self.send_task.take() {
             t.abort();
         }
+    }
+}
+
+/// What goes out for one captured packet. Muting is also local: the microphone's packet is
+/// replaced by digital silence, so no captured audio leaves while the media keeps flowing (a call
+/// that sends no RTP at all is ended by the service as `MediaConnectivityFailure`, and without
+/// RTP no RTCP sender report goes out either). On hold every line is `inactive`: nothing goes.
+fn outgoing(packet: OpusPacket, muted: bool, held: bool) -> Option<OpusPacket> {
+    if held {
+        None
+    } else if muted {
+        Some(OPUS_SILENCE.to_vec())
+    } else {
+        Some(packet)
     }
 }
 
@@ -2156,6 +2170,22 @@ impl Call {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn muted_sends_silence_never_the_microphone() {
+        let mic = vec![0x78, 0x01, 0x02, 0x03];
+        let sent = outgoing(mic.clone(), true, false).expect("muted still sends");
+        assert_eq!(sent, OPUS_SILENCE.to_vec());
+        assert_ne!(sent, mic);
+    }
+
+    #[test]
+    fn unmuted_sends_the_microphone_and_hold_sends_nothing() {
+        let mic = vec![0x78, 0x01, 0x02, 0x03];
+        assert_eq!(outgoing(mic.clone(), false, false), Some(mic.clone()));
+        assert_eq!(outgoing(mic.clone(), false, true), None);
+        assert_eq!(outgoing(mic, true, true), None);
+    }
 
     #[test]
     fn a_refused_re_offer_puts_its_control_back() {

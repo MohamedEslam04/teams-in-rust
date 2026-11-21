@@ -621,7 +621,8 @@ impl NgcClient {
     }
 
     /// Mutes or unmutes us as the service sees it (`updateEndpointState`; see [`controls`]).
-    /// The caller stops or resumes sending microphone audio itself.
+    /// The caller stops or resumes sending microphone audio itself (sending
+    /// [`crate::audio::OPUS_SILENCE`] in its place: a call sending no RTP is ended by the service).
     pub async fn set_muted(
         &self,
         s: &CallSession,

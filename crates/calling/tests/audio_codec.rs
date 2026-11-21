@@ -1,6 +1,6 @@
 mod audio_common;
 use audio_common::*;
-use calling::audio::{OpusDecoder, OpusEncoder};
+use calling::audio::{OPUS_SILENCE, OpusDecoder, OpusEncoder};
 use calling::{FRAME_SAMPLES, SAMPLE_RATE};
 
 const RATE: f64 = SAMPLE_RATE as f64;
@@ -86,4 +86,15 @@ fn encoder_rejects_wrong_frame_length() {
 fn decoder_rejects_garbage() {
     let mut dec = OpusDecoder::new().unwrap();
     assert!(dec.decode(&[0xff; 3]).is_err());
+}
+
+#[test]
+fn the_mute_silence_frame_decodes_to_a_silent_20ms_frame() {
+    let mut dec = OpusDecoder::new().unwrap();
+    // Several in a row, as a muted call sends them.
+    for _ in 0..5 {
+        let frame = dec.decode(&OPUS_SILENCE).unwrap();
+        assert_eq!(frame.len(), FRAME_SAMPLES);
+        assert!(frame.iter().all(|&s| s == 0), "not silent: {frame:?}");
+    }
 }
