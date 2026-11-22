@@ -1177,6 +1177,7 @@ impl Engine {
 
     /// Desktop notification for a reminder, with Join, Snooze and Dismiss.
     fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64) {
+        self.play_reminder_sound();
         let engine = self.clone();
         let rt = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {

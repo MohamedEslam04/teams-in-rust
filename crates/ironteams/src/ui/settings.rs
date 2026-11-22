@@ -11,7 +11,8 @@
 //! language, date-format, time-format, time-zone, startup, high-contrast, reduced-motion,
 //! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
-//! call-feedback, ringtone, ringtone-preview, open-files, perm, switch-account, switch-org, add-account, remove-account,
+//! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
+//! message-sound-file, open-files, perm, switch-account, switch-org, add-account, remove-account,
 //! refresh-license, restart, sign-out, view-account, report-problem, check-updates, check-now,
 //! release-notes, status, work-location, status-note, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
@@ -27,6 +28,7 @@ use crate::backend::ringtone::RingtoneChoice;
 use crate::backend::settings::{
     self as st, DeviceLists, Local, Look, OpenFilesIn, ServerData, SettingsCmd,
 };
+use crate::backend::sounds::{self, Kind as SoundKind};
 use crate::update_check::{self, Release};
 use crate::updater::{self, Event, Phase};
 use crate::{
@@ -101,6 +103,12 @@ pub struct Hooks {
     pub report_problem: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
     pub enumerate: Arc<dyn Fn() -> DeviceLists + Send + Sync>,
     pub test_sound: PlaySound,
+    /// The Play buttons of the message sound and the ringtone: what to play, which choice, and
+    /// the sound file of a Custom one.
+    pub play_sound: Box<dyn Fn(SoundKind, RingtoneChoice, Option<String>)>,
+    /// The "Choose a file…" buttons: asks for a sound file (`None`: cancelled). Shared, so the
+    /// dialog can run with no borrow of the settings held.
+    pub pick_sound_file: Rc<dyn Fn() -> Option<std::path::PathBuf>>,
     pub mic_level: OpenMic,
     /// Asks for the latest release (blocking, runs on a thread). Only called when the user has
     /// turned the update check on, in copies that cannot update themselves.
@@ -186,6 +194,15 @@ impl SettingsEnv {
                 }),
                 test_sound: Arc::new(|out| {
                     devices::test_sound(out.as_deref()).map_err(|e| e.to_string())
+                }),
+                play_sound: Box::new(|kind, choice, file| {
+                    sounds::preview(kind, choice, file.as_deref());
+                }),
+                pick_sound_file: Rc::new(|| {
+                    rfd::FileDialog::new()
+                        .set_title("Choose a sound")
+                        .add_filter("Sound files", &["wav", "mp3", "m4a", "aac"])
+                        .pick_file()
                 }),
                 mic_level: Box::new(|input| {
                     let s = devices::mic_level(input).map_err(|e| e.to_string())?;
@@ -595,6 +612,9 @@ fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_open_files(s(l.files.open_office_in.slug()));
     g.set_call_feedback(s(l.calls.ask_feedback.slug()));
     g.set_ringtone(s(l.calls.ringtone.slug()));
+    g.set_ringtone_file(s(file_label(l.calls.ringtone_file.as_deref())));
+    g.set_message_sound(s(l.sounds.message.slug()));
+    g.set_message_sound_file(s(file_label(l.sounds.message_file.as_deref())));
     push_devices(w, c);
     push_perms(w, c);
 }
@@ -867,6 +887,48 @@ impl UiHandle {
         });
         self.banner(why);
     }
+}
+
+/// The name of a sound file as the page shows it (`""` for none).
+fn file_label(path: Option<&str>) -> String {
+    path.and_then(|p| std::path::Path::new(p).file_name())
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Which sound a file picker is for.
+#[derive(Clone, Copy)]
+enum SoundFor {
+    Message,
+    Ringtone,
+}
+
+/// Asks for a sound file and, when it can be played, makes it the Custom sound of `which`.
+fn choose_sound_file(shared: &Shared, w: &AppWindow, which: SoundFor) {
+    let pick = shared.borrow().env.hooks.pick_sound_file.clone();
+    let Some(path) = pick() else {
+        return;
+    };
+    if let Err(why) = sounds::check_file(&path) {
+        notice(w, format!("That file can't be used as a sound: {why}"));
+        return;
+    }
+    let file = path.to_string_lossy().into_owned();
+    let mut c = shared.borrow_mut();
+    let r = match which {
+        SoundFor::Ringtone => {
+            c.local.calls.ringtone = RingtoneChoice::Custom;
+            c.local.calls.ringtone_file = Some(file);
+            c.local.save_calls()
+        }
+        SoundFor::Message => {
+            c.local.sounds.message = RingtoneChoice::Custom;
+            c.local.sounds.message_file = Some(file);
+            c.local.save_sounds()
+        }
+    };
+    push_local(w, &c);
+    saved(w, r);
 }
 
 fn notice(w: &AppWindow, text: impl Into<SharedString>) {
@@ -1534,17 +1596,42 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
-        "ringtone" => {
-            let mut c = shared.borrow_mut();
-            c.local.calls.ringtone = RingtoneChoice::from_slug(arg).unwrap_or_default();
-            let r = c.local.save_calls();
-            push_local(w, &c);
-            saved(w, r);
+        "ringtone" | "message-sound" => {
+            let choice = RingtoneChoice::from_slug(arg).unwrap_or_default();
+            let needs_file = {
+                let mut c = shared.borrow_mut();
+                let (r, has_file) = if name == "ringtone" {
+                    c.local.calls.ringtone = choice;
+                    (c.local.save_calls(), c.local.calls.ringtone_file.is_some())
+                } else {
+                    c.local.sounds.message = choice;
+                    (c.local.save_sounds(), c.local.sounds.message_file.is_some())
+                };
+                push_local(w, &c);
+                saved(w, r);
+                choice == RingtoneChoice::Custom && !has_file
+            };
+            // Custom with no file yet: ask for one right away.
+            if needs_file {
+                let which = if name == "ringtone" {
+                    SoundFor::Ringtone
+                } else {
+                    SoundFor::Message
+                };
+                choose_sound_file(shared, w, which);
+            }
         }
-        "ringtone-preview" => {
-            let _choice = RingtoneChoice::from_slug(arg).unwrap_or_default();
-            #[cfg(feature = "calls")]
-            crate::backend::call_direct::preview_ringtone(_choice);
+        "ringtone-file" => choose_sound_file(shared, w, SoundFor::Ringtone),
+        "message-sound-file" => choose_sound_file(shared, w, SoundFor::Message),
+        "ringtone-preview" | "message-sound-preview" => {
+            let c = shared.borrow();
+            let choice = RingtoneChoice::from_slug(arg).unwrap_or_default();
+            let (kind, file) = if name == "ringtone-preview" {
+                (SoundKind::Ringtone, c.local.calls.ringtone_file.clone())
+            } else {
+                (SoundKind::Message, c.local.sounds.message_file.clone())
+            };
+            (c.env.hooks.play_sound)(kind, choice, file);
         }
         // --- Files and app permissions (local) ---
         "open-files" => {
