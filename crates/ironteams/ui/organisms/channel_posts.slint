@@ -164,7 +164,7 @@ export component AnnouncementBar inherits Rectangle {
                 border-radius: 11px;
                 border-width: ChannelStore.theme == t ? 2px : 0px;
                 border-color: #ffffff;
-                background: t == "blue" ? #4f6bed : (t == "green" ? #3d9b53 : (t == "yellow" ? #d9a21b : (t == "red" ? #c4314b : #8a8a8a)));
+                background: t == "blue" ? #4f6bed : (t == "green" ? #3d9b53 : (t == "yellow" ? #d9a21b : (t == "red" ? Theme.presence-busy : #8a8a8a)));
                 accessible-role: checkbox;
                 accessible-label: "Banner color " + t;
                 accessible-checkable: true;

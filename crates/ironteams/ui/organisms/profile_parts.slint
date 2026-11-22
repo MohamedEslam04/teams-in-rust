@@ -170,9 +170,9 @@ export component ProfileBody inherits Rectangle {
     property <string> shown-phone: PeopleStore.card-phone != "" ? PeopleStore.card-phone : PeopleStore.card-mobile;
     property <bool> has-status: PeopleStore.card-presence-label != "" || PeopleStore.card-free-at != "" || PeopleStore.card-work-hours != "" || PeopleStore.card-work-location-kind != "";
     property <bool> has-more: PeopleStore.card-job-title != "" || PeopleStore.card-department != "" || PeopleStore.card-location != "" || PeopleStore.card-work != "" || PeopleStore.card-manager != "" || (PeopleStore.card-mobile != "" && PeopleStore.card-phone != "");
-    property <color> dot: (PeopleStore.card-presence == "Available" || PeopleStore.card-presence == "AvailableIdle") ? #6bb700
-        : (PeopleStore.card-presence == "Busy" || PeopleStore.card-presence == "BusyIdle" || PeopleStore.card-presence == "DoNotDisturb") ? #c4314b
-        : (PeopleStore.card-presence == "BeRightBack" || PeopleStore.card-presence == "Away") ? #ffaa44 : #8a8886;
+    property <color> dot: (PeopleStore.card-presence == "Available" || PeopleStore.card-presence == "AvailableIdle") ? Theme.presence-available
+        : (PeopleStore.card-presence == "Busy" || PeopleStore.card-presence == "BusyIdle" || PeopleStore.card-presence == "DoNotDisturb") ? Theme.presence-busy
+        : (PeopleStore.card-presence == "BeRightBack" || PeopleStore.card-presence == "Away") ? Theme.presence-away : Theme.presence-offline;
     height: lay.preferred-height;
 
     lay := VerticalLayout {

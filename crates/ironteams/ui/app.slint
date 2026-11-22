@@ -1709,7 +1709,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && root.forward-open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         ForwardDialog {
             x: (root.width - self.width) / 2;
@@ -1764,7 +1764,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && PeopleStore.leave-confirm != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         LeaveConfirm {
             x: (root.width - self.width) / 2;
@@ -1780,7 +1780,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && ChatHeaderStore.remove-history != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         RemoveHistoryConfirm {
             x: (root.width - self.width) / 2;
@@ -1801,7 +1801,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && FindStore.tab-add-open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { FindStore.tab-add-open = false; } }
         AddTabDialog {
             x: (root.width - self.width) / 2;
@@ -1931,7 +1931,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && ListStore.dialog == "leave-channel": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         LeaveChannelDialog {
             x: (root.width - self.width) / 2;
@@ -1947,7 +1947,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && RemindStore.open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { RemindStore.open = false; } }
         RemindPanel {
             x: (root.width - self.width) / 2;
@@ -1959,7 +1959,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         SectionDialog {
             x: (root.width - self.width) / 2;
@@ -1977,7 +1977,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         DriveFilePicker {
             x: (root.width - self.width) / 2;

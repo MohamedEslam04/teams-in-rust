@@ -88,7 +88,7 @@ export component CommandPalette inherits Rectangle {
 
     property <[PaletteItem]> results: PaletteApi.results(PaletteStore.query, PaletteCatalog.actions, root.chats-favorites, root.chats-main, root.chats-channels, ListStore.sections, PaletteStore.recents);
 
-    background: #00000080;
+    background: Theme.scrim;
     accessible-role: groupbox;
     accessible-label: @tr("Command palette");
     // A click on the dim area closes the palette.

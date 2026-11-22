@@ -3,7 +3,7 @@
 // page holds the chat settings: one `SnippetsSection { }` line.
 import { Theme } from "../tokens/theme.slint";
 import { SnippetStore } from "../molecules/snippet_picker.slint";
-import { SButton, SFont, SSection } from "../molecules/settings_widgets.slint";
+import { SButton, SSection } from "../molecules/settings_widgets.slint";
 
 // The name and text boxes with Save (and Cancel while editing). `load` fills them.
 component SnippetForm inherits VerticalLayout {
@@ -16,8 +16,8 @@ component SnippetForm inherits VerticalLayout {
         body-input.text = text;
     }
     spacing: 6px;
-    Text { horizontal-alignment: Theme.start-align; text: root.editing ? @tr("Edit snippet") : @tr("New snippet"); color: Theme.fg; font-size: SFont.body; font-weight: 600; }
-    Text { horizontal-alignment: Theme.start-align; text: @tr("Name (what you type after /)"); color: Theme.fg-muted; font-size: SFont.small; }
+    Text { horizontal-alignment: Theme.start-align; text: root.editing ? @tr("Edit snippet") : @tr("New snippet"); color: Theme.fg; font-size: Theme.font-body; font-weight: 600; }
+    Text { horizontal-alignment: Theme.start-align; text: @tr("Name (what you type after /)"); color: Theme.fg-muted; font-size: Theme.font-small; }
     Rectangle {
         height: max(30px, name-input.preferred-height + 12px);
         max-width: 360px;
@@ -29,7 +29,7 @@ component SnippetForm inherits VerticalLayout {
             x: 10px;
             width: parent.width - 20px;
             color: Theme.fg;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             single-line: true;
             vertical-alignment: center;
             horizontal-alignment: Theme.start-align;
@@ -37,7 +37,7 @@ component SnippetForm inherits VerticalLayout {
             accessible-label: @tr("Snippet name");
         }
     }
-    Text { horizontal-alignment: Theme.start-align; text: @tr("Text"); color: Theme.fg-muted; font-size: SFont.small; }
+    Text { horizontal-alignment: Theme.start-align; text: @tr("Text"); color: Theme.fg-muted; font-size: Theme.font-small; }
     Rectangle {
         height: max(80px, body-input.preferred-height + 16px);
         max-width: 360px;
@@ -50,7 +50,7 @@ component SnippetForm inherits VerticalLayout {
             y: 8px;
             width: parent.width - 20px;
             color: Theme.fg;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             single-line: false;
             wrap: word-wrap;
             horizontal-alignment: Theme.start-align;
@@ -62,7 +62,7 @@ component SnippetForm inherits VerticalLayout {
         horizontal-alignment: Theme.start-align;
         text: root.error;
         color: Theme.danger;
-        font-size: SFont.small;
+        font-size: Theme.font-small;
         wrap: word-wrap;
         accessible-role: text;
         accessible-label: @tr("Snippet error");
@@ -94,7 +94,7 @@ export component SnippetsSection inherits SSection {
         horizontal-alignment: Theme.start-align;
         text: @tr("No snippets yet.");
         color: Theme.fg-muted;
-        font-size: SFont.small;
+        font-size: Theme.font-small;
     }
     for s[i] in SnippetStore.items: Rectangle {
         height: max(48px, lcol.preferred-height + 10px);
@@ -110,8 +110,8 @@ export component SnippetsSection inherits SSection {
             lcol := VerticalLayout {
                 horizontal-stretch: 1;
                 alignment: center;
-                Text { horizontal-alignment: Theme.start-align; text: "/" + s.name; color: Theme.fg; font-size: SFont.body; font-weight: 600; overflow: elide; }
-                Text { horizontal-alignment: Theme.start-align; text: s.preview; color: Theme.fg-subtle; font-size: SFont.small; overflow: elide; }
+                Text { horizontal-alignment: Theme.start-align; text: "/" + s.name; color: Theme.fg; font-size: Theme.font-body; font-weight: 600; overflow: elide; }
+                Text { horizontal-alignment: Theme.start-align; text: s.preview; color: Theme.fg-subtle; font-size: Theme.font-small; overflow: elide; }
             }
             SButton {
                 label: @tr("Edit");

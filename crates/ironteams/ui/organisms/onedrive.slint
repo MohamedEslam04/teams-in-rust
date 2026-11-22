@@ -1277,7 +1277,7 @@ export component OneDriveView inherits Rectangle {
 
     // Dialogs
     if DriveStore.dialog != "": Rectangle {
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         if DriveStore.dialog == "prompt": DialogFrame {
             title: DriveStore.prompt-title;

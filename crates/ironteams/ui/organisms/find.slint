@@ -842,7 +842,7 @@ export component SharedView inherits Rectangle {
     if root.prompt != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { root.prompt = ""; } }
         Rectangle {
             x: (root.width - self.width) / 2;
@@ -1225,7 +1225,7 @@ export component ChannelTabOverlays inherits Rectangle {
     if FindStore.tab-dialog != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { root.close(); } }
         Rectangle {
             x: (root.width - self.width) / 2;

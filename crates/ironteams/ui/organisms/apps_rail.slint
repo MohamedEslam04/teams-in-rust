@@ -325,7 +325,7 @@ export component AppsOverlays inherits Rectangle {
     if AppsStore.form-title != "": Rectangle {
         width: parent.width;
         height: parent.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         Rectangle {
             x: (parent.width - self.width) / 2;

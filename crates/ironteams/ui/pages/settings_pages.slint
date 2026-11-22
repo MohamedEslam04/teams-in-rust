@@ -4,13 +4,13 @@
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SButton, SChoice, SChoiceRow, SField, SFont, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
+import { SButton, SChoice, SChoiceRow, SField, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 
 component Para inherits Text {
     color: Theme.fg-muted;
-    font-size: SFont.small;
+    font-size: Theme.font-small;
     wrap: word-wrap;
     horizontal-alignment: Theme.start-align;
 }
@@ -32,7 +32,7 @@ component DryRuns inherits SSection {
             width: parent.width - 16px;
             text: d;
             color: Theme.fg-muted;
-            font-size: SFont.small;
+            font-size: Theme.font-small;
             font-family: "monospace";
             wrap: word-wrap;
             vertical-alignment: center;
@@ -303,7 +303,7 @@ component DayChip inherits Rectangle {
     accessible-label: root.label;
     accessible-checked: root.on;
     accessible-action-default => { root.toggled(); }
-    dl := Text { text: root.label; color: root.on ? Theme.accent : Theme.fg; font-size: SFont.body; horizontal-alignment: center; vertical-alignment: center; }
+    dl := Text { text: root.label; color: root.on ? Theme.accent : Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
     dt := TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
 }
 
@@ -323,7 +323,7 @@ component KeywordAdd inherits HorizontalLayout {
             x: 10px;
             width: parent.width - 20px;
             color: Theme.fg;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             single-line: true;
             vertical-alignment: center;
             horizontal-alignment: Theme.start-align;
@@ -336,7 +336,7 @@ component KeywordAdd inherits HorizontalLayout {
             width: parent.width - 20px;
             text: @tr("Add a word or phrase");
             color: Theme.fg-subtle;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             vertical-alignment: center;
             horizontal-alignment: Theme.start-align;
         }
@@ -459,8 +459,8 @@ export component NotificationsPage inherits VerticalLayout {
     for n in SettingsStore.notify: VerticalLayout {
         spacing: 4px;
         padding-bottom: 10px;
-        if n.group != "": Text { text: n.group; color: Theme.fg; font-size: SFont.heading; font-weight: 600; }
-        Text { text: n.label; color: Theme.fg; font-size: SFont.body; }
+        if n.group != "": Text { text: n.group; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
+        Text { text: n.label; color: Theme.fg; font-size: Theme.font-body; }
         SChoice {
             group: n.label;
             options: [{v: "banner", l: @tr("Banner and feed")}, {v: "feed", l: @tr("Only show in feed")}, {v: "off", l: @tr("Off")}];
@@ -511,7 +511,7 @@ export component AppearancePage inherits VerticalLayout {
                 accessible-label: @tr("Accent colour: {}", a.l);
                 accessible-checked: SettingsStore.accent == a.v;
                 accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
-                if a.v == "": Text { text: "A"; color: Theme.accent; font-size: SFont.body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
                 TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
             }
         }
@@ -537,12 +537,12 @@ export component AppearancePage inherits VerticalLayout {
                 accessible-role: text;
                 accessible-label: @tr("Current font size");
                 accessible-value: Math.round(SettingsStore.font-scale * 100) + "%";
-                Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: SFont.body; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
             }
             SButton { label: @tr("Larger font"); clicked => { SettingsStore.command("font-step", "1"); } }
             SButton { label: @tr("Reset font size"); clicked => { SettingsStore.command("font-scale", "1"); } }
         }
-        Text { text: "Preview: the quick brown fox. نص تجريبي."; color: Theme.fg; font-size: SFont.body; }
+        Text { text: "Preview: the quick brown fox. نص تجريبي."; color: Theme.fg; font-size: Theme.font-body; }
     }
     SSection {
         title: @tr("Skin tone");

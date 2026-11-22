@@ -4,13 +4,6 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { SOption, SettingsStore } from "../stores/settings_store.slint";
 
-export global SFont {
-    out property <length> body: 13px * Theme.font-scale;
-    out property <length> small: 11px * Theme.font-scale;
-    out property <length> title: 20px * Theme.font-scale;
-    out property <length> heading: 15px * Theme.font-scale;
-}
-
 export component SButton inherits Rectangle {
     in property <string> label;
     in property <bool> primary: false;
@@ -30,7 +23,7 @@ export component SButton inherits Rectangle {
     lbl := Text {
         text: root.label;
         color: !root.enabled ? Theme.fg-subtle : (root.primary || root.danger ? #ffffff : Theme.fg);
-        font-size: SFont.body;
+        font-size: Theme.font-body;
         font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
@@ -56,7 +49,7 @@ component ZoomButton inherits Rectangle {
     accessible-role: button;
     accessible-label: root.hint;
     accessible-action-default => { root.clicked(); }
-    Text { text: root.label; color: Theme.fg; font-size: SFont.heading; horizontal-alignment: center; vertical-alignment: center; }
+    Text { text: root.label; color: Theme.fg; font-size: Theme.font-heading; horizontal-alignment: center; vertical-alignment: center; }
     zt := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
@@ -68,14 +61,14 @@ export component ZoomRow inherits Rectangle {
         padding-left: 12px;
         padding-right: 6px;
         spacing: 6px;
-        Text { text: @tr("Zoom"); color: Theme.fg; font-size: SFont.body; vertical-alignment: center; horizontal-stretch: 1; }
+        Text { text: @tr("Zoom"); color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; }
         ZoomButton { y: 4px; label: "−"; hint: @tr("Zoom out"); clicked => { SettingsStore.command("font-step", "-1"); } }
         Rectangle {
             width: 48px;
             accessible-role: text;
             accessible-label: @tr("Zoom level");
             accessible-value: Math.round(SettingsStore.font-scale * 100) + "%";
-            Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: SFont.body; horizontal-alignment: center; vertical-alignment: center; }
+            Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
         }
         ZoomButton { y: 4px; label: "+"; hint: @tr("Zoom in"); clicked => { SettingsStore.command("font-step", "1"); } }
     }
@@ -87,8 +80,8 @@ export component SSection inherits VerticalLayout {
     in property <string> hint;
     spacing: 8px;
     padding-bottom: 18px;
-    if root.title != "": Text { horizontal-alignment: Theme.start-align; text: root.title; color: Theme.fg; font-size: SFont.heading; font-weight: 600; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-muted; font-size: SFont.small; wrap: word-wrap; }
+    if root.title != "": Text { horizontal-alignment: Theme.start-align; text: root.title; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
+    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-muted; font-size: Theme.font-small; wrap: word-wrap; }
     @children
 }
 
@@ -125,8 +118,8 @@ export component SSwitch inherits Rectangle {
         col := VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
-            Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: SFont.body; wrap: word-wrap; }
-            if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: SFont.small; wrap: word-wrap; }
+            Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; }
+            if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
         }
         Rectangle {
             width: 40px;
@@ -172,7 +165,7 @@ component SChoicePill inherits Rectangle {
     opt-text := Text {
         text: root.o.l;
         color: root.on ? Theme.accent : (root.enabled ? Theme.fg : Theme.fg-subtle);
-        font-size: SFont.body;
+        font-size: Theme.font-body;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -242,8 +235,8 @@ export component SChoiceRow inherits VerticalLayout {
             SettingsStore.target = "";
         }
     }
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: SFont.body; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: SFont.small; wrap: word-wrap; }
+    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
+    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
     SChoice {
         group: root.label;
         options: root.options;
@@ -281,8 +274,8 @@ export component SRadio inherits Rectangle {
         }
         rcol := VerticalLayout {
             alignment: center;
-            Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: SFont.body; wrap: word-wrap; }
-            if root.detail != "": Text { horizontal-alignment: Theme.start-align; text: root.detail; color: Theme.fg-subtle; font-size: SFont.small; }
+            Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; wrap: word-wrap; }
+            if root.detail != "": Text { horizontal-alignment: Theme.start-align; text: root.detail; color: Theme.fg-subtle; font-size: Theme.font-small; }
         }
     }
     rt := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
@@ -298,7 +291,7 @@ export component SField inherits VerticalLayout {
     // Every keystroke.
     callback edited(string);
     spacing: 4px;
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: SFont.body; }
+    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
     Rectangle {
         height: max(30px, input.preferred-height + 12px);
         max-width: 360px;
@@ -311,7 +304,7 @@ export component SField inherits VerticalLayout {
             width: parent.width - 20px;
             text: root.initial;
             color: Theme.fg;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             single-line: true;
             vertical-alignment: center;
             accessible-role: text-input;
@@ -324,7 +317,7 @@ export component SField inherits VerticalLayout {
             x: 10px;
             text: root.placeholder;
             color: Theme.fg-subtle;
-            font-size: SFont.body;
+            font-size: Theme.font-body;
             vertical-alignment: center;
         }
     }
@@ -338,7 +331,7 @@ export component SPersonRow inherits Rectangle {
     height: 40px;
     HorizontalLayout {
         spacing: 10px;
-        Text { text: root.name; color: Theme.fg; font-size: SFont.body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
         SButton { label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
     }
 }
@@ -367,7 +360,7 @@ export component SNavItem inherits Rectangle {
         padding-left: 12px;
         spacing: 10px;
         Icon { source: root.icon; tint: root.active ? Theme.accent : Theme.fg-muted; width: 18px; height: 18px; y: (parent.height - 18px) / 2; }
-        nl := Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.active ? Theme.fg : Theme.fg-muted; font-size: SFont.body; font-weight: root.active ? 600 : 400; vertical-alignment: center; overflow: elide; }
+        nl := Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.active ? Theme.fg : Theme.fg-muted; font-size: Theme.font-body; font-weight: root.active ? 600 : 400; vertical-alignment: center; overflow: elide; }
     }
     nt := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }

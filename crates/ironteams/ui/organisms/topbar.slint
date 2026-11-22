@@ -7,7 +7,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon } from "../atoms/widgets.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { PersonHover } from "../molecules/people.slint";
-import { SFont, ZoomRow } from "../molecules/settings_widgets.slint";
+import { ZoomRow } from "../molecules/settings_widgets.slint";
 import { SkeletonRow } from "../tokens/motion.slint";
 
 // One row of the dropdown. `kind`: command | person | chat | channel | message | search | recent
@@ -452,7 +452,7 @@ component MenuItem inherits Rectangle {
         padding-left: 12px;
         spacing: 10px;
         Icon { source: root.icon; width: 16px; height: 16px; y: 10px; }
-        Text { text: root.label; color: Theme.fg; font-size: SFont.body; vertical-alignment: center; overflow: elide; }
+        Text { text: root.label; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; overflow: elide; }
     }
     touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
