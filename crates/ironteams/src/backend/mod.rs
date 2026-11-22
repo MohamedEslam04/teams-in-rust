@@ -50,6 +50,7 @@ mod my_presence;
 mod outbox;
 pub(crate) mod outsider;
 mod people;
+mod people_card;
 #[cfg(test)]
 mod people_live;
 pub(crate) mod people_presence;

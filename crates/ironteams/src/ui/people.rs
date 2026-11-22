@@ -1,7 +1,7 @@
 //! UI-thread side of the people and conversation pieces: fills the `PeopleStore` global.
 
 use super::{UiHandle, img, model, rgb};
-use crate::data::{CardData, PersonData, PinnedData, color_for, initials};
+use crate::data::{CardData, OrgData, PersonData, PinnedData, color_for, initials};
 use crate::{AppWindow, PeopleStore, PersonItem, PinnedItem, SettingsStore};
 use slint::{ComponentHandle, ModelRc};
 
@@ -36,6 +36,25 @@ fn fill_card(s: &PeopleStore<'_>, c: CardData) {
     s.set_card_mobile(c.mobile.into());
     s.set_card_manager(c.manager.into());
     s.set_card_badge(c.badge.into());
+    s.set_card_free_at(c.free_at.into());
+    s.set_card_work_hours(c.work_hours.into());
+    s.set_card_work_location_kind(c.work_location_kind.into());
+    s.set_card_job_title(c.job_title.into());
+    s.set_card_department(c.department.into());
+    s.set_card_reports(people(c.reports));
+    s.set_card_reports_count(c.reports_count as i32);
+    s.set_card_manager_person(person(c.manager_person.unwrap_or_default()));
+}
+
+fn fill_org(s: &PeopleStore<'_>, o: OrgData) {
+    s.set_org_loading(o.loading);
+    s.set_org_focus(person(o.focus));
+    s.set_org_location_kind(o.location_kind.into());
+    s.set_org_manager(person(o.manager.unwrap_or_default()));
+    s.set_org_reports(people(o.reports));
+    s.set_org_reports_count(o.reports_count);
+    s.set_org_can_back(o.can_back);
+    s.set_org_can_forward(o.can_forward);
 }
 
 fn people(v: Vec<PersonData>) -> ModelRc<PersonItem> {
@@ -101,15 +120,32 @@ impl UiHandle {
     pub fn card(&self, open: bool, c: CardData) {
         self.store(move |s| {
             s.set_card_open(open);
+            if !open {
+                // Closing the card closes the full profile too (a chat opened from it).
+                s.set_profile_open(false);
+            }
             fill_card(&s, c);
         });
+    }
+
+    /// Fills the card data without opening or closing the card: the full profile of a person
+    /// the card was not opened for.
+    pub fn card_fill(&self, c: CardData) {
+        self.store(move |s| fill_card(&s, c));
+    }
+
+    /// The organization chart of the full profile.
+    pub fn org(&self, o: OrgData) {
+        self.store(move |s| fill_org(&s, o));
     }
 
     /// Fills in the card of `c.person` with what arrived, if it is still the open card (a hover
     /// card may have closed, or moved to someone else, while the details were on their way).
     pub fn card_details(&self, c: CardData) {
         self.store(move |s| {
-            if s.get_card_open() && s.get_card().id == c.person.id.as_str() {
+            if (s.get_card_open() || s.get_profile_open())
+                && s.get_card().id == c.person.id.as_str()
+            {
                 fill_card(&s, c);
             }
         });

@@ -45,6 +45,31 @@ export global PeopleStore {
     in property <string> card-manager;
     // "External" or "Guest" for someone outside our organization ("" for a colleague).
     in property <string> card-badge;
+    // When they are next free ("10:00 AM", "" when not busy or unknown), their work hours
+    // ("8:00 AM - 5:00 PM"), "office" or "remote" for the location icon, and the job fields.
+    in property <string> card-free-at;
+    in property <string> card-work-hours;
+    in property <string> card-work-location-kind;
+    in property <string> card-job-title;
+    in property <string> card-department;
+    // Up to six direct reports, how many there are (0 hides the section) and the manager.
+    in property <[PersonItem]> card-reports;
+    in property <int> card-reports-count: 0;
+    in property <PersonItem> card-manager-person;
+
+    // The full profile: a window over the app with the Overview, Profile and Organization tabs.
+    // It shows the card's person (`card-*`); the chart has its own person in focus (`org-*`).
+    in-out property <bool> profile-open: false;
+    in-out property <int> profile-tab: 0;
+    in property <PersonItem> org-focus;
+    in property <string> org-location-kind;
+    in property <PersonItem> org-manager;
+    in property <[PersonItem]> org-reports;
+    // -1 when the reports could not be read.
+    in property <int> org-reports-count: -1;
+    in property <bool> org-can-back: false;
+    in property <bool> org-can-forward: false;
+    in property <bool> org-loading: false;
     // Our own MRI (the photo at the top right opens our card).
     in property <string> me;
     // The card was opened by hovering (it closes when the pointer leaves it and its photo).
@@ -63,6 +88,15 @@ export global PeopleStore {
     in-out property <length> hover-y;
     in-out property <length> hover-w;
     in-out property <length> hover-h;
+
+    // Opens the full profile of the card's person on a tab (0 Overview, 1 Profile, 2
+    // Organization); the organization chart starts at them.
+    public function open-profile(tab: int) {
+        root.profile-tab = tab;
+        root.profile-open = true;
+        root.card-open = false;
+        root.command("org-open", root.card.id);
+    }
 
     // Opens the profile card of `id` next to the rectangle (window coordinates); `hover` opens
     // it as a hover card.

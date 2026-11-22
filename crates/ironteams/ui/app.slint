@@ -25,6 +25,7 @@ import { ImmersiveReader } from "reader.slint";
 import { ProfileCard } from "profile_card.slint";
 import { ReactionCard } from "reaction_card.slint";
 import { ReactionHover } from "reaction_hover.slint";
+import { ProfileModal } from "profile_modal.slint";
 import { TeamsStore } from "teams_store.slint";
 import { TeamsPage } from "teams_page.slint";
 import { TeamsDialogs } from "teams_dialogs.slint";
@@ -592,6 +593,7 @@ export component AppWindow inherits Window {
         // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
         key-pressed(event) => {
             if event.text == Key.Escape && !event.modifiers.shift {
+                if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
                 if root.shortcuts-open { root.shortcuts-open = false; return accept; }
                 if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
                 if root.thread-root != "" { root.close-thread(); return accept; }
@@ -1864,22 +1866,7 @@ export component AppWindow inherits Window {
             changed width => { root.card-w = self.width; }
             changed height => { root.card-h = self.height; }
             anchor-hovered: PeopleStore.hover-id != "" && PeopleStore.hover-id == PeopleStore.card.id;
-            person: PeopleStore.card;
-            loading: PeopleStore.card-loading;
-            email: PeopleStore.card-email;
-            work: PeopleStore.card-work;
-            location: PeopleStore.card-location;
-            local-time: PeopleStore.card-time;
-            presence: PeopleStore.card-presence;
-            presence-label: PeopleStore.card-presence-label;
-            work-location: PeopleStore.card-work-location;
             limit: root.height - 16px;
-            note: PeopleStore.card-note;
-            ooo: PeopleStore.card-ooo;
-            phone: PeopleStore.card-phone;
-            mobile: PeopleStore.card-mobile;
-            manager: PeopleStore.card-manager;
-            badge: PeopleStore.card-badge;
             hover-mode: PeopleStore.card-by-hover;
             quick-message(t) => {
                 PeopleStore.card-open = false;
@@ -1890,13 +1877,38 @@ export component AppWindow inherits Window {
                 PeopleStore.card-open = false;
                 PeopleStore.command("profile-chat", id);
             }
-            send-email(e) => { root.open-url("mailto:" + e); }
+            video(id) => {
+                WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet.");
+            }
+            call-number(n) => { root.open-url("tel:" + n); }
             open-photo(id) => {
                 PeopleStore.card-open = false;
                 MediaStore.command("photo", id);
             }
             close => { PeopleStore.card-open = false; }
         }
+    }
+
+    // The full profile, opened from the card (Teams opens the same window).
+    if root.login-state == "ready" && PeopleStore.profile-open: ProfileModal {
+        width: root.width;
+        height: root.height;
+        z: 70;
+        close => { PeopleStore.profile-open = false; }
+        chat(id) => {
+            PeopleStore.profile-open = false;
+            PeopleStore.card-open = false;
+            PeopleStore.command("profile-chat", id);
+        }
+        video(id) => {
+            WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet.");
+        }
+        copy-email => { PeopleStore.command("profile-copy-email", ""); }
+        quick-message(t) => {
+            PeopleStore.profile-open = false;
+            PeopleStore.command("profile-message", t);
+        }
+        call-number(n) => { root.open-url("tel:" + n); }
     }
 
     if root.login-state == "ready" && ListStore.dialog == "leave-channel": Rectangle {
