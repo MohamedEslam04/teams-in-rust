@@ -81,6 +81,26 @@ fn carry_bold(open: &mut bool, carry: bool, s: &str) -> String {
     out
 }
 
+/// The same for a whole Markdown text drawn as one block (the native card rows): a `**` span
+/// over several lines is closed at each line end and reopened on the next, because the
+/// Markdown renderer does not carry emphasis over a line break.
+pub fn bold_each_line(text: &str) -> String {
+    let carry = text.matches("**").count().is_multiple_of(2);
+    let mut open = false;
+    text.split('\n')
+        .map(|line| {
+            let body = line.trim_end_matches('\r');
+            if body.trim().is_empty() {
+                return line.to_owned();
+            }
+            let indent = body.len() - body.trim_start().len();
+            let (lead, rest) = body.split_at(indent);
+            format!("{lead}{}", carry_bold(&mut open, carry, rest))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn text_block(text: &str, emphasize: bool) -> String {
     let carry = text.matches("**").count().is_multiple_of(2);
     let mut open = false;
@@ -439,6 +459,17 @@ mod tests {
             html,
             "<p><b>Docs fell behind the code</b></p><p><b>1 project · 4 pages outdated</b></p>"
         );
+    }
+
+    #[test]
+    fn a_native_card_text_gets_its_bold_closed_on_each_line() {
+        assert_eq!(
+            bold_each_line("**Docs fell behind the code\n1 project · 4 pages outdated**"),
+            "**Docs fell behind the code**\n**1 project · 4 pages outdated**"
+        );
+        assert_eq!(bold_each_line("**one** line"), "**one** line");
+        assert_eq!(bold_each_line("a **b\nc"), "a **b\nc");
+        assert_eq!(bold_each_line("**a\n\n  b**"), "**a**\n\n  **b**");
     }
 
     #[test]
