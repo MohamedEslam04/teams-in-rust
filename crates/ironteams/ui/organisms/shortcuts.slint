@@ -5,6 +5,7 @@ import { ChatRow, Msg } from "../tokens/types.slint";
 import { SectionRow } from "lists.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { ScrollView } from "std-widgets.slint";
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 export global ShortcutApi {
     // key text, control, alt, shift -> the action of a window-level chord, or ""
@@ -35,12 +36,6 @@ component Row inherits Rectangle {
         Text { text: root.what; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
     }
     ta := TouchArea { enabled: root.link; mouse-cursor: root.link ? MouseCursor.pointer : MouseCursor.default; clicked => { root.activated(); } }
-}
-
-component Heading inherits Text {
-    color: Theme.fg-muted;
-    font-size: 11px * Theme.font-scale;
-    font-weight: 700;
 }
 
 export component ShortcutsDialog inherits Rectangle {
@@ -79,19 +74,19 @@ export component ShortcutsDialog inherits Rectangle {
                     padding-right: 20px;
                     padding-bottom: 16px;
                     spacing: 0px;
-                    Heading { text: "General"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "General"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Ctrl+."; what: "Show keyboard shortcuts"; }
                     Row { keys: "Ctrl+Shift+P"; what: "Command palette"; link: true; activated => { root.open-palette(); } }
                     Row { keys: "Ctrl+Alt+E"; what: "Search"; }
                     Row { keys: "Ctrl+Alt+G"; what: "Go to a chat or channel"; }
                     Row { keys: "Alt+Shift+N"; what: "New chat"; }
                     Row { keys: "Esc"; what: "Close the thread, popup or reply"; }
-                    Heading { text: "Navigation"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "Navigation"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Alt+Left / Alt+Right"; what: "Back, forward"; }
                     Row { keys: "Ctrl+E"; what: "Go to the search box"; }
                     Row { keys: "Ctrl+/"; what: "Show the list of commands"; }
                     Row { keys: "Ctrl+Shift+1 to 9"; what: "Open the nth app of the app bar"; }
-                    Heading { text: "Chat list"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "Chat list"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Ctrl+Shift+F"; what: "Filter the chat list"; }
                     Row { keys: "Ctrl+Alt+U"; what: "Unread filter"; }
                     Row { keys: "Ctrl+Alt+C"; what: "Chats filter"; }
@@ -101,7 +96,7 @@ export component ShortcutsDialog inherits Rectangle {
                     Row { keys: "Alt+Q"; what: "Collapse all sections"; }
                     Row { keys: "Alt+Down"; what: "Next unread chat or channel"; }
                     Row { keys: "Alt+Up"; what: "Previous unread chat or channel"; }
-                    Heading { text: "Messages"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "Messages"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Alt+Shift+R"; what: "Focus the compose box"; }
                     Row { keys: "Alt+Shift+M"; what: "Focus the message pane"; }
                     Row { keys: "Ctrl+Shift+X"; what: "Expand the composer"; }
@@ -110,11 +105,11 @@ export component ShortcutsDialog inherits Rectangle {
                     Row { keys: "Ctrl+Shift+I"; what: "Mark the next message as important"; }
                     Row { keys: "Up (empty composer)"; what: "Edit your last message"; }
                     Row { keys: "R, F, S, P, U"; what: "In a message menu: reply, forward, save, pin, mark unread"; }
-                    Heading { text: "Calls"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "Calls"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Alt+Shift+A"; what: "Audio call (1:1 chat)"; }
                     Row { keys: "Alt+Shift+V"; what: "Video call (not available yet)"; }
                     Row { keys: "Ctrl+Shift+E"; what: "Share screen (1:1 chat)"; }
-                    Heading { text: "Formatting"; height: 28px; vertical-alignment: bottom; }
+                    Heading { variant: HeadingVariant.group; text: "Formatting"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Ctrl+B / I / U"; what: "Bold, italic, underline"; }
                     Row { keys: "Ctrl+Alt+X"; what: "Strikethrough"; }
                     Row { keys: "Ctrl+K"; what: "Insert link"; }

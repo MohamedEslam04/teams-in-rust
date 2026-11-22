@@ -9,6 +9,7 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { MenuItem, MenuItemVariant, MenuColumn } from "../atoms/menu.slint";
 import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
 import { SearchBox } from "../atoms/search_box.slint";
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 // Cards in as many columns as fit.
 component CardGrid inherits Rectangle {
@@ -32,7 +33,7 @@ component SectionTitle inherits Rectangle {
     height: 36px;
     HorizontalLayout {
         spacing: 12px;
-        Text { text: root.text; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+        Heading { variant: HeadingVariant.section; text: root.text; vertical-alignment: center; }
         Rectangle { horizontal-stretch: 1; }
         if root.link != "": Button { variant: ButtonVariant.kit; y: 2px; label: root.link; clicked => { root.link-clicked(); } }
     }

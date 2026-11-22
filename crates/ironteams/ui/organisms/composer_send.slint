@@ -73,7 +73,7 @@ export global SendStore {
     callback command(string, string);
 }
 
-component OptionRow inherits Rectangle {
+component SendOptionRow inherits Rectangle {
     in property <string> label;
     in property <string> detail;
     in property <bool> checked: false;
@@ -167,26 +167,26 @@ export component SendMenu inherits Rectangle {
         height: panel.height;
         padding: 4px;
         if root.view == "main": VerticalLayout {
-            if root.can-schedule: OptionRow { label: @tr("Schedule message"); clicked => { root.schedule(); } }
-            OptionRow { label: @tr("Set delivery options"); chevron: true; clicked => { root.view = "delivery"; } }
+            if root.can-schedule: SendOptionRow { label: @tr("Schedule message"); clicked => { root.schedule(); } }
+            SendOptionRow { label: @tr("Set delivery options"); chevron: true; clicked => { root.view = "delivery"; } }
         }
         if root.view == "delivery": VerticalLayout {
-            OptionRow { label: @tr("‹ Set delivery options"); clicked => { root.view = "main"; } }
-            OptionRow {
+            SendOptionRow { label: @tr("‹ Set delivery options"); clicked => { root.view = "main"; } }
+            SendOptionRow {
                 label: @tr("Standard");
                 detail: @tr("Delivered as usual");
                 checkable: true;
                 checked: !root.important && !root.urgent;
                 clicked => { root.important = false; root.urgent = false; root.done(); }
             }
-            OptionRow {
+            SendOptionRow {
                 label: @tr("Important");
                 detail: @tr("Marked IMPORTANT! for the recipients");
                 checkable: true;
                 checked: root.important;
                 clicked => { root.important = true; root.urgent = false; root.done(); }
             }
-            OptionRow {
+            SendOptionRow {
                 label: @tr("Urgent");
                 detail: @tr("Recipients are notified every 2 minutes for 20 minutes");
                 checkable: true;
@@ -198,7 +198,7 @@ export component SendMenu inherits Rectangle {
 }
 
 // A quick choice of the picker ("Tomorrow 9:00 AM"): one click fills the day and the time.
-component Chip inherits Rectangle {
+component QuickChip inherits Rectangle {
     in property <string> label;
     in property <bool> active: false;
     callback clicked();
@@ -325,7 +325,7 @@ export component SchedulePicker inherits Rectangle {
             Text { height: 20px; text: @tr("Send this message on"); color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 700; overflow: elide; horizontal-alignment: Theme.start-align; }
             Rectangle {
                 height: 66px;
-                for q[i] in SendStore.quick: Chip {
+                for q[i] in SendStore.quick: QuickChip {
                     x: mod(i, 2) * (root.chip-w + 6px);
                     y: Math.floor(i / 2) * 36px;
                     width: root.chip-w;

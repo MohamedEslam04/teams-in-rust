@@ -14,7 +14,7 @@ import { DriveLook } from "../atoms/file_kind.slint";
 import { DriveFilePicker } from "../organisms/drive_file_picker.slint";
 import { DriveListRow, DriveTile, ForYouCard } from "../organisms/drive_items.slint";
 import { NavEntry, Breadcrumbs } from "../organisms/drive_nav.slint";
-import { ShareDialog } from "../organisms/drive_share_dialog.slint";
+import { DriveShareDialog } from "../organisms/drive_share_dialog.slint";
 import { DriveStore } from "../stores/drive_store.slint";
 
 export component OneDriveView inherits Rectangle {
@@ -589,7 +589,7 @@ export component OneDriveView inherits Rectangle {
             choose => { DriveStore.command("pick-choose", ""); }
             cancel => { DriveStore.dialog = ""; DriveStore.command("pick-cancel", ""); }
         }
-        if DriveStore.dialog == "share": ShareDialog {
+        if DriveStore.dialog == "share": DriveShareDialog {
             x: (parent.width - self.width) / 2;
             y: max(8px, (parent.height - self.height) / 2);
             close => { root.close-dialog(); }
