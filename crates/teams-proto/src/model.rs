@@ -373,6 +373,8 @@ pub enum Event {
     Presence {
         mri: String,
         availability: String,
+        /// What the person is doing (`InACall`, `InAMeeting`, …); empty when the push has none.
+        activity: String,
     },
 }
 
@@ -429,6 +431,7 @@ pub fn events_from_payload(payload: &Value) -> Vec<Event> {
                 out.push(Event::Presence {
                     mri: mri.to_string(),
                     availability: av.to_string(),
+                    activity: str_field(res, "activity").unwrap_or_default().to_string(),
                 });
             }
         }
@@ -450,6 +453,11 @@ pub fn presence_events(payload: &Value) -> Vec<Event> {
                         availability: p
                             .pointer("/presence/availability")
                             .and_then(Value::as_str)?
+                            .to_string(),
+                        activity: p
+                            .pointer("/presence/activity")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
                             .to_string(),
                     })
                 })
@@ -644,7 +652,34 @@ mod tests {
             ev,
             vec![Event::Presence {
                 mri: "8:orgid:a".into(),
-                availability: "Available".into()
+                availability: "Available".into(),
+                activity: String::new()
+            }]
+        );
+    }
+
+    #[test]
+    fn presence_payload_carries_the_activity() {
+        let ev = presence_events(&json!({"presence":[{"mri":"8:orgid:a",
+            "presence":{"availability":"Busy","activity":"InACall"}}]}));
+        assert_eq!(
+            ev,
+            vec![Event::Presence {
+                mri: "8:orgid:a".into(),
+                availability: "Busy".into(),
+                activity: "InACall".into()
+            }]
+        );
+        // The older messaging resource has it at the top.
+        let ev = events_from_payload(&json!({"resourceType":"UserPresence","resource":{
+            "selfLink":"https://x/v1/users/ME/contacts/8:orgid:b",
+            "availability":"Busy","activity":"InAMeeting"}}));
+        assert_eq!(
+            ev,
+            vec![Event::Presence {
+                mri: "8:orgid:b".into(),
+                availability: "Busy".into(),
+                activity: "InAMeeting".into()
             }]
         );
     }

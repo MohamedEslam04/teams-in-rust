@@ -15,6 +15,8 @@ use std::time::Duration;
 #[derive(Default)]
 struct Cache {
     known: HashMap<String, String>,
+    /// What each person is doing (`InACall`, …), as last seen; a missing entry means nothing.
+    activities: HashMap<String, String>,
     wanted: HashSet<String>,
     /// Wanted since the last lookup: looked up without waiting for the next round.
     fresh: HashSet<String>,
@@ -53,11 +55,31 @@ pub fn known(mri: &str) -> String {
     with(|c| c.known.get(mri).cloned().unwrap_or_default())
 }
 
-/// Records an availability; true when it changed.
-pub fn set(mri: &str, availability: &str) -> bool {
+/// The person's activity as last seen (`""` when unknown or none).
+pub fn known_activity(mri: &str) -> String {
+    with(|c| c.activities.get(mri).cloned().unwrap_or_default())
+}
+
+/// Records an availability and activity; true when either changed. A push that carries no
+/// activity keeps the one known while the availability is the same (the push may just not say).
+pub fn set(mri: &str, availability: &str, activity: &str) -> bool {
     with(|c| {
         let old = c.known.insert(mri.to_string(), availability.to_string());
-        old.as_deref() != Some(availability)
+        let same_availability = old.as_deref() == Some(availability);
+        let old_activity = c.activities.get(mri).cloned().unwrap_or_default();
+        let activity = if activity.is_empty() && same_availability {
+            old_activity.as_str()
+        } else {
+            activity
+        };
+        let changed = !same_availability || old_activity != activity;
+        let activity = activity.to_string();
+        if activity.is_empty() {
+            c.activities.remove(mri);
+        } else {
+            c.activities.insert(mri.to_string(), activity);
+        }
+        changed
     })
 }
 
@@ -70,6 +92,36 @@ pub fn label(availability: &str) -> &'static str {
         "BeRightBack" => "Be right back",
         "Away" => "Away",
         "Offline" => "Offline",
+        _ => "",
+    }
+}
+
+/// A person's status in words as Teams shows it: their activity when it has a label ("In a
+/// call"), else their availability ("" for an unknown one). The dot's colour stays the
+/// availability's.
+pub fn status_label(availability: &str, activity: &str) -> &'static str {
+    match activity {
+        "InACall" | "InAConferenceCall" => return "In a call",
+        "InAMeeting" => return "In a meeting",
+        "Presenting" => return "Presenting",
+        "OutOfOffice" => return "Out of office",
+        "OffWork" => return "Off work",
+        _ => {}
+    }
+    match availability.strip_suffix("Idle").unwrap_or(availability) {
+        // Away with the activity Away is "Appear away", which the person set; an idle one
+        // (activity Inactive) is plain Away.
+        "Away" if activity == "Away" => "Appear away",
+        a => label(a),
+    }
+}
+
+/// The activity the service reports for a status the user forced, for what is shown before the
+/// next read.
+pub fn forced_activity(availability: &str) -> &'static str {
+    match availability {
+        "Away" => "Away",
+        "Offline" => "OffWork",
         _ => "",
     }
 }
@@ -118,7 +170,7 @@ impl Engine {
                 match e.client.get_presence(&people).await {
                     Ok(found) => {
                         for p in found {
-                            e.apply_presence(&p.mri, &p.availability);
+                            e.apply_presence(&p.mri, &p.availability, &p.activity);
                         }
                     }
                     Err(err) => tracing::debug!(%err, "people presence not read"),
@@ -126,24 +178,25 @@ impl Engine {
                 // Also after the profile menu showed an older read of our own status.
                 let mine = known(&e.me);
                 if !mine.is_empty() {
-                    e.ui.me_presence(mine);
+                    e.ui.me_presence(mine, known_activity(&e.me));
                 }
             }
         });
     }
 
     /// A presence push from trouter.
-    pub(super) fn on_presence(self: &Arc<Self>, mri: &str, availability: &str) {
-        self.apply_presence(mri, availability);
+    pub(super) fn on_presence(self: &Arc<Self>, mri: &str, availability: &str, activity: &str) {
+        self.apply_presence(mri, availability, activity);
     }
 
-    /// Records an availability; a change redraws the dots that show it.
-    pub(super) fn apply_presence(self: &Arc<Self>, mri: &str, availability: &str) {
-        if !set(mri, availability) {
+    /// Records an availability and activity; a change redraws the dots that show it.
+    pub(super) fn apply_presence(self: &Arc<Self>, mri: &str, availability: &str, activity: &str) {
+        if !set(mri, availability, activity) {
             return;
         }
         if mri == self.me {
-            self.ui.me_presence(availability.to_string());
+            self.ui
+                .me_presence(availability.to_string(), known_activity(mri));
         }
         self.mark(|d| {
             d.chats = true;
@@ -157,7 +210,17 @@ impl Engine {
 impl Engine {
     /// Records an availability as if it had been read (no network in tests).
     pub(crate) fn test_set_presence(self: &Arc<Self>, mri: &str, availability: &str) {
-        self.apply_presence(mri, availability);
+        self.apply_presence(mri, availability, "");
+    }
+
+    /// The same with what the person is doing.
+    pub(crate) fn test_set_presence_activity(
+        self: &Arc<Self>,
+        mri: &str,
+        availability: &str,
+        activity: &str,
+    ) {
+        self.apply_presence(mri, availability, activity);
     }
 }
 
@@ -179,10 +242,63 @@ mod tests {
     fn wanted_people_are_remembered_and_changes_reported() {
         assert_eq!(want("8:orgid:pp-test-a"), "");
         assert!(with(|c| c.wanted.contains("8:orgid:pp-test-a")));
-        assert!(set("8:orgid:pp-test-a", "Busy"));
-        assert!(!set("8:orgid:pp-test-a", "Busy"));
+        assert!(set("8:orgid:pp-test-a", "Busy", ""));
+        assert!(!set("8:orgid:pp-test-a", "Busy", ""));
         assert_eq!(want("8:orgid:pp-test-a"), "Busy");
-        assert!(set("8:orgid:pp-test-a", "Available"));
+        assert!(set("8:orgid:pp-test-a", "Available", ""));
+    }
+
+    #[test]
+    fn a_call_shows_as_in_a_call_and_ending_it_goes_back_to_the_availability() {
+        let m = "8:orgid:pp-test-call";
+        assert!(set(m, "Busy", "InACall"));
+        assert_eq!(known_activity(m), "InACall");
+        assert_eq!(status_label("Busy", &known_activity(m)), "In a call");
+        // A push without an activity, same availability: nothing known is lost.
+        assert!(!set(m, "Busy", ""));
+        assert_eq!(known_activity(m), "InACall");
+        // The availability changing without an activity clears it.
+        assert!(set(m, "Available", ""));
+        assert_eq!(known_activity(m), "");
+        assert_eq!(status_label("Available", &known_activity(m)), "Available");
+        // Only the activity changing is a change too.
+        assert!(set(m, "Busy", "InAMeeting"));
+        assert!(set(m, "Busy", "Presenting"));
+    }
+
+    #[test]
+    fn the_status_in_words_prefers_the_activity() {
+        for (availability, activity, words) in [
+            ("Busy", "InACall", "In a call"),
+            ("Busy", "InAConferenceCall", "In a call"),
+            ("Busy", "InAMeeting", "In a meeting"),
+            ("DoNotDisturb", "Presenting", "Presenting"),
+            ("Busy", "OutOfOffice", "Out of office"),
+            ("Offline", "OffWork", "Off work"),
+            ("DoNotDisturb", "DoNotDisturb", "Do not disturb"),
+            ("BeRightBack", "BeRightBack", "Be right back"),
+            // Set by the person, and what an idle computer reports.
+            ("Away", "Away", "Appear away"),
+            ("Away", "Inactive", "Away"),
+            ("Away", "", "Away"),
+            // No activity, or one without a label: the availability's words.
+            ("Available", "", "Available"),
+            ("Available", "Available", "Available"),
+            ("BusyIdle", "Busy", "Busy"),
+            ("Busy", "", "Busy"),
+            ("Offline", "", "Offline"),
+            ("PresenceUnknown", "PresenceUnknown", ""),
+            ("", "", ""),
+        ] {
+            assert_eq!(
+                status_label(availability, activity),
+                words,
+                "{availability} / {activity}"
+            );
+        }
+        assert_eq!(forced_activity("Away"), "Away");
+        assert_eq!(forced_activity("Offline"), "OffWork");
+        assert_eq!(forced_activity("Busy"), "");
     }
 
     #[test]

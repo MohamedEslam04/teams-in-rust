@@ -482,7 +482,8 @@ mod tests {
             events_from_push(&decode_push(&frame).unwrap()),
             vec![Event::Presence {
                 mri: "8:orgid:a".into(),
-                availability: "Busy".into()
+                availability: "Busy".into(),
+                activity: String::new()
             }]
         );
     }

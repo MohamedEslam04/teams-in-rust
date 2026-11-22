@@ -1403,6 +1403,8 @@ pub struct ServerData {
     pub me_email: Option<String>,
     pub me_status: Option<String>,
     pub me_presence: Option<String>,
+    /// What I am doing (`InACall`, `InAMeeting`, `OffWork`, …), for the words of my status.
+    pub me_activity: Option<String>,
     /// My work location pin as the presence service reports it (`office`, `remote`, a code).
     pub me_work_location: Option<String>,
     pub apps: Vec<AppAsk>,
@@ -1664,6 +1666,7 @@ impl Engine {
                 if let Some(p) = p.into_iter().next() {
                     d.me_status = p.note.map(|n| n.text).filter(|t| !t.trim().is_empty());
                     d.me_presence = Some(p.availability);
+                    d.me_activity = Some(p.activity);
                     d.me_work_location = p.work_location;
                 }
             }

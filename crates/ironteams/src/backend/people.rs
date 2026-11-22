@@ -1349,7 +1349,11 @@ impl Engine {
             },
             loading: cached.is_none(),
             email: known.and_then(|u| u.email).unwrap_or_default(),
-            presence_label: super::people_presence::label(&presence).into(),
+            presence_label: super::people_presence::status_label(
+                &presence,
+                &super::people_presence::known_activity(&mri),
+            )
+            .into(),
             presence,
             ..Default::default()
         };
@@ -1420,8 +1424,9 @@ impl Engine {
         match presence {
             Ok(found) => {
                 if let Some(p) = found.into_iter().next() {
-                    self.apply_presence(&mri, &p.availability);
-                    card.presence_label = super::people_presence::label(&p.availability).into();
+                    self.apply_presence(&mri, &p.availability, &p.activity);
+                    card.presence_label =
+                        super::people_presence::status_label(&p.availability, &p.activity).into();
                     card.presence = p.availability;
                     card.work_location =
                         super::people_presence::work_location_label(p.work_location.as_deref())

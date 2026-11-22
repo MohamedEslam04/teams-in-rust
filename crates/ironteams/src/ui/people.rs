@@ -124,11 +124,10 @@ impl UiHandle {
         });
     }
 
-    /// Our own availability, for the dot on the photo at the top right.
-    pub fn me_presence(&self, availability: String) {
+    /// Our own availability (the dot on the photo at the top right) and what we are doing.
+    pub fn me_presence(&self, availability: String, activity: String) {
         self.run(move |w: AppWindow| {
-            w.global::<SettingsStore>()
-                .set_me_presence(availability.into())
+            super::settings::show_my_status(&w.global::<SettingsStore>(), &availability, &activity)
         });
     }
 

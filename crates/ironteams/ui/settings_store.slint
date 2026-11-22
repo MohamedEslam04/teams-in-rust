@@ -40,10 +40,16 @@ export global SettingsStore {
     in-out property <string> me-initials;
     in-out property <string> me-status;
     in-out property <string> me-presence;
+    // What I am doing (InACall, InAMeeting, OffWork, ...), and the words Teams shows for my status
+    // ("In a call", else the availability's). Both are set together with me-presence (Rust).
+    in-out property <string> me-activity;
+    in-out property <string> me-status-label;
     // "Until 3:45 PM" when the status picked here ends at a set time, else "".
     in-out property <string> me-presence-until;
     in-out property <string> me-work-location; // office | remote | ""
     in-out property <bool> status-open: false;
+    // The account card's "Set status message" editor is showing.
+    in-out property <bool> message-open: false;
     in-out property <bool> confirm-sign-out: false;
     // My photo (top bar and profile menu); `me-has-photo` is false until one was read.
     in-out property <image> me-photo;
@@ -193,6 +199,8 @@ export global SettingsStore {
     // Opens the profile menu under the avatar.
     public function open-profile() {
         root.confirm-sign-out = false;
+        root.status-open = false;
+        root.message-open = false;
         root.profile-open = true;
         root.command("profile", "");
     }

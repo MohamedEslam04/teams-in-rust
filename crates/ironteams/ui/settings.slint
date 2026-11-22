@@ -6,7 +6,7 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Avatar, Icon, IconButton } from "widgets.slint";
 import { SettingsStore, SFind } from "settings_store.slint";
-import { SButton, SField, SFont, SNavItem, SRadio, SSwitch, ZoomRow } from "settings_widgets.slint";
+import { SButton, SField, SFont, SNavItem, SRadio, SSwitch } from "settings_widgets.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "settings_store.slint";
@@ -205,15 +205,18 @@ export component SettingsPage inherits Rectangle {
     init => { keys.focus(); }
 }
 
-// A Teams availability's icon: green (Available), red (Busy), red with a bar (Do not disturb),
-// yellow with a clock (Be right back), yellow (Away), a grey ring (Offline).
+// A Teams availability's icon: green with a check (Available), red (Busy), red with a bar (Do not
+// disturb), yellow with a clock (Be right back, Away), a grey ring with a cross (Offline), and an
+// accent circle with a clock ("Duration").
 component PresenceIcon inherits Rectangle {
     in property <string> status;
     property <color> tone: (status == "Available" || status == "AvailableIdle") ? #6bb700
         : (status == "Busy" || status == "BusyIdle" || status == "DoNotDisturb") ? #c4314b
         : (status == "BeRightBack" || status == "Away") ? #ffaa44
+        : status == "Duration" ? Theme.accent-strong
         : #8a8886;
     property <bool> ring: status == "Offline" || status == "";
+    property <bool> clock: status == "BeRightBack" || status == "Away" || status == "Duration";
     in property <length> size: 14px;
     width: root.size;
     height: root.size;
@@ -221,6 +224,24 @@ component PresenceIcon inherits Rectangle {
     background: root.ring ? transparent : root.tone;
     border-width: root.ring ? max(1.5px, root.size / 7) : 0px;
     border-color: root.tone;
+    // Available: a white check.
+    if root.status == "Available" || root.status == "AvailableIdle": Icon {
+        source: @image-url("icons/check.svg");
+        tint: #ffffff;
+        width: root.size * 0.72;
+        height: root.size * 0.72;
+        x: root.size * 0.14;
+        y: root.size * 0.14;
+    }
+    // Offline: a cross in the ring.
+    if root.status == "Offline": Icon {
+        source: @image-url("icons/close.svg");
+        tint: root.tone;
+        width: root.size * 0.6;
+        height: root.size * 0.6;
+        x: root.size * 0.2;
+        y: root.size * 0.2;
+    }
     // Do not disturb: a white bar across.
     if root.status == "DoNotDisturb": Rectangle {
         x: root.size * 0.22;
@@ -229,15 +250,15 @@ component PresenceIcon inherits Rectangle {
         height: root.size * 0.14;
         background: #ffffff;
     }
-    // Be right back: the hands of a clock.
-    if root.status == "BeRightBack": Rectangle {
+    // A clock: its hands.
+    if root.clock: Rectangle {
         x: root.size * 0.43;
         y: root.size * 0.22;
         width: root.size * 0.14;
         height: root.size * 0.35;
         background: #ffffff;
     }
-    if root.status == "BeRightBack": Rectangle {
+    if root.clock: Rectangle {
         x: root.size * 0.43;
         y: root.size * 0.43;
         width: root.size * 0.33;
@@ -246,255 +267,443 @@ component PresenceIcon inherits Rectangle {
     }
 }
 
-// The words for a Teams availability, as the profile menu shows them.
-global PresenceWords {
-    pure public function label(p: string) -> string {
-        if p == "Available" || p == "AvailableIdle" { return @tr("Available"); }
-        if p == "Busy" || p == "BusyIdle" { return @tr("Busy"); }
-        if p == "DoNotDisturb" { return @tr("Do not disturb"); }
-        if p == "BeRightBack" { return @tr("Be right back"); }
-        if p == "Away" { return @tr("Away"); }
-        if p == "Offline" { return @tr("Offline"); }
-        if p == "PresenceUnknown" { return @tr("Status unknown"); }
-        return p;
-    }
+// Sizes the account card's flyouts share (the parts add up to a flyout's height, which the
+// duration flyout needs to line up with its row).
+global FlyMetrics {
+    out property <length> fly-width: 215px;
+    out property <length> row: 34px;
+    out property <length> separator: 9px;
+    out property <length> padding: 4px;
+    out property <length> gap: 4px;
 }
 
-// One status of "Set status": its icon, its name and a check on the current one.
-component StatusRow inherits Rectangle {
+// A flat row of the account card or of one of its flyouts: an icon (a presence glyph, or an
+// image), a label and optionally a ">" chevron. `open` keeps the hover colour while the row's
+// flyout is showing. A keyboard focus shows as a 1px rounded outline.
+component MenuRow inherits Rectangle {
     in property <string> label;
+    // A presence glyph (see PresenceIcon); "" shows `icon` instead.
     in property <string> status;
-    in property <bool> current;
+    in property <image> icon;
+    in property <bool> chevron: false;
+    in property <bool> open: false;
+    in property <bool> current: false;
     callback clicked();
     height: 32px;
     border-radius: 4px;
-    background: t.has-hover ? Theme.surface-hover : transparent;
+    background: t.has-hover || root.open ? Theme.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.label;
     accessible-description: root.current ? @tr("Current status") : "";
     accessible-action-default => { root.clicked(); }
-    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-    HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 10px;
-        alignment: stretch;
-        if root.status != "": PresenceIcon { status: root.status; y: (parent.height - self.height) / 2; }
-        if root.status == "": Icon { source: @image-url("icons/restore.svg"); width: 14px; height: 14px; y: (parent.height - self.height) / 2; }
-        Text { text: root.label; color: Theme.fg; font-size: SFont.body; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; accessible-role: none; }
-        if root.current: Icon { source: @image-url("icons/check.svg"); tint: Theme.accent; width: 16px; height: 16px; y: (parent.height - self.height) / 2; }
-    }
-}
-
-// The profile menu under the avatar: who is signed in (with the photo), Set status (when it ends,
-// the status message and when that clears), Change profile photo, Saved, Zoom, Keyboard shortcuts,
-// Settings, View account and Sign out.
-export component ProfileMenu inherits Rectangle {
-    callback open-saved();
-    callback open-shortcuts();
-    // How tall the panel is (app.slint `pointer-pressed` knows its place).
-    out property <length> panel-height: panel.height;
-    // The "Set work location" and "Pause notifications" choices are showing.
-    property <bool> location-open: false;
-    property <bool> pause-open: false;
-    // Clicking outside closes it.
-    TouchArea { clicked => { SettingsStore.profile-open = false; SettingsStore.confirm-sign-out = false; } }
-    menu-keys := FocusScope {
+    // Below the TouchArea, so a click does not leave a focus outline behind: only Tab does.
+    focus := FocusScope {
         key-pressed(event) => {
-            if event.text == Key.Escape { SettingsStore.profile-open = false; return accept; }
+            if event.text == Key.Return || event.text == " " { root.clicked(); return accept; }
             reject
         }
     }
-    init => { menu-keys.focus(); }
-    panel := Rectangle {
-        x: root.width - self.width - 8px;
-        y: 46px;
-        width: 300px;
-        // Never taller than the window: the rest scrolls (the status options are long).
-        height: max(0px, min(col.preferred-height, root.height - 56px));
-        border-radius: 8px;
-        background: Theme.surface;
-        border-width: 1px;
-        border-color: Theme.border;
-        drop-shadow-blur: 8px;
-        drop-shadow-color: #00000080;
-        accessible-role: groupbox;
-        accessible-label: @tr("Your profile");
-        clip: true;
-        TouchArea { }
-        ScrollView {
-            width: parent.width;
-            height: parent.height;
-            // The whole menu can be scrolled to, whatever the layout's minimum height says.
-            content-height: max(self.visible-height, col.preferred-height);
-            col := VerticalLayout {
-                padding: 14px;
-                padding-right: 18px;
-                spacing: 8px;
-                // Teams' first line: the organisation, and Sign out.
-                HorizontalLayout {
-                    spacing: 8px;
-                    for o in SettingsStore.orgs: HorizontalLayout {
-                        if o.active: Text {
-                            text: o.name;
-                            color: Theme.fg-muted;
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        alignment: stretch;
+        if root.status != "": PresenceIcon { status: root.status; size: 16px; y: (parent.height - self.height) / 2; }
+        if root.status == "": Icon { source: root.icon; tint: Theme.fg; width: 16px; height: 16px; y: (parent.height - self.height) / 2; }
+        Text { text: root.label; color: Theme.fg; font-size: SFont.body; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; accessible-role: none; }
+        if root.chevron: Icon { source: @image-url("icons/chevron-right.svg"); width: 16px; height: 16px; y: (parent.height - self.height) / 2; }
+    }
+    Rectangle {
+        border-radius: 4px;
+        border-width: focus.has-focus ? 1px : 0px;
+        border-color: Theme.fg;
+    }
+}
+
+// A thin line between groups of flyout rows.
+component FlySeparator inherits Rectangle {
+    height: FlyMetrics.separator;
+    Rectangle { y: (parent.height - self.height) / 2; height: 1px; background: Theme.border; }
+}
+
+// The surface of a flyout that opens to the left of the account card.
+component FlyPanel inherits Rectangle {
+    width: FlyMetrics.fly-width;
+    height: lay.preferred-height;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #00000080;
+    // Keeps clicks on the flyout from closing the menu.
+    TouchArea { }
+    lay := VerticalLayout {
+        padding: FlyMetrics.padding;
+        spacing: 0px;
+        @children
+    }
+}
+
+// The account card under the avatar, as Teams web has it: the organisation and Sign out, the
+// photo, name and email with "View account", and four flat rows (status, Pause notifications, Set
+// work location, Set status message). The status, pause, location and photo choices open in a
+// flyout to the left of the card; the message editor opens under the rows. Saved, Zoom, Keyboard
+// shortcuts and Settings are in the "..." menu (topbar.slint).
+export component ProfileMenu inherits Rectangle {
+    // What this menu covers, for app.slint `pointer-pressed` (a press in it does not close it): how
+    // tall it is below the top bar and where its left edge is, flyouts included.
+    out property <length> panel-height: root.any-flyout ? root.height - 46px : panel.height;
+    out property <length> hit-left: root.any-flyout ? panel.x - 2 * (FlyMetrics.fly-width + FlyMetrics.gap) : panel.x;
+    // Which of the "pause", "location" and "photo" flyouts is showing ("" for none); the status
+    // flyout is SettingsStore.status-open and the duration one opens from it.
+    property <string> flyout: "";
+    property <bool> duration-open: false;
+    property <bool> any-flyout: root.flyout != "" || SettingsStore.status-open;
+    // Where a flyout of height `h` starts: level with the row `row-y` that opened it, but inside
+    // the window.
+    pure function fly-y(row-y: length, h: length) -> length {
+        return max(8px, min(row-y - FlyMetrics.gap, root.height - h - 8px));
+    }
+    // The status flyout holds the six statuses, Duration, Reset status and Manage presence status.
+    property <length> status-fly-h: 2 * FlyMetrics.padding + 9 * FlyMetrics.row + 3 * FlyMetrics.separator;
+    property <length> status-fly-y: root.fly-y(status-row.absolute-position.y, root.status-fly-h);
+    // Where the Duration row is in it.
+    property <length> duration-y: root.status-fly-y + FlyMetrics.padding + 6 * FlyMetrics.row + FlyMetrics.separator;
+    function close-flyouts() {
+        root.flyout = "";
+        root.duration-open = false;
+        SettingsStore.status-open = false;
+    }
+    function toggle-status() {
+        root.flyout = "";
+        root.duration-open = false;
+        SettingsStore.status-open = !SettingsStore.status-open;
+    }
+    function toggle-flyout(name: string) {
+        SettingsStore.status-open = false;
+        root.duration-open = false;
+        root.flyout = root.flyout == name ? "" : name;
+    }
+    // Clicking outside closes it.
+    TouchArea { clicked => { SettingsStore.profile-open = false; SettingsStore.confirm-sign-out = false; root.close-flyouts(); } }
+    // Escape closes it, also while a row has the focus (a key a row does not use goes up to here).
+    menu-keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.close-flyouts();
+                SettingsStore.profile-open = false;
+                return accept;
+            }
+            reject
+        }
+        panel := Rectangle {
+            x: root.width - self.width - 8px;
+            y: 46px;
+            width: 230px;
+            // Never taller than the window: the rest scrolls.
+            height: max(0px, min(col.preferred-height, root.height - 56px));
+            border-radius: 8px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000080;
+            accessible-role: groupbox;
+            accessible-label: @tr("Your profile");
+            clip: true;
+            TouchArea { }
+            ScrollView {
+                width: parent.width;
+                height: parent.height;
+                // The whole card can be scrolled to, whatever the layout's minimum height says.
+                content-height: max(self.visible-height, col.preferred-height);
+                col := VerticalLayout {
+                    padding-top: 10px;
+                    padding-bottom: 6px;
+                    spacing: 4px;
+                    // Teams' first line: the organisation, and Sign out.
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        for o in SettingsStore.orgs: HorizontalLayout {
+                            if o.active: Text {
+                                text: o.name;
+                                color: Theme.fg;
+                                font-size: SFont.small;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                accessible-role: text;
+                                accessible-label: @tr("Organisation");
+                                accessible-value: self.text;
+                            }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle {
+                            width: sign-out-text.preferred-width;
+                            accessible-role: button;
+                            accessible-label: @tr("Sign out of IronTeams");
+                            accessible-action-default => { SettingsStore.confirm-sign-out = true; }
+                            sign-out-text := Text { text: @tr("Sign out"); color: Theme.accent; font-size: SFont.small; vertical-alignment: center; accessible-role: none; }
+                            TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.confirm-sign-out = true; } }
+                        }
+                    }
+                    // The photo (a camera on hover), the name, the email and View account.
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 4px;
+                        padding-bottom: 8px;
+                        spacing: 12px;
+                        photo-button := Rectangle {
+                            width: 48px;
+                            height: 48px;
+                            accessible-role: button;
+                            accessible-label: @tr("Profile photo");
+                            accessible-action-default => { root.toggle-flyout("photo"); }
+                            Avatar {
+                                initials: SettingsStore.me-initials;
+                                img: SettingsStore.me-photo;
+                                has-img: SettingsStore.me-has-photo;
+                                size: 48px;
+                                presence: SettingsStore.me-presence;
+                            }
+                            Rectangle {
+                                width: 48px;
+                                height: 48px;
+                                border-radius: 24px;
+                                background: #00000099;
+                                opacity: photo-touch.has-hover || root.flyout == "photo" ? 1 : 0;
+                                Icon { source: @image-url("icons/camera.svg"); tint: #ffffff; width: 20px; height: 20px; x: 14px; y: 14px; }
+                            }
+                            photo-touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggle-flyout("photo"); } }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            Text { text: SettingsStore.me-name; color: Theme.fg; font-size: SFont.heading; font-weight: 700; overflow: elide; accessible-role: text; accessible-label: @tr("Name"); accessible-value: self.text; }
+                            Text { text: SettingsStore.me-email; color: Theme.fg-muted; font-size: SFont.small; overflow: elide; accessible-role: text; accessible-label: @tr("Email"); accessible-value: self.text; }
+                            if SettingsStore.me-work-location != "": Text {
+                                text: SettingsStore.me-work-location == "office" ? @tr("In the office today") : @tr("Working remotely today");
+                                color: Theme.fg-muted;
+                                font-size: SFont.small;
+                                overflow: elide;
+                                accessible-role: text;
+                                accessible-label: @tr("Work location");
+                                accessible-value: self.text;
+                            }
+                            Rectangle {
+                                height: view-account-line.preferred-height + 4px;
+                                accessible-role: button;
+                                accessible-label: @tr("View account");
+                                accessible-action-default => { SettingsStore.command("view-account", ""); }
+                                view-account-line := HorizontalLayout {
+                                    alignment: start;
+                                    spacing: 3px;
+                                    Text { text: @tr("View account"); color: Theme.accent; font-size: SFont.small; vertical-alignment: center; accessible-role: none; }
+                                    Icon { source: @image-url("icons/open.svg"); tint: Theme.accent; width: 10px; height: 10px; y: (parent.height - self.height) / 2; }
+                                }
+                                TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.command("view-account", ""); } }
+                            }
+                        }
+                    }
+                    // The status: its glyph and, in words, what Teams shows for it ("In a call").
+                    status-row := MenuRow {
+                        label: SettingsStore.me-status-label != "" ? SettingsStore.me-status-label : @tr("Set status");
+                        status: SettingsStore.me-presence;
+                        chevron: true;
+                        open: SettingsStore.status-open;
+                        accessible-label: @tr("Set status");
+                        accessible-value: self.label;
+                        clicked => { root.toggle-status(); }
+                    }
+                    // When a status picked with "Duration" ends.
+                    if SettingsStore.me-presence-until != "": HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        Text {
+                            text: SettingsStore.me-presence-until;
+                            color: Theme.fg-subtle;
                             font-size: SFont.small;
-                            vertical-alignment: center;
                             overflow: elide;
                             accessible-role: text;
-                            accessible-label: @tr("Organisation");
+                            accessible-label: @tr("Status ends");
                             accessible-value: self.text;
                         }
                     }
-                    Rectangle { horizontal-stretch: 1; }
-                    Rectangle {
-                        width: sign-out-text.preferred-width;
-                        accessible-role: button;
-                        accessible-label: @tr("Sign out of IronTeams");
-                        accessible-action-default => { SettingsStore.confirm-sign-out = true; }
-                        sign-out-text := Text { text: @tr("Sign out"); color: Theme.accent; font-size: SFont.small; vertical-alignment: center; accessible-role: none; }
-                        TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.confirm-sign-out = true; } }
+                    // Teams' "Pause notifications >" (the same pause as Settings > Notifications).
+                    pause-row := MenuRow {
+                        label: SettingsStore.paused ? @tr("Pause notifications ({})", SettingsStore.pause-until != "" ? SettingsStore.pause-until : @tr("paused")) : @tr("Pause notifications");
+                        icon: @image-url("icons/bell.svg");
+                        chevron: true;
+                        open: root.flyout == "pause";
+                        accessible-label: @tr("Pause notifications");
+                        clicked => { root.toggle-flyout("pause"); }
                     }
-                }
-                HorizontalLayout {
-                    spacing: 12px;
-                    Avatar {
-                        initials: SettingsStore.me-initials;
-                        img: SettingsStore.me-photo;
-                        has-img: SettingsStore.me-has-photo;
-                        size: 48px;
-                        presence: SettingsStore.me-presence;
+                    // Teams' "Set work location >" (the same write as the calendar's; UNVERIFIED).
+                    location-row := MenuRow {
+                        label: @tr("Set work location");
+                        icon: @image-url("icons/location.svg");
+                        chevron: true;
+                        open: root.flyout == "location";
+                        clicked => { root.toggle-flyout("location"); }
                     }
-                    VerticalLayout {
-                        alignment: center;
-                        Text { text: SettingsStore.me-name; color: Theme.fg; font-size: SFont.heading; font-weight: 600; overflow: elide; accessible-role: text; accessible-label: @tr("Name"); accessible-value: self.text; }
-                        Text { text: SettingsStore.me-email; color: Theme.fg-muted; font-size: SFont.small; overflow: elide; accessible-role: text; accessible-label: @tr("Email"); accessible-value: self.text; }
-                        if SettingsStore.me-presence != "": HorizontalLayout {
-                            spacing: 6px;
-                            PresenceIcon { status: SettingsStore.me-presence; size: 10px; y: (parent.height - self.height) / 2; }
-                            Text { text: PresenceWords.label(SettingsStore.me-presence); color: Theme.fg-muted; font-size: SFont.small; overflow: elide; horizontal-stretch: 1; accessible-role: text; accessible-label: @tr("Status"); accessible-value: self.text; }
+                    message-row := MenuRow {
+                        label: @tr("Set status message");
+                        icon: @image-url("icons/edit.svg");
+                        chevron: true;
+                        open: SettingsStore.message-open;
+                        accessible-value: SettingsStore.me-status;
+                        clicked => { SettingsStore.message-open = !SettingsStore.message-open; }
+                    }
+                    // The status message editor, under the rows.
+                    if SettingsStore.message-open: VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 4px;
+                        spacing: 6px;
+                        Text { text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message"); color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle; font-size: SFont.body; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: SettingsStore.me-status; }
+                        note := SField { label: @tr("New status message"); initial: SettingsStore.me-status; }
+                        Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: SFont.small; }
+                        for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
+                            group: @tr("Clear message after");
+                            label: d.l;
+                            checked: SettingsStore.note-clear-after == d.v;
+                            picked => { SettingsStore.note-clear-after = d.v; }
                         }
-                        // When a status picked with "Reset status after" ends.
-                        if SettingsStore.me-presence-until != "": Text { text: SettingsStore.me-presence-until; color: Theme.fg-subtle; font-size: SFont.small; overflow: elide; accessible-role: text; accessible-label: @tr("Status ends"); accessible-value: self.text; }
-                        if SettingsStore.me-work-location != "": Text {
-                            text: SettingsStore.me-work-location == "office" ? @tr("In the office today") : @tr("Working remotely today");
+                        SSwitch {
+                            label: @tr("Show when people message me");
+                            on: SettingsStore.note-show-when-messaged;
+                            toggled(on) => { SettingsStore.note-show-when-messaged = on; }
+                        }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            SButton { label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
+                            SButton { label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
+                        }
+                    }
+                    if SettingsStore.confirm-sign-out: VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 6px;
+                        Text { text: @tr("Sign out of IronTeams on this computer? IronTeams closes; open it again to sign in."); color: Theme.fg; font-size: SFont.small; wrap: word-wrap; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+                            SButton { label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
+                            SButton { label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
+                        }
+                    }
+                    // What the photo, the status or a refused change answered.
+                    if SettingsStore.notice != "": HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        Text {
+                            text: SettingsStore.notice;
                             color: Theme.fg-muted;
                             font-size: SFont.small;
+                            wrap: word-wrap;
                             accessible-role: text;
-                            accessible-label: @tr("Work location");
+                            accessible-label: @tr("Profile notice");
                             accessible-value: self.text;
                         }
                     }
-                }
-                Rectangle {
-                    height: max(34px, sm.preferred-height + 12px);
-                    border-radius: 4px;
-                    background: Theme.main;
-                    accessible-role: text;
-                    accessible-label: @tr("Status message");
-                    accessible-value: SettingsStore.me-status;
-                    sm := Text {
-                        x: 10px;
-                        width: parent.width - 20px;
-                        text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message");
-                        color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle;
-                        font-size: SFont.body;
-                        wrap: word-wrap;
-                        vertical-alignment: center;
-                    }
-                }
-                SButton {
-                    label: SettingsStore.status-open ? @tr("Hide status options") : @tr("Set status");
-                    clicked => { SettingsStore.status-open = !SettingsStore.status-open; }
-                }
-                if SettingsStore.status-open: VerticalLayout {
-                    spacing: 4px;
-                    Text { text: @tr("Reset status after"); color: Theme.fg-muted; font-size: SFont.small; }
-                    Text { text: @tr("Choose this first: the status you pick lasts that long."); color: Theme.fg-subtle; font-size: SFont.small; wrap: word-wrap; }
-                    for d in [{v: "never", l: @tr("Never")}, {v: "30m", l: @tr("30 minutes")}, {v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "today", l: @tr("Today")}, {v: "week", l: @tr("This week")}, {v: "custom", l: @tr("Custom")}]: SRadio {
-                        group: @tr("Reset status after");
-                        label: d.l;
-                        checked: SettingsStore.status-duration == d.v;
-                        picked => { SettingsStore.status-duration = d.v; }
-                    }
-                    if SettingsStore.status-duration == "custom": SField {
-                        label: @tr("Reset at");
-                        placeholder: "2026-12-31 17:30";
-                        initial: SettingsStore.status-custom;
-                        edited(t) => { SettingsStore.status-custom = t; }
-                    }
-                    for st in [{v: "Available", l: @tr("Available")}, {v: "Busy", l: @tr("Busy")}, {v: "DoNotDisturb", l: @tr("Do not disturb")}, {v: "BeRightBack", l: @tr("Be right back")}, {v: "Away", l: @tr("Appear away")}, {v: "Offline", l: @tr("Appear offline")}]: StatusRow {
-                        label: st.l;
-                        status: st.v;
-                        current: SettingsStore.me-presence == st.v || SettingsStore.me-presence == st.v + "Idle";
-                        clicked => { SettingsStore.command("status", st.v); }
-                    }
-                    StatusRow { label: @tr("Reset status"); status: ""; clicked => { SettingsStore.command("status", ""); } }
-                    note := SField { label: @tr("New status message"); initial: SettingsStore.me-status; }
-                    Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: SFont.small; }
-                    for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
-                        group: @tr("Clear message after");
-                        label: d.l;
-                        checked: SettingsStore.note-clear-after == d.v;
-                        picked => { SettingsStore.note-clear-after = d.v; }
-                    }
-                    SSwitch {
-                        label: @tr("Show when people message me");
-                        on: SettingsStore.note-show-when-messaged;
-                        toggled(on) => { SettingsStore.note-show-when-messaged = on; }
-                    }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        SButton { label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
-                        SButton { label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
-                    }
-                }
-                // Teams' "Set work location ›" (the same write as the calendar's; UNVERIFIED).
-                SButton { label: @tr("Set work location"); clicked => { root.location-open = !root.location-open; } }
-                if root.location-open: HorizontalLayout {
-                    spacing: 6px;
-                    SButton { label: @tr("In the office"); clicked => { root.location-open = false; SettingsStore.command("work-location", "office"); } }
-                    SButton { label: @tr("Remote"); clicked => { root.location-open = false; SettingsStore.command("work-location", "remote"); } }
-                    SButton { label: @tr("Clear location"); clicked => { root.location-open = false; SettingsStore.command("work-location", "clear"); } }
-                }
-                // Teams' "Pause notifications ›": the same pause as Settings › Notifications.
-                SButton { label: SettingsStore.paused ? @tr("Pause notifications ({})", SettingsStore.pause-until != "" ? SettingsStore.pause-until : @tr("paused")) : @tr("Pause notifications"); accessible-label: @tr("Pause notifications"); clicked => { root.pause-open = !root.pause-open; } }
-                if root.pause-open: VerticalLayout {
-                    spacing: 4px;
-                    for p in [{v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow")}, {v: "off", l: @tr("Turn off the pause")}]: SButton {
-                        label: p.l;
-                        clicked => { root.pause-open = false; SettingsStore.command("pause", p.v); }
-                    }
-                }
-                SButton { label: @tr("Change profile photo"); clicked => { SettingsStore.command("photo-change", ""); } }
-                if SettingsStore.me-has-photo: SButton { label: @tr("Remove photo"); clicked => { SettingsStore.command("photo-remove", ""); } }
-                SButton { label: @tr("Saved"); clicked => { root.open-saved(); } }
-                ZoomRow { }
-                SButton { label: @tr("Keyboard shortcuts"); clicked => { root.open-shortcuts(); } }
-                SButton { label: @tr("Settings"); clicked => { SettingsStore.show("general"); } }
-                SButton { label: @tr("View account"); clicked => { SettingsStore.command("view-account", ""); } }
-                if !SettingsStore.confirm-sign-out: SButton { label: @tr("Sign out"); clicked => { SettingsStore.confirm-sign-out = true; } }
-                if SettingsStore.confirm-sign-out: VerticalLayout {
-                    spacing: 6px;
-                    Text { text: @tr("Sign out of IronTeams on this computer? IronTeams closes; open it again to sign in."); color: Theme.fg; font-size: SFont.small; wrap: word-wrap; }
-                    HorizontalLayout {
-                        spacing: 8px;
-                        alignment: end;
-                        SButton { label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
-                        SButton { label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
-                    }
-                }
-                // What the photo, the status or a refused change answered.
-                if SettingsStore.notice != "": Text {
-                    text: SettingsStore.notice;
-                    color: Theme.fg-muted;
-                    font-size: SFont.small;
-                    wrap: word-wrap;
-                    accessible-role: text;
-                    accessible-label: @tr("Profile notice");
-                    accessible-value: self.text;
                 }
             }
         }
+
+        // The status picker, to the left of the card, level with the status row.
+        if SettingsStore.status-open: FlyPanel {
+            x: panel.x - self.width - FlyMetrics.gap;
+            y: root.status-fly-y;
+            for st in [{v: "Available", l: @tr("Available")}, {v: "Busy", l: @tr("Busy")}, {v: "DoNotDisturb", l: @tr("Do not disturb")}, {v: "BeRightBack", l: @tr("Be right back")}, {v: "Away", l: @tr("Appear away")}, {v: "Offline", l: @tr("Appear offline")}]: MenuRow {
+                height: FlyMetrics.row;
+                label: st.l;
+                status: st.v;
+                current: SettingsStore.me-presence == st.v || SettingsStore.me-presence == st.v + "Idle";
+                clicked => { SettingsStore.command("status", st.v); }
+            }
+            FlySeparator { }
+            MenuRow {
+                height: FlyMetrics.row;
+                label: @tr("Duration");
+                status: "Duration";
+                chevron: true;
+                open: root.duration-open;
+                clicked => { root.duration-open = !root.duration-open; }
+            }
+            FlySeparator { }
+            MenuRow {
+                height: FlyMetrics.row;
+                label: @tr("Reset status");
+                icon: @image-url("icons/restore.svg");
+                clicked => { SettingsStore.command("status", ""); }
+            }
+            FlySeparator { }
+            MenuRow {
+                height: FlyMetrics.row;
+                label: @tr("Manage presence status");
+                icon: @image-url("icons/settings.svg");
+                clicked => { SettingsStore.show("general"); }
+            }
+        }
+        // "Duration": how long the status you pick lasts, left of the status picker.
+        if SettingsStore.status-open && root.duration-open: FlyPanel {
+            x: panel.x - self.width * 2 - FlyMetrics.gap * 2;
+            y: root.fly-y(root.duration-y, self.height);
+            Text { text: @tr("Reset status after"); color: Theme.fg-muted; font-size: SFont.small; horizontal-alignment: Theme.start-align; }
+            for d in [{v: "never", l: @tr("Never")}, {v: "30m", l: @tr("30 minutes")}, {v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "today", l: @tr("Today")}, {v: "week", l: @tr("This week")}, {v: "custom", l: @tr("Custom")}]: SRadio {
+                group: @tr("Reset status after");
+                label: d.l;
+                checked: SettingsStore.status-duration == d.v;
+                picked => { SettingsStore.status-duration = d.v; }
+            }
+            if SettingsStore.status-duration == "custom": SField {
+                label: @tr("Reset at");
+                placeholder: "2026-12-31 17:30";
+                initial: SettingsStore.status-custom;
+                edited(t) => { SettingsStore.status-custom = t; }
+            }
+        }
+        if root.flyout == "pause": FlyPanel {
+            x: panel.x - self.width - FlyMetrics.gap;
+            y: root.fly-y(pause-row.absolute-position.y, self.height);
+            for p in [{v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow")}, {v: "off", l: @tr("Turn off the pause")}]: MenuRow {
+                height: FlyMetrics.row;
+                label: p.l;
+                icon: p.v == "off" ? @image-url("icons/close.svg") : @image-url("icons/bell.svg");
+                clicked => { root.flyout = ""; SettingsStore.command("pause", p.v); }
+            }
+        }
+        if root.flyout == "location": FlyPanel {
+            x: panel.x - self.width - FlyMetrics.gap;
+            y: root.fly-y(location-row.absolute-position.y, self.height);
+            for w in [{v: "office", l: @tr("In the office")}, {v: "remote", l: @tr("Remote")}, {v: "clear", l: @tr("Clear location")}]: MenuRow {
+                height: FlyMetrics.row;
+                label: w.l;
+                icon: w.v == "clear" ? @image-url("icons/close.svg") : @image-url("icons/location.svg");
+                clicked => { root.flyout = ""; SettingsStore.command("work-location", w.v); }
+            }
+        }
+        if root.flyout == "photo": FlyPanel {
+            x: panel.x - self.width - FlyMetrics.gap;
+            y: root.fly-y(photo-button.absolute-position.y, self.height);
+            MenuRow {
+                height: FlyMetrics.row;
+                label: @tr("Change profile photo");
+                icon: @image-url("icons/camera.svg");
+                clicked => { root.flyout = ""; SettingsStore.command("photo-change", ""); }
+            }
+            if SettingsStore.me-has-photo: MenuRow {
+                height: FlyMetrics.row;
+                label: @tr("Remove photo");
+                icon: @image-url("icons/trash.svg");
+                clicked => { root.flyout = ""; SettingsStore.command("photo-remove", ""); }
+            }
+        }
     }
+    init => { menu-keys.focus(); }
 }

@@ -222,6 +222,7 @@ export component AppWindow inherits Window {
     property <length> menu-left: max(8px, min(root.menu-x, root.width - root.menu-w - 8px));
     property <length> menu-top: max(8px, min(root.menu-y, root.height - root.menu-h - 8px));
     property <length> profile-h;
+    property <length> profile-left;
     // The same for the "…" menu's panel and a clicked profile card (window coordinates).
     property <length> more-h;
     property <length> card-left;
@@ -477,9 +478,10 @@ export component AppWindow inherits Window {
         if root.readers-open && (x < root.readers-left || x > root.readers-left + 280px || y < root.readers-y || y > root.readers-y + root.readers-h) {
             root.readers-open = false;
         }
-        // The profile panel: 300px wide, 8px from the right edge, 46px from the top (settings.slint).
+        // The profile card (230px wide, 8px from the right edge, 46px from the top) and the
+        // flyouts left of it: `profile-left` and `profile-h` say what the menu covers (settings.slint).
         root.profile-closed-by-press = false;
-        if SettingsStore.profile-open && (x < root.width - 308px || x > root.width - 8px || y < 46px || y > 46px + root.profile-h) {
+        if SettingsStore.profile-open && (x < root.profile-left || x > root.width - 8px || y < 46px || y > 46px + root.profile-h) {
             SettingsStore.profile-open = false;
             SettingsStore.confirm-sign-out = false;
             root.profile-closed-by-press = true;
@@ -2007,10 +2009,9 @@ export component AppWindow inherits Window {
         z: 70;
         width: root.width;
         height: root.height;
-        init => { root.profile-h = self.panel-height; }
+        init => { root.profile-h = self.panel-height; root.profile-left = self.hit-left; }
         changed panel-height => { root.profile-h = self.panel-height; }
-        open-saved => { SettingsStore.profile-open = false; root.navigate("chat"); FindStore.command("quick", "saved"); }
-        open-shortcuts => { SettingsStore.profile-open = false; root.shortcuts-open = true; }
+        changed hit-left => { root.profile-left = self.hit-left; }
     }
 
     // The search box's dropdown: a layer below the top bar that closes it, and the list itself.
@@ -2032,6 +2033,7 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         show-shortcuts => { root.shortcuts-open = true; }
+        open-saved => { root.navigate("chat"); FindStore.command("quick", "saved"); }
         init => { root.more-h = self.panel-height; }
         changed panel-height => { root.more-h = self.panel-height; }
     }
