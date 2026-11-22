@@ -1,0 +1,116 @@
+// The window's small dialogs, each centred over a scrim that covers the window: leave a chat,
+// remove the history, add a tab, leave a channel, the reminders, a chat list section's name and
+// the OneDrive file picker. `app.slint` shows each one while its store says so.
+import { DriveFilePicker } from "drive_file_picker.slint";
+import { DriveStore } from "../stores/drive_store.slint";
+import { Theme } from "../tokens/theme.slint";
+import { ListStore, SectionDialog, LeaveChannelDialog } from "lists.slint";
+import { RemindPanel, RemindStore } from "remind.slint";
+import { AddTabDialog } from "channel_tabs.slint";
+import { FindStore } from "../stores/find_store.slint";
+import { ChatHeaderStore, RemoveHistoryConfirm } from "chat_header.slint";
+import { LeaveConfirm } from "participants.slint";
+import { PeopleStore } from "../molecules/people.slint";
+
+// The OneDrive file picker, opened from the composer's "Attach cloud files".
+export component DrivePickerLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    DriveFilePicker {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+        title: DriveStore.picker-title;
+        folders-only: DriveStore.picker-folders-only;
+        rows: DriveStore.picker-rows;
+        crumbs: DriveStore.picker-crumbs;
+        loading: DriveStore.picker-loading;
+        can-choose: DriveStore.picker-can-choose;
+        choose-label: @tr("Attach");
+        open(id) => { DriveStore.command("pick-open", id); }
+        crumb(i) => { DriveStore.command("pick-crumb", "" + i); }
+        pick(id) => { DriveStore.command("pick-select", id); }
+        choose => { DriveStore.command("pick-choose", ""); }
+        cancel => { DriveStore.dialog = ""; DriveStore.command("pick-cancel", ""); }
+    }
+}
+
+// New or renamed chat list section.
+export component SectionDialogLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    SectionDialog {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 3);
+        confirm(name) => {
+            ListStore.command(ListStore.dialog, ListStore.dialog-target + "\u{9}" + name);
+            ListStore.dialog = "";
+        }
+        cancel => { ListStore.dialog = ""; }
+    }
+}
+
+// The reminders panel; a click outside closes it.
+export component RemindLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { clicked => { RemindStore.open = false; } }
+    RemindPanel {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 3);
+        close => { RemindStore.open = false; }
+    }
+}
+
+// Leave a channel?
+export component LeaveChannelLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    LeaveChannelDialog {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 3);
+        confirm => {
+            ListStore.command("channel-leave", ListStore.dialog-target);
+            ListStore.dialog = "";
+        }
+        cancel => { ListStore.dialog = ""; }
+    }
+}
+
+// Add a tab; a click outside closes it.
+export component AddTabLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { clicked => { FindStore.tab-add-open = false; } }
+    AddTabDialog {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 3);
+    }
+}
+
+// Remove the chat's history?
+export component RemoveHistoryLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    RemoveHistoryConfirm {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+        confirm => {
+            ListStore.command("remove-history", ChatHeaderStore.remove-history);
+            ChatHeaderStore.remove-history = "";
+        }
+        cancel => { ChatHeaderStore.remove-history = ""; }
+    }
+}
+
+// Leave the chat?
+export component LeaveChatLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    LeaveConfirm {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+        confirm => {
+            PeopleStore.command("leave", PeopleStore.leave-confirm);
+            PeopleStore.leave-confirm = "";
+        }
+        cancel => { PeopleStore.leave-confirm = ""; }
+    }
+}

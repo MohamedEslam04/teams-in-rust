@@ -108,6 +108,9 @@ import { AppRail } from "organisms/app_rail.slint";
 import { ChatPaneHeader } from "organisms/chat_pane_header.slint";
 import { MessagePane } from "organisms/message_pane.slint";
 import { ProfileCardLayer, ParticipantsLayer, ForwardLayer, ReactionPickerLayer, SeenByLayer, MessageMenuLayer } from "organisms/chat_overlays.slint";
+import { AppKeys } from "organisms/app_keys.slint";
+import { NoticeBanner } from "organisms/notice_banner.slint";
+import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
 export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
@@ -537,119 +540,28 @@ export component AppWindow inherits Window {
         retry => { root.retry-login(); }
     }
 
-    if root.login-state == "ready": win-keys := FocusScope {
-        // The command palette closed: take the keys back (a chat hands them to the composer).
-        property <int> palette-restore: PaletteStore.restore-tick;
-        changed palette-restore => { if root.view != "chat" { self.focus(); } }
-        // The page's own input (the composer, the search box) is gone on the pages that have
-        // none, which would leave the keyboard shortcuts, Alt+Left among them, without a focus.
-        // An open command palette keeps its own input (it hands the keys back when it closes).
-        property <string> page: root.view;
-        changed page => {
-            if !PaletteStore.open && self.page != "chat" && self.page != "teams" && self.page != "search" { self.focus(); }
-        }
-        // The Teams page with no channel picked drops the conversation (and its composer, which
-        // may hold the focus): take the keys so Alt+Down and the other shortcuts still work.
-        property <bool> no-channel: root.teams-no-channel;
-        changed no-channel => {
-            if self.no-channel && !PaletteStore.open { self.focus(); }
-        }
-        // Shift+Esc marks every chat read, wherever the focus is. The Activity view handles it
-        // itself (marks every Activity item read).
-        capture-key-pressed(event) => {
-            if (event.text == Key.Escape && event.modifiers.shift && root.view != "activity") {
-                root.mark-all-read();
-                return accept;
-            }
-            // Alt+Down / Alt+Up: the next / previous unread chat or channel in the list.
-            if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                root.catch-up(event.text == Key.DownArrow ? 1 : -1);
-                return accept;
-            }
-            // Alt+Q: collapse every section of the chat list.
-            if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
-                ListStore.command("collapse-all", "");
-                return accept;
-            }
-            // Alt+Left and Alt+Right: Back and Forward.
-            if event.text == Key.LeftArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                TopBarStore.command("back", "");
-                return accept;
-            }
-            if event.text == Key.RightArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                TopBarStore.command("forward", "");
-                return accept;
-            }
-            // Ctrl+Alt+E: Search.
-            if ((event.text == "E" || event.text == "e") && event.modifiers.control && event.modifiers.alt) {
-                root.view = "search";
-                FindStore.focus-tick += 1;
-                return accept;
-            }
-            if (event.text == "," || event.text == "<") && event.modifiers.control && event.modifiers.shift { SettingsStore.show("general"); return accept; } // Ctrl+Shift+,: Settings.
-            // Alt+Shift+N: New chat.
-            if ((event.text == "N" || event.text == "n") && event.modifiers.alt && event.modifiers.shift) {
-                root.view = "chat";
-                PeopleStore.new-chat-open = true;
-                PeopleStore.command("new-chat-open", "");
-                return accept;
-            }
-            // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
-            // are the numbered and bullet list (Teams), so they stay with the composer there.
-            if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
-                AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
-                return accept;
-            }
-            // The other Teams chords (plan chat 5.9); the mapping is in src/shortcuts.rs.
-            if ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift) != "" {
-                win-keys.run-shortcut(ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift));
-                return accept;
-            }
-            reject
-        }
-        // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
-        key-pressed(event) => {
-            if event.text == Key.Escape && !event.modifiers.shift {
-                if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
-                if root.shortcuts-open { root.shortcuts-open = false; return accept; }
-                if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
-                if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
-                if root.thread-root != "" { root.close-thread(); return accept; }
-                if root.reply-preview != "" { root.cancel-reply(); return accept; }
-            }
-            reject
-        }
-        function run-shortcut(a: string) {
-            // Alt+Shift+A and Alt+Shift+V: the call button's Audio call and Video call.
-            if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
-                DirectCallStore.command("dial", root.current-id);
-            }
-            if a == "video-call" && root.view == "chat" && DirectCallStore.is-direct(root.current-id) {
-                WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet. Alt+Shift+A starts an audio call.");
-            }
-            if a == "shortcuts" { root.shortcuts-open = !root.shortcuts-open; }
-            if a == "palette" { PaletteStore.open = !PaletteStore.open; }
-            if a == "goto" {
-                root.view = "search";
-                FindStore.command("search-tab", "chats");
-                FindStore.focus-tick += 1;
-            }
-            if a == "filter-box" { root.view = "chat"; top-bar.focus-search(); }
-            // Ctrl+E: the top search box. Ctrl+/: the box with a "/" in it, which lists the commands.
-            if a == "search-box" { top-bar.focus-search(); }
-            if a == "commands" { top-bar.start-command(); }
-            if a == "filter-unread" { root.filter = root.filter == "unread" ? "all" : "unread"; root.set-filter(root.filter); }
-            if a == "filter-chats" { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); }
-            if a == "filter-channels" { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); }
-            if a == "filter-clear" { root.filter = "all"; root.set-filter("all"); }
-            if a == "focus-composer" { root.focus-tick += 1; }
-            if a == "focus-messages" { root.msg-focus-tick += 1; }
-            if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }
-            if a == "attach-file" { root.attach-file(); }
-            if a == "share-screen" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
-                DirectCallStore.command("share-screen", root.current-id);
-            }
-        }
+    if root.login-state == "ready": win-keys := AppKeys {
+        attach-file => { root.attach-file(); }
+        cancel-reply => { root.cancel-reply(); }
+        catch-up(a0) => { root.catch-up(a0); }
+        close-thread => { root.close-thread(); }
+        composer-expanded <=> root.composer-expanded;
+        composer-focused: root.composer-focused;
+        current-id: root.current-id;
+        filter <=> root.filter;
+        focus-tick <=> root.focus-tick;
+        mark-all-read => { root.mark-all-read(); }
+        menu-open <=> root.menu-open;
+        msg-focus-tick <=> root.msg-focus-tick;
+        posts-mode: root.posts-mode;
+        reply-preview: root.reply-preview;
+        set-filter(a0) => { root.set-filter(a0); }
+        shortcuts-open <=> root.shortcuts-open;
+        teams-no-channel: root.teams-no-channel;
+        thread-root: root.thread-root;
+        view <=> root.view;
+        focus-search => { top-bar.focus-search(); }
+        start-command => { top-bar.start-command(); }
         VerticalLayout {
         // Top bar with search
         top-bar := AppTopBar {
@@ -829,31 +741,13 @@ export component AppWindow inherits Window {
                     Image { source: @image-url("icons/teams.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
                     Text { text: @tr("Pick a channel"); color: Theme.fg-subtle; horizontal-alignment: center; }
                 }
-                if root.banner != "": Rectangle {
-                    z: 10;
-                    x: (parent.width - self.width) / 2;
-                    y: 70px;
-                    width: min(parent.width - 40px, banner-text.preferred-width + 60px + (root.banner-action != "" ? 110px : 0px));
-                    height: 36px;
-                    border-radius: 6px;
-                    background: root.banner-info ? #1f2a3b : #3b1f22;
-                    border-width: 1px;
-                    border-color: root.banner-info ? Theme.accent : Theme.danger;
-                    HorizontalLayout {
-                        padding-left: 14px;
-                        padding-right: 6px;
-                        spacing: 8px;
-                        banner-text := Text { text: root.banner; color: #ffffff; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-                        if root.banner-action != "": Rectangle {
-                            width: 100px;
-                            accessible-role: button;
-                            accessible-label: root.banner-action;
-                            accessible-action-default => { root.banner-action-clicked(); }
-                            Text { text: root.banner-action; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
-                            TouchArea { mouse-cursor: pointer; clicked => { root.banner-action-clicked(); } }
-                        }
-                        IconButton { icon: @image-url("icons/close.svg"); size: 24px; y: 6px; clicked => { root.dismiss-banner(); } }
-                    }
+                if root.banner != "": NoticeBanner {
+                    banner: root.banner;
+                    banner-action: root.banner-action;
+                    banner-action-clicked => { root.banner-action-clicked(); }
+                    banner-info: root.banner-info;
+                    dismiss-banner => { root.dismiss-banner(); }
+                    area-width: parent.width;
                 }
                 if root.current-id != "" && !root.teams-no-channel: VerticalLayout {
                     // Header. When it is narrow (half a laptop screen), participants, find,
@@ -1159,36 +1053,14 @@ export component AppWindow inherits Window {
         current-id: root.current-id;
     }
 
-    if root.login-state == "ready" && PeopleStore.leave-confirm != "": Rectangle {
+    if root.login-state == "ready" && PeopleStore.leave-confirm != "": LeaveChatLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        LeaveConfirm {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            confirm => {
-                PeopleStore.command("leave", PeopleStore.leave-confirm);
-                PeopleStore.leave-confirm = "";
-            }
-            cancel => { PeopleStore.leave-confirm = ""; }
-        }
     }
 
-    if root.login-state == "ready" && ChatHeaderStore.remove-history != "": Rectangle {
+    if root.login-state == "ready" && ChatHeaderStore.remove-history != "": RemoveHistoryLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        RemoveHistoryConfirm {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            confirm => {
-                ListStore.command("remove-history", ChatHeaderStore.remove-history);
-                ChatHeaderStore.remove-history = "";
-            }
-            cancel => { ChatHeaderStore.remove-history = ""; }
-        }
     }
 
     if root.login-state == "ready" && FindStore.tab-menu-id != "": ChannelTabOverlays {
@@ -1196,15 +1068,9 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 
-    if root.login-state == "ready" && FindStore.tab-add-open: Rectangle {
+    if root.login-state == "ready" && FindStore.tab-add-open: AddTabLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { clicked => { FindStore.tab-add-open = false; } }
-        AddTabDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-        }
     }
 
     // Resting on a photo opens its person's card next to it, as in Teams. The timer lives here,
@@ -1277,73 +1143,26 @@ export component AppWindow inherits Window {
         call-number(n) => { root.open-url("tel:" + n); }
     }
 
-    if root.login-state == "ready" && ListStore.dialog == "leave-channel": Rectangle {
+    if root.login-state == "ready" && ListStore.dialog == "leave-channel": LeaveChannelLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        LeaveChannelDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            confirm => {
-                ListStore.command("channel-leave", ListStore.dialog-target);
-                ListStore.dialog = "";
-            }
-            cancel => { ListStore.dialog = ""; }
-        }
     }
 
-    if root.login-state == "ready" && RemindStore.open: Rectangle {
+    if root.login-state == "ready" && RemindStore.open: RemindLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { clicked => { RemindStore.open = false; } }
-        RemindPanel {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            close => { RemindStore.open = false; }
-        }
     }
 
-    if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): Rectangle {
+    if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): SectionDialogLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        SectionDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            confirm(name) => {
-                ListStore.command(ListStore.dialog, ListStore.dialog-target + "\u{9}" + name);
-                ListStore.dialog = "";
-            }
-            cancel => { ListStore.dialog = ""; }
-        }
     }
 
     // The OneDrive file picker, opened from the composer's "Attach cloud files" (the OneDrive view
     // draws its own).
-    if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": Rectangle {
+    if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": DrivePickerLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        DriveFilePicker {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            title: DriveStore.picker-title;
-            folders-only: DriveStore.picker-folders-only;
-            rows: DriveStore.picker-rows;
-            crumbs: DriveStore.picker-crumbs;
-            loading: DriveStore.picker-loading;
-            can-choose: DriveStore.picker-can-choose;
-            choose-label: @tr("Attach");
-            open(id) => { DriveStore.command("pick-open", id); }
-            crumb(i) => { DriveStore.command("pick-crumb", "" + i); }
-            pick(id) => { DriveStore.command("pick-select", id); }
-            choose => { DriveStore.command("pick-choose", ""); }
-            cancel => { DriveStore.dialog = ""; DriveStore.command("pick-cancel", ""); }
-        }
     }
     // Teams management: the "Your teams and channels" page covers the area right of the rail, and
     // its dialogs cover the window (see teams_page.slint and teams_dialogs.slint).

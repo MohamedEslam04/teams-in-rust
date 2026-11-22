@@ -6,9 +6,6 @@
 # palettes (composer_format.slint), drop-shadow colours, brand colours (Loop, file kinds,
 # calendar categories) and the call window's always-dark video surfaces. The rest should move
 # into Theme tokens or atom variants over time; this list may only shrink, never grow.
-app.slint #1f2a3b
-app.slint #3b1f22
-app.slint #ffffff
 molecules/apps_kit.slint #ffffff
 molecules/apps_kit.slint #ffffff10
 molecules/call_captions.slint #000000c0
@@ -163,6 +160,9 @@ organisms/message_toast.slint #ffffffa0
 organisms/message_toast.slint #ffffffb3
 organisms/new_chat.slint #34365c
 organisms/new_chat.slint #ffffff
+organisms/notice_banner.slint #1f2a3b
+organisms/notice_banner.slint #3b1f22
+organisms/notice_banner.slint #ffffff
 organisms/participants.slint #000000a0
 organisms/participants.slint #3b1f22
 organisms/participants.slint #e04a4f
