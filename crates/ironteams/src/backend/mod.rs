@@ -19,6 +19,7 @@ mod actions;
 mod activity;
 pub(crate) mod appstore;
 mod attach;
+mod avatar_placeholder;
 mod banner;
 #[cfg(target_os = "linux")]
 mod banner_reply;
@@ -331,6 +332,8 @@ pub struct Engine {
     calls_page: Mutex<calls_page::State>,
     composer_apps: Mutex<composer_apps::State>,
     avatars: Mutex<HashMap<String, Option<Pixels>>>,
+    /// The pictures the service sends for people without a photo (shown as initials).
+    avatar_placeholders: Mutex<avatar_placeholder::Placeholders>,
     images: Mutex<HashMap<String, Option<Pixels>>>,
     /// Reactor MRIs whose profile fetch was already started (tooltip names).
     name_requests: Mutex<HashSet<String>>,
@@ -372,6 +375,13 @@ impl Engine {
         me: String,
         my_name: String,
     ) -> Arc<Engine> {
+        let avatar_placeholders = avatar_placeholder::Placeholders::load(
+            store
+                .get_kv(avatar_placeholder::KV_KEY)
+                .ok()
+                .flatten()
+                .as_deref(),
+        );
         let engine = Arc::new(Engine {
             calls: call::CallManager::new(ui.clone(), client.clone(), my_name.clone()),
             client,
@@ -412,6 +422,7 @@ impl Engine {
             calls_page: Mutex::default(),
             composer_apps: Mutex::new(composer_apps::State::default()),
             avatars: Mutex::new(HashMap::new()),
+            avatar_placeholders: Mutex::new(avatar_placeholders),
             images: Mutex::new(HashMap::new()),
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
