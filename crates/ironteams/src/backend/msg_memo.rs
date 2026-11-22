@@ -8,8 +8,8 @@
 //! again on every build, so their arrival shows without parsing anything.
 
 use crate::data::LoopData;
-use crate::markdown::{render_blocks, Rendered};
-use serde_json::{json, Value};
+use crate::markdown::{Rendered, render_blocks};
+use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;

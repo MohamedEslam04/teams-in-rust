@@ -1,8 +1,8 @@
 //! The render loop: rebuilds the visible view data from the store and pushes it to the UI.
 
 use super::Engine;
-use super::msg_memo;
 use super::avatar_placeholder::{self, Verdict};
+use super::msg_memo;
 use super::outbox::{PENDING_PREFIX, row_from_outbox};
 use super::outsider::{Outsider, classify, is_guest_upn, tagged};
 use super::unread::{divider_index, open_at_divider, unread_after};
@@ -551,7 +551,9 @@ impl Engine {
                     _ => initials(&r.title),
                 },
                 color: color_for(&r.id),
-                avatar: avatar_mri.and_then(|m| self.avatar_deferred(&m)).or(team_photo),
+                avatar: avatar_mri
+                    .and_then(|m| self.avatar_deferred(&m))
+                    .or(team_photo),
                 private: chan
                     .as_ref()
                     .is_some_and(|c| c.kind == teams_proto::teams::ChannelKind::Private),

@@ -78,9 +78,9 @@ fn summary(counts: &HashMap<(&'static Location<'static>, u8), u32>) -> String {
     let mut sites: Vec<_> = counts.iter().collect();
     sites.sort_by(|a, b| {
         b.1.cmp(a.1)
-            .then_with(|| a.0 .0.file().cmp(b.0 .0.file()))
-            .then_with(|| a.0 .0.line().cmp(&b.0 .0.line()))
-            .then_with(|| a.0 .1.cmp(&b.0 .1))
+            .then_with(|| a.0.0.file().cmp(b.0.0.file()))
+            .then_with(|| a.0.0.line().cmp(&b.0.0.line()))
+            .then_with(|| a.0.1.cmp(&b.0.1))
     });
     let lines: Vec<String> = sites
         .iter()
