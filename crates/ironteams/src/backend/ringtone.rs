@@ -35,6 +35,7 @@ pub enum RingtoneChoice {
 impl RingtoneChoice {
     /// Every choice, in the order Settings shows them: Teams' own first, then IronTeams's and the
     /// older ones, then the file.
+    #[cfg(test)]
     pub fn all() -> Vec<RingtoneChoice> {
         let originals = teams_assets::ORIGINALS
             .iter()
