@@ -3,6 +3,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { ReaderItem } from "../tokens/types.slint";
 import { Motion } from "../tokens/motion.slint";
+import { Avatar } from "../atoms/avatar.slint";
 import { ScrollView } from "std-widgets.slint";
 
 export component SeenByList inherits Rectangle {
@@ -70,13 +71,12 @@ export component SeenByList inherits Rectangle {
                         padding-left: 12px;
                         padding-right: 12px;
                         spacing: 10px;
-                        Rectangle {
-                            width: 24px;
-                            height: 24px;
+                        Avatar {
+                            size: 24px;
                             y: 6px;
-                            border-radius: 12px;
-                            background: rd.color;
-                            Text { text: rd.initials; color: #ffffff; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                            tone: rd.color;
+                            initials: rd.initials;
+                            text-size: 10px;
                         }
                         Text {
                             text: rd.name;

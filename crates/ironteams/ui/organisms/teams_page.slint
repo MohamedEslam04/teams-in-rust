@@ -7,6 +7,7 @@ import { TChannel, TTeam, TeamsStore, TeamsActions } from "../stores/teams_store
 import { TMenuItem } from "../molecules/teams_widgets.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Avatar } from "../atoms/avatar.slint";
 
 component Chip inherits Rectangle {
     in property <string> label;
@@ -91,14 +92,15 @@ component TeamLine inherits Rectangle {
                 padding-right: 8px;
                 spacing: 12px;
                 Icon { source: root.t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 22px; }
-                Rectangle {
-                    width: 36px;
-                    height: 36px;
+                Avatar {
+                    size: 36px;
                     y: 11px;
-                    border-radius: 6px;
-                    background: root.t.color;
+                    corner: 6px;
+                    tone: root.t.color;
                     opacity: root.t.shown ? 1.0 : 0.5;
-                    Text { text: root.t.initials; color: #ffffff; font-size: 14px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    initials: root.t.initials;
+                    text-size: 14px * Theme.font-scale;
+                    text-weight: 700;
                 }
                 VerticalLayout {
                     alignment: center;

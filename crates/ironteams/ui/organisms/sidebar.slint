@@ -1,7 +1,8 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { ChatRow, TeamRow } from "../tokens/types.slint";
-import { Avatar, GlyphAvatar, Icon, IconButton, Pill, SectionHeader } from "../atoms/widgets.slint";
+import { Icon, IconButton, Pill, SectionHeader } from "../atoms/widgets.slint";
+import { Avatar, GlyphAvatar } from "../atoms/avatar.slint";
 import { ChannelMenu, ItemMenu, ListStore, OptionRow, SectionHead } from "lists.slint";
 import { CommunitiesSection, TeamMenuItems } from "teams_page.slint";
 import { TeamsStore } from "../stores/teams_store.slint";
@@ -110,22 +111,16 @@ component ChatItem inherits Rectangle {
             y: (parent.height - 32px) / 2;
             accessible-role: image;
             accessible-label: @tr("Channel");
-            Rectangle {
-                width: 32px;
-                height: 32px;
-                border-radius: 6px;
-                background: root.data.has-avatar ? transparent : root.data.color;
-                clip: true;
-                if !root.data.has-avatar: Text { text: root.data.initials; color: #ffffff; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                // The team's picture, square like in Teams.
-                if root.data.has-avatar: Image {
-                    source: root.data.avatar;
-                    width: 32px;
-                    height: 32px;
-                    image-fit: cover;
-                    accessible-role: image;
-                    accessible-label: @tr("Team picture");
-                }
+            // The team's picture, square like in Teams.
+            Avatar {
+                size: 32px;
+                corner: 6px;
+                tone: root.data.color;
+                initials: root.data.initials;
+                text-size: 12px;
+                img: root.data.avatar;
+                has-img: root.data.has-avatar;
+                photo-label: @tr("Team picture");
             }
             Rectangle {
                 x: 32px - 13px + 2px;
@@ -556,12 +551,19 @@ export component Sidebar inherits Rectangle {
                             padding-left: 8px;
                             spacing: 10px;
                             Icon { source: t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 15px; }
-                            Rectangle {
-                                width: 28px; height: 28px; y: 8px; border-radius: 4px; background: t.color;
-                                clip: true;
-                                // The team's picture when it is known, else its initials.
-                                if !t.has-avatar: Text { text: t.initials; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; }
-                                if t.has-avatar: Image { source: t.avatar; width: 28px; height: 28px; image-fit: cover; accessible-role: image; accessible-label: @tr("Team picture"); }
+                            // The team's picture when it is known, else its initials.
+                            Avatar {
+                                size: 28px;
+                                y: 8px;
+                                corner: 4px;
+                                tone: t.color;
+                                tone-under-img: true;
+                                initials: t.initials;
+                                text-size: 12px * Theme.font-scale;
+                                text-weight: 700;
+                                img: t.avatar;
+                                has-img: t.has-avatar;
+                                photo-label: @tr("Team picture");
                             }
                             Text { text: t.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
                             Rectangle { width: 30px; }

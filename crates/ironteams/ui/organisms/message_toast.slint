@@ -8,7 +8,8 @@
 // Rust (`src/ui/message_toast.rs`) fills `toasts` (newest last, three at most) and takes the
 // callbacks; `app.slint` places `MessageToasts` above the call window and opens a chat.
 import { Theme } from "../tokens/theme.slint";
-import { Avatar, Icon } from "../atoms/widgets.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 
 export struct ToastCard {

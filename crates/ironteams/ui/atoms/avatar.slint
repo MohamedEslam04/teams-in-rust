@@ -1,0 +1,103 @@
+// People and teams: a photo, or initials on a coloured shape, with an optional presence dot.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "widgets.slint";
+
+// Teams availability as a small dot: green, red, amber, or a grey ring for Offline (and an
+// unknown status). `presence` takes `Available`, `Busy`, `DoNotDisturb`, `BeRightBack`, `Away`,
+// `Offline` and their `…Idle` forms.
+export component PresenceDot inherits Rectangle {
+    in property <string> presence;
+    property <string> p: root.presence;
+    width: 8px;
+    height: self.width;
+    border-radius: self.width / 2;
+    border-width: 2px;
+    border-color: Theme.surface;
+    property <bool> ring: !(p == "Available" || p == "AvailableIdle" || p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb" || p == "BeRightBack" || p == "Away");
+    background: (p == "Available" || p == "AvailableIdle") ? Theme.presence-available
+        : (p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb") ? Theme.presence-busy
+        : (p == "BeRightBack" || p == "Away") ? Theme.presence-away
+        : Theme.surface;
+    accessible-role: image;
+    accessible-label: @tr("Presence");
+    accessible-value: root.presence;
+    if root.ring: Rectangle {
+        x: 2px;
+        y: 2px;
+        width: root.width - 4px;
+        height: self.width;
+        border-radius: self.width / 2;
+        border-width: max(1px, self.width * 0.2);
+        border-color: Theme.presence-offline;
+    }
+}
+
+// A photo, or initials on `tone`. Round by default; `corner` squares it (team pictures).
+export component Avatar inherits Rectangle {
+    in property <string> initials;
+    in property <color> tone: Theme.accent-strong;
+    in property <image> img;
+    in property <bool> has-img: false;
+    in property <length> size: 32px;
+    // Teams availability (see `PresenceDot`); "" draws no dot.
+    in property <string> presence: "";
+    in property <length> corner: root.size / 2;
+    in property <length> text-size: root.size * 0.38;
+    in property <int> text-weight: 600;
+    // `tone` also stays behind the photo.
+    in property <bool> tone-under-img: false;
+    // The photo's accessible name; "" leaves the photo out of the accessibility tree.
+    in property <string> photo-label;
+    width: size;
+    height: size;
+    border-radius: root.corner;
+    background: root.has-img && !root.tone-under-img ? transparent : root.tone;
+    if !root.has-img: Text {
+        text: root.initials;
+        color: #ffffff;
+        font-size: root.text-size;
+        font-weight: root.text-weight;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if root.has-img: Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: root.corner;
+        clip: true;
+        if root.photo-label == "": Image {
+            source: root.img;
+            width: root.size;
+            height: root.size;
+            image-fit: cover;
+        }
+        if root.photo-label != "": Image {
+            source: root.img;
+            width: root.size;
+            height: root.size;
+            image-fit: cover;
+            accessible-role: image;
+            accessible-label: root.photo-label;
+        }
+    }
+    if root.presence != "": PresenceDot {
+        presence: root.presence;
+        width: max(8px, root.size * 0.3);
+        x: root.size - self.width + 1px;
+        y: root.size - self.height + 1px;
+    }
+}
+
+// A round avatar drawing a glyph instead of initials (group and meeting chats).
+export component GlyphAvatar inherits Rectangle {
+    in property <image> icon;
+    in property <color> tone;
+    in property <color> tint;
+    in property <length> size: 32px;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: root.tone;
+    accessible-role: image;
+    Icon { source: root.icon; width: root.size * 0.56; height: root.size * 0.56; tint: root.tint; }
+}
