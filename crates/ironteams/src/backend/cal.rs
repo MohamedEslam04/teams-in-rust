@@ -831,6 +831,24 @@ impl Inner {
     }
 }
 
+/// Whether a calendar start notice may pop now: the Teams "Meeting started" switch, the pause
+/// and mute, quiet hours and Focus mode, decided like a chat banner.
+fn meeting_started_allowed() -> bool {
+    use super::quiet::{self, Decision, Incoming};
+    let now = chrono::Utc::now();
+    let prefs = quiet::load_prefs();
+    let inc = Incoming {
+        paused: super::settings::notifications_paused(now),
+        routed: super::settings::meeting_started_banner(now),
+        ..Default::default()
+    };
+    let focus = quiet::focus_active(quiet::focus_until(&prefs), now.timestamp_millis());
+    matches!(
+        quiet::should_banner(&inc, chrono::Local::now().naive_local(), &prefs, focus),
+        Decision::Show { .. }
+    )
+}
+
 /// `…/me/events/{id}/{action}`, with the id escaped for a path segment.
 fn reminder_url(id: &str, action: &str) -> String {
     let mut esc = String::new();
@@ -982,10 +1000,12 @@ impl Engine {
             s.banner = banner.as_ref().map(|b| (b.id.clone(), b.start_ms));
             (due, started, banner)
         };
+        // The "Meeting started" switch, the pause and quiet hours apply to every start notice.
+        let started_banner = notify && !started.is_empty() && meeting_started_allowed();
         for r in started {
-            tracing::info!("calendar: a Teams meeting started");
-            if notify {
-                self.notify_reminder(r, now);
+            tracing::info!(online = r.join_url.is_some(), "calendar: an event started");
+            if started_banner {
+                self.notify_reminder(r, now, true);
             }
         }
         for r in due {
@@ -994,7 +1014,7 @@ impl Engine {
                 "calendar reminder"
             );
             if notify {
-                self.notify_reminder(r, now);
+                self.notify_reminder(r, now, false);
             }
         }
         self.ui
@@ -1027,8 +1047,15 @@ impl Engine {
         }
     }
 
-    /// Loads what the view needs, then the delta window; applies Graph's changes.
+    /// Loads what the view needs, then the delta window; applies Graph's changes, then fetches
+    /// the series masters its occurrences need.
     async fn sync_calendar(self: &Arc<Self>) -> anyhow::Result<()> {
+        self.sync_calendar_delta().await?;
+        self.fetch_missing_masters().await;
+        Ok(())
+    }
+
+    async fn sync_calendar_delta(self: &Arc<Self>) -> anyhow::Result<()> {
         self.ensure_calendar_range().await?;
         let (window, link) = {
             let mut s = self.cal.lock();
@@ -1064,6 +1091,35 @@ impl Engine {
                 self.push_calendar();
                 Err(err.into())
             }
+        }
+    }
+
+    /// Delta lists the occurrences of a series without their details, which live on the series
+    /// master. A master that is not in the cache (it started before the delta window) is
+    /// fetched once, and fills all its occurrences.
+    async fn fetch_missing_masters(self: &Arc<Self>) {
+        let ids = self.cal.lock().cache.missing_masters();
+        let mut any = false;
+        for id in ids {
+            match Calendar::event(&self.client, &id).await {
+                Ok(master) => {
+                    self.cal
+                        .lock()
+                        .cache
+                        .apply(vec![::calendar::EventChange::Upsert(master)]);
+                    any = true;
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "calendar series master failed");
+                    // A deleted series is not asked for again; any other failure is retried.
+                    if !matches!(err, teams_proto::Error::Status { status: 404, .. }) {
+                        self.cal.lock().cache.forget_master_request(&id);
+                    }
+                }
+            }
+        }
+        if any {
+            self.push_calendar();
         }
     }
 
@@ -1175,30 +1231,42 @@ impl Engine {
         }
     }
 
-    /// Desktop notification for a reminder, with Join, Snooze and Dismiss.
-    fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64) {
+    /// Desktop notification for a reminder or a start notice, with Join (a Teams meeting) or
+    /// Open (any other event), Snooze and Dismiss. Always a system notification, also while the
+    /// window is focused: the in-app toast is for chat messages only.
+    fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64, started: bool) {
         let engine = self.clone();
         let rt = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
             let mut n = notify_rust::Notification::new();
+            let body = if started {
+                reminders::started_body(&r, now)
+            } else {
+                reminders::reminder_body(&r, now)
+            };
             n.appname("IronTeams")
                 .summary(if r.subject.is_empty() {
                     "Meeting"
                 } else {
                     &r.subject
                 })
-                .body(&reminders::reminder_body(&r, now))
+                .body(&body)
                 .icon("appointment-soon")
                 .timeout(notify_rust::Timeout::Milliseconds(60_000));
             if r.join_url.is_some() {
                 n.action("join", "Join");
+            } else {
+                n.action("open", "Open");
             }
             n.action("snooze", "Snooze 5 min")
                 .action("dismiss", "Dismiss");
             let Ok(handle) = n.show() else { return };
             handle.wait_for_action(|action| {
                 let cmd = match action {
-                    "join" | "default" => r.join_url.clone().map(CalCmd::Join),
+                    "join" | "default" if r.join_url.is_some() => {
+                        r.join_url.clone().map(CalCmd::Join)
+                    }
+                    "open" | "default" => Some(CalCmd::Peek(r.id.clone())),
                     "snooze" => Some(CalCmd::Snooze(r.id.clone(), r.start_ms)),
                     "dismiss" => Some(CalCmd::Dismiss(r.id.clone(), r.start_ms)),
                     _ => None,

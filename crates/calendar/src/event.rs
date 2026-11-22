@@ -37,10 +37,24 @@ pub struct Attendee {
     pub kind: AttendeeKind,
 }
 
+/// Graph's `type` of an event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeriesType {
+    Single,
+    /// One instance of a series. A calendarView delta answer carries only its id, times and
+    /// `seriesMasterId`; the details live on the master.
+    Occurrence,
+    /// An instance of a series that was changed on its own. Carries every property.
+    Exception,
+    /// The series itself: the source of the occurrences' details, never drawn as an instance.
+    SeriesMaster,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
     pub id: String,
     pub ical_uid: String,
+    pub event_type: SeriesType,
     pub series_master_id: Option<String>,
     pub subject: String,
     /// Unix milliseconds. All-day events start at midnight and end at the next midnight.
@@ -65,6 +79,53 @@ pub struct Event {
     pub attendees: Vec<Attendee>,
     /// Minutes before the start the reminder fires; `None` when the event has no reminder.
     pub reminder_minutes: Option<u32>,
+}
+
+impl Event {
+    /// An occurrence that came without the details of its series: no subject and no organizer.
+    pub fn is_bare_occurrence(&self) -> bool {
+        self.event_type == SeriesType::Occurrence
+            && self.subject.is_empty()
+            && self.organizer_name.is_empty()
+            && self.organizer_email.is_empty()
+    }
+
+    /// Takes the series' details from `master`. The occurrence keeps its own id, times,
+    /// cancellation and link to the series.
+    pub fn fill_from_master(&mut self, master: &Event) {
+        self.subject.clone_from(&master.subject);
+        if self.ical_uid.is_empty() {
+            self.ical_uid.clone_from(&master.ical_uid);
+        }
+        self.is_all_day = master.is_all_day;
+        self.show_as = master.show_as;
+        self.response = master.response;
+        self.sensitivity_private = master.sensitivity_private;
+        self.categories.clone_from(&master.categories);
+        self.organizer_name.clone_from(&master.organizer_name);
+        self.organizer_email.clone_from(&master.organizer_email);
+        self.location.clone_from(&master.location);
+        self.is_online_meeting = master.is_online_meeting;
+        self.join_url.clone_from(&master.join_url);
+        if self.web_link.is_empty() {
+            self.web_link.clone_from(&master.web_link);
+        }
+        self.is_recurring = true;
+        self.body_preview.clone_from(&master.body_preview);
+        self.attendees.clone_from(&master.attendees);
+        self.reminder_minutes = master.reminder_minutes;
+    }
+}
+
+/// An item without a `type` but with a `seriesMasterId` is an occurrence.
+fn event_type(v: &Value, series_master_id: Option<&str>) -> SeriesType {
+    match str_at(v, "type") {
+        "occurrence" => SeriesType::Occurrence,
+        "exception" => SeriesType::Exception,
+        "seriesMaster" => SeriesType::SeriesMaster,
+        "" if series_master_id.is_some() => SeriesType::Occurrence,
+        _ => SeriesType::Single,
+    }
 }
 
 /// One entry of a delta page.
@@ -158,6 +219,8 @@ pub(crate) fn parse_event(v: &Value) -> Option<Event> {
         .get("organizer")
         .and_then(|o| o.get("emailAddress"))
         .unwrap_or(&Value::Null);
+    let series_master_id = opt_str(v, "seriesMasterId");
+    let kind = event_type(v, series_master_id.as_deref());
     let join_url = v
         .get("onlineMeeting")
         .and_then(|m| opt_str(m, "joinUrl"))
@@ -165,7 +228,8 @@ pub(crate) fn parse_event(v: &Value) -> Option<Event> {
     Some(Event {
         id,
         ical_uid: str_at(v, "iCalUId").to_string(),
-        series_master_id: opt_str(v, "seriesMasterId"),
+        event_type: kind,
+        series_master_id,
         subject: str_at(v, "subject").to_string(),
         start_ms,
         end_ms,
@@ -198,10 +262,7 @@ pub(crate) fn parse_event(v: &Value) -> Option<Event> {
             .unwrap_or(false),
         join_url,
         web_link: str_at(v, "webLink").to_string(),
-        is_recurring: matches!(
-            str_at(v, "type"),
-            "occurrence" | "exception" | "seriesMaster"
-        ),
+        is_recurring: kind != SeriesType::Single,
         body_preview: str_at(v, "bodyPreview").to_string(),
         attendees: v
             .get("attendees")
@@ -286,6 +347,57 @@ mod tests {
         .unwrap();
         assert_eq!(e.start_ms, parse_iso_ms("2026-12-29T12:00:00Z").unwrap());
         assert_eq!(e.end_ms, parse_iso_ms("2026-12-29T12:30:00Z").unwrap());
+    }
+
+    fn bare_occurrence(id: &str, day: &str) -> Value {
+        json!({"@odata.etag": "x", "id": id, "type": "occurrence", "seriesMasterId": "m1",
+            "start": {"dateTime": format!("2026-11-{day}T09:00:00.0000000"), "timeZone": "UTC"},
+            "end": {"dateTime": format!("2026-11-{day}T09:15:00.0000000"), "timeZone": "UTC"}})
+    }
+
+    #[test]
+    fn a_delta_page_keeps_the_type_and_series_of_bare_occurrences() {
+        let page = json!({"value": [
+            {"id": "m1", "type": "seriesMaster", "subject": "Morning Standup",
+                "organizer": {"emailAddress": {"name": "Org", "address": "org@contoso.com"}},
+                "start": {"dateTime": "2026-10-01T09:00:00.0000000", "timeZone": "UTC"},
+                "end": {"dateTime": "2026-10-01T09:15:00.0000000", "timeZone": "UTC"}},
+            bare_occurrence("o1", "18"),
+            bare_occurrence("o2", "19"),
+            bare_occurrence("o3", "20"),
+            {"id": "x1", "type": "exception", "seriesMasterId": "m1", "subject": "All-Hands",
+                "start": {"dateTime": "2026-11-21T09:00:00.0000000", "timeZone": "UTC"},
+                "end": {"dateTime": "2026-11-21T10:00:00.0000000", "timeZone": "UTC"}},
+        ]});
+        let events: Vec<Event> = parse_delta_page(&page)
+            .changes
+            .into_iter()
+            .map(|c| match c {
+                EventChange::Upsert(e) => e,
+                EventChange::Removed(_) => panic!("nothing was removed"),
+            })
+            .collect();
+        assert_eq!(events[0].event_type, SeriesType::SeriesMaster);
+        assert!(!events[0].is_bare_occurrence());
+        for o in &events[1..4] {
+            assert_eq!(o.event_type, SeriesType::Occurrence);
+            assert_eq!(o.series_master_id.as_deref(), Some("m1"));
+            assert!(o.is_recurring);
+            assert!(o.is_bare_occurrence(), "{} has no details of its own", o.id);
+            assert!(o.subject.is_empty() && o.organizer_email.is_empty());
+        }
+        assert_eq!(events[4].event_type, SeriesType::Exception);
+        assert!(!events[4].is_bare_occurrence());
+        assert_eq!(events[4].subject, "All-Hands");
+    }
+
+    #[test]
+    fn an_item_with_a_series_but_no_type_is_an_occurrence() {
+        let e = parse_event(&json!({"id": "a", "seriesMasterId": "m"})).unwrap();
+        assert_eq!(e.event_type, SeriesType::Occurrence);
+        let e = parse_event(&json!({"id": "a", "type": "singleInstance"})).unwrap();
+        assert_eq!(e.event_type, SeriesType::Single);
+        assert!(!e.is_recurring);
     }
 
     #[test]
