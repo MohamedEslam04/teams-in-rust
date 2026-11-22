@@ -125,8 +125,9 @@ export global SettingsStore {
     in-out property <string> call-feedback: "sometimes"; // always | sometimes | never
     in-out property <string> ringtone: "default"; // default | chime | soft | pulse | custom
     in-out property <string> ringtone-file; // the custom file's name ("" for none)
-    in-out property <string> message-sound: "default"; // default | chime | soft | pulse | custom
+    in-out property <string> message-sound: "default"; // default (Teams) | ironteams | chime | soft | pulse | custom
     in-out property <string> message-sound-file;
+    in-out property <bool> download-teams-sounds: true;
 
     // --- Files and links (X1.6) ---
     in-out property <string> open-files: "browser"; // ironteams | browser | desktop

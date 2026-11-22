@@ -979,15 +979,17 @@ fn the_calls_page_picks_a_ringtone_and_is_honest_about_forwarding() {
     press(app, "Calls");
     assert_eq!(value_of(app, "Settings page"), "Calls");
     assert!(
-        checked(app, "Ringtone: Default"),
-        "the new sounds are the default"
+        checked(app, "Ringtone: Teams (default)"),
+        "Teams' original sound is the default"
     );
+    assert_eq!(store(app).get_ringtone(), "default");
     assert_listed_first(
         app,
         "Ringtone",
-        "Default",
-        &["Chime", "Soft", "Pulse", "Custom file"],
+        "Teams (default)",
+        &["IronTeams", "Chime", "Soft", "Pulse", "Custom file"],
     );
+    assert!(!checked(app, "Ringtone: IronTeams"));
     press(app, "Play ringtone");
     assert_eq!(*ui.log.borrow(), ["play Ringtone default "]);
 
@@ -2012,16 +2014,17 @@ fn the_notifications_page_picks_the_message_sound_and_plays_it() {
     open_page(app, "notifications");
     tall_window(app);
     assert!(
-        checked(app, "Message sound: Default"),
-        "new users get the default message sound"
+        checked(app, "Message sound: Teams (default)"),
+        "new users get Teams' message sound"
     );
     assert_eq!(store(app).get_message_sound(), "default");
     assert_listed_first(
         app,
         "Message sound",
-        "Default",
-        &["Chime", "Soft", "Pulse", "Custom file"],
+        "Teams (default)",
+        &["IronTeams", "Chime", "Soft", "Pulse", "Custom file"],
     );
+    assert!(!checked(app, "Message sound: IronTeams"));
 
     press(app, "Play message sound");
     press(app, "Message sound: Pulse");
@@ -2035,6 +2038,35 @@ fn the_notifications_page_picks_the_message_sound_and_plays_it() {
     );
     // The ringtone is its own setting.
     assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Teams);
+}
+
+#[test]
+fn the_ironteams_sounds_are_a_choice_and_the_teams_download_has_a_switch() {
+    let home = Home::new("teams-sounds");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    // On by default (a file saved before the switch existed reads as on, see the prefs tests).
+    assert!(checked(app, "Download Teams' original sounds"));
+    assert!(store(app).get_download_teams_sounds());
+
+    press(app, "Message sound: IronTeams");
+    assert_eq!(store(app).get_message_sound(), "ironteams");
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::IronTeams);
+    press(app, "Play message sound");
+    assert_eq!(*ui.log.borrow(), ["play Message ironteams "]);
+
+    // Off is kept in sounds.json and shown; the choice is not touched.
+    press(app, "Download Teams' original sounds");
+    assert!(!checked(app, "Download Teams' original sounds"));
+    let saved = Local::load(&dir).sounds;
+    assert!(!saved.download_teams_sounds);
+    assert_eq!(saved.message, RingtoneChoice::IronTeams);
+    press(app, "Download Teams' original sounds");
+    assert!(checked(app, "Download Teams' original sounds"));
+    assert!(Local::load(&dir).sounds.download_teams_sounds);
 }
 
 #[test]
@@ -2113,7 +2145,7 @@ fn a_sound_file_becomes_the_custom_ringtone() {
         [format!("play Ringtone custom {}", good.display())]
     );
     // Going back to a built-in one keeps the file for later.
-    press(app, "Ringtone: Default");
+    press(app, "Ringtone: Teams (default)");
     let kept = Local::load(&dir).calls;
     assert_eq!(kept.ringtone, RingtoneChoice::Teams);
     assert!(kept.ringtone_file.is_some());

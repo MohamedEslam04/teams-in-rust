@@ -1269,13 +1269,14 @@ pub fn waiting_sample(n: u64) -> i16 {
 }
 
 impl RingtoneChoice {
-    /// The generator of the older ringtones; the Default and a file are made in `sounds`.
+    /// The generator of the older ringtones; the Teams and IronTeams sounds and a file are made in
+    /// `sounds`.
     fn sample(self) -> Option<fn(u64) -> i16> {
         match self {
             RingtoneChoice::Chime => Some(ring_sample),
             RingtoneChoice::Soft => Some(soft_sample),
             RingtoneChoice::Pulse => Some(pulse_sample),
-            RingtoneChoice::Teams | RingtoneChoice::Custom => None,
+            RingtoneChoice::Teams | RingtoneChoice::IronTeams | RingtoneChoice::Custom => None,
         }
     }
 }

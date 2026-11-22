@@ -244,6 +244,10 @@ Microsoft can change them at any time, which would break IronTeams. Your organiz
 not allow third-party clients, so check with your IT team before you use IronTeams with a work account.
 Use it at your own risk.
 
+On first run IronTeams downloads Microsoft Teams' notification and ringtone sounds from Microsoft's CDN
+(the files Teams web plays). They are not part of IronTeams and not shipped with it; turn this off in
+Settings › Notifications › "Download Teams' original sounds", and IronTeams plays its own sounds instead.
+
 ## Credits
 
 - Protocol knowledge from [purple-teams](https://github.com/EionRobb/purple-teams) by Eion Robb (GPL-3.0).

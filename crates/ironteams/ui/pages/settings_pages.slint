@@ -471,7 +471,7 @@ export component NotificationsPage inherits VerticalLayout {
         hint: @tr("The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above.");
         SChoiceRow {
             label: @tr("Message sound");
-            options: [{v: "default", l: @tr("Default")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+            options: [{v: "default", l: @tr("Teams (default)")}, {v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
             value: SettingsStore.message-sound;
             picked(v) => { SettingsStore.message-sound = v; SettingsStore.command("message-sound", v); }
         }
@@ -481,6 +481,12 @@ export component NotificationsPage inherits VerticalLayout {
             alignment: start;
             Button { variant: ButtonVariant.settings; label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
             Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
+        }
+        Switch { variant: SwitchVariant.settings;
+            label: @tr("Download Teams' original sounds");
+            hint: @tr("Teams (default) plays Microsoft's own message and ringtone sounds. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Off: nothing is downloaded and IronTeams' own sounds play instead.");
+            checked: SettingsStore.download-teams-sounds;
+            toggled(on) => { SettingsStore.command("teams-sounds", on ? "1" : "0"); }
         }
     }
     for n in SettingsStore.notify: VerticalLayout {
@@ -703,7 +709,7 @@ export component CallsSettingsPage inherits VerticalLayout {
         hint: @tr("The sound IronTeams plays for an incoming call. It is kept on this computer.");
         SChoiceRow {
             label: @tr("Ringtone");
-            options: [{v: "default", l: @tr("Default")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+            options: [{v: "default", l: @tr("Teams (default)")}, {v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
             value: SettingsStore.ringtone;
             picked(v) => { SettingsStore.ringtone = v; SettingsStore.command("ringtone", v); }
         }

@@ -604,6 +604,8 @@ impl Engine {
         self.start_calls();
         self.start_notify_prefs();
         self.start_cache_upkeep();
+        // Teams' original sounds: what is missing is downloaded in the background.
+        sounds::fetch_teams_sounds();
         self.start_my_photo();
         self.start_my_presence();
         self.start_people_presence();

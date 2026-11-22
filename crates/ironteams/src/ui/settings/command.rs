@@ -332,6 +332,21 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 choose_sound_file(shared, w, which);
             }
         }
+        "teams-sounds" => {
+            let on = bit(arg);
+            let r = {
+                let mut c = shared.borrow_mut();
+                c.local.sounds.download_teams_sounds = on;
+                let r = c.local.save_sounds();
+                push_local(w, &c);
+                r
+            };
+            saved(w, r);
+            if on {
+                // Fetch what is missing now rather than at the next start.
+                sounds::fetch_teams_sounds();
+            }
+        }
         "ringtone-file" => choose_sound_file(shared, w, SoundFor::Ringtone),
         "message-sound-file" => choose_sound_file(shared, w, SoundFor::Message),
         "ringtone-preview" | "message-sound-preview" => {

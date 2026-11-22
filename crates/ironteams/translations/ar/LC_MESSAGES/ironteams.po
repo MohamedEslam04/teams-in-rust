@@ -2205,6 +2205,18 @@ msgstr "صوت الرسائل"
 msgid "Play message sound"
 msgstr "تشغيل صوت الرسائل"
 
+msgid "Teams (default)"
+msgstr "Teams (الافتراضي)"
+
+msgid "IronTeams"
+msgstr "IronTeams"
+
+msgid "Download Teams' original sounds"
+msgstr "تنزيل أصوات Teams الأصلية"
+
+msgid "Teams (default) plays Microsoft's own message and ringtone sounds. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Off: nothing is downloaded and IronTeams' own sounds play instead."
+msgstr "الخيار Teams (الافتراضي) يشغّل أصوات الرسائل والرنين الأصلية من Microsoft. ينزّلها IronTeams مرة واحدة من خوادم Microsoft ويحتفظ بها على هذا الكمبيوتر، وهي ليست جزءًا من IronTeams. عند الإيقاف لا يُنزَّل شيء ويشغّل IronTeams أصواته الخاصة بدلًا منها."
+
 msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
 msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."
 

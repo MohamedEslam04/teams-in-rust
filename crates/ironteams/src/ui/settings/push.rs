@@ -201,6 +201,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_ringtone_file(s(file_label(l.calls.ringtone_file.as_deref())));
     g.set_message_sound(s(l.sounds.message.slug()));
     g.set_message_sound_file(s(file_label(l.sounds.message_file.as_deref())));
+    g.set_download_teams_sounds(l.sounds.download_teams_sounds);
     push_devices(w, c);
     push_perms(w, c);
 }

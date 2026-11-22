@@ -1,7 +1,8 @@
 //! The sounds Settings › Calls and Settings › Notifications offer, for an incoming call and for a
-//! new message. The choice is local to IronTeams (Teams keeps its own per device). The Default
-//! sounds and the message sounds are made in `sounds`; the older ringtones (Chime, Soft, Pulse)
-//! are generated in `call_direct`, which needs the calling stack.
+//! new message. The choice is local to IronTeams (Teams keeps its own per device). The Teams
+//! sounds (downloaded, with IronTeams's own as the fallback), IronTeams's own sounds and the
+//! message sounds are made in `sounds`; the older ringtones (Chime, Soft, Pulse) are generated in
+//! `call_direct`, which needs the calling stack.
 
 use serde::{Deserialize, Serialize};
 
@@ -9,10 +10,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RingtoneChoice {
-    /// IronTeams's own sounds: soft, marimba-like notes (`sounds`). Shown as "Default".
+    /// Microsoft Teams' original sounds, downloaded at run time (`sounds::teams_assets`), or
+    /// IronTeams's own equivalent until they are there. Shown as "Teams (default)". Its slug is
+    /// still "default", which is what a file saved before the originals existed says, so those
+    /// users move to the originals with no migration.
     #[default]
     #[serde(rename = "default")]
     Teams,
+    /// IronTeams's own sounds: soft, marimba-like notes (`sounds::synth`).
+    #[serde(rename = "ironteams")]
+    IronTeams,
     /// The two-note chime.
     Chime,
     /// One long, gentle note.
@@ -24,8 +31,9 @@ pub enum RingtoneChoice {
 }
 
 impl RingtoneChoice {
-    pub const ALL: [RingtoneChoice; 5] = [
+    pub const ALL: [RingtoneChoice; 6] = [
         RingtoneChoice::Teams,
+        RingtoneChoice::IronTeams,
         RingtoneChoice::Chime,
         RingtoneChoice::Soft,
         RingtoneChoice::Pulse,
@@ -35,6 +43,7 @@ impl RingtoneChoice {
     pub fn slug(self) -> &'static str {
         match self {
             RingtoneChoice::Teams => "default",
+            RingtoneChoice::IronTeams => "ironteams",
             RingtoneChoice::Chime => "chime",
             RingtoneChoice::Soft => "soft",
             RingtoneChoice::Pulse => "pulse",
@@ -71,6 +80,34 @@ mod tests {
             assert_eq!(serde_json::from_str::<RingtoneChoice>(&json).unwrap(), c);
         }
         assert_eq!(RingtoneChoice::from_slug("siren"), None);
+    }
+
+    #[test]
+    fn the_saved_default_moves_to_the_teams_originals_and_the_other_choices_stay() {
+        // "default" was IronTeams's own sound; it now names the Teams originals.
+        assert_eq!(
+            serde_json::from_str::<RingtoneChoice>("\"default\"").unwrap(),
+            RingtoneChoice::Teams
+        );
+        assert_eq!(
+            RingtoneChoice::from_slug("default"),
+            Some(RingtoneChoice::Teams)
+        );
+        // IronTeams's own set is a choice of its own now.
+        assert_eq!(RingtoneChoice::IronTeams.slug(), "ironteams");
+        assert_eq!(
+            RingtoneChoice::from_slug("ironteams"),
+            Some(RingtoneChoice::IronTeams)
+        );
+        assert_ne!(RingtoneChoice::IronTeams, RingtoneChoice::default());
+        for (saved, want) in [
+            ("\"chime\"", RingtoneChoice::Chime),
+            ("\"soft\"", RingtoneChoice::Soft),
+            ("\"pulse\"", RingtoneChoice::Pulse),
+            ("\"custom\"", RingtoneChoice::Custom),
+        ] {
+            assert_eq!(serde_json::from_str::<RingtoneChoice>(saved).unwrap(), want);
+        }
     }
 
     #[test]
