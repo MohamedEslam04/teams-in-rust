@@ -1,0 +1,11 @@
+# Keeps the GitHub Actions in the workflows current (deprecated runtimes such as Node 20 show up as
+# warnings in every run otherwise). One grouped pull request a week, against the default branch.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

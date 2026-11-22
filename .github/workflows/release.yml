@@ -65,7 +65,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: v
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v=${GITHUB_REF_NAME#v}
@@ -84,11 +84,11 @@ jobs:
   icons:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick icnsutils
       - run: bash packaging/release/icons.sh icons "packaging/$APP_ID.svg"
       - run: bash packaging/release/dictionaries.sh dictionaries
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: shared-assets
           path: |
@@ -106,7 +106,7 @@ jobs:
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config squashfs-tools
@@ -114,7 +114,7 @@ jobs:
         with:
           shared-key: release-linux
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: shared-assets
           path: assets
@@ -124,7 +124,7 @@ jobs:
           mkdir -p "$d"
           cp "target/release/$BIN" "packaging/$APP_ID.desktop" "packaging/$APP_ID.svg" "packaging/$APP_ID.metainfo.xml" LICENSE README.md "$d/"
           tar -czf "$d.tar.gz" "$d"
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
       - name: Velopack AppImage
@@ -142,7 +142,7 @@ jobs:
           mkdir smoke && cd smoke
           "$img" --appimage-extract >/dev/null
           APPIMAGE=$img ./squashfs-root/usr/bin/$BIN --self-check --packaged
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: release-linux
           path: |
@@ -161,13 +161,13 @@ jobs:
         shell: bash
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-windows
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: shared-assets
           path: assets
@@ -181,7 +181,7 @@ jobs:
       - name: Portable zip
         shell: pwsh
         run: Compress-Archive -Path stage\* -DestinationPath "$env:APP_NAME-$env:VERSION-windows-x86_64-portable.zip"
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
       - name: Velopack Setup.exe
@@ -207,7 +207,7 @@ jobs:
           unzip -q "$(ls velopack-out/*Portable.zip | head -1)" -d smoke
           exe=$(find smoke -path '*current*' -name "$BIN.exe" | head -1)
           "$exe" --self-check --packaged
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
@@ -232,7 +232,7 @@ jobs:
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -240,7 +240,7 @@ jobs:
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: shared-assets
           path: assets
@@ -254,7 +254,7 @@ jobs:
           cp assets/icons/app.icns "$app/Resources/app.icns"
           cp assets/dictionaries/* "$app/Resources/dictionaries/"
           cp LICENSE "$app/Resources/"
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
       - name: Velopack .pkg
@@ -301,7 +301,7 @@ jobs:
           ditto -x -k "$(ls velopack-out/*Portable.zip | head -1)" smoke
           app=$(find smoke -maxdepth 2 -name '*.app' | head -1)
           "$app/Contents/MacOS/$BIN" --self-check --packaged
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: release-macos-${{ matrix.arch }}
           path: velopack-out/*
@@ -324,7 +324,7 @@ jobs:
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           # Everything this run uploaded (also packaging.yml's RPM and Flatpak), one folder per
           # artifact; only package files are attached below.
