@@ -102,8 +102,9 @@ fn chat_row(c: ChatData) -> ChatRow {
 /// The row to keep in place when older messages land above it: the row that held the top of the
 /// view (`top`, tracked by the list as the user scrolls) and `true` to keep the user's offset in
 /// it, else the row that was first (`fallback`, `false`).
-fn anchor_row(top: &str, ids: &[String], fallback: usize) -> (usize, bool) {
-    if !top.is_empty()
+fn anchor_row(top: &str, valid: bool, ids: &[String], fallback: usize) -> (usize, bool) {
+    if valid
+        && !top.is_empty()
         && let Some(i) = ids.iter().position(|id| id == top)
     {
         return (i, true);
@@ -660,16 +661,20 @@ impl UiHandle {
     /// scroll position is kept.
     pub fn messages(&self, msgs: Vec<MsgData>, scroll: Scroll) {
         self.run(move |w| {
+            let started = std::time::Instant::now();
             // Where the user is in the list now, before the rows change.
             let top_id = w.get_msg_top_id().to_string();
             let top_off = w.get_msg_top_off();
+            // The row was recorded where the view is now (not before a jump the rows missed).
+            let top_valid = (w.get_msg_top_cy() - w.get_msg_view_y()).abs() < 1.0;
             let ids: Vec<String> = if matches!(scroll, Scroll::Anchor(_)) {
                 msgs.iter().map(|m| m.id.clone()).collect()
             } else {
                 Vec::new()
             };
-            MESSAGES.with(|cell| {
+            let (rows, written) = MESSAGES.with(|cell| {
                 let mut cell = cell.borrow_mut();
+                let mut written = 0usize;
                 let m = cell.get_or_insert_with(|| {
                     let m = Rc::new(VecModel::default());
                     w.set_messages(ModelRc::from(m.clone()));
@@ -714,6 +719,7 @@ impl UiHandle {
                     .take_while(|&k| id(a + k) == msgs[b + k].id.as_str() || settled(k))
                     .count();
                 if run == 0 {
+                    written = new_prints.len();
                     m.set_vec(msgs.into_iter().map(msg).collect::<Vec<_>>());
                     prints = new_prints;
                 } else {
@@ -729,22 +735,35 @@ impl UiHandle {
                     for (j, x) in msgs.into_iter().enumerate() {
                         if j < b {
                             m.insert(j, msg(x));
+                            written += 1;
                             prints.insert(j, new_prints[j]);
                         } else if j < b + run {
                             // A row that did not change is not written: writing it notifies
                             // every binding of the row and parses its text again.
                             if prints[j] != new_prints[j] {
                                 m.set_row_data(j, msg(x));
+                                written += 1;
                                 prints[j] = new_prints[j];
                             }
                         } else {
                             m.push(msg(x));
+                            written += 1;
                             prints.push(new_prints[j]);
                         }
                     }
                 }
+                let rows = prints.len();
                 MESSAGE_PRINTS.with(|p| *p.borrow_mut() = prints);
+                (rows, written)
             });
+            // `rows` shown, `written` of them converted and written to the model (the rest were
+            // unchanged): see docs/perf.md.
+            tracing::debug!(
+                rows,
+                written,
+                us = started.elapsed().as_micros() as u64,
+                "ui_messages"
+            );
             match scroll {
                 Scroll::Keep => {}
                 // The list corrects its own estimate from the divider row's real position.
@@ -755,7 +774,7 @@ impl UiHandle {
                 Scroll::Anchor(i) => {
                     // The row the user had at the top of the view stays there; when it is not
                     // in the list, the row that was first does.
-                    let (row, keep_offset) = anchor_row(&top_id, &ids, i);
+                    let (row, keep_offset) = anchor_row(&top_id, top_valid, &ids, i);
                     let off = if keep_offset { top_off } else { 0.0 };
                     w.set_anchor_index(row as i32);
                     w.set_anchor_off(off);
@@ -828,13 +847,19 @@ mod anchor_tests {
     #[test]
     fn the_row_at_the_top_of_the_view_is_kept_with_its_offset() {
         let rows = ids(&["o1", "o2", "a", "b", "c"]);
-        assert_eq!(anchor_row("b", &rows, 2), (3, true));
+        assert_eq!(anchor_row("b", true, &rows, 2), (3, true));
     }
 
     #[test]
     fn without_a_tracked_row_the_first_row_is_kept() {
         let rows = ids(&["o1", "o2", "a", "b"]);
-        assert_eq!(anchor_row("", &rows, 2), (2, false));
-        assert_eq!(anchor_row("gone", &rows, 2), (2, false));
+        assert_eq!(anchor_row("", true, &rows, 2), (2, false));
+        assert_eq!(anchor_row("gone", true, &rows, 2), (2, false));
+    }
+
+    #[test]
+    fn a_row_recorded_before_a_jump_is_not_trusted() {
+        let rows = ids(&["o1", "a", "b"]);
+        assert_eq!(anchor_row("b", false, &rows, 1), (1, false));
     }
 }

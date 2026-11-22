@@ -421,6 +421,8 @@ export component AppWindow inherits Window {
     // pane tracks it as the user scrolls; Rust reads it when older messages land).
     in-out property <string> msg-top-id;
     in-out property <length> msg-top-off;
+    in-out property <length> msg-top-cy;
+    in-out property <length> msg-view-y;
     // How far above the view's top the anchor row sits once the older messages are in.
     in property <length> anchor-off;
     // Width of the chat and teams list (the divider next to it drags it; Rust remembers it).
@@ -799,6 +801,8 @@ export component AppWindow inherits Window {
                         anchor-tick: root.anchor-tick;
                         top-id <=> root.msg-top-id;
                         top-off <=> root.msg-top-off;
+                        top-cy <=> root.msg-top-cy;
+                        view-y <=> root.msg-view-y;
                         at-bottom <=> root.at-bottom;
                         at-bottom-changed(a0) => { root.at-bottom-changed(a0); }
                         current-is-channel: root.current-is-channel;

@@ -59,6 +59,11 @@ export component MessagePane inherits Rectangle {
     // messages that land above are put back so this row stays where it was.
     in-out property <string> top-id;
     in-out property <length> top-off;
+    // `top-cy` is where the view was when `top-id` was recorded and `view-y` where it is now:
+    // when they differ the view jumped (Home, a jump to a message) without the rows noticing, and
+    // `top-id` is not to be trusted.
+    in-out property <length> top-cy;
+    in-out property <length> view-y;
     in property <bool> unavailable;
     in property <string> unavailable-text;
     vertical-stretch: 1;
@@ -143,6 +148,7 @@ export component MessagePane inherits Rectangle {
             }
         }
         changed content-y => {
+            root.view-y = self.content-y;
             // Pinned only at the very bottom: rows that get their real height while
             // scrolling up change the content height, and a looser margin pulled the
             // list back down (the list shook when scrolling up).
@@ -170,12 +176,14 @@ export component MessagePane inherits Rectangle {
                     if self.holds-top {
                         root.top-id = m.id;
                         root.top-off = self.top-gap;
+                        root.top-cy = msg-list.content-y;
                     }
                 }
                 changed holds-top => {
                     if self.holds-top {
                         root.top-id = m.id;
                         root.top-off = self.top-gap;
+                        root.top-cy = msg-list.content-y;
                     }
                 }
                 changed y => {

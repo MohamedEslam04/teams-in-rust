@@ -231,12 +231,33 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
     let app = app_with_messages(many_short(60));
     app.set_scroll_tick(app.get_scroll_tick() + 1);
     settle(&app);
-    scroll_up(&app, 100_000.);
+    // The way a user gets there: wheel steps, a few frames each.
+    for _ in 0..200 {
+        if !find_label(&app, "message 0").is_empty() && app.get_msg_top_id() == "m0" {
+            break;
+        }
+        scroll_up(&app, 600.);
+        for _ in 0..4 {
+            testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+        }
+    }
     settle(&app);
+    let facts = format!(
+        "top id {:?}, top off {}, recorded at {}, view at {}, drawn {}",
+        app.get_msg_top_id(),
+        app.get_msg_top_off(),
+        app.get_msg_top_cy(),
+        app.get_msg_view_y(),
+        !find_label(&app, "message 0").is_empty()
+    );
     assert_eq!(
         app.get_msg_top_id(),
         "m0",
-        "the list tracks the row at the view's top"
+        "the list tracks the row at the view's top: {facts}"
+    );
+    assert!(
+        (app.get_msg_top_cy() - app.get_msg_view_y()).abs() < 1.,
+        "the recorded row belongs to where the view is: {facts}"
     );
     let before = row_y(&app, "message 0");
     land_older(&app, 40, 40, 0.);
