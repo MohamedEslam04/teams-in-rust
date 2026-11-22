@@ -172,15 +172,27 @@ async fn device_code(ui: &UiHandle, cfg: &session::Config) -> anyhow::Result<Cli
     Ok(client)
 }
 
-/// Twemoji (COLRv0) — Slint's renderer draws COLRv0/CBDT color glyphs but not COLRv1, which is
-/// what most distributions ship as their emoji font. CC-BY 4.0, see ui/fonts/README.md.
 /// IronTeams's desktop-file id (the Flatpak's app id), which is also its Wayland app id and X11 window
 /// class, so the compositor and the task manager match the window to the installed desktop file.
 /// The desktop portal gets it too: the ScreenCast and RemoteDesktop dialogs then show IronTeams's
 /// name instead of the terminal's. The portal takes reverse-DNS ids only.
 const APP_ID: &str = tray::APP_ID;
 
-const EMOJI_FONT: &[u8] = include_bytes!("../ui/fonts/TwemojiMozilla.ttf");
+/// The bundled color emoji fonts, in the order they are tried. Slint's renderer draws COLRv0 and
+/// CBDT color glyphs but not COLRv1, which is what most distributions ship as their emoji font.
+/// Fluent Emoji (3D, as in Teams) is a CBDT bitmap font; it has no country flags and none of the
+/// newest emoji, so Twemoji (COLRv0) stays behind it for whatever it lacks. Licenses: MIT and
+/// CC-BY 4.0, see ui/fonts/README.md.
+const EMOJI_FONTS: [(&str, &[u8]); 2] = [
+    (
+        "FluentEmoji3D.ttf",
+        include_bytes!("../ui/fonts/FluentEmoji3D.ttf"),
+    ),
+    (
+        "TwemojiMozilla.ttf",
+        include_bytes!("../ui/fonts/TwemojiMozilla.ttf"),
+    ),
+];
 
 /// The window saw a right button go up: the message under the pointer opens its "…" menu
 /// (`MessagePointer` in `message_row.slint`; its text takes the press itself).
@@ -206,7 +218,7 @@ fn fc_match(pattern: &str) -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Builds the font chain: the UI font in each weight, then the bundled color emoji font. Linux
+/// Builds the font chain: the UI font in each weight, then the bundled color emoji fonts. Linux
 /// only (fontconfig): Windows and macOS keep the system UI font and its color emoji fallback.
 fn configure_fonts() {
     if std::env::var_os("SLINT_FONT_PATH").is_some() || !cfg!(target_os = "linux") {
@@ -216,14 +228,18 @@ fn configure_fonts() {
         return;
     };
     let dir = paths.cache_dir.join("fonts");
-    let emoji = dir.join("TwemojiMozilla.ttf");
-    let fresh = std::fs::metadata(&emoji)
-        .map(|m| m.len() == EMOJI_FONT.len() as u64)
-        .unwrap_or(false);
-    if !fresh
-        && (std::fs::create_dir_all(&dir).is_err() || std::fs::write(&emoji, EMOJI_FONT).is_err())
-    {
-        return;
+    let mut emoji = Vec::new();
+    for (name, bytes) in EMOJI_FONTS {
+        let path = dir.join(name);
+        let fresh = std::fs::metadata(&path)
+            .map(|m| m.len() == bytes.len() as u64)
+            .unwrap_or(false);
+        if !fresh
+            && (std::fs::create_dir_all(&dir).is_err() || std::fs::write(&path, bytes).is_err())
+        {
+            return;
+        }
+        emoji.push(path);
     }
     // Static files per weight: weights of a variable font loaded this way are not applied.
     // Arabic and other scripts keep using the system fallback.
@@ -233,7 +249,7 @@ fn configure_fonts() {
             .filter_map(fc_match)
             .collect();
     chain.dedup();
-    chain.push(emoji);
+    chain.extend(emoji);
     if let Ok(joined) = std::env::join_paths(chain) {
         // SAFETY: called at the start of main, before any other thread exists.
         unsafe { std::env::set_var("SLINT_FONT_PATH", joined) };
