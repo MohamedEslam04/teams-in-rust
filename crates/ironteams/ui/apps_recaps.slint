@@ -166,8 +166,9 @@ component PlayCard inherits Rectangle {
     border-color: Theme.border;
     background: Theme.surface;
     // With no recording it is only a notice ("No recording was found…"): no play button, so it
-    // does not look like something to click.
-    accessible-role: RecapsStore.has-recording ? AccessibleRole.button : AccessibleRole.text;
+    // does not look like something to click. (A role must be constant, so it stays a disabled
+    // button that reads the notice.)
+    accessible-role: button;
     accessible-label: RecapsStore.has-recording ? "Play the recording" : RecapsStore.part-label;
     accessible-enabled: RecapsStore.has-recording;
     accessible-action-default => { RecapsStore.command("recaps-watch", ""); }
