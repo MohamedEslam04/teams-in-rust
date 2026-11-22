@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reqwest::Method;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use teams_proto::broker::Audience;
 use teams_proto::{Client, Error, Result};
@@ -130,18 +131,34 @@ impl Calendar {
     }
 }
 
+/// True when Graph refused a delta link because it is too old (410 Gone, or the sync state it
+/// names is gone): the delta starts over without one.
+pub fn delta_link_expired(err: &Error) -> bool {
+    match err {
+        Error::Status { status: 410, .. } => true,
+        Error::Status { status, body, .. } if (400..500).contains(status) => {
+            let body = body.to_ascii_lowercase();
+            body.contains("syncstatenotfound") || body.contains("syncstateinvalid")
+        }
+        _ => false,
+    }
+}
+
 /// Events by id, kept up to date from delta changes.
 ///
 /// A delta answer lists the occurrences of a series without subject, organizer, join link or
 /// attendees; those live on the series master. The cache keeps masters apart (they have no
 /// single time and are never drawn) and fills the bare occurrences from them.
-#[derive(Debug, Default)]
+///
+/// It serializes with its delta link, so the next run can show it at once and go on from there.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EventCache {
     events: BTreeMap<String, Event>,
     masters: BTreeMap<String, Event>,
     /// Occurrences that take their details from the master, by id.
     bare: BTreeSet<String>,
     /// Masters that were asked for, so each is fetched once.
+    #[serde(skip)]
     asked: BTreeSet<String>,
     /// The delta link to pass to the next [`Calendar::delta`].
     pub delta_link: Option<String>,
@@ -162,6 +179,29 @@ impl EventCache {
                 }
             }
         }
+    }
+
+    /// Applies a delta of `[start_ms, end_ms)` that started without a delta link: it lists every
+    /// event of the window, so the window's events it does not list were deleted meanwhile.
+    pub fn apply_full(&mut self, start_ms: i64, end_ms: i64, changes: Vec<EventChange>) {
+        let listed: BTreeSet<String> = changes
+            .iter()
+            .filter_map(|c| match c {
+                EventChange::Upsert(e) => Some(e.id.clone()),
+                EventChange::Removed(_) => None,
+            })
+            .collect();
+        let gone: Vec<String> = self
+            .in_range(start_ms, end_ms)
+            .into_iter()
+            .filter(|e| !listed.contains(&e.id))
+            .map(|e| e.id.clone())
+            .collect();
+        for id in gone {
+            self.events.remove(&id);
+            self.bare.remove(&id);
+        }
+        self.apply(changes);
     }
 
     /// A new or changed master refreshes the occurrences that were filled from it.
@@ -228,6 +268,30 @@ impl EventCache {
     /// A master whose fetch failed may be asked for again by [`missing_masters`](Self::missing_masters).
     pub fn forget_master_request(&mut self, id: &str) {
         self.asked.remove(id);
+    }
+
+    /// A copy to save: the events overlapping `[start_ms, end_ms)` (the delta window, which the
+    /// delta link keeps up to date), every master and the delta link. Events outside it came
+    /// from calendarView reads, which never report deletions, so they are not kept.
+    pub fn within(&self, start_ms: i64, end_ms: i64) -> EventCache {
+        let events: BTreeMap<String, Event> = self
+            .in_range(start_ms, end_ms)
+            .into_iter()
+            .map(|e| (e.id.clone(), e.clone()))
+            .collect();
+        let bare = self
+            .bare
+            .iter()
+            .filter(|id| events.contains_key(*id))
+            .cloned()
+            .collect();
+        EventCache {
+            events,
+            masters: self.masters.clone(),
+            bare,
+            asked: BTreeSet::new(),
+            delta_link: self.delta_link.clone(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -493,6 +557,100 @@ mod tests {
         cache.apply(vec![master("Morning Standup")]);
         assert_eq!(by_id(&cache, "o1").subject, "Own title");
         assert!(cache.missing_masters().is_empty());
+    }
+
+    // ---- saved between runs ----
+
+    #[test]
+    fn a_saved_cache_reads_back_the_same() {
+        let mut cache = EventCache::default();
+        cache.apply(vec![
+            master("Morning Standup"),
+            occurrence("o1", 18),
+            occurrence("o2", 19),
+        ]);
+        cache.delta_link =
+            Some("https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=abc".into());
+        let json = serde_json::to_string(&cache.within(ALL.0, ALL.1)).unwrap();
+        let mut back: EventCache = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.delta_link, cache.delta_link);
+        assert_eq!(back.len(), 2);
+        assert_eq!(by_id(&back, "o1"), by_id(&cache, "o1"));
+        // The occurrences still follow their master after the round trip.
+        back.apply(vec![master("Daily Sync")]);
+        assert_eq!(by_id(&back, "o2").subject, "Daily Sync");
+        assert!(back.missing_masters().is_empty());
+    }
+
+    #[test]
+    fn a_saved_cache_keeps_only_the_delta_window() {
+        let mut cache = EventCache::default();
+        cache.apply(vec![
+            master("Morning Standup"),
+            occurrence("o1", 18),
+            occurrence("o2", 25),
+        ]);
+        let day =
+            |d: u32| teams_proto::time::parse_iso_ms(&format!("2026-11-{d:02}T00:00:00Z")).unwrap();
+        let saved = cache.within(day(17), day(20));
+        assert_eq!(saved.len(), 1);
+        by_id(&saved, "o1");
+        // The master stays: occurrences in the window are filled from it.
+        let mut saved = saved;
+        saved.apply(vec![occurrence("o3", 19)]);
+        assert_eq!(by_id(&saved, "o3").subject, "Morning Standup");
+    }
+
+    #[test]
+    fn a_full_delta_drops_the_window_events_it_does_not_list() {
+        let mut cache = EventCache::default();
+        cache.apply(vec![
+            master("Morning Standup"),
+            occurrence("o1", 18),
+            occurrence("o2", 19),
+            occurrence("o9", 28),
+        ]);
+        let day =
+            |d: u32| teams_proto::time::parse_iso_ms(&format!("2026-11-{d:02}T00:00:00Z")).unwrap();
+        // o2 was deleted while the saved delta link was too old to say so.
+        cache.apply_full(day(17), day(21), vec![occurrence("o1", 18)]);
+        let ids: Vec<_> = cache
+            .in_range(ALL.0, ALL.1)
+            .iter()
+            .map(|e| e.id.clone())
+            .collect();
+        assert_eq!(ids, ["o1", "o9"], "outside the window is left alone");
+        assert_eq!(by_id(&cache, "o1").subject, "Morning Standup");
+    }
+
+    #[test]
+    fn an_expired_delta_link_means_a_full_sync() {
+        assert!(delta_link_expired(&Error::status(
+            "calendar delta",
+            410,
+            ""
+        )));
+        assert!(delta_link_expired(&Error::status(
+            "calendar delta",
+            400,
+            r#"{"error":{"code":"SyncStateNotFound","message":"..."}}"#
+        )));
+        assert!(delta_link_expired(&Error::status(
+            "calendar delta",
+            400,
+            r#"{"error":{"code":"syncStateInvalid"}}"#
+        )));
+        assert!(!delta_link_expired(&Error::status(
+            "calendar delta",
+            400,
+            "{}"
+        )));
+        assert!(!delta_link_expired(&Error::status(
+            "calendar delta",
+            503,
+            ""
+        )));
+        assert!(!delta_link_expired(&Error::Protocol("x".into())));
     }
 
     #[test]

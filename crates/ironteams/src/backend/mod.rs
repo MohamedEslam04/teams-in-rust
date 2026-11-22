@@ -478,6 +478,7 @@ impl Engine {
     /// Starts background loops: render, live events, periodic token persistence.
     pub fn start(self: &Arc<Self>) {
         self.push_prefs();
+        self.load_saved_calendar();
         self.start_people();
         self.start_apps();
         self.start_manage();
