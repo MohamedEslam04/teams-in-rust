@@ -6,6 +6,8 @@ import { Theme } from "theme.slint";
 import { Msg } from "types.slint";
 import { MessageRow } from "message_row.slint";
 import { IconButton } from "widgets.slint";
+import { ReactionCard } from "reaction_card.slint";
+import { ReactionHover } from "reaction_hover.slint";
 
 export component ChatWindow inherits Window {
     in property <string> conv-id;
@@ -146,5 +148,11 @@ export component ChatWindow inherits Window {
                 }
             }
         }
+    }
+
+    // Who reacted, under the chip being hovered.
+    if ReactionHover.open: ReactionCard {
+        win-w: root.width;
+        win-h: root.height;
     }
 }

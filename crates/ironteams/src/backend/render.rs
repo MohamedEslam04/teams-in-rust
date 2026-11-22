@@ -789,11 +789,18 @@ impl Engine {
                         .filter_map(|x| {
                             let key = x.get("key")?.as_str()?.to_string();
                             let users = x.get("users")?.as_array()?;
+                            let people = self.reactor_people(users);
                             Some(ReactData {
                                 emoji: reaction_emoji(&key),
+                                name: crate::reactions::reaction_name(&key),
                                 count: users.len() as i32,
                                 mine: users.iter().any(|u| u == self.me.as_str()),
-                                names: self.reactor_names(users),
+                                names: people
+                                    .iter()
+                                    .map(|p| p.name.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                people,
                                 key,
                             })
                         })

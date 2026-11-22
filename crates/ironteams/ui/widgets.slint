@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { ReactionItem, FileItem } from "types.slint";
 import { Motion } from "motion.slint";
+import { ReactionHover } from "reaction_hover.slint";
 
 export component Icon inherits Image {
     in property <color> tint: Theme.fg-muted;
@@ -180,36 +181,62 @@ export component ReactionChip inherits Rectangle {
         running: !root.shown;
         triggered => { root.shown = true; }
     }
+    accessible-role: button;
+    accessible-label: root.r.name + ": " + root.r.names;
+    accessible-action-default => { root.clicked(); }
+    // Which hover card this chip opened (see `ReactionHover`).
+    property <int> token;
     HorizontalLayout {
-        padding-left: 7px;
+        padding-left: 8px;
         padding-right: 8px;
         spacing: 4px;
         Text { text: root.r.emoji; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-        Text { text: root.r.count; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+        // As in Teams, the count only shows once more than one person reacted.
+        if root.r.count > 1: count := Text { text: root.r.count; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
     }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-    // Who reacted, above the chip while hovering.
-    if touch.has-hover && root.r.names != "": tip := Rectangle {
-        x: 0px;
-        y: -self.height - 4px;
-        width: 232px;
-        height: tip-text.preferred-height + 12px;
-        border-radius: 4px;
-        background: Theme.sidebar;
-        border-width: 1px;
-        border-color: Theme.border;
-        accessible-role: text;
-        accessible-label: root.r.names;
-        tip-text := Text {
-            x: 8px;
-            y: 6px;
-            width: parent.width - 16px;
-            text: root.r.emoji + "  " + root.r.names;
-            color: Theme.fg;
-            font-size: 12px * Theme.font-scale;
-            wrap: word-wrap;
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        // Who reacted opens in a card below the chip (reaction_card.slint).
+        changed has-hover => {
+            if self.has-hover {
+                root.token = ReactionHover.enter(root.r.name, root.r.people, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
+            } else {
+                ReactionHover.leave(root.token);
+            }
         }
     }
+    Timer {
+        interval: 250ms;
+        running: touch.has-hover;
+        triggered => { ReactionHover.beat(root.token); }
+    }
+}
+
+// The chip after the reactions: a smiley with a plus, in the chips' pill shape, that opens the
+// reaction picker.
+export component AddReactionChip inherits Rectangle {
+    callback clicked();
+    height: 24px;
+    width: 32px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: @tr("Add reaction");
+    accessible-action-default => { root.clicked(); }
+    Icon {
+        source: @image-url("icons/emoji-add.svg");
+        tint: touch.has-hover ? Theme.accent : Theme.fg-muted;
+        animate tint { duration: Motion.quick; }
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
 component CardMenuRow inherits Rectangle {

@@ -1,7 +1,7 @@
 //! Message menu actions: copy link, save, pin, mark as unread, forward and multi-select.
 
 use super::{Engine, ForwardState};
-use crate::data::{RecipientData, color_for, initials};
+use crate::data::{ReactorData, RecipientData, color_for, initials};
 use serde_json::Value;
 use std::sync::Arc;
 use store::{ConvFilter, ConvKind, MessageRow, SavedMessage, UserRow};
@@ -338,35 +338,27 @@ impl Engine {
 
     // ---- reaction tooltip --------------------------------------------------
 
-    /// Display names of the people who reacted, for the chip tooltip. Names not cached yet are
-    /// fetched in the background and the messages re-render when they arrive.
-    pub(super) fn reactor_names(self: &Arc<Self>, users: &[Value]) -> String {
-        let mut names = Vec::new();
-        let mut missing = Vec::new();
-        for mri in users.iter().filter_map(Value::as_str) {
-            if mri == self.me {
-                names.push("You".to_string());
-                continue;
-            }
-            let known = self
-                .store
-                .lock()
-                .unwrap()
-                .user(mri)
-                .ok()
-                .flatten()
-                .map(|u| u.display_name)
-                .filter(|n| !n.is_empty());
-            match known {
-                Some(n) => names.push(n),
-                None => {
-                    names.push("Someone".into());
-                    missing.push(mri.to_string());
-                }
-            }
-        }
+    /// The people who reacted, for the chip's hover card: name, initials, colour and photo. Names
+    /// not cached yet are fetched in the background and the messages re-render when they arrive.
+    pub(super) fn reactor_people(self: &Arc<Self>, users: &[Value]) -> Vec<ReactorData> {
+        let mris: Vec<&str> = users.iter().filter_map(Value::as_str).collect();
+        let (people, missing) = crate::reactions::reactors(
+            &mris,
+            &self.me,
+            &self.my_name,
+            |mri| {
+                self.store
+                    .lock()
+                    .unwrap()
+                    .user(mri)
+                    .ok()
+                    .flatten()
+                    .map(|u| u.display_name)
+            },
+            |mri| self.avatar(mri),
+        );
         self.fetch_names(missing);
-        names.join(", ")
+        people
     }
 
     fn fetch_names(self: &Arc<Self>, mris: Vec<String>) {
