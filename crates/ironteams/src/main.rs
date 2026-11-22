@@ -8,6 +8,7 @@ mod composer;
 mod composer_format;
 mod data;
 mod demo;
+mod desktop_cards;
 #[cfg(target_os = "linux")]
 mod desktop_entry;
 mod external;
@@ -287,6 +288,21 @@ fn main() -> anyhow::Result<()> {
     }
     if args.first().map(String::as_str) == Some("--self-check") {
         return updater::self_check::run(args.iter().any(|a| a == "--packaged"));
+    }
+    if args.first().map(String::as_str) == Some(desktop_cards::HOST_ARG) {
+        // The notification cards on the desktop (`desktop_cards`): the app reads stdout, so the
+        // log goes to stderr.
+        configure_fonts();
+        tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .with_env_filter(
+                compat::var("IRONTEAMS_LOG")
+                    .ok()
+                    .and_then(|v| tracing_subscriber::EnvFilter::try_new(v).ok())
+                    .unwrap_or_else(|| "warn".into()),
+            )
+            .init();
+        return desktop_cards::host::run();
     }
     if args.iter().any(|a| a == "--call-demo") {
         // SAFETY: called at the start of main, before any other thread exists.

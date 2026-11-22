@@ -22,8 +22,8 @@ pub use accessibility::{
     resolve_reduced_motion,
 };
 pub use general::{
-    DateFormat, GeneralPrefs, Language, TimeFormat, available_languages, effective_language,
-    resolve_language, system_language,
+    DateFormat, GeneralPrefs, Language, NotificationStyle, TimeFormat, available_languages,
+    effective_language, resolve_language, system_language,
 };
 pub use portal::{PortalChange, PortalError, PortalScheme, PortalSettings, PortalStream};
 pub use prefs::{AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, Rgb, Theme};

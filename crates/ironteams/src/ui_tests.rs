@@ -32,6 +32,7 @@ mod clip_loop;
 mod composer_apps;
 mod composer_gaps;
 mod composer_send;
+mod desktop_cards;
 mod drive;
 mod engage;
 mod find;

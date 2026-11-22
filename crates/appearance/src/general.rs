@@ -220,6 +220,17 @@ fn lenient_minutes<'de, D: Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
         .unwrap_or(0))
 }
 
+/// How notifications look on the desktop (Settings › Notifications).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NotificationStyle {
+    /// IronTeams draws its own Teams-style cards in the corner of the screen.
+    #[default]
+    Cards,
+    /// The desktop's notifications (freedesktop, Windows toasts, macOS), as before the cards.
+    System,
+}
+
 /// How long turning Focus mode on lasts (from Settings or the tray).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -277,6 +288,9 @@ pub struct GeneralPrefs {
     /// Message notifications have Reply and Like buttons (where the desktop supports buttons).
     #[serde(deserialize_with = "lenient")]
     pub banner_actions: bool,
+    /// Teams cards drawn by IronTeams, or the desktop's own notifications.
+    #[serde(deserialize_with = "lenient")]
+    pub notification_style: NotificationStyle,
     /// Misspelled words in the message box get a red underline.
     #[serde(deserialize_with = "lenient")]
     pub check_spelling: bool,
@@ -313,6 +327,7 @@ impl Default for GeneralPrefs {
             beta_updates: false,
             banner_photo: true,
             banner_actions: true,
+            notification_style: NotificationStyle::Cards,
             check_spelling: true,
             quiet_hours: QuietHoursPrefs::default(),
             focus_until_ms: None,
@@ -543,6 +558,23 @@ mod tests {
     }
 
     #[test]
+    fn notification_style_defaults_to_cards_and_a_bad_value_resets_it() {
+        assert_eq!(
+            GeneralPrefs::default().notification_style,
+            NotificationStyle::Cards
+        );
+        let old: GeneralPrefs = serde_json::from_str(r#"{"banner_photo":true}"#).unwrap();
+        assert_eq!(old.notification_style, NotificationStyle::Cards);
+        let system: GeneralPrefs =
+            serde_json::from_str(r#"{"notification_style":"system"}"#).unwrap();
+        assert_eq!(system.notification_style, NotificationStyle::System);
+        let bad: GeneralPrefs =
+            serde_json::from_str(r#"{"notification_style":"bubbles","auto_start":true}"#).unwrap();
+        assert_eq!(bad.notification_style, NotificationStyle::Cards);
+        assert!(bad.auto_start);
+    }
+
+    #[test]
     fn quiet_hours_focus_and_keywords_default_off_and_old_files_still_load() {
         let d = GeneralPrefs::default();
         assert!(!d.quiet_hours.enabled);
@@ -600,6 +632,7 @@ mod tests {
             beta_updates: true,
             banner_photo: false,
             banner_actions: true,
+            notification_style: NotificationStyle::System,
             check_spelling: false,
             quiet_hours: QuietHoursPrefs {
                 enabled: true,

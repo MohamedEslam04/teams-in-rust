@@ -8,7 +8,7 @@
 | Permission | Why |
 |---|---|
 | `--share=network` | Teams, Graph and OneDrive |
-| `--socket=wayland`, `--socket=fallback-x11`, `--share=ipc` | window system |
+| `--socket=wayland`, `--socket=x11`, `--share=ipc` | window system; X11 also for the notification cards through XWayland where the compositor has no layer shell (GNOME) |
 | `--device=dri` | optional GPU renderer (`IRONTEAMS_RENDERER=femtovg`) |
 | `--socket=pulseaudio`, `--filesystem=xdg-run/pipewire-0` | call audio, and the PipeWire streams of the Camera and ScreenCast portals |
 | `--talk-name=org.freedesktop.Notifications` | desktop notifications |

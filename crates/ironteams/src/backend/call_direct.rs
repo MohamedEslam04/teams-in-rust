@@ -293,6 +293,8 @@ struct IncomingCall {
     /// Our session (endpoint) id once Accept started: its callbacks go to `events`.
     session: Option<String>,
     events: Option<mpsc::UnboundedSender<CallEvent>>,
+    /// Its card on the desktop (`desktop_cards`), taken away when it stops ringing.
+    card: Option<u32>,
 }
 
 struct OutgoingCall {
@@ -541,6 +543,7 @@ impl Engine {
             inv,
             session: None,
             events: None,
+            card: None,
         });
         // Over a call, a short beep rather than the full ringtone.
         c.ringtone = if waiting {
@@ -554,7 +557,9 @@ impl Engine {
         view.video = video;
         view.waiting = waiting;
         self.ui.call_incoming(view);
-        self.notify_call(
+        self.notify_ring(
+            id,
+            &mri,
             &name,
             if video {
                 "Incoming video call"
@@ -602,6 +607,12 @@ impl Engine {
         if state == before {
             return Some(state);
         }
+        // Answered, declined or over: its desktop card goes.
+        let card = if state != IncomingState::Ringing {
+            call.card.take()
+        } else {
+            None
+        };
         if state != IncomingState::Ringing {
             c.ringtone = None;
         }
@@ -609,6 +620,9 @@ impl Engine {
             c.incoming = None;
         }
         drop(c);
+        if let Some(card) = card {
+            crate::desktop_cards::client::dismiss(card);
+        }
         match &state {
             IncomingState::Accepting => self.refresh_incoming(id),
             IncomingState::Connected => {
@@ -624,7 +638,7 @@ impl Engine {
                 // The service writes the missed call into the call log (`48:calllogs`), which
                 // IronTeams only reads (`calling::history`); IronTeams adds no entry of its own.
                 self.ui.banner(format!("Missed call from {name}"));
-                self.notify_call(&name, "Missed call");
+                self.notify_missed(&name);
             }
             IncomingState::Failed(e) => {
                 self.ui.call_incoming(CallView::default());
@@ -845,6 +859,41 @@ impl Engine {
         };
         if let Some(id) = cancelled {
             self.incoming_event(id, IncomingEvent::CallerCancelled);
+        }
+    }
+
+    /// The ringing call on the desktop: a call card with Accept and Decline when the cards are on
+    /// (`cards.rs`), else the system notification. Not while the window is the active one: its
+    /// own incoming-call toast rings there.
+    fn notify_ring(self: &Arc<Self>, id: u64, mri: &str, name: &str, what: &str) {
+        if crate::external::suppressed()
+            || self.focused.load(Ordering::Relaxed)
+            || crate::tray_wiring::notifications_muted()
+        {
+            return;
+        }
+        let e = self.clone();
+        let (n, w) = (name.to_owned(), what.to_owned());
+        let Some(card) = self.call_card(mri, name, what, move || e.notify_call(&n, &w)) else {
+            return self.notify_call(name, what);
+        };
+        if let Some(i) = self.direct().incoming.as_mut().filter(|i| i.id == id) {
+            i.card = Some(card);
+        }
+    }
+
+    /// "Missed call" as a desktop card, or the system notification.
+    fn notify_missed(self: &Arc<Self>, name: &str) {
+        if crate::external::suppressed()
+            || self.focused.load(Ordering::Relaxed)
+            || crate::tray_wiring::notifications_muted()
+        {
+            return;
+        }
+        let e = self.clone();
+        let n = name.to_owned();
+        if !self.missed_call_card(name, move || e.notify_call(&n, "Missed call")) {
+            self.notify_call(name, "Missed call");
         }
     }
 
