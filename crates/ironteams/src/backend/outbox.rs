@@ -783,6 +783,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_quick_reply_goes_to_its_own_chat_and_not_to_the_open_one() {
+        let e = engine();
+        e.connected.store(false, Ordering::Relaxed);
+        e.clone()
+            .handle(crate::backend::Cmd::QuickReply(
+                "19:other@thread.v2".into(),
+                "  on my way  ".into(),
+            ))
+            .await;
+        let q = e
+            .store
+            .lock()
+            .unwrap()
+            .outbox_for("19:other@thread.v2")
+            .unwrap();
+        assert_eq!(q.len(), 1, "queued for the chat the notification was about");
+        assert!(q[0].html.contains("on my way"), "{}", q[0].html);
+        assert_eq!(q[0].state, OutboxState::Queued);
+        assert!(outbox(&e).is_empty(), "nothing for the chat that is open");
+    }
+
+    #[tokio::test]
+    async fn a_quick_reply_in_a_channel_stays_in_the_thread() {
+        let e = engine();
+        e.connected.store(false, Ordering::Relaxed);
+        let target = "19:chan@thread.tacv2;messageid=1700";
+        e.clone()
+            .handle(crate::backend::Cmd::QuickReply(
+                target.into(),
+                "مرحبا".into(),
+            ))
+            .await;
+        let q = e.store.lock().unwrap().outbox_for(target).unwrap();
+        assert_eq!(q.len(), 1);
+        assert!(q[0].html.contains("مرحبا"), "{}", q[0].html);
+    }
+
+    #[tokio::test]
+    async fn a_blank_quick_reply_sends_nothing() {
+        let e = engine();
+        e.connected.store(false, Ordering::Relaxed);
+        for text in ["", "   \n"] {
+            e.clone()
+                .handle(crate::backend::Cmd::QuickReply(
+                    "19:other@thread.v2".into(),
+                    text.into(),
+                ))
+                .await;
+        }
+        assert!(
+            e.store
+                .lock()
+                .unwrap()
+                .outbox_for("19:other@thread.v2")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
     async fn an_unreachable_server_keeps_messages_queued_for_the_next_flush() {
         let e = engine();
         e.clone()

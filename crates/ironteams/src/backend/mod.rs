@@ -20,6 +20,8 @@ mod activity;
 pub(crate) mod appstore;
 mod attach;
 mod banner;
+#[cfg(target_os = "linux")]
+mod banner_reply;
 mod cal;
 pub(crate) mod call;
 #[cfg(feature = "calls")]
@@ -126,6 +128,9 @@ pub enum Cmd {
     SetFilter(String),
     Search(String),
     Send(String, String),
+    /// A reply typed in a notification or a message card: the text for a chat (or a channel
+    /// thread), sent without opening it.
+    QuickReply(String, String),
     TypingTick,
     LoadOlder,
     React(String, String),
@@ -588,6 +593,7 @@ impl Engine {
                 self.mark(|d| d.chats = true);
             }
             Cmd::Send(text, subject) => self.send(text, subject).await?,
+            Cmd::QuickReply(target, text) => self.quick_reply(&target, &text).await?,
             Cmd::TypingTick => {
                 let target = {
                     let mut v = self.view.lock().unwrap();

@@ -3658,6 +3658,7 @@ dependencies = [
  "velopack",
  "voice",
  "webhost",
+ "zbus 5.19.0",
 ]
 
 [[package]]
