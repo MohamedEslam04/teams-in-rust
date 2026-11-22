@@ -1047,8 +1047,15 @@ impl Engine {
         }
     }
 
-    /// Loads what the view needs, then the delta window; applies Graph's changes.
+    /// Loads what the view needs, then the delta window; applies Graph's changes, then fetches
+    /// the series masters its occurrences need.
     async fn sync_calendar(self: &Arc<Self>) -> anyhow::Result<()> {
+        self.sync_calendar_delta().await?;
+        self.fetch_missing_masters().await;
+        Ok(())
+    }
+
+    async fn sync_calendar_delta(self: &Arc<Self>) -> anyhow::Result<()> {
         self.ensure_calendar_range().await?;
         let (window, link) = {
             let mut s = self.cal.lock();
@@ -1076,7 +1083,6 @@ impl Engine {
                 tracing::info!(events = s.cache.len(), "calendar synced");
                 drop(s);
                 self.push_calendar();
-                self.fetch_missing_masters().await;
                 Ok(())
             }
             Err(err) => {
