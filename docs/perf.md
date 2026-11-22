@@ -77,3 +77,58 @@ release build (this machine runs out of memory on one).
 | Cached chat-open time (ms)      |          |       |
 | `render_messages` on a mark (µs)|          |       |
 | Release binary size (MB)        |          |       |
+
+## Dependencies
+
+Counted from `Cargo.lock` (`grep -c '^name = '`) and `cargo tree -d --depth 0`. Nothing here was
+compiled locally; CI is the gate.
+
+| Measure                                 | Before | After |
+| --------------------------------------- | ------ | ----- |
+| Packages in `Cargo.lock`                | 962    | 953   |
+| Crates with 2+ versions in `Cargo.lock` | 80     | 79    |
+| `aws-lc-rs` / `aws-lc-sys` (C library)  | built  | gone  |
+
+### Done: one TLS provider (ring)
+
+`teams-proto` installed rustls' `aws_lc_rs` provider and reqwest's default `rustls` feature
+brought `aws-lc-rs` in with it, while the WebRTC stack (`rtc-crypto`, `rtc-dtls`) and
+`tokio-rustls` in `calling` already needed `ring`. Both providers were built, and rustls could not
+pick a process default by itself. Now every `reqwest` dependency has `default-features = false`;
+`teams-proto` adds `rustls-no-provider`, `charset`, `http2` and `system-proxy` (the rest of
+reqwest's defaults), its `rustls` uses `ring`, and `teams_proto::client::install_crypto_provider`
+installs ring. reqwest has no built-in provider any more, so a `reqwest::Client` built before that
+call panics: the production site that did not call it (`update_check`) and the tests that use
+`Client::new()` now do.
+
+### Checked, nothing to change
+
+- **Slint renderers.** `skia` is never enabled (`cargo tree -i skia-safe` finds nothing). `femtovg`
+  comes from Slint's default features and is selectable at run time with `IRONTEAMS_RENDERER=femtovg`
+  (`main.rs`), so it stays. Every other default (`std`, `backend-winit`, `renderer-software`,
+  `accessibility`, `compat-1-2`, `system-tray`) is used, so `default-features = false` with an explicit
+  list would produce the same build.
+- **zbus.** The lockfile lists 4.4.0, 5.19.0 and 6.3.0, but 4.4.0 is only the optional
+  `secret-service` of `keyring` (not enabled: `sync-secret-service` uses `dbus-secret-service`) and
+  is never built. 5.x is pinned by Slint's `accesskit_unix`/`atspi` and by `ksni` (our `tray`,
+  `appearance` and `ironteams` use the same 5.19 on purpose). 6.x is pinned by `ashpd` 0.14 and
+  `notify-rust` 4.19. Unifying needs one side to move to a major the other does not support.
+- **keyring.** Already trimmed: the backends are target-gated inside keyring, so Linux builds only
+  `dbus-secret-service` and Windows/macOS their native ones.
+- **`panic = "abort"`.** Not set. Nothing uses `catch_unwind` outside one UI test, but the app has
+  many `tokio::spawn` loops that survive a panic today (tokio turns it into a `JoinError`) and there
+  is no panic hook or crash reporter; abort would turn each of those into a crash.
+- **Segmentation model (effects).** Already lazy: `Processor::person` builds the tract model on the
+  first frame that needs a background, once per camera, and never when only brighten, soft focus or
+  a filter is on. It is kept until the camera stops (not dropped when all effects go off, to avoid a
+  reload hitch on every toggle; the optimized model is small).
+
+### Recommendations (not done)
+
+- Move `onedrive` from `zip` 9 to 8 (or wait for `velopack` to move): one `zip` less. Needs a check
+  of the API use in `onedrive`.
+- `ironteams` on `sha2` 0.11 (`velopack` uses it): `dbus-secret-service` keeps 0.10 on Linux, so this
+  only helps Windows and macOS.
+- Dropping Slint's `accessibility` would remove `accesskit`/`atspi` but also screen-reader support.
+- Dropping `renderer-femtovg` would remove `femtovg`/`glutin` and the `IRONTEAMS_RENDERER=femtovg`
+  switch; worth it only if nobody uses the GPU renderer.

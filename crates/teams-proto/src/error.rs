@@ -159,6 +159,7 @@ mod tests {
     #[tokio::test]
     async fn refused_connection_is_transient() {
         // Nothing listens on port 1.
+        crate::client::install_crypto_provider();
         let err = reqwest::Client::new()
             .get("http://127.0.0.1:1/")
             .send()
@@ -169,6 +170,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_request_does_not_show_its_url() {
+        crate::client::install_crypto_provider();
         let err = reqwest::Client::new()
             .get("http://127.0.0.1:1/v1/users/ME/conversations/19:secret@thread.v2/messages")
             .send()

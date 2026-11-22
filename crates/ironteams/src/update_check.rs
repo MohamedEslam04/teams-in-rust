@@ -129,6 +129,7 @@ pub fn fetch_latest() -> Result<Release, String> {
 }
 
 async fn get_latest() -> Result<Release, String> {
+    teams_proto::client::install_crypto_provider();
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(TIMEOUT)

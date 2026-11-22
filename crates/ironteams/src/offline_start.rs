@@ -66,6 +66,7 @@ mod tests {
 
     async fn refused() -> Error {
         // Nothing listens on port 1.
+        teams_proto::client::install_crypto_provider();
         let err = reqwest::Client::new()
             .get("http://127.0.0.1:1/")
             .send()
