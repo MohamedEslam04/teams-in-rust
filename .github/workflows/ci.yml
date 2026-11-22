@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     # Feature branches too: local builds are memory-bound, so CI does the full check.
-    branches: [main, dev, 'feat/**']
+    branches: [dev, 'feat/**']
     # Docs-only pushes need no build.
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
   pull_request:
@@ -54,6 +54,9 @@ jobs:
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p ironteams-cli --features mcp --all-targets -- -D warnings
 
@@ -69,6 +72,9 @@ jobs:
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - run: cargo test --workspace
       - run: cargo test -p ironteams-cli --features mcp
 
@@ -94,8 +100,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           # A cold build of the workspace takes long here; keep what compiled even when a check
-          # fails. Only dev and main save, so these large caches don't evict the Linux ones.
+          # fails. Only dev saves, so these large caches don't evict the Linux ones.
           cache-on-failure: true
-          save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - run: cargo clippy --workspace --all-targets --keep-going -- -D warnings
       - run: cargo test --workspace --no-fail-fast

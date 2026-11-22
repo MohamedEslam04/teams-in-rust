@@ -113,6 +113,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-linux
+          # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
+          save-if: false
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
       - uses: actions/download-artifact@v8
         with:
@@ -166,6 +168,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-windows
+          # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
+          save-if: false
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
       - uses: actions/download-artifact@v8
         with:
@@ -237,6 +241,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-macos-${{ matrix.arch }}
+          # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
+          save-if: false
       - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'

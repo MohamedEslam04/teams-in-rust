@@ -32,15 +32,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Chats, channels and activity in the dark theme (demo data)</caption>
-      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/main/docs/screenshots/appearance-dark.png</image>
+      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/v0.1.0/docs/screenshots/appearance-dark.png</image>
     </screenshot>
     <screenshot>
       <caption>The light theme</caption>
-      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/main/docs/screenshots/appearance-light.png</image>
+      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/v0.1.0/docs/screenshots/appearance-light.png</image>
     </screenshot>
     <screenshot>
       <caption>The interface at 150% text size</caption>
-      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/main/docs/screenshots/appearance-150.png</image>
+      <image type="source">https://raw.githubusercontent.com/MohamedEslam04/teams-in-rust/v0.1.0/docs/screenshots/appearance-150.png</image>
     </screenshot>
   </screenshots>
   <releases>

@@ -1,7 +1,6 @@
 # Optional packaging builds. They are slow, so they never run on pull requests: start them by
-# hand from the Actions tab, or they run when packaging/ changes on main. Pushing a branch named
-# ci/packaging-* also runs them, which tests changes before the workflow reaches main (a manual
-# run needs the workflow on the default branch).
+# hand from the Actions tab, or push a branch named ci/packaging-* to test changes before they reach
+# dev (a manual run needs the workflow on the default branch). The release runs them too.
 name: Packaging
 
 on:
@@ -9,7 +8,7 @@ on:
   # release.yml runs these too and attaches the RPM and the Flatpak to the release.
   workflow_call:
   push:
-    branches: [main, 'ci/packaging-*']
+    branches: ['ci/packaging-*']
     paths: ['packaging/**', 'Cargo.lock', '.github/workflows/packaging.yml']
 
 jobs:
@@ -31,12 +30,27 @@ jobs:
           mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
           cat /proc/swaps
       - name: Tools
-        run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
+        run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz zstd 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
       - uses: actions/checkout@v7
+      - name: Rust version
+        id: rust
+        run: echo "version=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      # The cargo target dir lives outside rpmbuild's BUILD dir, so it can be cached. Only dev saves
+      # it (cache-warm.yml runs this nightly); a release tag restores dev's copy. The key has no
+      # commit: the spec rebuilds the workspace crates every time, so only the dependencies (set by
+      # Cargo.lock and the compiler) are worth keeping, and one copy stays within the 10 GB limit.
+      - uses: actions/cache/restore@v6
+        id: rpm-cache
+        with:
+          path: rpm-target
+          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rpm-target-${{ steps.rust.outputs.version }}-
       - name: Build the RPM
         env:
           # As release.yml: compiles the large ironteams crate in parallel, with less memory.
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rpm-target
         run: |
           git config --global --add safe.directory "$PWD"
           top=$PWD/rpmtop; v=0.1.0
@@ -47,6 +61,11 @@ jobs:
           cargo vendor --locked --versioned-dirs vendor-dir/vendor
           tar -C vendor-dir -c vendor | xz -T0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
           rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
+      - uses: actions/cache/save@v6
+        if: always() && github.ref == 'refs/heads/dev' && steps.rpm-cache.outputs.cache-hit != 'true'
+        with:
+          path: rpm-target
+          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
       - uses: actions/upload-artifact@v7
         with:
           name: ironteams-rpm
