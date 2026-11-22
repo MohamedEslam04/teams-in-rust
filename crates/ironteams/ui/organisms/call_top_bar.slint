@@ -1,0 +1,327 @@
+// The call window's top bar (its buttons, the share menu) and the banners under it.
+import { Theme } from "../tokens/theme.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+
+export component TopBar inherits Rectangle {
+    // A narrow window: People, Hold, Transfer, Raise, React and View are in the More panel.
+    in property <bool> fold: false;
+    callback open-chat();
+    // Where the View button starts, for the dropdown under it (set when it is clicked).
+    out property <length> view-x;
+    // Where the React button starts, for its menu.
+    out property <length> react-x;
+    height: 62px;
+    background: Theme.topbar;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 6px;
+            if CallStore.recording: VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.danger;
+                    accessible-role: text;
+                    accessible-label: "Recording";
+                }
+            }
+            Text {
+                text: CallStore.timer;
+                color: Theme.fg;
+                font-size: 14px * Theme.font-scale;
+                font-weight: 600;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: "Call duration " + CallStore.timer;
+            }
+        }
+        Text {
+            text: CallStore.title;
+            color: Theme.fg-muted;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/chat.svg");
+            label: "Chat";
+            enabled: CallStore.chat-id != "";
+            tip: CallStore.kind == "direct"
+                ? (CallStore.chat-id != "" ? "Open the chat with " + CallStore.title : "This chat isn't available here")
+                : (CallStore.chat-id != "" ? "Open the meeting chat" : "This meeting's chat isn't available here");
+            clicked => { root.open-chat(); }
+        }
+        if !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/people.svg");
+            label: "People";
+            checkable: true;
+            active: CallStore.panel == "people";
+            clicked => { CallStore.panel = CallStore.panel == "people" ? "" : "people"; }
+        }
+        // A 1:1 call's Hold and Transfer (Teams has them under "..." > More actions).
+        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/pause.svg");
+            label: CallStore.held ? "Resume" : "Hold";
+            checkable: true;
+            active: CallStore.held;
+            tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
+            clicked => { CallStore.command("hold", ""); }
+        }
+        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/forward.svg");
+            label: "Transfer";
+            active: CallStore.menu == "transfer";
+            tip: "Transfer the call to someone else";
+            clicked => {
+                if CallStore.menu == "transfer" {
+                    CallStore.menu = "";
+                } else {
+                    CallStore.menu = "transfer";
+                    CallStore.command("transfer-open", "");
+                }
+            }
+        }
+        if !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/hand.svg");
+            label: CallStore.hand ? "Lower" : "Raise";
+            checkable: true;
+            active: CallStore.hand;
+            clicked => { CallStore.command("hand", ""); }
+        }
+        if !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/emoji.svg");
+            label: "React";
+            enabled: CallStore.phase == "connected";
+            tip: CallStore.phase == "connected" ? "Send a reaction" : "Reactions work once you're in the meeting";
+            active: CallStore.menu == "react";
+            clicked => {
+                root.react-x = self.absolute-position.x - root.absolute-position.x;
+                CallStore.menu = CallStore.menu == "react" ? "" : "react";
+            }
+        }
+        if !root.fold: Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/grid.svg");
+            label: "View";
+            tip: "Gallery, speaker or focus on content";
+            active: CallStore.menu == "view";
+            clicked => {
+                root.view-x = self.absolute-position.x - root.absolute-position.x;
+                CallStore.menu = CallStore.menu == "view" ? "" : "view";
+            }
+        }
+        Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/more.svg");
+            label: "More";
+            checkable: true;
+            active: CallStore.panel == "more";
+            tip: "Device settings";
+            clicked => { CallStore.panel = CallStore.panel == "more" ? "" : "more"; }
+        }
+        Rectangle {
+            width: 1px;
+            background: Theme.border;
+        }
+        Button { variant: ButtonVariant.call;
+            icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
+            label: "Camera";
+            checkable: true;
+            active: CallStore.camera;
+            enabled: CallStore.can-camera || CallStore.camera;
+            tip: CallStore.can-camera || CallStore.camera ? (CallStore.camera ? "Turn camera off" : "Turn camera on")
+                : CallStore.kind == "meeting" ? "Video isn't available in meetings yet" : "Video isn't available in this call";
+            clicked => { CallStore.command("camera", ""); }
+        }
+        HorizontalLayout {
+            Button { variant: ButtonVariant.call;
+                icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
+                label: CallStore.muted ? "Unmute" : "Mute";
+                checkable: true;
+                active: CallStore.muted;
+                clicked => { CallStore.command("mute", ""); }
+            }
+            Button { variant: ButtonVariant.call;
+                width: 22px;
+                icon: @image-url("../icons/chevron-down.svg");
+                label: "";
+                tip: "Microphone and speaker";
+                active: CallStore.menu == "devices";
+                accessible-label: "Audio devices";
+                clicked => { CallStore.menu = CallStore.menu == "devices" ? "" : "devices"; }
+            }
+        }
+        HorizontalLayout {
+            Button { variant: ButtonVariant.call;
+                icon: @image-url("../icons/screen-share.svg");
+                label: CallStore.sharing ? "Stop sharing" : "Share";
+                checkable: true;
+                active: CallStore.sharing;
+                enabled: CallStore.can-share || CallStore.sharing;
+                tip: CallStore.can-share || CallStore.sharing ? ""
+                    : CallStore.kind == "meeting" ? "Sharing isn't available in meetings yet" : "Screen sharing isn't available in this call";
+                clicked => { CallStore.command("share", ""); }
+            }
+            // Give control (remote control of our share).
+            if CallStore.remote-control && CallStore.sharing: Button { variant: ButtonVariant.call;
+                width: 22px;
+                icon: @image-url("../icons/chevron-down.svg");
+                label: "";
+                tip: "Give control";
+                active: CallStore.menu == "share";
+                accessible-label: "Sharing options";
+                clicked => { CallStore.menu = CallStore.menu == "share" ? "" : "share"; }
+            }
+        }
+        Button { variant: ButtonVariant.call;
+            icon: @image-url("../icons/call-end.svg");
+            label: "Leave";
+            danger: true;
+            clicked => { CallStore.command("leave", ""); }
+        }
+    }
+}
+
+// The Share chevron's dropdown: give control of our screen to someone in the call, or take it
+// back.
+export component ShareMenu inherits Rectangle {
+    width: 240px;
+    height: card.preferred-height;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000080;
+    accessible-role: list;
+    accessible-label: "Give control";
+    card := VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+        if CallStore.control-mode == "controlled": MenuItem { variant: MenuItemVariant.share;
+            label: "Take back control";
+            clicked => {
+                CallStore.command("control-take-back", "");
+                CallStore.menu = "";
+            }
+        }
+        Text {
+            text: "Give control";
+            color: Theme.fg-subtle;
+            font-size: 12px * Theme.font-scale;
+            height: 24px;
+            vertical-alignment: center;
+        }
+        for p in CallStore.people: MenuItem { variant: MenuItemVariant.share;
+            visible: !p.me && !p.lobby && p.id != "";
+            height: self.visible ? 32px : 0px;
+            label: p.name;
+            clicked => {
+                CallStore.command("control-give", p.id);
+                CallStore.menu = "";
+            }
+        }
+    }
+}
+
+export component Banner inherits Rectangle {
+    in property <string> message;
+    in property <color> tone;
+    in property <bool> dismissable;
+    // What Dismiss sends, and its name for screen readers.
+    in property <string> dismiss: "dismiss-error";
+    in property <string> dismiss-label: "Dismiss";
+    height: 36px;
+    background: root.tone;
+    accessible-role: text;
+    accessible-label: root.message;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        Text {
+            text: root.message;
+            color: #ffffff;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.dismissable: Button { variant: ButtonVariant.action;
+            label: "Dismiss";
+            accessible-label: root.dismiss-label;
+            y: 1px;
+            clicked => { CallStore.command(root.dismiss, ""); }
+        }
+    }
+}
+
+// Remote control's banners: who controls whose screen, and a viewer's request to ours.
+export component ControlBanner inherits Rectangle {
+    property <string> mode: CallStore.control-mode;
+    property <string> who: CallStore.control-name != "" ? CallStore.control-name : "Someone";
+    height: 40px;
+    background: mode == "incoming" ? #3d3e66 : mode == "requested" ? #3d3e66 : #8a5a00;
+    accessible-role: text;
+    accessible-label: msg.text;
+    // While someone controls our screen, a key pressed here takes control back (Escape twice
+    // always does).
+    if root.mode == "controlled": FocusScope {
+        width: 0px;
+        height: 0px;
+        init => { self.focus(); }
+        key-pressed(e) => {
+            CallStore.command("control-key", e.text);
+            reject
+        }
+    }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 8px;
+        msg := Text {
+            text: root.mode == "controlled" ? @tr("{} is controlling your screen", root.who)
+                : root.mode == "controlling" ? @tr("You're controlling {}'s screen", root.who)
+                : root.mode == "incoming" ? @tr("{} wants control of your screen", root.who)
+                : @tr("You asked {} for control", root.who);
+            color: #ffffff;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.mode == "controlled": Button { variant: ButtonVariant.action;
+            label: "Take back";
+            primary: true;
+            y: 3px;
+            clicked => { CallStore.command("control-take-back", ""); }
+        }
+        if root.mode == "controlling": Button { variant: ButtonVariant.action;
+            label: "Release";
+            y: 3px;
+            clicked => { CallStore.command("control-release", ""); }
+        }
+        if root.mode == "requested": Button { variant: ButtonVariant.action;
+            label: "Cancel request";
+            y: 3px;
+            clicked => { CallStore.command("control-release", ""); }
+        }
+        if root.mode == "incoming": Button { variant: ButtonVariant.action;
+            label: "Allow";
+            primary: true;
+            y: 3px;
+            clicked => { CallStore.command("control-allow", ""); }
+        }
+        if root.mode == "incoming": Button { variant: ButtonVariant.action;
+            label: "Deny";
+            y: 3px;
+            clicked => { CallStore.command("control-deny", ""); }
+        }
+    }
+}
