@@ -190,6 +190,11 @@ pub fn apply(core: &Core, msg: ToHost) -> bool {
     }
 }
 
+/// The window size the stack wants, logical pixels (`wanted-width`, `wanted-height`).
+pub fn wanted_size(host: &CardHost) -> (f32, f32) {
+    (host.get_wanted_width(), host.get_wanted_height())
+}
+
 fn id_of(s: &str) -> Option<u32> {
     s.parse().ok()
 }

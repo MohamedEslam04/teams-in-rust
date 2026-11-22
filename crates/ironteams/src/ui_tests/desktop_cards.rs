@@ -298,6 +298,94 @@ fn three_cards_at_most_and_a_ringing_call_is_not_pushed_out() {
     assert_eq!(cards(&core), 3);
 }
 
+fn reminder(id: u32) -> Card {
+    Card {
+        id,
+        kind: Kind::Reminder,
+        title: "Dentist".into(),
+        text: "Starts in 10 min · Clinic".into(),
+        initials: "D".into(),
+        color: 4886754,
+        ..Card::default()
+    }
+}
+
+/// The top and bottom of the card with this accessible label, in the window.
+fn card_span(h: &CardHost, label: &str) -> (f32, f32) {
+    let found = labelled(h, label);
+    assert_eq!(found.len(), 1, "one '{label}' card");
+    let (y, height) = (found[0].absolute_position().y, found[0].size().height);
+    (y, y + height)
+}
+
+/// Lengths from the layout, which may carry a rounding error.
+fn near(a: f32, b: f32, what: &str) {
+    assert!((a - b).abs() < 0.5, "{what}: {a} vs {b}");
+}
+
+/// What the backends size the window to, read the way they read it: straight after the stack
+/// changed, before the window drew the new card. It must already count that card, then match
+/// what the drawn window lays out, with the newest card `pad` above the window's bottom edge
+/// and each card `spacing` above the next.
+fn assert_sized_for(h: &CardHost, labels: &[&str]) -> f32 {
+    let (w, wanted) = host::wanted_size(h);
+    near(w, 340.0 + 32.0, "the width");
+    // `labelled` walks the tree, which makes the cards the window has not drawn yet.
+    let spans: Vec<(f32, f32)> = labels.iter().map(|l| card_span(h, l)).collect();
+    near(
+        wanted,
+        h.get_wanted_height(),
+        "the size read before the first draw counts every card",
+    );
+    let (top, bottom) = (spans[0].0, spans[spans.len() - 1].1);
+    near(
+        top,
+        16.0,
+        "the oldest card sits at the top, below the shadow",
+    );
+    near(
+        bottom + 16.0,
+        wanted,
+        "the newest card ends at the window's bottom",
+    );
+    for pair in spans.windows(2) {
+        near(pair[0].1 + 8.0, pair[1].0, "cards 8 px apart");
+    }
+    wanted
+}
+
+/// The live repro on KWin: a call card, then a reminder. The window must grow by the
+/// reminder's height (upwards: the backends keep its bottom edge); it kept the call card's
+/// height and showed only the reminder's top.
+#[test]
+fn the_window_grows_for_a_new_card_before_it_is_drawn_and_shrinks_when_one_goes() {
+    let (h, core, _) = host();
+    let mut caller = call(3);
+    caller.title = "Test Caller".into();
+    caller.initials = "TC".into();
+    assert!(!host::apply(&core, ToHost::Show(caller)));
+    let one = assert_sized_for(&h, &["Incoming call: Test Caller"]);
+    assert!(
+        one > 100.0,
+        "the whole call card, not just the shadow: {one}"
+    );
+
+    assert!(!host::apply(&core, ToHost::Show(reminder(5))));
+    let two = assert_sized_for(&h, &["Incoming call: Test Caller", "Reminder: Dentist"]);
+    let (top, bottom) = card_span(&h, "Reminder: Dentist");
+    near(two, one + (bottom - top) + 8.0, "grown by the reminder");
+
+    // The call goes: the window shrinks to the reminder.
+    assert!(!host::apply(&core, ToHost::Dismiss { id: 3 }));
+    let left = assert_sized_for(&h, &["Reminder: Dentist"]);
+    near(left, 32.0 + (bottom - top), "only the reminder left");
+
+    // A new card after the dismissal grows it again.
+    assert!(!host::apply(&core, ToHost::Show(meeting(6))));
+    let again = assert_sized_for(&h, &["Reminder: Dentist", "Reminder: Sprint planning"]);
+    assert!(again > left + 100.0, "{again} vs {left}");
+}
+
 #[test]
 fn quit_ends_the_host() {
     let (_h, core, _) = host();
