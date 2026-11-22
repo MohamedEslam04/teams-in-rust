@@ -50,7 +50,6 @@ use smithay_client_toolkit::{
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
     delegate_registry, delegate_seat, delegate_shm, registry_handlers,
 };
-use std::cell::Cell;
 use std::io::BufRead;
 use std::rc::Rc;
 use std::time::Duration;
@@ -105,12 +104,12 @@ struct State {
     qh: QueueHandle<State>,
     window: Rc<MinimalSoftwareWindow>,
     host: CardHost,
-    /// The stack changed: resize, make or drop the surface.
-    dirty: Rc<Cell<bool>>,
     layer: Option<LayerSurface>,
-    /// The compositor configured the current surface: it may be drawn.
+    /// The surface size last asked for with `set_size`, logical pixels; `None` with no surface.
+    requested: Option<(u32, u32)>,
+    /// The compositor configured the size last asked for: the surface may be drawn.
     configured: bool,
-    /// The surface size asked for, logical pixels.
+    /// The surface size the compositor configured, logical pixels: the size drawn.
     size: (u32, u32),
     /// The buffer scale of the outputs the surface is on.
     scale: i32,
@@ -118,6 +117,12 @@ struct State {
     keyboard: Option<wl_keyboard::WlKeyboard>,
     pointer: Option<ThemedPointer>,
     exit: bool,
+}
+
+/// The surface for a stack that wants `wanted` (`host::wanted_size`), whole logical pixels;
+/// none without cards.
+fn surface_size((w, h): (f32, f32)) -> Option<(u32, u32)> {
+    (h > 0.0).then(|| (w.ceil() as u32, h.ceil() as u32))
 }
 
 /// Physical pixels of a logical length at `scale`.
@@ -132,19 +137,20 @@ impl State {
         }
     }
 
-    /// Makes, resizes or drops the surface to fit the stack.
+    /// Makes, resizes or drops the surface to fit the stack. Checked on every turn of the loop,
+    /// not only when a card comes or goes: a card can also change height by itself.
     fn relayout(&mut self) {
-        if !self.dirty.replace(false) {
+        let wanted = surface_size(host::wanted_size(&self.host));
+        if wanted == self.requested {
             return;
         }
-        let h = self.host.get_wanted_height().ceil() as u32;
-        if h == 0 {
+        self.requested = wanted;
+        let Some((w, h)) = wanted else {
             // The last card went: the surface goes with it.
             self.layer = None;
             self.configured = false;
             return;
-        }
-        let w = self.host.get_wanted_width().ceil() as u32;
+        };
         let pad = self.host.get_pad().round() as i32;
         let margin = MARGIN as i32 - pad;
         if self.layer.is_none() {
@@ -160,14 +166,13 @@ impl State {
             layer.set_margin(0, margin, margin, 0);
             layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
             self.layer = Some(layer);
-            self.configured = false;
         }
         if let Some(layer) = &self.layer {
-            if (w, h) != self.size || !self.configured {
-                layer.set_size(w, h);
-                // Drawn again once the compositor has configured the new size.
-                self.configured = false;
-            }
+            layer.set_size(w, h);
+            // Drawn again once the compositor has configured the new size, which it places from
+            // the bottom-right anchor: a bigger buffer before that would grow down from the old
+            // top edge, off the screen.
+            self.configured = false;
             // Clicks on the shadow around the cards go to what is under it.
             if let Ok(region) = Region::new(&self.compositor) {
                 region.add(pad, pad, w as i32 - 2 * pad, h as i32 - 2 * pad);
@@ -177,8 +182,6 @@ impl State {
             }
             layer.commit();
         }
-        self.size = (w, h);
-        self.resize_window();
     }
 
     /// Tells Slint the window's size in physical pixels.
@@ -337,7 +340,7 @@ impl LayerShellHandler for State {
         // The compositor took the surface away (an output went): make a new one if cards remain.
         self.layer = None;
         self.configured = false;
-        self.dirty.set(true);
+        self.requested = None;
     }
 
     fn configure(
@@ -349,9 +352,11 @@ impl LayerShellHandler for State {
         _: u32,
     ) {
         let (w, h) = configure.new_size;
-        if w > 0 && h > 0 {
-            self.size = (w, h);
-        }
+        self.size = if w > 0 && h > 0 {
+            (w, h)
+        } else {
+            self.requested.unwrap_or(self.size)
+        };
         self.configured = true;
         self.resize_window();
     }
@@ -576,9 +581,8 @@ pub fn run() -> anyhow::Result<()> {
     super::host::apply_language();
     window.dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor: 1.0 });
 
-    let dirty = Rc::new(Cell::new(false));
-    let d = dirty.clone();
-    let core = Rc::new(Core::new(|m| host::emit(&m), move || d.set(true)));
+    // The loop checks the stack's size on every turn (`State::relayout`).
+    let core = Rc::new(Core::new(|m| host::emit(&m), || {}));
     host::wire(&host, &core);
 
     let mut state = State {
@@ -592,8 +596,8 @@ pub fn run() -> anyhow::Result<()> {
         qh: qh.clone(),
         window,
         host,
-        dirty,
         layer: None,
+        requested: None,
         configured: false,
         size: (0, 0),
         scale: 1,
@@ -680,6 +684,17 @@ mod tests {
         // Keys without text (F1, a dead key) send nothing.
         assert_eq!(text(Keysym::F1, None), None);
         assert_eq!(text(Keysym::F1, Some("\u{1b}")), None);
+    }
+
+    #[test]
+    fn the_surface_follows_the_stack_as_cards_come_and_go() {
+        // No cards, one call card, a reminder under it, the call gone (`CardHost`: 16 px of
+        // shadow around the stack, cards 8 px apart).
+        assert_eq!(surface_size((372.0, 0.0)), None);
+        assert_eq!(surface_size((372.0, 164.0)), Some((372, 164)));
+        assert_eq!(surface_size((372.0, 164.0 + 8.0 + 120.5)), Some((372, 293)));
+        assert_eq!(surface_size((372.0, 152.5)), Some((372, 153)));
+        assert_eq!(surface_size((372.0, 0.0)), None);
     }
 
     #[test]
