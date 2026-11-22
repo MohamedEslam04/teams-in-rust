@@ -338,12 +338,12 @@ fn grouped_replies_harness(second: (&str, &str)) -> Harness {
     Harness::with_store(store)
 }
 
-fn reply_has_avatar(app: &AppWindow) -> Vec<bool> {
-    cs(app)
-        .get_posts()
-        .row_data(0)
-        .unwrap()
-        .replies
+/// Whether each reply in the thread panel carries its sender's photo (the panel opens on post
+/// 1000, the replies' post: replies are no longer drawn on the card).
+fn reply_has_avatar(h: &Harness) -> Vec<bool> {
+    h.runner()(Cmd::Channels(ChannelCmd::Thread("1000".into())));
+    cs(&h.app)
+        .get_thread_replies()
         .iter()
         .map(|m| m.has_avatar)
         .collect()
@@ -355,9 +355,8 @@ fn a_second_reply_in_a_row_from_the_same_person_shows_their_photo_on_the_card() 
     h.engine
         .test_set_avatar(SARA, crate::data::Pixels::new(4, 4));
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
-    assert_eq!(reply_texts(&h.app, 0), vec!["first reply", "second reply"]);
     assert_eq!(
-        reply_has_avatar(&h.app),
+        reply_has_avatar(&h),
         vec![true, true],
         "both of Sara's replies in a row carry her photo"
     );
@@ -371,7 +370,7 @@ fn people_the_service_sends_the_same_picture_for_show_initials_not_that_picture(
     h.engine
         .test_set_avatar(OMAR, crate::data::Pixels::new(4, 4));
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
-    assert_eq!(reply_has_avatar(&h.app), vec![true, true]);
+    assert_eq!(reply_has_avatar(&h), vec![true, true]);
 
     // The same bytes arrive for two different people: that is the "no photo" picture.
     let silhouette = b"the generic grey person";
@@ -385,7 +384,7 @@ fn people_the_service_sends_the_same_picture_for_show_initials_not_that_picture(
     );
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
     assert_eq!(
-        reply_has_avatar(&h.app),
+        reply_has_avatar(&h),
         vec![false, false],
         "both show their initials"
     );
