@@ -213,24 +213,42 @@ impl Engine {
     /// Stores a conversation's newest page. When more than a page arrived since the cache was
     /// last updated, the page lands above a hole: that is recorded first, so paging up reads it
     /// (see [`Engine::fill_history_gaps`]) instead of treating the cache as contiguous.
+    ///
+    /// The hole is measured from the newest message a previous page fetch stored (kept in the
+    /// kv table), not from the newest cached one: a message pushed live after a long offline
+    /// period is cached too and would otherwise make the page look contiguous.
     pub(super) fn store_newest_page(&self, conv: &str, msgs: &[Message]) {
+        let marker_key = format!("newest_page:{conv}");
+        let read_marker = |st: &store::Store| {
+            st.get_kv(&marker_key)
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+        };
         {
             let st = self.store.lock().unwrap();
             // Only a full page can leave a hole, so the cache is not read for a short one.
-            let newest = if msgs.len() >= PAGE {
-                st.latest_compose_ms(conv).ok().flatten()
-            } else {
-                None
-            };
-            let cached = |id: &str| st.message(id).ok().flatten().is_some();
-            if let Some((newer, older)) = gap_above_cache(newest, msgs, cached) {
-                tracing::info!(newer, older, "history gap above the cache recorded");
-                if let Err(err) = st.add_history_gap(conv, newer, older) {
-                    tracing::warn!(%err, "recording a history gap failed");
+            if msgs.len() >= PAGE {
+                let cached_newest = st.latest_compose_ms(conv).ok().flatten();
+                let (reference, trust_overlap) = gap_reference(cached_newest, read_marker(&st));
+                let cached = |id: &str| trust_overlap && st.message(id).ok().flatten().is_some();
+                if let Some((newer, older)) = gap_above_cache(reference, msgs, cached) {
+                    tracing::info!(newer, older, "history gap above the cache recorded");
+                    if let Err(err) = st.add_history_gap(conv, newer, older) {
+                        tracing::warn!(%err, "recording a history gap failed");
+                    }
                 }
             }
         }
         self.store_messages(msgs, None);
+        if let Some(newest) = newest_top_level(msgs) {
+            let st = self.store.lock().unwrap();
+            if read_marker(&st).is_none_or(|kept| newest > kept)
+                && let Err(err) = st.set_kv(&marker_key, &newest.to_string())
+            {
+                tracing::warn!(%err, "recording the synced page edge failed");
+            }
+        }
     }
 
     /// Reads the holes in the cache that a window of the newest `limit + PAGE` rows reaches into,
@@ -576,6 +594,27 @@ fn gap_above_cache(
         .then_some((oldest, newest))
 }
 
+/// What to measure a newest page against: `(compose time, whether a page message already in the
+/// cache proves the history contiguous)`. `synced` is the newest top-level message a previous
+/// page fetch stored. While it is at or below the cache's newest message, later cached messages
+/// came from elsewhere (a live push), so they neither count as the end of the synced history nor
+/// as an overlap. A marker ahead of the cache (the cache was trimmed) falls back to the cache.
+fn gap_reference(cached_newest: Option<i64>, synced: Option<i64>) -> (Option<i64>, bool) {
+    match (cached_newest, synced) {
+        (Some(newest), Some(synced)) if synced <= newest => (Some(synced), false),
+        _ => (cached_newest, true),
+    }
+}
+
+/// The compose time of the newest top-level message of a page (what the cache's own newest is
+/// measured on): replies and control messages do not count.
+fn newest_top_level(page: &[Message]) -> Option<i64> {
+    page.iter()
+        .filter(|m| m.parent_id.is_none() && !m.message_type.starts_with("Control/"))
+        .map(|m| m.compose_ms)
+        .max()
+}
+
 /// The gap a window of cached rows reaching down to `window_oldest` crosses: the newest gap
 /// whose newer edge is above it. Rows below that edge cannot be shown before the gap is read.
 fn gap_to_fill(gaps: &[HistoryGap], window_oldest: i64) -> Option<HistoryGap> {
@@ -652,6 +691,53 @@ mod gap_tests {
         );
     }
 
+    #[test]
+    fn a_live_pushed_message_does_not_hide_the_gap_above_the_last_synced_page() {
+        // The last page fetch ended at 500; a live push at 900 was cached after it. The next
+        // full newest page (which includes the pushed message) starts above 500.
+        let mut page = full_page(1000);
+        page[0] = msg("live", 900);
+        let (reference, trust_overlap) = gap_reference(Some(900), Some(500));
+        assert_eq!(reference, Some(500));
+        assert!(!trust_overlap);
+        let cached = |id: &str| id == "live";
+        assert_eq!(
+            gap_above_cache(reference, &page, |id| trust_overlap && cached(id)),
+            Some((900, 500))
+        );
+        // Without the synced marker the push is taken for the cache's newest and the overlap
+        // hides the hole.
+        let (reference, trust_overlap) = gap_reference(Some(900), None);
+        assert_eq!(reference, Some(900));
+        assert!(trust_overlap);
+        assert_eq!(
+            gap_above_cache(reference, &page, |id| trust_overlap && cached(id)),
+            None
+        );
+    }
+
+    #[test]
+    fn the_synced_marker_is_ignored_when_it_is_ahead_of_the_cache_or_nothing_is_cached() {
+        // The cache lost messages since the marker was written: its own newest counts.
+        assert_eq!(gap_reference(Some(400), Some(500)), (Some(400), true));
+        // Nothing cached: the page starts the cache, whatever the marker says.
+        assert_eq!(gap_reference(None, Some(500)), (None, true));
+        // Marker and cache agree.
+        assert_eq!(gap_reference(Some(500), Some(500)), (Some(500), false));
+    }
+
+    #[test]
+    fn the_synced_marker_is_the_newest_top_level_message_of_the_page() {
+        let mut page = full_page(1000);
+        let mut reply = msg("reply", 5000);
+        reply.parent_id = Some("m1000".into());
+        page.push(reply);
+        let mut control = msg("ctl", 6000);
+        control.message_type = "Control/Typing".into();
+        page.push(control);
+        assert_eq!(newest_top_level(&page), Some(1000 + PAGE as i64 - 1));
+        assert_eq!(newest_top_level(&[]), None);
+    }
     #[test]
     fn no_gap_without_a_cache_a_short_page_or_an_overlap() {
         let page = full_page(1000);
