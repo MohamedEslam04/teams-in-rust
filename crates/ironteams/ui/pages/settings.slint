@@ -4,10 +4,14 @@
 // that opens from the avatar in the top bar (chat plan 9.9).
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
-import { SButton, SField, SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
+import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -280,7 +284,7 @@ global FlyMetrics {
 // A flat row of the account card or of one of its flyouts: an icon (a presence glyph, or an
 // image), a label and optionally a ">" chevron. `open` keeps the hover colour while the row's
 // flyout is showing. A keyboard focus shows as a 1px rounded outline.
-component MenuRow inherits Rectangle {
+component StatusMenuRow inherits Rectangle {
     in property <string> label;
     // A presence glyph (see PresenceIcon); "" shows `icon` instead.
     in property <string> status;
@@ -511,7 +515,7 @@ export component ProfileMenu inherits Rectangle {
                         }
                     }
                     // The status: its glyph and, in words, what Teams shows for it ("In a call").
-                    status-row := MenuRow {
+                    status-row := StatusMenuRow {
                         label: SettingsStore.me-status-label != "" ? SettingsStore.me-status-label : @tr("Set status");
                         status: SettingsStore.me-presence;
                         chevron: true;
@@ -535,7 +539,7 @@ export component ProfileMenu inherits Rectangle {
                         }
                     }
                     // Teams' "Pause notifications >" (the same pause as Settings > Notifications).
-                    pause-row := MenuRow {
+                    pause-row := StatusMenuRow {
                         label: SettingsStore.paused ? @tr("Pause notifications ({})", SettingsStore.pause-until != "" ? SettingsStore.pause-until : @tr("paused")) : @tr("Pause notifications");
                         icon: @image-url("../icons/bell.svg");
                         chevron: true;
@@ -544,14 +548,14 @@ export component ProfileMenu inherits Rectangle {
                         clicked => { root.toggle-flyout("pause"); }
                     }
                     // Teams' "Set work location >" (the same write as the calendar's; UNVERIFIED).
-                    location-row := MenuRow {
+                    location-row := StatusMenuRow {
                         label: @tr("Set work location");
                         icon: @image-url("../icons/location.svg");
                         chevron: true;
                         open: root.flyout == "location";
                         clicked => { root.toggle-flyout("location"); }
                     }
-                    message-row := MenuRow {
+                    message-row := StatusMenuRow {
                         label: @tr("Set status message");
                         icon: @image-url("../icons/edit.svg");
                         chevron: true;
@@ -566,7 +570,7 @@ export component ProfileMenu inherits Rectangle {
                         padding-top: 4px;
                         spacing: 6px;
                         Text { text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message"); color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: SettingsStore.me-status; }
-                        note := SField { label: @tr("New status message"); initial: SettingsStore.me-status; }
+                        note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; }
                         Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: Theme.font-small; }
                         for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
                             group: @tr("Clear message after");
@@ -574,15 +578,15 @@ export component ProfileMenu inherits Rectangle {
                             checked: SettingsStore.note-clear-after == d.v;
                             picked => { SettingsStore.note-clear-after = d.v; }
                         }
-                        SSwitch {
+                        Switch { variant: SwitchVariant.settings;
                             label: @tr("Show when people message me");
-                            on: SettingsStore.note-show-when-messaged;
+                            checked: SettingsStore.note-show-when-messaged;
                             toggled(on) => { SettingsStore.note-show-when-messaged = on; }
                         }
                         HorizontalLayout {
                             spacing: 6px;
-                            SButton { label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
-                            SButton { label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
                         }
                     }
                     if SettingsStore.confirm-sign-out: VerticalLayout {
@@ -593,8 +597,8 @@ export component ProfileMenu inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
-                            SButton { label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
-                            SButton { label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
                         }
                     }
                     // What the photo, the status or a refused change answered.
@@ -619,7 +623,7 @@ export component ProfileMenu inherits Rectangle {
         if SettingsStore.status-open: FlyPanel {
             x: panel.x - self.width - FlyMetrics.gap;
             y: root.status-fly-y;
-            for st in [{v: "Available", l: @tr("Available")}, {v: "Busy", l: @tr("Busy")}, {v: "DoNotDisturb", l: @tr("Do not disturb")}, {v: "BeRightBack", l: @tr("Be right back")}, {v: "Away", l: @tr("Appear away")}, {v: "Offline", l: @tr("Appear offline")}]: MenuRow {
+            for st in [{v: "Available", l: @tr("Available")}, {v: "Busy", l: @tr("Busy")}, {v: "DoNotDisturb", l: @tr("Do not disturb")}, {v: "BeRightBack", l: @tr("Be right back")}, {v: "Away", l: @tr("Appear away")}, {v: "Offline", l: @tr("Appear offline")}]: StatusMenuRow {
                 height: FlyMetrics.row;
                 label: st.l;
                 status: st.v;
@@ -627,7 +631,7 @@ export component ProfileMenu inherits Rectangle {
                 clicked => { SettingsStore.command("status", st.v); }
             }
             FlySeparator { }
-            MenuRow {
+            StatusMenuRow {
                 height: FlyMetrics.row;
                 label: @tr("Duration");
                 status: "Duration";
@@ -636,14 +640,14 @@ export component ProfileMenu inherits Rectangle {
                 clicked => { root.duration-open = !root.duration-open; }
             }
             FlySeparator { }
-            MenuRow {
+            StatusMenuRow {
                 height: FlyMetrics.row;
                 label: @tr("Reset status");
                 icon: @image-url("../icons/restore.svg");
                 clicked => { SettingsStore.command("status", ""); }
             }
             FlySeparator { }
-            MenuRow {
+            StatusMenuRow {
                 height: FlyMetrics.row;
                 label: @tr("Manage presence status");
                 icon: @image-url("../icons/settings.svg");
@@ -661,17 +665,17 @@ export component ProfileMenu inherits Rectangle {
                 checked: SettingsStore.status-duration == d.v;
                 picked => { SettingsStore.status-duration = d.v; }
             }
-            if SettingsStore.status-duration == "custom": SField {
+            if SettingsStore.status-duration == "custom": Field { variant: FieldVariant.settings;
                 label: @tr("Reset at");
                 placeholder: "2026-12-31 17:30";
-                initial: SettingsStore.status-custom;
+                text: SettingsStore.status-custom;
                 edited(t) => { SettingsStore.status-custom = t; }
             }
         }
         if root.flyout == "pause": FlyPanel {
             x: panel.x - self.width - FlyMetrics.gap;
             y: root.fly-y(pause-row.absolute-position.y, self.height);
-            for p in [{v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow")}, {v: "off", l: @tr("Turn off the pause")}]: MenuRow {
+            for p in [{v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow")}, {v: "off", l: @tr("Turn off the pause")}]: StatusMenuRow {
                 height: FlyMetrics.row;
                 label: p.l;
                 icon: p.v == "off" ? @image-url("../icons/close.svg") : @image-url("../icons/bell.svg");
@@ -681,7 +685,7 @@ export component ProfileMenu inherits Rectangle {
         if root.flyout == "location": FlyPanel {
             x: panel.x - self.width - FlyMetrics.gap;
             y: root.fly-y(location-row.absolute-position.y, self.height);
-            for w in [{v: "office", l: @tr("In the office")}, {v: "remote", l: @tr("Remote")}, {v: "clear", l: @tr("Clear location")}]: MenuRow {
+            for w in [{v: "office", l: @tr("In the office")}, {v: "remote", l: @tr("Remote")}, {v: "clear", l: @tr("Clear location")}]: StatusMenuRow {
                 height: FlyMetrics.row;
                 label: w.l;
                 icon: w.v == "clear" ? @image-url("../icons/close.svg") : @image-url("../icons/location.svg");
@@ -691,13 +695,13 @@ export component ProfileMenu inherits Rectangle {
         if root.flyout == "photo": FlyPanel {
             x: panel.x - self.width - FlyMetrics.gap;
             y: root.fly-y(photo-button.absolute-position.y, self.height);
-            MenuRow {
+            StatusMenuRow {
                 height: FlyMetrics.row;
                 label: @tr("Change profile photo");
                 icon: @image-url("../icons/camera.svg");
                 clicked => { root.flyout = ""; SettingsStore.command("photo-change", ""); }
             }
-            if SettingsStore.me-has-photo: MenuRow {
+            if SettingsStore.me-has-photo: StatusMenuRow {
                 height: FlyMetrics.row;
                 label: @tr("Remove photo");
                 icon: @image-url("../icons/trash.svg");

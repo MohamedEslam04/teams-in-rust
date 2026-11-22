@@ -1,0 +1,77 @@
+// Pills (rounded, clickable choices) and badges (small read-only labels). Each variant draws
+// exactly like the copy it replaces (ui/README.md maps the old names).
+import { Theme } from "../tokens/theme.slint";
+import { Motion } from "../tokens/motion.slint";
+
+export enum PillVariant {
+    // A filter or quick action: the width follows the layout, colours animate.
+    filter,
+    // A choice in a row of choices (app screens): says whether it is picked; its owner sets
+    // `width: self.natural-width`.
+    toggle,
+}
+
+export component Pill inherits Rectangle {
+    in property <PillVariant> variant: PillVariant.filter;
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    property <bool> toggle: root.variant == PillVariant.toggle;
+    property <length> pad: root.toggle ? 12px : 10px;
+    // The width the label asks for.
+    out property <length> natural-width: lbl.preferred-width + root.pad * 2;
+    height: 26px;
+    border-radius: 13px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.border;
+    background: root.active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : transparent);
+    animate background { duration: root.toggle ? 0ms : Motion.quick; }
+    animate border-color { duration: root.toggle ? 0ms : Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checked: root.toggle ? root.active : false;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: root.pad;
+        padding-right: root.pad;
+        lbl := Text {
+            text: root.label;
+            color: Theme.fg;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: root.toggle ? TextHorizontalAlignment.center : TextHorizontalAlignment.left;
+            vertical-alignment: center;
+        }
+    }
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export enum BadgeVariant {
+    // A filled status chip: On, Failed, Completed, Installed… `tone` is "", ok, bad or warn.
+    status,
+    // An outlined tag (Teams page: Shared, Hidden, Pinned…). `tone` is "", warn or accent.
+    tag,
+}
+
+export component Badge inherits Rectangle {
+    in property <BadgeVariant> variant: BadgeVariant.status;
+    in property <string> text;
+    in property <string> tone;
+    property <bool> tag: root.variant == BadgeVariant.tag;
+    property <color> tag-color: root.tone == "warn" ? #e0a030 : root.tone == "accent" ? Theme.accent : Theme.fg-muted;
+    height: root.tag ? 18px : 20px;
+    width: lbl.preferred-width + (root.tag ? 12px : 16px);
+    border-radius: root.tag ? 9px : 10px;
+    border-width: root.tag ? 1px : 0px;
+    border-color: root.tag-color;
+    background: root.tag ? transparent
+        : root.tone == "ok" ? #1d3a2a : (root.tone == "bad" ? #4a1f24 : (root.tone == "warn" ? #4a3b14 : Theme.surface-hover));
+    lbl := Text {
+        text: root.text;
+        color: root.tag ? root.tag-color
+            : root.tone == "ok" ? #6bd69b : (root.tone == "bad" ? #ff8a8f : (root.tone == "warn" ? #ffd166 : Theme.fg-muted));
+        font-size: (root.tag ? 10px : 11px) * Theme.font-scale;
+        font-weight: root.tag ? 400 : 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

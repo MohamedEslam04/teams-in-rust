@@ -4,6 +4,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { CardRow } from "../tokens/types.slint";
 import { Skeleton } from "../tokens/motion.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export global CardColors {
     pure public function band(b: string) -> color {
@@ -21,28 +22,6 @@ export global CardColors {
         if t == "attention" { return #ff7e83; }
         if t == "light" { return #ffffff; }
         return subtle ? Theme.fg-muted : Theme.fg;
-    }
-}
-
-component CardBtn inherits Rectangle {
-    in property <string> title;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 30px;
-    width: label.preferred-width + 28px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: root.enabled ? Theme.accent : Theme.border;
-    background: root.enabled && touch.has-hover ? #34365c : transparent;
-    opacity: root.enabled ? 1.0 : 0.5;
-    accessible-role: button;
-    accessible-label: root.title;
-    accessible-enabled: root.enabled;
-    label := Text { text: root.title; color: Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : default;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -129,8 +108,8 @@ export component CardView inherits Rectangle {
                     spacing: 8px;
                     alignment: start;
                     padding-top: 4px;
-                    for b in r.buttons: CardBtn {
-                        title: b.title;
+                    for b in r.buttons: Button { variant: ButtonVariant.accent-outline;
+                        label: b.title;
                         enabled: b.url != "";
                         clicked => { root.open-url(b.url); }
                     }

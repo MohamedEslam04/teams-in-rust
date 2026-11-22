@@ -2,59 +2,12 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
-import { CallButton, CallAction, DeviceSettings } from "../molecules/call_widgets.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { VideoPreview } from "video_preview.slint";
 import { VideoEffectsPanel } from "video_effects.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
-
-// The pre-join microphone switch.
-component MicSwitch inherits Rectangle {
-    width: row.preferred-width + 20px;
-    height: 50px;
-    border-radius: 6px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: switch;
-    accessible-label: "Microphone";
-    accessible-checkable: true;
-    accessible-checked: CallStore.prejoin-mic;
-    accessible-action-default => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); }
-    row := HorizontalLayout {
-        x: 10px;
-        spacing: 8px;
-        alignment: center;
-        Icon {
-            source: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg");
-            tint: Theme.fg;
-            y: 15px;
-        }
-        Rectangle {
-            width: 34px;
-            height: 18px;
-            y: 16px;
-            border-radius: 9px;
-            background: CallStore.prejoin-mic ? Theme.accent-strong : Theme.surface-hover;
-            border-width: 1px;
-            border-color: CallStore.prejoin-mic ? Theme.accent-strong : Theme.border;
-            Rectangle {
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                x: CallStore.prejoin-mic ? parent.width - 15px : 3px;
-                background: #ffffff;
-            }
-        }
-        Text {
-            text: CallStore.prejoin-mic ? "Mic on" : "Mic off";
-            color: Theme.fg;
-            font-size: 13px * Theme.font-scale;
-            vertical-alignment: center;
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 export component PreJoin inherits Rectangle {
     background: Theme.main;
@@ -87,7 +40,7 @@ export component PreJoin inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    CallButton {
+                    Button { variant: ButtonVariant.call;
                         icon: CallStore.prejoin-camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
                         label: "Camera";
                         checkable: true;
@@ -96,7 +49,7 @@ export component PreJoin inherits Rectangle {
                         tip: CallStore.camera-available ? "" : "Video isn't available yet";
                         clicked => { CallStore.command("prejoin-camera", CallStore.prejoin-camera ? "off" : "on"); }
                     }
-                    MicSwitch { }
+                    Switch { variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
                 }
                 DeviceSettings { prefix: "prejoin"; }
                 if CallStore.error != "": Text {
@@ -108,11 +61,11 @@ export component PreJoin inherits Rectangle {
                 HorizontalLayout {
                     alignment: end;
                     spacing: 8px;
-                    CallAction {
+                    Button { variant: ButtonVariant.action;
                         label: "Cancel";
                         clicked => { CallStore.command("cancel", ""); }
                     }
-                    CallAction {
+                    Button { variant: ButtonVariant.action;
                         label: "Join now";
                         primary: true;
                         clicked => { CallStore.command("join-now", ""); }

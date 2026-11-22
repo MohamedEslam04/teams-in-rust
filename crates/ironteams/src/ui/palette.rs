@@ -1,5 +1,5 @@
 //! The command palette (Ctrl+Shift+P): the ranking behind its result list and the recent-actions
-//! list. The actions are `PaletteCatalog` in `ui/palette.slint` (labels are `@tr` strings, so they
+//! list. The actions are `PaletteCatalog` in `ui/pages/palette.slint` (labels are `@tr` strings, so they
 //! are matched in the language shown); running one reuses the callback or store command the same
 //! thing already has (`run-palette` in `ui/app.slint`), so nothing here sends a command.
 
@@ -11,7 +11,7 @@ use std::collections::HashSet;
 const RECENT_MAX: usize = 5;
 /// How many chats and channels follow the actions.
 const CHATS_MAX: usize = 8;
-/// The list's geometry in logical pixels, which `ui/palette.slint` draws the same way: the space
+/// The list's geometry in logical pixels, which `ui/pages/palette.slint` draws the same way: the space
 /// above the first row, a row, and the section heading above the first row of a section.
 const LIST_PAD: i32 = 4;
 const ROW_H: i32 = 36;

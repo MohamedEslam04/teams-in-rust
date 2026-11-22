@@ -1,4 +1,4 @@
-//! UI-thread side of the call window: fills the `CallStore` global (`ui/call_store.slint`).
+//! UI-thread side of the call window: fills the `CallStore` global (`ui/stores/call_store.slint`).
 
 use super::{UiHandle, model};
 use crate::backend::call::{CallData, Floating, Found, Person, REACTIONS, is_meeting_chat};

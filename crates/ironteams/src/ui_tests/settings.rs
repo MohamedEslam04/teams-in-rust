@@ -1749,7 +1749,7 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         for _ in 0..3 {
             testing::mock_elapsed_time(std::time::Duration::from_millis(16));
         }
-        for kind in ["SChoice", "SSwitch", "SButton", "SPersonRow", "SField"] {
+        for kind in ["SChoice", "Switch", "Button", "SPersonRow", "Field"] {
             for row in ElementHandle::find_by_element_type_name(app, kind)
                 .filter(|r| !super::overflow::texts(r).is_empty())
             {
@@ -1896,7 +1896,7 @@ fn an_update_downloaded_by_an_earlier_run_is_ready_at_the_start() {
     open_page(app, "about");
     assert!(store(app).get_update_ready());
     // The About page's button (the banner has one with the same label).
-    let button = ElementHandle::find_by_element_type_name(app, "SButton")
+    let button = ElementHandle::find_by_element_type_name(app, "Button")
         .find(|b| {
             b.accessible_label()
                 .is_some_and(|l| l == "Restart to update")
@@ -1950,7 +1950,7 @@ fn the_update_rows_stay_inside_a_narrow_window() {
     for _ in 0..3 {
         testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     }
-    for kind in ["SSwitch", "SButton"] {
+    for kind in ["Switch", "Button"] {
         for row in ElementHandle::find_by_element_type_name(app, kind)
             .filter(|r| !super::overflow::texts(r).is_empty())
         {

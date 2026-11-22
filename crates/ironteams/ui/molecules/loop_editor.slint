@@ -6,7 +6,9 @@
 // paragraph is sent as a formatted message and the card says so. The rows live in `LoopStore`,
 // edited through `src/loop_compose.rs`, which also builds the message.
 import { Theme } from "../tokens/theme.slint";
-import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
+import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
 
 // One row of the structure. `cells` are a table row's cells; `checked` is a ticked checklist item
 // or task, or my vote on a voting row.
@@ -74,30 +76,6 @@ component LoopInput inherits Rectangle {
         horizontal-alignment: Theme.start-align;
         overflow: elide;
         accessible-role: none;
-    }
-}
-
-// A tick box of a checklist item or a task.
-component LoopCheck inherits Rectangle {
-    in property <bool> checked;
-    in property <string> label;
-    callback clicked();
-    width: 18px;
-    height: 18px;
-    y: 4px;
-    border-radius: 3px;
-    border-width: 1px;
-    border-color: root.checked ? Theme.accent : Theme.fg-muted;
-    background: root.checked ? Theme.accent-strong : transparent;
-    accessible-role: checkbox;
-    accessible-label: root.label;
-    accessible-checkable: true;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.clicked(); }
-    if root.checked: Icon { source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: #ffffff; }
-    TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -193,10 +171,10 @@ export component LoopEditor inherits Rectangle {
         if LoopStore.kind == "checklist": VerticalLayout {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
-                LoopCheck {
+                CheckBox { variant: CheckBoxVariant.square; y: 4px;
                     checked: row.checked;
                     label: row.text != "" ? row.text : @tr("Checklist item");
-                    clicked => { LoopStore.toggle(r); }
+                    toggled => { LoopStore.toggle(r); }
                 }
                 LoopInput {
                     text: row.text;
@@ -209,10 +187,10 @@ export component LoopEditor inherits Rectangle {
         if LoopStore.kind == "tasks": VerticalLayout {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
-                LoopCheck {
+                CheckBox { variant: CheckBoxVariant.square; y: 4px;
                     checked: row.checked;
                     label: row.text != "" ? row.text : @tr("Task");
-                    clicked => { LoopStore.toggle(r); }
+                    toggled => { LoopStore.toggle(r); }
                 }
                 LoopInput {
                     text: row.text;

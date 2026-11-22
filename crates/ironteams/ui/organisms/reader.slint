@@ -3,25 +3,7 @@
 // move it). IronTeams has no text-to-speech, so there is no Read aloud.
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
-
-component ReaderButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> active: false;
-    callback clicked();
-    width: max(40px, label-text.preferred-width + 20px);
-    height: 32px;
-    border-radius: 4px;
-    background: root.active ? Theme.accent-strong : (touch.has-hover ? Theme.surface-hover : Theme.surface);
-    border-width: 1px;
-    border-color: Theme.border;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-checkable: root.active;
-    accessible-checked: root.active;
-    accessible-action-default => { root.clicked(); }
-    label-text := Text { text: root.label; color: root.active ? #ffffff : Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export component ImmersiveReader inherits Rectangle {
     in property <string> sender;
@@ -76,10 +58,10 @@ export component ImmersiveReader inherits Rectangle {
                 padding-right: 12px;
                 spacing: 8px;
                 Text { text: @tr("Immersive Reader"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                ReaderButton { label: "A−"; y: 12px; clicked => { root.size = max(16, root.size - 4); } }
-                ReaderButton { label: "A+"; y: 12px; clicked => { root.size = min(72, root.size + 4); } }
-                ReaderButton { label: @tr("Line focus: off"); active: root.focus-lines == 0; y: 12px; clicked => { root.focus-lines = 0; } }
-                for n in [1, 3, 5]: ReaderButton {
+                Button { variant: ButtonVariant.toggle; label: "A−"; y: 12px; clicked => { root.size = max(16, root.size - 4); } }
+                Button { variant: ButtonVariant.toggle; label: "A+"; y: 12px; clicked => { root.size = min(72, root.size + 4); } }
+                Button { variant: ButtonVariant.toggle; label: @tr("Line focus: off"); active: root.focus-lines == 0; y: 12px; clicked => { root.focus-lines = 0; } }
+                for n in [1, 3, 5]: Button { variant: ButtonVariant.toggle;
                     label: n == 1 ? @tr("1 line") : @tr("{} lines", n);
                     active: root.focus-lines == n;
                     y: 12px;

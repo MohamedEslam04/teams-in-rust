@@ -5,7 +5,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { NotesStore, ListsStore, AppRow } from "../stores/apps_store.slint";
-import { KitButton, KitNote } from "../molecules/apps_kit.slint";
+import { KitNote } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // A column of selectable rows (notebooks, sections, pages, sites, lists).
 component PickColumn inherits Rectangle {
@@ -65,8 +66,8 @@ export component NotesView inherits Rectangle {
                     padding-right: 16px;
                     spacing: 8px;
                     Text { text: NotesStore.page-title == "" ? "OneNote" : NotesStore.page-title; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    KitButton { y: 12px; label: "New page"; primary: true; enabled: NotesStore.can-new-page; clicked => { NotesStore.command("page-new", ""); } }
-                    KitButton { y: 12px; label: "Open in OneNote on the web"; enabled: NotesStore.can-open-web; clicked => { NotesStore.command("notes-open-web", ""); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "New page"; primary: true; enabled: NotesStore.can-new-page; clicked => { NotesStore.command("page-new", ""); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "Open in OneNote on the web"; enabled: NotesStore.can-open-web; clicked => { NotesStore.command("notes-open-web", ""); } }
                 }
             }
             if NotesStore.loading: KitNote { text: "Loading…"; busy: true; }
@@ -104,7 +105,7 @@ export component ListsView inherits Rectangle {
                     padding-right: 16px;
                     spacing: 8px;
                     Text { text: ListsStore.title == "" ? "Lists" : ListsStore.title; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    KitButton { y: 12px; label: "New item"; primary: true; enabled: ListsStore.can-edit; clicked => { ListsStore.command("item-new", ""); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "New item"; primary: true; enabled: ListsStore.can-edit; clicked => { ListsStore.command("item-new", ""); } }
                 }
             }
             if ListsStore.loading: KitNote { text: "Loading…"; busy: true; }

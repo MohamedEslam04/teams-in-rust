@@ -3,37 +3,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { SOption, SettingsStore } from "../stores/settings_store.slint";
-
-export component SButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: max(30px, lbl.preferred-height + 14px);
-    width: max(64px, lbl.preferred-width + 28px);
-    border-radius: 4px;
-    border-width: root.primary || root.danger ? 0px : 1px;
-    border-color: Theme.border;
-    background: !root.enabled ? Theme.surface : (root.primary ? (t.has-hover ? Theme.accent : Theme.accent-strong) : (root.danger ? Theme.danger : (t.has-hover ? Theme.surface-hover : Theme.surface)));
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-enabled: root.enabled;
-    accessible-action-default => { if root.enabled { root.clicked(); } }
-    lbl := Text {
-        text: root.label;
-        color: !root.enabled ? Theme.fg-subtle : (root.primary || root.danger ? #ffffff : Theme.fg);
-        font-size: Theme.font-body;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    t := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // A round +/- button of the zoom row.
 component ZoomButton inherits Rectangle {
@@ -83,64 +53,6 @@ export component SSection inherits VerticalLayout {
     if root.title != "": Text { horizontal-alignment: Theme.start-align; text: root.title; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
     if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-muted; font-size: Theme.font-small; wrap: word-wrap; }
     @children
-}
-
-// An on/off switch with a label and an optional hint line.
-export component SSwitch inherits Rectangle {
-    in property <string> label;
-    in property <string> hint;
-    in-out property <bool> on;
-    in property <bool> enabled: true;
-    callback toggled(bool);
-    min-height: max(32px, col.preferred-height + 8px);
-    // Opened by a Find result: tells the page where this row is.
-    Timer {
-        running: root.label != "" && root.label == SettingsStore.target;
-        interval: 60ms;
-        triggered => {
-            SettingsStore.target-y = root.absolute-position.y;
-            SettingsStore.target = "";
-        }
-    }
-    accessible-role: switch;
-    accessible-label: root.label;
-    accessible-checked: root.on;
-    accessible-enabled: root.enabled;
-    accessible-action-default => { root.flip(); }
-    function flip() {
-        if root.enabled {
-            root.on = !root.on;
-            root.toggled(root.on);
-        }
-    }
-    HorizontalLayout {
-        spacing: 12px;
-        col := VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 1;
-            Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; }
-            if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
-        }
-        Rectangle {
-            width: 40px;
-            height: 20px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 10px;
-            border-width: root.on ? 0px : 1px;
-            border-color: Theme.fg-muted;
-            background: root.on ? (root.enabled ? Theme.accent-strong : Theme.fg-subtle) : transparent;
-            Rectangle {
-                x: root.on ? parent.width - self.width - 4px : 4px;
-                y: 4px;
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                background: root.on ? #ffffff : Theme.fg-muted;
-                animate x { duration: Theme.reduced-motion ? 0ms : 120ms; }
-            }
-        }
-    }
-    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.flip(); } }
 }
 
 // One choice out of a few, as a row of pills. Each pill is labelled "<group>: <option>" for
@@ -281,48 +193,6 @@ export component SRadio inherits Rectangle {
     rt := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
 }
 
-// A single-line text box with a label. `committed` fires on Enter and when focus leaves.
-export component SField inherits VerticalLayout {
-    in property <string> label;
-    in property <string> placeholder;
-    in property <string> initial;
-    out property <string> text <=> input.text;
-    callback committed(string);
-    // Every keystroke.
-    callback edited(string);
-    spacing: 4px;
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
-    Rectangle {
-        height: max(30px, input.preferred-height + 12px);
-        max-width: 360px;
-        border-radius: 4px;
-        background: Theme.surface;
-        border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.border;
-        input := TextInput {
-            x: 10px;
-            width: parent.width - 20px;
-            text: root.initial;
-            color: Theme.fg;
-            font-size: Theme.font-body;
-            single-line: true;
-            vertical-alignment: center;
-            accessible-role: text-input;
-            accessible-label: root.label;
-            edited => { root.edited(self.text); }
-            accepted => { root.committed(self.text); }
-            changed has-focus => { if !self.has-focus { root.committed(self.text); } }
-        }
-        if input.text == "" && root.placeholder != "": Text {
-            x: 10px;
-            text: root.placeholder;
-            color: Theme.fg-subtle;
-            font-size: Theme.font-body;
-            vertical-alignment: center;
-        }
-    }
-}
-
 // A person row with one action button (Unblock, Remove).
 export component SPersonRow inherits Rectangle {
     in property <string> name;
@@ -332,7 +202,7 @@ export component SPersonRow inherits Rectangle {
     HorizontalLayout {
         spacing: 10px;
         Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-        SButton { label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
+        Button { variant: ButtonVariant.settings; label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
     }
 }
 

@@ -5,6 +5,7 @@
 // word (the real input ignores the right button) opens the suggestions.
 import { Theme } from "../tokens/theme.slint";
 import { Edited } from "../tokens/types.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 
 export struct SpellWord {
     start: int,
@@ -23,33 +24,6 @@ export global SpellApi {
     // text, start, end, replacement -> the text with the word replaced
     pure callback replace(string, int, int, string) -> Edited;
     callback add-word(string);
-}
-
-component SpellMenuRow inherits Rectangle {
-    in property <string> label;
-    in property <bool> strong;
-    callback clicked();
-    height: 30px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    Text {
-        x: 10px;
-        width: parent.width - 20px;
-        text: root.label;
-        color: Theme.fg;
-        font-size: 13px * Theme.font-scale;
-        font-weight: root.strong ? 700 : 400;
-        vertical-alignment: center;
-        overflow: elide;
-        accessible-role: none;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
 }
 
 // Sits under the composer's text input, with the same geometry and font.
@@ -178,7 +152,7 @@ export component SpellOverlay inherits Rectangle {
                         vertical-alignment: center;
                     }
                 }
-                for s in root.menu-suggestions: SpellMenuRow {
+                for s in root.menu-suggestions: MenuItem { variant: MenuItemVariant.spell;
                     label: s;
                     strong: true;
                     clicked => {
@@ -188,7 +162,7 @@ export component SpellOverlay inherits Rectangle {
                     }
                 }
                 Rectangle { height: 1px; background: Theme.border; }
-                SpellMenuRow {
+                MenuItem { variant: MenuItemVariant.spell;
                     label: @tr("Add to dictionary");
                     clicked => {
                         SpellApi.add-word(root.menu-word.word);

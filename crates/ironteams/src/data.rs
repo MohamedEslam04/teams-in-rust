@@ -88,7 +88,7 @@ pub struct LoopData {
     pub title: String,
 }
 
-/// A voice message of a chat row, drawn as a player (`ui/voice_player.slint`).
+/// A voice message of a chat row, drawn as a player (`ui/molecules/voice_player.slint`).
 #[derive(Clone)]
 pub struct VoiceData {
     /// The media object id: what the player and the played list know it by.
@@ -123,7 +123,7 @@ pub struct MeetingPersonData {
     pub color: u32,
 }
 
-/// A meeting event drawn as a card (`ui/meeting_card.slint`), see `backend/meeting_cards.rs`.
+/// A meeting event drawn as a card (`ui/organisms/meeting_card.slint`), see `backend/meeting_cards.rs`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeetingCardData {
     /// `call`, `recording` or `transcript`.

@@ -1,0 +1,198 @@
+// Popup menus: the rows (`MenuItem`) and the card they sit on (`MenuFrame`). Every menu of the
+// app used to draw its own rows; they are now variants of `MenuItem`, each drawn exactly like the
+// copy it replaces (ui/README.md maps the old names). The row carries the accessible name, so
+// its texts stay out of the accessibility tree.
+import { Theme } from "../tokens/theme.slint";
+import { Motion } from "../tokens/motion.slint";
+import { Icon } from "widgets.slint";
+
+export enum MenuItemVariant {
+    // A label at 10px (the chat list's "…" menu).
+    plain,
+    // A label at 10px, `danger` in light red (Teams page menus).
+    dialog,
+    // An eliding label at 8px (call window share menu).
+    share,
+    // An eliding label, `strong` in bold (spelling suggestions).
+    spell,
+    // An eliding label, `danger` in red (Find's file menus).
+    file,
+    // An eliding label (file and Loop card menus).
+    card,
+    // A label at 10px, 30px high (composer formatting menus).
+    format,
+    // A 16px icon and a label in the body size, 36px high (the top bar's "…" menu).
+    icon,
+    // Label, then a check, the shortcut (`keys`) and a "›" for a submenu (chat header menus).
+    header,
+    // As `header`, with a second line (`note`) and a check icon (chat list and web-parity menus).
+    parity,
+    // An icon (none when `indent`), the label and a chevron icon (the message "…" menu).
+    message,
+    // Label, then a check or `hint` on the right, the label in `tone` (calendar menus).
+    calendar,
+    // Label, then a check or `hint` on the right (app screens).
+    kit,
+    // An icon, the label and a check on the right (OneDrive menus).
+    drive,
+    // Label (`dim` greys it), a check and a chevron icon (chat list section and item menus).
+    list,
+}
+
+export component MenuItem inherits Rectangle {
+    in property <MenuItemVariant> variant: MenuItemVariant.plain;
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    in property <bool> checked: false;
+    in property <bool> chevron: false;
+    // `header`, `parity`: the keyboard shortcut.
+    in property <string> keys;
+    // `parity`: a second line.
+    in property <string> note;
+    // `calendar`, `kit`: the text on the right when not checked.
+    in property <string> hint;
+    // `calendar`: the label colour.
+    in property <color> tone: Theme.fg;
+    // `message`: no icon, the label lines up with the labels after the icons.
+    in property <bool> indent: false;
+    // `spell`: a bold label.
+    in property <bool> strong: false;
+    // `list`: a greyed label.
+    in property <bool> dim: false;
+    callback clicked();
+
+    property <bool> header-like: root.variant == MenuItemVariant.header || root.variant == MenuItemVariant.parity;
+    // The touch area follows `enabled` (disabled rows keep their pointer otherwise).
+    property <bool> guarded: root.header-like || root.variant == MenuItemVariant.calendar;
+    property <bool> has-lead-icon: root.variant == MenuItemVariant.icon || root.variant == MenuItemVariant.drive || (root.variant == MenuItemVariant.message && !root.indent);
+    property <bool> trailing-always: root.variant == MenuItemVariant.calendar || root.variant == MenuItemVariant.kit || root.variant == MenuItemVariant.drive;
+
+    height: root.variant == MenuItemVariant.icon ? 36px
+        : root.variant == MenuItemVariant.message ? 34px
+        : root.variant == MenuItemVariant.spell || root.variant == MenuItemVariant.format || root.variant == MenuItemVariant.calendar ? 30px
+        : root.variant == MenuItemVariant.parity && root.note != "" ? 44px
+        : 32px;
+    border-radius: root.variant == MenuItemVariant.share ? 3px : 4px;
+    opacity: root.variant == MenuItemVariant.drive && !root.enabled ? 0.4 : 1.0;
+    background: touch.has-hover && (root.enabled || !(root.guarded || root.variant == MenuItemVariant.drive)) ? Theme.surface-hover : transparent;
+    animate background {
+        duration: root.variant == MenuItemVariant.plain || root.variant == MenuItemVariant.card || root.variant == MenuItemVariant.list ? Motion.quick : 0ms;
+    }
+    accessible-role: button;
+    accessible-label: root.variant == MenuItemVariant.format && root.hint != "" ? root.hint : root.label;
+    accessible-description: root.variant == MenuItemVariant.header ? root.keys
+        : root.variant == MenuItemVariant.parity ? (root.note != "" ? root.note : root.keys)
+        : "";
+    accessible-enabled: root.header-like ? root.enabled : true;
+    accessible-checkable: root.variant == MenuItemVariant.list ? root.checked : false;
+    accessible-checked: root.header-like || root.variant == MenuItemVariant.list ? root.checked : false;
+    accessible-action-default => {
+        if root.enabled || root.variant == MenuItemVariant.calendar {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: root.variant == MenuItemVariant.message && root.indent ? 34px
+            : root.variant == MenuItemVariant.share ? 8px
+            : root.variant == MenuItemVariant.icon || root.variant == MenuItemVariant.kit ? 12px
+            : 10px;
+        padding-right: root.variant == MenuItemVariant.plain || root.variant == MenuItemVariant.dialog || root.variant == MenuItemVariant.format || root.variant == MenuItemVariant.icon ? 0px
+            : root.variant == MenuItemVariant.share ? 8px
+            : root.variant == MenuItemVariant.kit ? 12px
+            : 10px;
+        spacing: root.header-like || root.variant == MenuItemVariant.calendar || root.variant == MenuItemVariant.list ? 8px : 10px;
+        if root.has-lead-icon: Icon {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            y: root.variant == MenuItemVariant.icon ? 10px : root.variant == MenuItemVariant.message ? 9px : 8px;
+            tint: root.variant == MenuItemVariant.icon ? Theme.fg-muted : (root.danger ? Theme.danger : Theme.fg-muted);
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: root.header-like ? (!root.enabled ? Theme.fg-subtle : root.danger ? Theme.danger : Theme.fg)
+                    : root.variant == MenuItemVariant.dialog ? (root.danger ? #ff7b7e : Theme.fg)
+                    : root.variant == MenuItemVariant.calendar ? (root.enabled ? root.tone : Theme.fg-subtle)
+                    : root.variant == MenuItemVariant.list ? (root.danger ? Theme.danger : (root.dim ? Theme.fg-subtle : Theme.fg))
+                    : root.variant == MenuItemVariant.file || root.variant == MenuItemVariant.kit || root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.drive ? (root.danger ? Theme.danger : Theme.fg)
+                    : Theme.fg;
+                font-size: root.variant == MenuItemVariant.icon ? Theme.font-body : 13px * Theme.font-scale;
+                font-weight: root.variant == MenuItemVariant.spell && root.strong ? 700 : 400;
+                horizontal-alignment: root.variant == MenuItemVariant.list ? Theme.start-align : TextHorizontalAlignment.left;
+                vertical-alignment: center;
+                overflow: root.variant == MenuItemVariant.plain || root.variant == MenuItemVariant.dialog || root.variant == MenuItemVariant.format || root.variant == MenuItemVariant.drive ? TextOverflow.clip : TextOverflow.elide;
+                accessible-role: none;
+            }
+            if root.variant == MenuItemVariant.parity && root.note != "": Text { text: root.note; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+        }
+        if (root.variant == MenuItemVariant.header || root.variant == MenuItemVariant.list) && root.checked: Text { text: "✓"; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if root.variant == MenuItemVariant.parity && root.checked: Icon { source: @image-url("../icons/check.svg"); tint: Theme.accent; width: 14px; height: 14px; y: (parent.height - 14px) / 2; }
+        if root.trailing-always: Text {
+            text: root.checked ? "✓" : (root.variant == MenuItemVariant.drive ? "" : root.hint);
+            color: root.checked ? Theme.accent : Theme.fg-subtle;
+            font-size: (root.variant == MenuItemVariant.drive ? 13px : 12px) * Theme.font-scale;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        if root.header-like && root.keys != "": Text { text: root.keys; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if root.header-like && root.chevron: Text { text: "›"; color: Theme.fg-muted; font-size: 15px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if (root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.list) && root.chevron: Icon {
+            source: @image-url("../icons/chevron-right.svg");
+            width: 14px;
+            height: 14px;
+            y: root.variant == MenuItemVariant.message ? 10px : 9px;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.variant == MenuItemVariant.drive ? root.enabled : true;
+        mouse-cursor: root.guarded && !root.enabled ? MouseCursor.default : MouseCursor.pointer;
+        clicked => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
+    }
+}
+
+export enum MenuFrameVariant {
+    // Chat list and web-parity menus: 6px corners, a light shadow.
+    parity,
+    // Calendar popovers and dialogs: 8px corners, a deep shadow.
+    card,
+}
+
+// The card a popup menu sits on; its content places itself.
+export component MenuFrame inherits Rectangle {
+    in property <MenuFrameVariant> variant: MenuFrameVariant.parity;
+    property <bool> card: root.variant == MenuFrameVariant.card;
+    border-radius: root.card ? 8px : 6px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: root.card ? 16px : 8px;
+    drop-shadow-color: root.card ? #000000a0 : #00000060;
+}
+
+// The app screens' popup menu card: `menu-width` wide, its rows in a column, as tall as they are.
+export component MenuColumn inherits Rectangle {
+    in property <length> menu-width: 220px;
+    width: root.menu-width;
+    height: inner.preferred-height + 12px;
+    border-radius: 6px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000090;
+    TouchArea { }
+    inner := VerticalLayout {
+        padding: 6px;
+        @children
+    }
+}

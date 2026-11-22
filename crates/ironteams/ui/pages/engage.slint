@@ -3,9 +3,10 @@
 // disabled: the backend has no command that writes (plan S3.2, storyline posts are BLOCKED).
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Avatar, IconButton } from "../atoms/widgets.slint";
-import { TButton } from "../molecules/teams_widgets.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
 import { SkeletonList, Spinner } from "../tokens/motion.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export struct EPost {
     id: string,
@@ -158,7 +159,7 @@ export component EngageView inherits Rectangle {
                 spacing: 12px;
                 Text { text: "Start a post"; color: Theme.fg-subtle; font-size: 13px * EngageType.scale; vertical-alignment: center; horizontal-stretch: 1; }
                 Text { text: "Posting is not available yet"; color: Theme.fg-subtle; font-size: 12px * EngageType.scale; vertical-alignment: center; }
-                VerticalLayout { alignment: center; TButton { label: "Post"; enabled: false; } }
+                VerticalLayout { alignment: center; Button { variant: ButtonVariant.dialog; label: "Post"; enabled: false; } }
             }
         }
         ScrollView {
@@ -184,7 +185,7 @@ export component EngageView inherits Rectangle {
                         padding: 12px;
                         spacing: 12px;
                         Text { text: EngageStore.error; color: Theme.fg; font-size: 13px * EngageType.scale; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
-                        TButton { label: "Try again"; clicked => { EngageStore.command("refresh", ""); } }
+                        Button { variant: ButtonVariant.dialog; label: "Try again"; clicked => { EngageStore.command("refresh", ""); } }
                     }
                 }
                 if !EngageStore.loading && EngageStore.error == "" && EngageStore.posts.length == 0: Text {
@@ -207,7 +208,7 @@ export component EngageView inherits Rectangle {
                         accessible-label: "Loading";
                     }
                 }
-                if EngageStore.more: TButton {
+                if EngageStore.more: Button { variant: ButtonVariant.dialog;
                     label: "Older posts";
                     enabled: !EngageStore.loading;
                     clicked => { EngageStore.command("older", ""); }

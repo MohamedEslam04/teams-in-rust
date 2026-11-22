@@ -1,0 +1,726 @@
+// The OneDrive view: navigation, breadcrumbs, command bar, list and grid, and its dialogs.
+// Everything it shows comes from DriveStore (stores/drive_store.slint), filled by the Rust
+// backend; every action goes out through DriveStore.command(name, argument).
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
+import { SkeletonList } from "../tokens/motion.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { SearchBox } from "../atoms/search_box.slint";
+import { DialogFrame } from "../atoms/dialog_frame.slint";
+import { DriveLook } from "../atoms/file_kind.slint";
+import { DriveFilePicker } from "../organisms/drive_file_picker.slint";
+import { DriveListRow, DriveTile, ForYouCard } from "../organisms/drive_items.slint";
+import { NavEntry, Breadcrumbs } from "../organisms/drive_nav.slint";
+import { ShareDialog } from "../organisms/drive_share_dialog.slint";
+import { DriveStore } from "../stores/drive_store.slint";
+
+export component OneDriveView inherits Rectangle {
+    background: Theme.main;
+    // Which menu is open and where (relative to this view).
+    property <string> menu;
+    property <bool> menu-full;
+    property <length> menu-x;
+    property <length> menu-y;
+    property <bool> bin: DriveStore.section == "bin";
+    property <bool> one: DriveStore.sel-count == 1;
+    property <bool> some: DriveStore.sel-count > 0;
+    // A narrow window: the navigation shows its icons only and the search boxes are shorter.
+    in property <length> window-width: 1400px;
+    property <bool> narrow: root.window-width < 970px;
+
+    function open-menu(name: string, x: length, y: length, full: bool) {
+        root.menu = name;
+        root.menu-full = full;
+        root.menu-x = x - root.absolute-position.x;
+        root.menu-y = y - root.absolute-position.y;
+    }
+    function run(name: string) {
+        root.menu = "";
+        DriveStore.command(name, "");
+    }
+    function ask-name(kind: string, title: string, text: string) {
+        root.menu = "";
+        DriveStore.prompt-kind = kind;
+        DriveStore.prompt-title = title;
+        DriveStore.prompt-text = text;
+        DriveStore.dialog = "prompt";
+    }
+    function ask-link() {
+        root.menu = "";
+        DriveStore.prompt-kind = "new-link";
+        DriveStore.prompt-title = "New link";
+        DriveStore.prompt-text = "";
+        DriveStore.prompt-text2 = "https://";
+        DriveStore.dialog = "prompt";
+    }
+    function close-dialog() {
+        DriveStore.dialog = "";
+        DriveStore.command("dialog-close", "");
+    }
+
+    HorizontalLayout {
+        // Navigation
+        Rectangle {
+            width: root.narrow ? 48px : 224px;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding-top: 12px;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 2px;
+                alignment: start;
+                Rectangle {
+                    height: 40px;
+                    if !root.narrow: Text { x: 6px; text: "OneDrive"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                }
+                for n in [
+                    {key: "home", label: "Home", icon: @image-url("../icons/home.svg")},
+                    {key: "files", label: "My files", icon: @image-url("../icons/folder.svg")},
+                    {key: "shared", label: "Shared", icon: @image-url("../icons/users.svg")},
+                    {key: "shared-by", label: "Shared by you", icon: @image-url("../icons/share.svg")},
+                    {key: "favorites", label: "Favorites", icon: @image-url("../icons/star.svg")},
+                    {key: "libraries", label: "Libraries", icon: @image-url("../icons/library.svg")},
+                    {key: "bin", label: "Recycle bin", icon: @image-url("../icons/trash.svg")}
+                ]: NavEntry {
+                    compact: root.narrow;
+                    label: n.label;
+                    icon: n.icon;
+                    active: DriveStore.section == n.key;
+                    clicked => { DriveStore.command("nav", n.key); }
+                }
+                Rectangle {
+                    height: 34px;
+                    if !root.narrow: Text { x: 14px; y: 12px; text: "Browse files by"; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; }
+                }
+                for n in [
+                    {key: "people", label: "People", icon: @image-url("../icons/people.svg")},
+                    {key: "meetings", label: "Meetings", icon: @image-url("../icons/video.svg")},
+                    {key: "media", label: "Media", icon: @image-url("../icons/image.svg")}
+                ]: NavEntry {
+                    compact: root.narrow;
+                    label: n.label;
+                    icon: n.icon;
+                    active: DriveStore.section == n.key || (n.key == "people" && DriveStore.section.starts-with("person:"));
+                    clicked => { DriveStore.command("nav", n.key); }
+                }
+                if DriveStore.quick.length > 0: Rectangle {
+                    height: 34px;
+                    if !root.narrow: Text { x: 14px; y: 12px; text: "Quick access"; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; }
+                }
+                for q in DriveStore.quick: NavEntry {
+                    compact: root.narrow;
+                    label: q.label;
+                    icon: @image-url("../icons/library.svg");
+                    active: DriveStore.section == q.key;
+                    clicked => { DriveStore.command("nav", q.key); }
+                }
+                Rectangle { height: 12px; }
+                NavEntry {
+                    compact: root.narrow;
+                    label: "Sync";
+                    icon: @image-url("../icons/sync.svg");
+                    clicked => { DriveStore.command("sync", ""); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            // Title row: breadcrumbs and search
+            Rectangle {
+                height: 52px;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        Breadcrumbs { y: 11px; height: 30px; }
+                    }
+                    IconButton { y: 10px; icon: @image-url("../icons/list.svg"); tooltip: "List view"; active: !DriveStore.grid; clicked => { DriveStore.command("view", "list"); } }
+                    IconButton { y: 10px; icon: @image-url("../icons/grid.svg"); tooltip: "Grid view"; active: DriveStore.grid; clicked => { DriveStore.command("view", "grid"); } }
+                    IconButton { y: 10px; icon: @image-url("../icons/sync.svg"); tooltip: "Refresh"; clicked => { DriveStore.command("refresh", ""); } }
+                    SearchBox { clip-placeholder: true;
+                        width: root.narrow ? 200px : 260px;
+                        y: 10px;
+                        placeholder: "Search OneDrive and SharePoint";
+                        label: "Search files";
+                        text <=> DriveStore.search;
+                        accepted(t) => { DriveStore.command("search", t); }
+                    }
+                }
+            }
+            // Command bar
+            Rectangle {
+                height: 44px;
+                min-width: 0px;
+                clip: true;
+                background: Theme.sidebar;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 2px;
+                    if !root.some: new-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "New";
+                        icon: @image-url("../icons/plus.svg");
+                        chevron: true;
+                        primary: true;
+                        enabled: !root.bin;
+                        clicked => { root.open-menu("new", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if !root.some: upload-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Upload";
+                        icon: @image-url("../icons/upload.svg");
+                        chevron: true;
+                        enabled: !root.bin;
+                        clicked => { root.open-menu("upload", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if root.some && !root.bin: open-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Open";
+                        icon: @image-url("../icons/open.svg");
+                        chevron: true;
+                        enabled: root.one;
+                        clicked => { root.open-menu("open", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: root.one; clicked => { root.run("share"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Copy link"; icon: @image-url("../icons/link.svg"); enabled: root.one; clicked => { root.run("copy-link"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: DriveStore.sel-all-favorite ? "Unfavorite" : "Favorite";
+                        icon: @image-url("../icons/star.svg");
+                        clicked => { DriveStore.command("favorite", ""); }
+                    }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
+                    if root.some && !root.bin: more-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "More";
+                        icon: @image-url("../icons/more.svg");
+                        clicked => { root.open-menu("more", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if root.some && root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Restore"; icon: @image-url("../icons/restore.svg"); clicked => { root.run("restore"); } }
+                    if root.some && root.bin: Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Delete forever";
+                        icon: @image-url("../icons/trash.svg");
+                        danger: true;
+                        clicked => { DriveStore.dialog = "confirm"; }
+                    }
+                    if root.some: Text {
+                        text: DriveStore.sel-count + " selected";
+                        color: Theme.fg-muted;
+                        font-size: 12px * Theme.font-scale;
+                        vertical-alignment: center;
+                        accessible-role: text;
+                        accessible-label: DriveStore.sel-count + " selected";
+                    }
+                    if root.some: IconButton { y: 6px; icon: @image-url("../icons/close.svg"); tooltip: "Clear selection"; clicked => { root.run("clear-selection"); } }
+                    Rectangle { horizontal-stretch: 1; }
+                    if !root.some: sort-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Sort";
+                        icon: @image-url("../icons/sort.svg");
+                        chevron: true;
+                        clicked => { root.open-menu("sort", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if !root.some: group-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Group by";
+                        icon: @image-url("../icons/list.svg");
+                        chevron: true;
+                        clicked => { root.open-menu("group", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                    if !root.some && !DriveStore.grid: cols-btn := Button { variant: ButtonVariant.command;
+                        y: 6px;
+                        label: "Columns";
+                        icon: @image-url("../icons/columns.svg");
+                        chevron: true;
+                        clicked => { root.open-menu("columns", self.absolute-position.x, self.absolute-position.y + self.height, false); }
+                    }
+                }
+                Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            }
+            // Type pills and the filter box
+            Rectangle {
+                height: 44px;
+                min-width: 0px;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 6px;
+                    if DriveStore.section == "home" || DriveStore.section == "shared" || DriveStore.section == "shared-by" || DriveStore.section == "search": HorizontalLayout {
+                        spacing: 6px;
+                        for t in [{key: "all", label: "All"}, {key: "word", label: "Word"}, {key: "excel", label: "Excel"}, {key: "powerpoint", label: "PowerPoint"}, {key: "pdf", label: "PDF"}, {key: "more", label: "More"}]: Pill {
+                            y: 9px;
+                            label: t.label;
+                            active: DriveStore.type-filter == t.key;
+                            clicked => { DriveStore.command("type", t.key); }
+                        }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    SearchBox { clip-placeholder: true;
+                        width: root.narrow ? 160px : 260px;
+                        y: 6px;
+                        placeholder: "Filter by name or person";
+                        label: "Filter by name or person";
+                        text <=> DriveStore.filter;
+                        edited(t) => { DriveStore.command("filter", t); }
+                    }
+                }
+            }
+            // "For you" cards (Home)
+            if DriveStore.cards.length > 0: Rectangle {
+                height: 146px;
+                min-width: 0px;
+                clip: true;
+                accessible-role: groupbox;
+                accessible-label: "For you";
+                Text { x: 16px; y: 2px; text: "For you"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; }
+                Flickable {
+                    y: 22px;
+                    height: parent.height - 22px;
+                    content-width: DriveStore.cards.length * 188px + 16px;
+                    for c[i] in DriveStore.cards: ForYouCard {
+                        x: 16px + i * 188px;
+                        y: 2px;
+                        c: c;
+                        open => { DriveStore.command("card-open", c.id); }
+                    }
+                }
+            }
+            // Column headers (list view)
+            if !DriveStore.grid: Rectangle {
+                height: 30px;
+                min-width: 0px;
+                clip: true;
+                HorizontalLayout {
+                    padding-left: 76px;
+                    padding-right: 76px;
+                    spacing: 10px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        min-width: 80px;
+                        accessible-role: button;
+                        accessible-label: "Sort by Name";
+                        Text { x: 0px; width: parent.width; text: "Name" + (DriveStore.sort == "name" ? (DriveStore.ascending ? " ↑" : " ↓") : ""); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-alignment: left; }
+                        TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("sort", "name"); } }
+                    }
+                    if DriveStore.col-modified: Rectangle {
+                        width: DriveLook.col-modified;
+                        accessible-role: button;
+                        accessible-label: "Sort by Modified";
+                        Text { x: 0px; width: parent.width; text: (DriveStore.section == "bin" ? "Deleted" : (DriveStore.section == "shared-by" ? "Shared" : "Modified")) + (DriveStore.sort == "modified" ? (DriveStore.ascending ? " ↑" : " ↓") : ""); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-alignment: left; }
+                        TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("sort", "modified"); } }
+                    }
+                    if DriveStore.col-modified-by: Rectangle {
+                        width: DriveLook.col-modified-by;
+                        accessible-role: button;
+                        accessible-label: "Sort by Modified by";
+                        Text { x: 0px; width: parent.width; text: (DriveStore.section == "bin" ? "Deleted by" : "Modified by") + (DriveStore.sort == "modified-by" ? (DriveStore.ascending ? " ↑" : " ↓") : ""); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-alignment: left; }
+                        TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("sort", "modified-by"); } }
+                    }
+                    if DriveStore.col-size: Rectangle {
+                        width: DriveLook.col-size;
+                        accessible-role: button;
+                        accessible-label: "Sort by Size";
+                        Text { x: 0px; width: parent.width; text: "Size" + (DriveStore.sort == "size" ? (DriveStore.ascending ? " ↑" : " ↓") : ""); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-alignment: left; }
+                        TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("sort", "size"); } }
+                    }
+                    if DriveStore.col-location: Text { text: "Location"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; width: DriveLook.col-location; vertical-alignment: center; horizontal-alignment: left; }
+                    if DriveStore.col-activity: Text { text: "Activity"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; width: DriveLook.col-activity; vertical-alignment: center; horizontal-alignment: left; }
+                }
+                Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+            }
+            // The files
+            Rectangle {
+                vertical-stretch: 1;
+                clip: true;
+                if !DriveStore.grid: ListView {
+                    for r in DriveStore.rows: DriveListRow {
+                        r: r;
+                        bin: root.bin;
+                        any-selected: root.some;
+                        select => { DriveStore.command("select", r.id); }
+                        toggle => { DriveStore.command("toggle", r.id); }
+                        open => { DriveStore.command("open-row", r.id); }
+                        favorite => { DriveStore.command("favorite", r.id); }
+                        more(x, y) => {
+                            if !r.selected { DriveStore.command("select", r.id); }
+                            root.open-menu("more", x, y, true);
+                        }
+                    }
+                }
+                if DriveStore.grid: grid-scroll := Flickable {
+                    property <int> cols: max(1, Math.floor(self.width / 188px));
+                    content-height: max(self.height, Math.ceil(DriveStore.item-count / self.cols) * 180px + 16px);
+                    for r in DriveStore.rows: DriveTile {
+                        r: r;
+                        visible: !r.header;
+                        x: 16px + mod(r.index, grid-scroll.cols) * 188px;
+                        y: 8px + Math.floor(r.index / grid-scroll.cols) * 180px;
+                        select => { DriveStore.command("select", r.id); }
+                        toggle => { DriveStore.command("toggle", r.id); }
+                        open => { DriveStore.command("open-row", r.id); }
+                        favorite => { DriveStore.command("favorite", r.id); }
+                    }
+                }
+                if DriveStore.loading && DriveStore.rows.length == 0: SkeletonList { y: 8px; count: 9; avatar: 28px; row-height: 44px; label: "Loading..."; }
+                if !DriveStore.loading && DriveStore.rows.length == 0: Text {
+                    text: DriveStore.filter != "" ? "No files match the filter" : (root.bin ? "The recycle bin is empty" : "Nothing here yet");
+                    color: Theme.fg-subtle;
+                    font-size: 14px * Theme.font-scale;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            // Status line
+            Rectangle {
+                height: 28px;
+                background: Theme.sidebar;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    Text {
+                        text: DriveStore.status != "" ? DriveStore.status : DriveStore.item-count + " item" + (DriveStore.item-count == 1 ? "" : "s");
+                        color: DriveStore.status != "" ? #ffb900 : Theme.fg-muted;
+                        font-size: 12px * Theme.font-scale;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        accessible-role: text;
+                        accessible-label: "Status " + self.text;
+                        horizontal-stretch: 1;
+                    }
+                    if DriveStore.more: Text {
+                        text: "Load more";
+                        color: Theme.accent;
+                        font-size: 12px * Theme.font-scale;
+                        vertical-alignment: center;
+                        accessible-role: button;
+                        accessible-label: "Load more";
+                        TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("load-more", ""); } }
+                    }
+                }
+            }
+        }
+    }
+
+    // Menus
+    if root.menu != "": Rectangle {
+        TouchArea { clicked => { root.menu = ""; } }
+        Rectangle {
+            x: max(8px, min(root.menu-x, root.width - self.width - 8px));
+            y: max(8px, min(root.menu-y, root.height - self.height - 8px));
+            width: 250px;
+            height: items.preferred-height + 12px;
+            border-radius: 6px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000090;
+            TouchArea { }
+            items := VerticalLayout {
+                padding: 6px;
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Folder"; icon: @image-url("../icons/folder.svg"); clicked => { root.ask-name("new-folder", "New folder", "Untitled folder"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Word document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "word"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Excel workbook"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "excel"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "PowerPoint presentation"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "powerpoint"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Visio drawing"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "visio"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "OneNote notebook"; icon: @image-url("../icons/file.svg"); clicked => { root.ask-name("new-notebook", "New OneNote notebook", "Untitled notebook"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Forms survey"; icon: @image-url("../icons/link.svg"); clicked => { root.run("new-forms"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Link"; icon: @image-url("../icons/link.svg"); clicked => { root.ask-link(); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Markdown document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "markdown"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Text document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "text"); root.menu = ""; } }
+                if root.menu == "upload": MenuItem { variant: MenuItemVariant.drive; label: "Files upload"; icon: @image-url("../icons/upload.svg"); clicked => { root.run("upload-files"); } }
+                if root.menu == "upload": MenuItem { variant: MenuItemVariant.drive; label: "Folder upload"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("upload-folder"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in IronTeams"; icon: @image-url("../icons/open.svg"); clicked => { root.run("open-ironteams"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in browser"; icon: @image-url("../icons/link.svg"); clicked => { root.run("open-browser"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in desktop app"; icon: @image-url("../icons/file.svg"); clicked => { root.run("open-desktop"); } }
+                if root.menu == "open" || root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Open location"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("open-location"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Share"; icon: @image-url("../icons/share.svg"); clicked => { root.run("share"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Copy link"; icon: @image-url("../icons/link.svg"); clicked => { root.run("copy-link"); } }
+                if root.menu == "more" && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Add shortcut"; icon: @image-url("../icons/shortcut.svg"); clicked => { root.run("shortcut"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
+                if root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Version history"; icon: @image-url("../icons/history.svg"); enabled: root.one; clicked => { root.run("versions"); } }
+                if root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Details"; icon: @image-url("../icons/info.svg"); enabled: root.one; clicked => { root.run("details"); } }
+                if root.menu == "sort": VerticalLayout { for k in [{key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuItem { variant: MenuItemVariant.drive;
+                    label: "Sort by " + k.label + (DriveStore.sort == k.key ? (DriveStore.ascending ? " (ascending)" : " (descending)") : "");
+                    icon: @image-url("../icons/sort.svg");
+                    checked: DriveStore.sort == k.key;
+                    clicked => { DriveStore.command("sort", k.key); root.menu = ""; }
+                } }
+                if root.menu == "group": VerticalLayout { for k in [{key: "none", label: "None"}, {key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuItem { variant: MenuItemVariant.drive;
+                    label: "Group by " + k.label;
+                    icon: @image-url("../icons/list.svg");
+                    checked: DriveStore.group == k.key;
+                    clicked => { DriveStore.command("group", k.key); root.menu = ""; }
+                } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Modified"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified; clicked => { DriveStore.command("column", "modified"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Modified by"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified-by; clicked => { DriveStore.command("column", "modified-by"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Size"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-size; clicked => { DriveStore.command("column", "size"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Location"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-location; clicked => { DriveStore.command("column", "location"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Activity"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-activity; clicked => { DriveStore.command("column", "activity"); } }
+            }
+        }
+    }
+
+    // Dialogs
+    if DriveStore.dialog != "": Rectangle {
+        background: Theme.scrim;
+        TouchArea { }
+        if DriveStore.dialog == "prompt": DialogFrame {
+            title: DriveStore.prompt-title;
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2 - 60px);
+            height: DriveStore.prompt-kind == "new-link" ? 214px : 164px;
+            close => { root.close-dialog(); }
+            Rectangle {
+                height: 34px;
+                border-radius: 4px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: name-input.has-focus ? Theme.accent : Theme.border;
+                name-input := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    text <=> DriveStore.prompt-text;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    single-line: true;
+                    vertical-alignment: center;
+                    accessible-role: text-input;
+                    accessible-label: "Name";
+                    init => { self.focus(); self.select-all(); }
+                    accepted => {
+                        if DriveStore.prompt-kind != "new-link" {
+                            DriveStore.dialog = "";
+                            DriveStore.command(DriveStore.prompt-kind, self.text);
+                        }
+                    }
+                }
+            }
+            if DriveStore.prompt-kind == "new-link": Rectangle {
+                height: 34px;
+                border-radius: 4px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: address-input.has-focus ? Theme.accent : Theme.border;
+                address-input := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    text <=> DriveStore.prompt-text2;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    single-line: true;
+                    vertical-alignment: center;
+                    accessible-role: text-input;
+                    accessible-label: "Web address";
+                    accepted => {
+                        DriveStore.dialog = "";
+                        DriveStore.command("new-link", DriveStore.prompt-text + "\n" + self.text);
+                    }
+                }
+            }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: end;
+                Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.close-dialog(); } }
+                Button { variant: ButtonVariant.flat;
+                    label: "OK";
+                    primary: true;
+                    enabled: DriveStore.prompt-text != "" && (DriveStore.prompt-kind != "new-link" || DriveStore.prompt-text2 != "");
+                    clicked => {
+                        DriveStore.dialog = "";
+                        DriveStore.command(DriveStore.prompt-kind, DriveStore.prompt-kind == "new-link" ? DriveStore.prompt-text + "\n" + DriveStore.prompt-text2 : DriveStore.prompt-text);
+                    }
+                }
+            }
+        }
+        if DriveStore.dialog == "confirm": DialogFrame {
+            title: "Delete forever?";
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2 - 60px);
+            height: 150px;
+            close => { root.close-dialog(); }
+            Text { text: "This removes " + DriveStore.sel-count + " item" + (DriveStore.sel-count == 1 ? "" : "s") + " for good. You cannot get them back."; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: end;
+                Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.close-dialog(); } }
+                Button { variant: ButtonVariant.flat;
+                    label: "Yes, delete forever";
+                    danger: true;
+                    clicked => {
+                        DriveStore.dialog = "";
+                        DriveStore.command("delete-forever", "");
+                    }
+                }
+            }
+        }
+        if DriveStore.dialog == "picker": DriveFilePicker {
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2);
+            title: DriveStore.picker-title;
+            folders-only: DriveStore.picker-folders-only;
+            rows: DriveStore.picker-rows;
+            crumbs: DriveStore.picker-crumbs;
+            loading: DriveStore.picker-loading;
+            can-choose: DriveStore.picker-can-choose;
+            choose-label: DriveStore.picker-folders-only ? "Choose this folder" : "Select";
+            open(id) => { DriveStore.command("pick-open", id); }
+            crumb(i) => { DriveStore.command("pick-crumb", "" + i); }
+            pick(id) => { DriveStore.command("pick-select", id); }
+            choose => { DriveStore.command("pick-choose", ""); }
+            cancel => { DriveStore.dialog = ""; DriveStore.command("pick-cancel", ""); }
+        }
+        if DriveStore.dialog == "share": ShareDialog {
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2);
+            close => { root.close-dialog(); }
+        }
+        if DriveStore.dialog == "versions": DialogFrame {
+            title: "Version history: " + DriveStore.versions-name;
+            dialog-width: 520px;
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2 - 40px);
+            height: 380px;
+            close => { root.close-dialog(); }
+            Flickable {
+                vertical-stretch: 1;
+                content-height: vlist.preferred-height;
+                vlist := VerticalLayout {
+                    for v in DriveStore.versions: Rectangle {
+                        height: 44px;
+                        accessible-role: list-item;
+                        accessible-label: "Version " + v.id;
+                        accessible-description: v.when + ", " + v.by + ", " + v.size;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            spacing: 10px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text { text: v.when + (v.current ? " (current)" : ""); color: Theme.fg; font-size: 13px * Theme.font-scale; }
+                                Text { text: v.by + " · " + v.size; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+                            }
+                            if !v.current: Button { variant: ButtonVariant.flat; y: 5px; label: "Restore " + v.id; clicked => { DriveStore.command("version-restore", v.id); DriveStore.dialog = ""; } }
+                        }
+                    }
+                    if DriveStore.versions.length == 0: Text { text: "No earlier versions."; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                }
+            }
+        }
+        if DriveStore.dialog == "info": DialogFrame {
+            title: DriveStore.info-title;
+            dialog-width: 560px;
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2 - 40px);
+            height: 440px;
+            close => { root.close-dialog(); }
+            Flickable {
+                vertical-stretch: 1;
+                content-height: info.preferred-height;
+                info := Text {
+                    text: DriveStore.info-text;
+                    color: Theme.fg;
+                    font-size: 12px * Theme.font-scale;
+                    font-family: "monospace";
+                    wrap: word-wrap;
+                    accessible-role: text;
+                    accessible-label: DriveStore.info-text;
+                }
+            }
+            HorizontalLayout {
+                height: 34px;
+                alignment: end;
+                Button { variant: ButtonVariant.flat; label: "Close"; clicked => { root.close-dialog(); } }
+            }
+        }
+        if DriveStore.dialog == "preview": DialogFrame {
+            title: DriveStore.preview-title;
+            dialog-width: min(parent.width - 80px, 900px);
+            x: (parent.width - self.width) / 2;
+            y: 24px;
+            height: parent.height - 48px;
+            close => { root.close-dialog(); }
+            Rectangle {
+                vertical-stretch: 1;
+                border-radius: 4px;
+                background: Theme.sidebar;
+                clip: true;
+                if DriveStore.preview-kind == "image" || DriveStore.preview-kind == "pages": Image {
+                    source: DriveStore.preview-image;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: contain;
+                    accessible-role: image;
+                    accessible-label: DriveStore.preview-title;
+                }
+                if DriveStore.preview-kind == "text": Flickable {
+                    content-height: ptext.preferred-height + 24px;
+                    ptext := Text {
+                        x: 12px;
+                        y: 12px;
+                        width: parent.width - 24px;
+                        text: DriveStore.preview-text;
+                        color: Theme.fg;
+                        font-size: 12px * Theme.font-scale;
+                        font-family: "monospace";
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: "File content";
+                    }
+                }
+                if DriveStore.preview-kind == "markdown": Flickable {
+                    content-height: pmd.preferred-height + 24px;
+                    pmd := StyledText {
+                        x: 12px;
+                        y: 12px;
+                        width: parent.width - 24px;
+                        text: DriveStore.preview-body;
+                        default-color: Theme.fg;
+                        default-font-size: 14px * Theme.font-scale;
+                        link-color: Theme.accent;
+                        selectable: true;
+                        accessible-role: text;
+                        accessible-label: "File content";
+                    }
+                }
+            }
+            HorizontalLayout {
+                height: 34px;
+                spacing: 8px;
+                alignment: end;
+                if DriveStore.preview-kind == "pages": Text {
+                    text: "Page " + DriveStore.preview-page + " of " + DriveStore.preview-pages;
+                    color: Theme.fg-muted;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                    accessible-role: text;
+                    accessible-label: "Page " + DriveStore.preview-page + " of " + DriveStore.preview-pages;
+                }
+                if DriveStore.preview-kind == "pages": Button { variant: ButtonVariant.flat; label: "Previous page"; enabled: DriveStore.preview-page > 1; clicked => { DriveStore.command("preview-page", "prev"); } }
+                if DriveStore.preview-kind == "pages": Button { variant: ButtonVariant.flat; label: "Next page"; enabled: DriveStore.preview-page < DriveStore.preview-pages; clicked => { DriveStore.command("preview-page", "next"); } }
+                Button { variant: ButtonVariant.flat; label: "Open in browser"; clicked => { DriveStore.command("open-browser", ""); } }
+                Button { variant: ButtonVariant.flat; label: "Download"; clicked => { DriveStore.command("download", ""); } }
+                Button { variant: ButtonVariant.flat; label: "Close"; primary: true; clicked => { root.close-dialog(); } }
+            }
+        }
+    }
+}

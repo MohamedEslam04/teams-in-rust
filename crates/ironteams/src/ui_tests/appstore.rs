@@ -120,7 +120,7 @@ impl AppsHarness {
     fn click_menu(&self, label: &str) {
         self.find(label)
             .into_iter()
-            .find(|e| e.type_name().as_deref() == Some("KitMenuRow"))
+            .find(|e| e.type_name().as_deref() == Some("MenuItem"))
             .unwrap_or_else(|| panic!("no menu row {label:?}"))
             .mock_single_click(PointerEventButton::Left);
     }
