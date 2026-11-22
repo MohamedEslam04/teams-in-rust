@@ -63,7 +63,7 @@ component Disabled inherits Rectangle {
     }
 }
 
-export component PostCard inherits Rectangle {
+export component EngagePostCard inherits Rectangle {
     in property <EPost> p;
     height: lay.preferred-height;
     border-radius: Theme.radius;
@@ -195,7 +195,7 @@ export component EngageView inherits Rectangle {
                     accessible-role: text;
                     accessible-label: "No posts yet";
                 }
-                for p in EngageStore.posts: PostCard { p: p; }
+                for p in EngageStore.posts: EngagePostCard { p: p; }
                 if EngageStore.loading && EngageStore.posts.length > 0: HorizontalLayout {
                     spacing: 8px;
                     alignment: start;

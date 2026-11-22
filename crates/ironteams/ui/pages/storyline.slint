@@ -5,7 +5,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Avatar } from "../atoms/avatar.slint";
-import { EPost, PostCard } from "engage.slint";
+import { EPost, EngagePostCard } from "engage.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 
 export global StorylineStore {
@@ -169,7 +169,7 @@ export component StorylineView inherits Rectangle {
                     color: Theme.fg-subtle;
                     font-size: 13px * Theme.font-scale;
                 }
-                for p in StorylineStore.posts: PostCard { p: p; }
+                for p in StorylineStore.posts: EngagePostCard { p: p; }
             }
         }
     }

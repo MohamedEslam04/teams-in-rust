@@ -1,0 +1,11 @@
+// The command palette's state (pages/palette.slint draws it).
+
+export global PaletteStore {
+    in-out property <bool> open: false;
+    in-out property <string> query;
+    in-out property <int> selected: 0;
+    // The ids of the actions used last (newest first, comma separated), kept while IronTeams runs.
+    in-out property <string> recents;
+    // Bumped when the palette closes, so the window can take the keyboard focus back.
+    in-out property <int> restore-tick: 0;
+}

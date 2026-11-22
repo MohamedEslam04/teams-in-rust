@@ -1,0 +1,57 @@
+// The row of buttons under the composer's text: Format, Emoji, Attach, "…", GIF and Loop (when
+// there is room), the apps, the voice message, and Send with its options. The composer owns the
+// popups these open.
+import { ComposerAppsButton } from "composer_apps.slint";
+import { FormatToggle } from "composer_format.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { LoopStore } from "../molecules/loop_editor.slint";
+import { PendingAttachment } from "../tokens/types.slint";
+import { SendButton } from "composer_send.slint";
+import { Theme } from "../tokens/theme.slint";
+import { VoiceRecStore } from "voice_recorder.slint";
+
+export component ComposerToolbar inherits HorizontalLayout {
+    in-out property <string> emoji-query;
+    in-out property <bool> format-open;
+    in property <bool> narrow-bar;
+    callback open-gifs;
+    in property <[PendingAttachment]> pending-attachments;
+    callback submit;
+    in property <bool> has-text;
+    callback show-emoji;
+    callback show-attach;
+    callback show-more;
+    callback show-send-options;
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-bottom: 6px;
+    spacing: 2px;
+    alignment: end;
+    FormatToggle { on: root.format-open; clicked => { root.format-open = !root.format-open; } }
+    IconButton { icon: @image-url("../icons/emoji.svg"); clicked => { root.emoji-query = ""; root.show-emoji(); } }
+    IconButton { icon: @image-url("../icons/attach.svg"); tooltip: @tr("Attach file"); clicked => { root.show-attach(); } }
+    IconButton { icon: @image-url("../icons/more.svg"); clicked => { root.show-more(); } }
+    if !root.narrow-bar: IconButton {
+        icon: @image-url("../icons/gif.svg");
+        tooltip: @tr("GIF");
+        clicked => { root.open-gifs(); }
+    }
+    if !root.narrow-bar: IconButton {
+        icon: @image-url("../icons/loop.svg");
+        tooltip: @tr("Loop paragraph");
+        active: LoopStore.open;
+        clicked => { LoopStore.open = true; }
+    }
+    ComposerAppsButton { }
+    IconButton {
+        icon: @image-url("../icons/mic.svg");
+        tooltip: @tr("Record a voice message (Ctrl+Shift+R)");
+        clicked => { VoiceRecStore.start(); }
+    }
+    Rectangle { width: 1px; background: Theme.border; }
+    SendButton {
+        ready: root.has-text || root.pending-attachments.length > 0 || LoopStore.open;
+        send => { root.submit(); }
+        options => { root.show-send-options(); }
+    }
+}

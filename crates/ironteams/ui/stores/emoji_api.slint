@@ -1,0 +1,12 @@
+import { Edited, ComposerEmoji } from "../tokens/types.slint";
+
+// Emoji search, `:name` completion and cursor-aware insertion live in Rust (src/composer.rs).
+export global EmojiApi {
+    // category index, search text, skin tone -> what the panel shows
+    pure callback list(int, string, int) -> [ComposerEmoji];
+    // text, cursor byte offset, skin tone -> emoji for the `:xx` before the cursor
+    pure callback suggest(string, int, int) -> [ComposerEmoji];
+    pure callback insert(string, int, string) -> Edited;
+    // like insert, but replaces the `:xx` before the cursor
+    pure callback complete(string, int, string) -> Edited;
+}

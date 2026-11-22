@@ -9,7 +9,7 @@ import { PersonHover } from "../molecules/people.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { HitRow, PickRow, FindStore } from "../stores/find_store.slint";
 
-component Chip inherits Rectangle {
+component SearchFilterChip inherits Rectangle {
     in property <string> label;
     in property <string> value;
     callback clicked();
@@ -248,9 +248,9 @@ export component SearchView inherits Rectangle {
             spacing: 8px;
             alignment: start;
             height: 30px;
-            Chip { label: "In"; value: FindStore.filter-in; clicked => { FindStore.filter-editor = FindStore.filter-editor == "in" ? "" : "in"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "in"); } }
-            Chip { label: "Person"; value: FindStore.filter-person; clicked => { FindStore.filter-editor = FindStore.filter-editor == "person" ? "" : "person"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "person"); } }
-            Chip { label: "Date"; value: FindStore.filter-date; clicked => { FindStore.filter-editor = FindStore.filter-editor == "date" ? "" : "date"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "date"); } }
+            SearchFilterChip { label: "In"; value: FindStore.filter-in; clicked => { FindStore.filter-editor = FindStore.filter-editor == "in" ? "" : "in"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "in"); } }
+            SearchFilterChip { label: "Person"; value: FindStore.filter-person; clicked => { FindStore.filter-editor = FindStore.filter-editor == "person" ? "" : "person"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "person"); } }
+            SearchFilterChip { label: "Date"; value: FindStore.filter-date; clicked => { FindStore.filter-editor = FindStore.filter-editor == "date" ? "" : "date"; FindStore.command("editor", FindStore.filter-editor); } cleared => { FindStore.command("filter-clear", "date"); } }
         }
         if FindStore.filter-editor == "in" || FindStore.filter-editor == "person": HorizontalLayout {
             alignment: start;

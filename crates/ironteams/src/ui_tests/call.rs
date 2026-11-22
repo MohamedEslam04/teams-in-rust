@@ -735,7 +735,7 @@ fn the_rail_leaves_the_call_view_and_keeps_the_call_in_its_bar() {
     let c = CallHarness::new();
     c.connected();
     let mut rail: Vec<ElementHandle> =
-        ElementHandle::find_by_element_id(&c.h.app, "AppWindow::ri").collect();
+        ElementHandle::find_by_element_id(&c.h.app, "AppRail::ri").collect();
     rail.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     // Chat is already the view under the call: clicking it still shows the chats.
     rail[1].mock_single_click(PointerEventButton::Left);

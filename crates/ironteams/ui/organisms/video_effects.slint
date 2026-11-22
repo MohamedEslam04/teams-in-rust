@@ -7,12 +7,7 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
-
-component Heading inherits Text {
-    color: Theme.fg-muted;
-    font-size: 12px * Theme.font-scale;
-    font-weight: 600;
-}
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 // A background tile: its picture, or its name for None and the blurs.
 component BackgroundTile inherits Rectangle {
@@ -156,7 +151,7 @@ export component VideoEffectsPanel inherits Rectangle {
             VerticalLayout {
                 alignment: start;
                 spacing: 10px;
-                Heading { text: "Background"; }
+                Heading { variant: HeadingVariant.caption; text: "Background"; }
                 BackgroundGrid { }
                 if VideoFxStore.background.starts-with("custom:"): HorizontalLayout {
                     alignment: start;
@@ -179,7 +174,7 @@ export component VideoEffectsPanel inherits Rectangle {
                         }
                     }
                 }
-                Heading { text: "Filters"; }
+                Heading { variant: HeadingVariant.caption; text: "Filters"; }
                 HorizontalLayout {
                     alignment: start;
                     spacing: 6px;

@@ -16,7 +16,7 @@ component ButtonRow inherits HorizontalLayout {
     height: 32px;
 }
 
-component PersonLine inherits Rectangle {
+component MemberLine inherits Rectangle {
     in property <TPerson> p;
     in property <bool> pick: false;
     callback clicked();
@@ -140,7 +140,7 @@ component NewChannelDialog inherits ModalDialog {
             ScrollView {
                 VerticalLayout {
                     alignment: start;
-                    for p in TeamsStore.people: PersonLine { p: p; pick: !p.me; clicked => { TeamsStore.command("pick", p.mri); } }
+                    for p in TeamsStore.people: MemberLine { p: p; pick: !p.me; clicked => { TeamsStore.command("pick", p.mri); } }
                 }
             }
         }
@@ -243,7 +243,7 @@ component MembersDialog inherits ModalDialog {
             ScrollView {
                 VerticalLayout {
                     alignment: start;
-                    for p in TeamsStore.candidates: PersonLine {
+                    for p in TeamsStore.candidates: MemberLine {
                         p: p;
                         Button { variant: ButtonVariant.dialog; label: "Add"; y: 3px; clicked => { TeamsStore.command("member-add", TeamsActions.j2(p.mri, "member")); } }
                     }
@@ -255,7 +255,7 @@ component MembersDialog inherits ModalDialog {
             vertical-stretch: 1;
             VerticalLayout {
                 alignment: start;
-                for p in TeamsStore.people: PersonLine {
+                for p in TeamsStore.people: MemberLine {
                     p: p;
                     Text { text: p.role; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                     if !p.me && TeamsStore.d-owner && p.role != "Guest": Button { variant: ButtonVariant.dialog; label: p.role == "Owner" ? "Make member" : "Make owner"; y: 3px; clicked => { TeamsStore.command("member-role", TeamsActions.j2(p.mri, p.role == "Owner" ? "member" : "owner")); } }
@@ -317,7 +317,7 @@ component TagsDialog inherits ModalDialog {
                 ScrollView {
                     VerticalLayout {
                         alignment: start;
-                        for p in TeamsStore.candidates: PersonLine { p: p; Button { variant: ButtonVariant.dialog; label: "Add"; y: 3px; clicked => { TeamsStore.command("tag-add", p.mri); } } }
+                        for p in TeamsStore.candidates: MemberLine { p: p; Button { variant: ButtonVariant.dialog; label: "Add"; y: 3px; clicked => { TeamsStore.command("tag-add", p.mri); } } }
                     }
                 }
             }
@@ -325,7 +325,7 @@ component TagsDialog inherits ModalDialog {
                 vertical-stretch: 1;
                 VerticalLayout {
                     alignment: start;
-                    for p in TeamsStore.tag-people: PersonLine { p: p; Button { variant: ButtonVariant.dialog; label: "Remove"; y: 3px; clicked => { TeamsStore.command("tag-remove", p.mri); } } }
+                    for p in TeamsStore.tag-people: MemberLine { p: p; Button { variant: ButtonVariant.dialog; label: "Remove"; y: 3px; clicked => { TeamsStore.command("tag-remove", p.mri); } } }
                 }
             }
         }

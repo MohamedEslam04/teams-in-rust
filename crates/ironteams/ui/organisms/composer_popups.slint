@@ -1,0 +1,262 @@
+// The composer's popups: the ":smile" emoji suggestions, the emoji picker, the "…" menu and the
+// Attach menu. The composer opens and closes them; these draw their content.
+import { ComposerEmoji } from "../tokens/types.slint";
+import { Theme } from "../tokens/theme.slint";
+import { EmojiGrid } from "../molecules/emoji_grid.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { EmojiApi } from "../stores/emoji_api.slint";
+
+// The emoji names that match what follows ":", above the composer.
+export component EmojiSuggestions inherits Rectangle {
+    callback accept-suggestion;
+    in-out property <int> sug-index;
+    in property <[ComposerEmoji]> suggestions;
+    x: 20px;
+    y: -self.height - 4px;
+    width: 300px;
+    height: root.suggestions.length * 32px + 8px;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 4px;
+        for s[i] in root.suggestions: Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: i == root.sug-index || sug-area.has-hover ? Theme.surface-hover : transparent;
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 10px;
+                Text { text: s.ch; font-size: 18px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; width: 30px; }
+                Text { text: ":" + s.name; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+            }
+            sug-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.sug-index = i;
+                    root.accept-suggestion();
+                }
+            }
+        }
+    }
+}
+
+// The emoji picker: search, the category tabs, recent emoji, the grid and the skin tone.
+export component EmojiPanel inherits Rectangle {
+    in-out property <string> emoji-query;
+    in-out property <int> emoji-tab;
+    callback pick-emoji(string);
+    in property <[ComposerEmoji]> recent-emoji;
+    in-out property <int> skin-tone;
+    callback skin-tone-changed(int);
+    callback close-popup;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+        Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: emoji-search.has-focus ? Theme.accent : Theme.border;
+            emoji-search := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                text <=> root.emoji-query;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                single-line: true;
+                vertical-alignment: center;
+            }
+            if root.emoji-query == "": Text {
+                x: 10px;
+                text: @tr("Find something fun");
+                color: Theme.fg-subtle;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+            }
+        }
+        if root.emoji-query == "": HorizontalLayout {
+            height: 32px;
+            spacing: 2px;
+            for glyph[i] in ["😀", "🧑", "🐻", "🍔", "🚗", "⚽", "💡", "❤️", "🏁"]: Rectangle {
+                width: 36px;
+                border-radius: 4px;
+                background: root.emoji-tab == i ? Theme.surface-hover : (emoji-tab-area.has-hover ? Theme.surface-hover : transparent);
+                Rectangle {
+                    y: parent.height - 2px;
+                    height: 2px;
+                    background: root.emoji-tab == i ? Theme.accent : transparent;
+                }
+                Text { text: glyph; font-size: 16px * Theme.font-scale; }
+                emoji-tab-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.emoji-tab = i; }
+                }
+            }
+        }
+        if root.emoji-query == "" && root.recent-emoji.length > 0: VerticalLayout {
+            vertical-stretch: 0;
+            alignment: start;
+            Text { text: @tr("Recent"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; font-weight: 600; }
+            EmojiGrid {
+                items: root.recent-emoji;
+                picked(ch) => { root.pick-emoji(ch); root.close-popup(); }
+            }
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                alignment: start;
+                EmojiGrid {
+                    items: EmojiApi.list(root.emoji-tab, root.emoji-query, root.skin-tone);
+                    picked(ch) => { root.pick-emoji(ch); root.close-popup(); }
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 2px;
+            Text { text: @tr("Skin tone"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; vertical-alignment: center; width: 70px; }
+            for tone-glyph[i] in ["👍", "👍🏻", "👍🏼", "👍🏽", "👍🏾", "👍🏿"]: Rectangle {
+                width: 36px;
+                border-radius: 4px;
+                background: root.skin-tone == i ? Theme.surface-hover : (tone.has-hover ? Theme.surface-hover : transparent);
+                Text { text: tone-glyph; font-size: 16px * Theme.font-scale; }
+                tone := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.skin-tone = i;
+                        root.skin-tone-changed(i);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The "…" menu: what Enter does, read receipts, and the extra actions.
+export component ComposerMoreMenu inherits Rectangle {
+    in-out property <bool> enter-sends;
+    callback more-action(string);
+    in property <[{id: string, icon: image, label: string}]> more-actions;
+    callback set-enter-sends(bool);
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 2px;
+        Text { text: @tr("When writing a message, press Enter to"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; wrap: word-wrap; }
+        for opt[i] in [@tr("Send the message"), @tr("Start a new line")]: Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: enter-opt.has-hover ? Theme.surface-hover : transparent;
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Text { text: (i == 0) == root.enter-sends ? "●" : "○"; color: Theme.accent; vertical-alignment: center; horizontal-stretch: 0; }
+                enter-label := Text { text: opt; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
+            }
+            enter-opt := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.enter-sends = i == 0;
+                    root.set-enter-sends(i == 0);
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        receipts-opt := Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: receipts-touch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: checkbox;
+            accessible-label: @tr("Read receipts");
+            accessible-checkable: true;
+            accessible-checked: PeopleStore.receipts-on;
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Text { text: PeopleStore.receipts-on ? "☑" : "☐"; color: Theme.accent; vertical-alignment: center; horizontal-stretch: 0; }
+                receipts-label := Text { text: @tr("Read receipts"); color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
+            }
+            receipts-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { PeopleStore.command("receipts", PeopleStore.receipts-on ? "off" : "on"); }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        for opt in root.more-actions: Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: more-action.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: button;
+            accessible-label: opt.label;
+            accessible-action-default => { root.more-action(opt.id); }
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Icon { source: opt.icon; width: 16px; height: 16px; y: 8px; tint: Theme.accent; }
+                Text { text: opt.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
+            }
+            more-action := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.more-action(opt.id); }
+            }
+        }
+    }
+}
+
+// The Attach menu: cloud files or a file from this device.
+export component AttachMenu inherits Rectangle {
+    callback attach-cloud;
+    callback attach-file;
+    callback close-popup;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: list;
+    accessible-label: @tr("Attach");
+    VerticalLayout {
+        padding: 8px;
+        spacing: 2px;
+        for opt[i] in [
+            { icon: @image-url("../icons/cloud.svg"), label: @tr("Attach cloud files") },
+            { icon: @image-url("../icons/upload.svg"), label: @tr("Upload from this device") },
+        ]: Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: attach-touch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: button;
+            accessible-label: opt.label;
+            accessible-action-default => {
+                if i == 0 { root.attach-cloud(); } else { root.attach-file(); }
+                root.close-popup();
+            }
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Icon { source: opt.icon; width: 16px; height: 16px; y: 8px; tint: Theme.accent; }
+                Text { text: opt.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
+            }
+            attach-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    // Before closing: closing drops this row and its `i`.
+                    if i == 0 { root.attach-cloud(); } else { root.attach-file(); }
+                    root.close-popup();
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,49 @@
+// The window's top bar: the logo, Back and Forward, the search box, the connection and Focus
+// notices, the More button and my photo.
+import { Avatar } from "../atoms/avatar.slint";
+import { MoreButton, NavButtons, TopSearch } from "topbar.slint";
+import { PeopleStore, PersonHover } from "../molecules/people.slint";
+import { Pill } from "../atoms/chip.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { Theme } from "../tokens/theme.slint";
+
+export component AppTopBar inherits Rectangle {
+    in property <bool> connected;
+    in property <string> me-initials;
+    in-out property <bool> profile-closed-by-press;
+    in property <length> window-width;
+    // The keyboard shortcuts' entry points into the search box.
+    public function focus-search() { top-search.focus-input(); }
+    public function start-command() { top-search.start-command(); }
+    height: 48px;
+    background: Theme.topbar;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            // Narrow windows give the room to the search box: the logo alone.
+            width: root.window-width < 1000px ? 30px : 260px;
+            spacing: 8px;
+            Image { source: @image-url("../icons/logo.svg"); colorize: Theme.accent; width: 22px; height: 22px; y: 13px; }
+            if root.window-width >= 1000px: Text { text: "IronTeams"; color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
+        }
+        NavButtons { }
+        top-search := TopSearch { }
+        Rectangle { horizontal-stretch: 1; }
+        if !root.connected: Text { text: @tr("Reconnecting…"); color: #ffb900; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+        // Focus mode (banners held back, this device only): click to turn it off.
+        if SettingsStore.focus-on: Pill {
+            y: 11px;
+            label: @tr("Focus");
+            active: true;
+            accessible-description: SettingsStore.focus-label();
+            clicked => { SettingsStore.command("focus", "0"); }
+        }
+        MoreButton { y: 9px; }
+        Avatar { initials: root.me-initials; img: SettingsStore.me-photo; has-img: SettingsStore.me-has-photo; presence: SettingsStore.me-presence; size: 30px; y: 9px;
+            // A rest shows our own card, as in Teams; a click opens the profile menu.
+            me-photo := PersonHover { person: PeopleStore.me; click-opens: false; activated => { if !root.profile-closed-by-press { SettingsStore.open-profile(); } root.profile-closed-by-press = false; } accessible-role: button; accessible-label: @tr("Profile menu"); accessible-action-default => { SettingsStore.open-profile(); } }
+        }
+    }
+}

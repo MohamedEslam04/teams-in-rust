@@ -6,11 +6,6 @@
 # palettes (composer_format.slint), drop-shadow colours, brand colours (Loop, file kinds,
 # calendar categories) and the call window's always-dark video surfaces. The rest should move
 # into Theme tokens or atom variants over time; this list may only shrink, never grow.
-app.slint #00000080
-app.slint #1f2a3b
-app.slint #3b1f22
-app.slint #ffb900
-app.slint #ffffff
 molecules/apps_kit.slint #ffffff
 molecules/apps_kit.slint #ffffff10
 molecules/call_captions.slint #000000c0
@@ -44,7 +39,9 @@ molecules/seen_by.slint #00000090
 molecules/select_bar.slint #ffffff
 molecules/spelling.slint #00000060
 molecules/teams_widgets.slint #3b3d6b
+organisms/app_rail.slint #ffffff
 organisms/apps_rail.slint #000000a0
+organisms/app_top_bar.slint #ffb900
 organisms/calendar_dialogs.slint #ff8a8d
 organisms/calendar_dialogs.slint #ffb900
 organisms/calendar_event.slint #ff8a8d
@@ -119,10 +116,10 @@ organisms/composer_format.slint #ebd3e1
 organisms/composer_format.slint #f4a593
 organisms/composer_format.slint #fdd472
 organisms/composer_format.slint #ffffff
+organisms/composer_importance.slint #4d2024
+organisms/composer_importance.slint #6b2f33
+organisms/composer_importance.slint #ff7e83
 organisms/composer_send.slint #ffffff
-organisms/composer.slint #4d2024
-organisms/composer.slint #6b2f33
-organisms/composer.slint #ff7e83
 organisms/drive_items.slint #f2c94c
 organisms/drive_share_dialog.slint #34365c
 organisms/drive_share_dialog.slint #e3e4fa
@@ -140,6 +137,8 @@ organisms/media.slint #000000ea
 organisms/media.slint #444444cc
 organisms/meeting_card.slint #00000080
 organisms/meeting_card.slint #ffffff
+organisms/message_pane.slint #00000080
+organisms/message_pane.slint #ffffff
 organisms/message_row.slint #00000080
 organisms/message_row.slint #000000a0
 organisms/message_row.slint #3a3a63
@@ -161,6 +160,9 @@ organisms/message_toast.slint #ffffffa0
 organisms/message_toast.slint #ffffffb3
 organisms/new_chat.slint #34365c
 organisms/new_chat.slint #ffffff
+organisms/notice_banner.slint #1f2a3b
+organisms/notice_banner.slint #3b1f22
+organisms/notice_banner.slint #ffffff
 organisms/participants.slint #000000a0
 organisms/participants.slint #3b1f22
 organisms/participants.slint #e04a4f

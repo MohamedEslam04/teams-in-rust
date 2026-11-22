@@ -50,7 +50,7 @@ import { MediaStore, ImageViewer } from "organisms/media.slint";
 import { AppsStore, TasksStore } from "stores/apps_store.slint";
 import { RailApps, AppsOverlays } from "organisms/apps_rail.slint";
 import { AppsHost } from "pages/apps_host.slint";
-import { RecapTab, RecapsChatPane } from "pages/apps_recaps.slint";
+import { RecapsChatPane } from "pages/apps_recaps.slint";
 import { SettingsPage, ProfileMenu, SettingsStore } from "pages/settings.slint";
 import { EngageView, EngageStore } from "pages/engage.slint";
 import { CallWindow, CallStore } from "pages/call_window.slint";
@@ -103,6 +103,14 @@ export { QuickViewsStore, ChatTipStore } from "organisms/chat_list_extras.slint"
 export { StorylineStore } from "pages/storyline.slint";
 export { CallReaction } from "stores/call_store.slint";
 import { ChannelMeetButton, MeetingJoinButton, ParityNotice, WebParityStore } from "organisms/web_parity.slint";
+import { AppTopBar } from "organisms/app_top_bar.slint";
+import { AppRail } from "organisms/app_rail.slint";
+import { ChatPaneHeader } from "organisms/chat_pane_header.slint";
+import { MessagePane } from "organisms/message_pane.slint";
+import { ProfileCardLayer, ParticipantsLayer, ForwardLayer, ReactionPickerLayer, SeenByLayer, MessageMenuLayer } from "organisms/chat_overlays.slint";
+import { AppKeys } from "organisms/app_keys.slint";
+import { NoticeBanner } from "organisms/notice_banner.slint";
+import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
 export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
@@ -532,204 +540,46 @@ export component AppWindow inherits Window {
         retry => { root.retry-login(); }
     }
 
-    if root.login-state == "ready": win-keys := FocusScope {
-        // The command palette closed: take the keys back (a chat hands them to the composer).
-        property <int> palette-restore: PaletteStore.restore-tick;
-        changed palette-restore => { if root.view != "chat" { self.focus(); } }
-        // The page's own input (the composer, the search box) is gone on the pages that have
-        // none, which would leave the keyboard shortcuts, Alt+Left among them, without a focus.
-        // An open command palette keeps its own input (it hands the keys back when it closes).
-        property <string> page: root.view;
-        changed page => {
-            if !PaletteStore.open && self.page != "chat" && self.page != "teams" && self.page != "search" { self.focus(); }
-        }
-        // The Teams page with no channel picked drops the conversation (and its composer, which
-        // may hold the focus): take the keys so Alt+Down and the other shortcuts still work.
-        property <bool> no-channel: root.teams-no-channel;
-        changed no-channel => {
-            if self.no-channel && !PaletteStore.open { self.focus(); }
-        }
-        // Shift+Esc marks every chat read, wherever the focus is. The Activity view handles it
-        // itself (marks every Activity item read).
-        capture-key-pressed(event) => {
-            if (event.text == Key.Escape && event.modifiers.shift && root.view != "activity") {
-                root.mark-all-read();
-                return accept;
-            }
-            // Alt+Down / Alt+Up: the next / previous unread chat or channel in the list.
-            if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                root.catch-up(event.text == Key.DownArrow ? 1 : -1);
-                return accept;
-            }
-            // Alt+Q: collapse every section of the chat list.
-            if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
-                ListStore.command("collapse-all", "");
-                return accept;
-            }
-            // Alt+Left and Alt+Right: Back and Forward.
-            if event.text == Key.LeftArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                TopBarStore.command("back", "");
-                return accept;
-            }
-            if event.text == Key.RightArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-                TopBarStore.command("forward", "");
-                return accept;
-            }
-            // Ctrl+Alt+E: Search.
-            if ((event.text == "E" || event.text == "e") && event.modifiers.control && event.modifiers.alt) {
-                root.view = "search";
-                FindStore.focus-tick += 1;
-                return accept;
-            }
-            if (event.text == "," || event.text == "<") && event.modifiers.control && event.modifiers.shift { SettingsStore.show("general"); return accept; } // Ctrl+Shift+,: Settings.
-            // Alt+Shift+N: New chat.
-            if ((event.text == "N" || event.text == "n") && event.modifiers.alt && event.modifiers.shift) {
-                root.view = "chat";
-                PeopleStore.new-chat-open = true;
-                PeopleStore.command("new-chat-open", "");
-                return accept;
-            }
-            // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
-            // are the numbered and bullet list (Teams), so they stay with the composer there.
-            if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
-                AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
-                return accept;
-            }
-            // The other Teams chords (plan chat 5.9); the mapping is in src/shortcuts.rs.
-            if ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift) != "" {
-                win-keys.run-shortcut(ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift));
-                return accept;
-            }
-            reject
-        }
-        // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
-        key-pressed(event) => {
-            if event.text == Key.Escape && !event.modifiers.shift {
-                if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
-                if root.shortcuts-open { root.shortcuts-open = false; return accept; }
-                if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
-                if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
-                if root.thread-root != "" { root.close-thread(); return accept; }
-                if root.reply-preview != "" { root.cancel-reply(); return accept; }
-            }
-            reject
-        }
-        function run-shortcut(a: string) {
-            // Alt+Shift+A and Alt+Shift+V: the call button's Audio call and Video call.
-            if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
-                DirectCallStore.command("dial", root.current-id);
-            }
-            if a == "video-call" && root.view == "chat" && DirectCallStore.is-direct(root.current-id) {
-                WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet. Alt+Shift+A starts an audio call.");
-            }
-            if a == "shortcuts" { root.shortcuts-open = !root.shortcuts-open; }
-            if a == "palette" { PaletteStore.open = !PaletteStore.open; }
-            if a == "goto" {
-                root.view = "search";
-                FindStore.command("search-tab", "chats");
-                FindStore.focus-tick += 1;
-            }
-            if a == "filter-box" { root.view = "chat"; top-search.focus-input(); }
-            // Ctrl+E: the top search box. Ctrl+/: the box with a "/" in it, which lists the commands.
-            if a == "search-box" { top-search.focus-input(); }
-            if a == "commands" { top-search.start-command(); }
-            if a == "filter-unread" { root.filter = root.filter == "unread" ? "all" : "unread"; root.set-filter(root.filter); }
-            if a == "filter-chats" { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); }
-            if a == "filter-channels" { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); }
-            if a == "filter-clear" { root.filter = "all"; root.set-filter("all"); }
-            if a == "focus-composer" { root.focus-tick += 1; }
-            if a == "focus-messages" { root.msg-focus-tick += 1; }
-            if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }
-            if a == "attach-file" { root.attach-file(); }
-            if a == "share-screen" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
-                DirectCallStore.command("share-screen", root.current-id);
-            }
-        }
+    if root.login-state == "ready": win-keys := AppKeys {
+        attach-file => { root.attach-file(); }
+        cancel-reply => { root.cancel-reply(); }
+        catch-up(a0) => { root.catch-up(a0); }
+        close-thread => { root.close-thread(); }
+        composer-expanded <=> root.composer-expanded;
+        composer-focused: root.composer-focused;
+        current-id: root.current-id;
+        filter <=> root.filter;
+        focus-tick <=> root.focus-tick;
+        mark-all-read => { root.mark-all-read(); }
+        menu-open <=> root.menu-open;
+        msg-focus-tick <=> root.msg-focus-tick;
+        posts-mode: root.posts-mode;
+        reply-preview: root.reply-preview;
+        set-filter(a0) => { root.set-filter(a0); }
+        shortcuts-open <=> root.shortcuts-open;
+        teams-no-channel: root.teams-no-channel;
+        thread-root: root.thread-root;
+        view <=> root.view;
+        focus-search => { top-bar.focus-search(); }
+        start-command => { top-bar.start-command(); }
         VerticalLayout {
         // Top bar with search
-        Rectangle {
-            height: 48px;
-            background: Theme.topbar;
-            HorizontalLayout {
-                padding-left: 16px;
-                padding-right: 16px;
-                spacing: 12px;
-                HorizontalLayout {
-                    // Narrow windows give the room to the search box: the logo alone.
-                    width: root.width < 1000px ? 30px : 260px;
-                    spacing: 8px;
-                    Image { source: @image-url("icons/logo.svg"); colorize: Theme.accent; width: 22px; height: 22px; y: 13px; }
-                    if root.width >= 1000px: Text { text: "IronTeams"; color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
-                }
-                NavButtons { }
-                top-search := TopSearch { }
-                Rectangle { horizontal-stretch: 1; }
-                if !root.connected: Text { text: @tr("Reconnecting…"); color: #ffb900; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                // Focus mode (banners held back, this device only): click to turn it off.
-                if SettingsStore.focus-on: Pill {
-                    y: 11px;
-                    label: @tr("Focus");
-                    active: true;
-                    accessible-description: SettingsStore.focus-label();
-                    clicked => { SettingsStore.command("focus", "0"); }
-                }
-                MoreButton { y: 9px; }
-                Avatar { initials: root.me-initials; img: SettingsStore.me-photo; has-img: SettingsStore.me-has-photo; presence: SettingsStore.me-presence; size: 30px; y: 9px;
-                    // A rest shows our own card, as in Teams; a click opens the profile menu.
-                    me-photo := PersonHover { person: PeopleStore.me; click-opens: false; activated => { if !root.profile-closed-by-press { SettingsStore.open-profile(); } root.profile-closed-by-press = false; } accessible-role: button; accessible-label: @tr("Profile menu"); accessible-action-default => { SettingsStore.open-profile(); } }
-                }
-            }
+        top-bar := AppTopBar {
+            connected: root.connected;
+            me-initials: root.me-initials;
+            profile-closed-by-press <=> root.profile-closed-by-press;
+            window-width: root.width;
         }
 
         if CalStore.join-text != "": JoinBanner { }
 
         HorizontalLayout {
             // Left rail
-            Rectangle {
-                width: AppsStore.rail-width;
-                background: Theme.rail;
-                VerticalLayout {
-                    padding-top: 8px;
-                    spacing: 4px;
-                    for item in [{key: "activity", label: @tr("Activity"), icon: @image-url("icons/activity.svg")}, {key: "chat", label: @tr("Chat"), icon: @image-url("icons/chat.svg")}, {key: "teams", label: @tr("Teams"), icon: @image-url("icons/teams.svg")}, {key: "calendar", label: @tr("Calendar"), icon: @image-url("icons/calendar.svg")}, {key: "calls", label: @tr("Calls"), icon: @image-url("icons/call-direct.svg")}, {key: "onedrive", label: "OneDrive", icon: @image-url("icons/cloud.svg")}]: ri := Rectangle {
-                        property <int> badge-count: item.key == "activity" ? root.activity-unread : (item.key == "chat" ? root.chats-unread : 0);
-                        // Calls shows only in a build with calls.
-                        property <bool> shown: item.key != "calls" || CallsPageStore.available;
-                        height: shown ? 56px : 0px;
-                        visible: shown;
-                        Rectangle {
-                            x: 0;
-                            width: 3px;
-                            height: 32px;
-                            y: 12px;
-                            border-radius: 2px;
-                            background: root.view == item.key ? Theme.accent : transparent;
-                        }
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 2px;
-                            Icon { source: item.icon; tint: root.view == item.key || rt.has-hover ? Theme.accent : Theme.fg-muted; animate tint { duration: Motion.quick; } width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
-                            Text { text: item.label; color: root.view == item.key ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
-                        }
-                        if ri.badge-count > 0: PopIn {
-                            from-scale: Theme.reduced-motion ? 1.0 : 0.3;
-                            x: parent.width / 2 + 2px;
-                            y: 4px;
-                            height: 16px;
-                            width: max(16px, badge-text.preferred-width + 8px);
-                            border-radius: 8px;
-                            background: Theme.unread-badge;
-                            accessible-role: text;
-                            accessible-label: @tr("{} unread", ri.badge-count);
-                            badge-text := Text { text: ri.badge-count > 99 ? "99+" : ri.badge-count; color: #ffffff; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                        }
-                        rt := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.navigate(item.key); }
-                        }
-                    }
-                    RailApps { view <=> root.view; }
-                }
+            AppRail {
+                activity-unread: root.activity-unread;
+                chats-unread: root.chats-unread;
+                navigate(a0) => { root.navigate(a0); }
+                view <=> root.view;
             }
 
             // Sidebar
@@ -891,250 +741,40 @@ export component AppWindow inherits Window {
                     Image { source: @image-url("icons/teams.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
                     Text { text: @tr("Pick a channel"); color: Theme.fg-subtle; horizontal-alignment: center; }
                 }
-                if root.banner != "": Rectangle {
+                if root.banner != "": NoticeBanner {
                     z: 10;
-                    x: (parent.width - self.width) / 2;
-                    y: 70px;
-                    width: min(parent.width - 40px, banner-text.preferred-width + 60px + (root.banner-action != "" ? 110px : 0px));
-                    height: 36px;
-                    border-radius: 6px;
-                    background: root.banner-info ? #1f2a3b : #3b1f22;
-                    border-width: 1px;
-                    border-color: root.banner-info ? Theme.accent : Theme.danger;
-                    HorizontalLayout {
-                        padding-left: 14px;
-                        padding-right: 6px;
-                        spacing: 8px;
-                        banner-text := Text { text: root.banner; color: #ffffff; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-                        if root.banner-action != "": Rectangle {
-                            width: 100px;
-                            accessible-role: button;
-                            accessible-label: root.banner-action;
-                            accessible-action-default => { root.banner-action-clicked(); }
-                            Text { text: root.banner-action; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
-                            TouchArea { mouse-cursor: pointer; clicked => { root.banner-action-clicked(); } }
-                        }
-                        IconButton { icon: @image-url("icons/close.svg"); size: 24px; y: 6px; clicked => { root.dismiss-banner(); } }
-                    }
+                    banner: root.banner;
+                    banner-action: root.banner-action;
+                    banner-action-clicked => { root.banner-action-clicked(); }
+                    banner-info: root.banner-info;
+                    dismiss-banner => { root.dismiss-banner(); }
+                    area-width: parent.width;
                 }
                 if root.current-id != "" && !root.teams-no-channel: VerticalLayout {
                     // Header. When it is narrow (half a laptop screen), participants, find,
                     // details and Schedule a meeting move into the … menu so the name stays readable.
-                    header := Rectangle {
-                        property <bool> compact: self.width < 720px;
-                        height: 60px;
-                        background: Theme.sidebar;
-                        HorizontalLayout {
-                            padding-left: 20px;
-                            padding-right: 16px;
-                            spacing: 12px;
-                            if root.single-pane && root.thread-root == "": IconButton {
-                                icon: @image-url("icons/back.svg");
-                                y: 14px;
-                                tooltip: @tr("Back to the chat list");
-                                clicked => { root.pane-list = true; }
-                            }
-                            if root.thread-root != "": IconButton { icon: @image-url("icons/back.svg"); y: 14px; clicked => { root.close-thread(); } }
-                            if root.header-glyph == "meeting": GlyphAvatar {
-                                y: 12px;
-                                size: 36px;
-                                icon: @image-url("icons/calendar.svg");
-                                tone: Theme.accent.transparentize(0.8);
-                                tint: Theme.accent;
-                                accessible-label: @tr("Meeting chat");
-                            }
-                            if root.header-glyph == "group": GlyphAvatar {
-                                y: 12px;
-                                size: 36px;
-                                icon: @image-url("icons/people.svg");
-                                tone: Theme.surface-hover;
-                                tint: Theme.fg-muted;
-                                accessible-label: @tr("Group chat");
-                            }
-                            if root.header-glyph == "": Avatar {
-                                y: 12px;
-                                initials: root.current-initials;
-                                tone: root.current-color;
-                                img: root.current-avatar;
-                                has-img: root.current-has-avatar;
-                                presence: root.current-person != "" ? root.current-presence : "";
-                                size: 36px;
-                                // A 1:1 chat's photo opens the person's card: on a rest, or a click.
-                                if root.current-person != "": PersonHover {
-                                    person: root.current-person;
-                                    accessible-role: button;
-                                    accessible-label: @tr("Open profile of {}", root.current-title);
-                                    accessible-action-default => { PeopleStore.open-card(root.current-person, self.absolute-position.x, self.absolute-position.y, self.width, self.height, false); }
-                                }
-                            }
-                            if !root.renaming || root.thread-root != "": Text {
-                                text: root.thread-root != "" ? @tr("Thread") : root.current-title;
-                                color: Theme.fg;
-                                font-size: 17px * Theme.font-scale;
-                                font-weight: 700;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                horizontal-stretch: 0;
-                                // Everything else gives way first.
-                                min-width: min(self.preferred-width, 120px);
-                            }
-                            if root.renaming && root.thread-root == "": Rectangle {
-                                y: 14px;
-                                height: 32px;
-                                width: 260px;
-                                horizontal-stretch: 0;
-                                border-radius: 4px;
-                                background: Theme.sidebar;
-                                border-width: 1px;
-                                border-color: Theme.accent;
-                                FocusScope {
-                                    capture-key-pressed(event) => {
-                                        if event.text == Key.Escape {
-                                            root.renaming = false;
-                                            return accept;
-                                        }
-                                        if event.text == Key.Return {
-                                            root.renaming = false;
-                                            PeopleStore.command("rename", rename-input.text);
-                                            return accept;
-                                        }
-                                        reject
-                                    }
-                                    rename-input := TextInput {
-                                        x: 10px;
-                                        width: parent.width - 20px;
-                                        text <=> root.rename-text;
-                                        color: Theme.fg;
-                                        font-size: 15px * Theme.font-scale;
-                                        single-line: true;
-                                        vertical-alignment: center;
-                                        accessible-role: text-input;
-                                        accessible-label: @tr("Group name");
-                                        init => { self.focus(); self.select-all(); }
-                                    }
-                                }
-                            }
-                            if PeopleStore.header-group && root.thread-root == "" && !root.renaming: rename-btn := IconButton {
-                                icon: @image-url("icons/edit.svg");
-                                tooltip: @tr("Rename chat");
-                                size: 28px;
-                                y: 16px;
-                                clicked => {
-                                    root.rename-text = root.current-title;
-                                    root.renaming = true;
-                                }
-                            }
-                            for tab in (root.current-is-channel ? [{k: "posts", l: @tr("Posts")}, {k: "files", l: @tr("Files")}]
-                                : (root.current-person != "" || root.current-id == "48:notes") && root.thread-root == "" ? [{k: "chat", l: @tr("Chat")}, {k: "shared", l: @tr("Shared")}, {k: "storyline", l: @tr("Storyline")}]
-                                : [{k: "chat", l: @tr("Chat")}, {k: "shared", l: @tr("Shared")}]): tab-item := Rectangle {
-                                // The Shared (Files) and Storyline tabs replace the conversation, see `FindStore`.
-                                property <string> key: tab.k == "files" ? "shared" : (tab.k == "posts" ? "chat" : tab.k);
-                                property <bool> active: FindStore.chat-tab == self.key || (self.key == "chat" && FindStore.chat-tab != "shared" && FindStore.chat-tab != "storyline");
-                                width: min(tab-label.preferred-width, 200px);
-                                accessible-role: AccessibleRole.tab;
-                                accessible-label: tab.l;
-                                accessible-checked: self.active;
-                                VerticalLayout {
-                                    alignment: center;
-                                    tab-label := Text { text: tab.l; color: tab-item.active ? Theme.fg : Theme.fg-muted; font-size: 14px * Theme.font-scale; font-weight: tab-item.active ? 600 : 400; overflow: elide; }
-                                    Rectangle { height: 3px; border-radius: 1px; background: tab-item.active ? Theme.accent : transparent; }
-                                }
-                                TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => {
-                                        FindStore.chat-tab = tab-item.key;
-                                        FindStore.command("tab", FindStore.chat-tab);
-                                    }
-                                }
-                            }
-                            // The channel's other tabs (empty for chats), then "+" Add a tab (a chat's
-                            // tab goes to the chat, see `FindStore.tab-for-chat`).
-                            if root.thread-root == "" && CallStore.is-meeting-chat(root.current-id): RecapTab { chat-id: root.current-id; tab <=> FindStore.chat-tab; }
-                            for ct in FindStore.channel-tabs: ChannelTabButton { tab: ct; }
-                            if root.thread-root == "": IconButton {
-                                icon: @image-url("icons/plus.svg");
-                                y: 14px;
-                                tooltip: @tr("Add a tab");
-                                clicked => {
-                                    FindStore.tab-for-chat = !root.current-is-channel;
-                                    FindStore.tab-add-open = true;
-                                }
-                            }
-                            if root.thread-root == "" && !root.current-is-channel && !header.compact: IconButton {
-                                icon: @image-url("icons/calendar.svg");
-                                y: 14px;
-                                tooltip: @tr("Schedule a meeting");
-                                clicked => { root.schedule-meeting(root.current-id); }
-                            }
-                            if root.thread-root == "" && CallStore.is-meeting-chat(root.current-id): MeetingJoinButton {
-                                y: 14px;
-                                live: root.current-meeting-live;
-                                clicked => { CallStore.command("join-chat", root.current-id); }
-                            }
-                            Rectangle { horizontal-stretch: 1; }
-                            if root.thread-root == "" && root.current-is-channel && !header.compact: ChannelMeetButton {
-                                y: 14px;
-                                meet-now => { root.meet-now(root.current-title); }
-                                schedule-meeting => { root.schedule-meeting(root.current-id); }
-                            }
-                            if root.thread-root == "" && !root.current-is-channel: CallHeaderButtons { chat-id: root.current-id; y: 14px; height: 32px; }
-                            // "View and add participants": group and 1:1 chats (a 1:1 starts a group).
-                            if (PeopleStore.header-group || PeopleStore.member-count > 0) && !root.current-is-channel && root.thread-root == "" && !header.compact: people-btn := Rectangle {
-                                width: people-count.preferred-width + 40px;
-                                height: 32px;
-                                y: 14px;
-                                horizontal-stretch: 0;
-                                border-radius: 4px;
-                                background: people-touch.has-hover || PeopleStore.participants-open ? Theme.surface-hover : transparent;
-                                accessible-role: button;
-                                accessible-label: @tr("View and add participants");
-                                accessible-value: PeopleStore.member-count;
-                                accessible-action-default => {
-                                    PeopleStore.participants-open = true;
-                                    PeopleStore.command("participants-open", "");
-                                }
-                                Icon { source: @image-url("icons/people.svg"); x: 8px; y: 8px; width: 16px; height: 16px; tint: Theme.fg-muted; }
-                                people-count := Text { x: 30px; text: PeopleStore.member-count; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-                                people-touch := TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => {
-                                        PeopleStore.participants-open = true;
-                                        PeopleStore.command("participants-open", "");
-                                    }
-                                }
-                            }
-                            if root.thread-root == "" && !header.compact: IconButton {
-                                icon: @image-url("icons/search.svg");
-                                y: 14px;
-                                tooltip: root.current-is-channel ? @tr("Find in channel") : @tr("Find in chat");
-                                active: FindStore.chat-find-open;
-                                clicked => {
-                                    FindStore.chat-find-open = !FindStore.chat-find-open;
-                                    FindStore.chat-find-tick += 1;
-                                    FindStore.command(FindStore.chat-find-open ? "find-open" : "find-close", "");
-                                }
-                            }
-                            if root.thread-root == "" && !header.compact: IconButton {
-                                icon: @image-url("icons/info.svg");
-                                y: 14px;
-                                tooltip: @tr("Open chat details");
-                                active: FindStore.details-open;
-                                clicked => {
-                                    FindStore.details-open = !FindStore.details-open;
-                                    FindStore.command("details", FindStore.details-open ? "open" : "close");
-                                }
-                            }
-                            if root.thread-root == "": HeaderMoreButton {
-                                y: 14px;
-                                chat-id: root.current-id;
-                                muted: root.current-muted;
-                                channel: root.current-is-channel;
-                                extras: header.compact;
-                                mark-unread => { root.mark-chat-unread(root.current-id); }
-                                schedule-meeting => { root.schedule-meeting(root.current-id); }
-                            }
-                        }
-                        Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+                    ChatPaneHeader {
+                        close-thread => { root.close-thread(); }
+                        current-avatar: root.current-avatar;
+                        current-color: root.current-color;
+                        current-has-avatar: root.current-has-avatar;
+                        current-id: root.current-id;
+                        current-initials: root.current-initials;
+                        current-is-channel: root.current-is-channel;
+                        current-meeting-live: root.current-meeting-live;
+                        current-muted: root.current-muted;
+                        current-person: root.current-person;
+                        current-presence: root.current-presence;
+                        current-title: root.current-title;
+                        header-glyph: root.header-glyph;
+                        mark-chat-unread(a0) => { root.mark-chat-unread(a0); }
+                        meet-now(a0) => { root.meet-now(a0); }
+                        pane-list <=> root.pane-list;
+                        rename-text <=> root.rename-text;
+                        renaming <=> root.renaming;
+                        schedule-meeting(a0) => { root.schedule-meeting(a0); }
+                        single-pane: root.single-pane;
+                        thread-root: root.thread-root;
                     }
 
                     if FindStore.chat-find-open && root.thread-root == "": ChatFindBar { channel: root.current-is-channel; }
@@ -1147,301 +787,52 @@ export component AppWindow inherits Window {
                     }
 
                     // Messages
-                    Rectangle {
-                        vertical-stretch: 1;
-                        // Sees every pointer move over the list and passes it on. The list rebuilds
-                        // its rows when it jumps (a new message scrolls it down), and a photo
-                        // rebuilt under the pointer never hears that the pointer left: this tells
-                        // the hover card instead.
-                        msg-pointer := TouchArea {
-                            // The hovered photo is in the list (its middle is inside the list) and
-                            // the pointer is no longer on it.
-                            function check() {
-                                if PeopleStore.hover-id != ""
-                                    && PeopleStore.hover-x + PeopleStore.hover-w / 2 > msg-pointer.absolute-position.x
-                                    && PeopleStore.hover-x + PeopleStore.hover-w / 2 < msg-pointer.absolute-position.x + msg-pointer.width
-                                    && PeopleStore.hover-y + PeopleStore.hover-h / 2 > msg-pointer.absolute-position.y
-                                    && PeopleStore.hover-y + PeopleStore.hover-h / 2 < msg-pointer.absolute-position.y + msg-pointer.height
-                                    && (!msg-pointer.has-hover
-                                        || msg-pointer.absolute-position.x + msg-pointer.mouse-x < PeopleStore.hover-x
-                                        || msg-pointer.absolute-position.x + msg-pointer.mouse-x > PeopleStore.hover-x + PeopleStore.hover-w
-                                        || msg-pointer.absolute-position.y + msg-pointer.mouse-y < PeopleStore.hover-y
-                                        || msg-pointer.absolute-position.y + msg-pointer.mouse-y > PeopleStore.hover-y + PeopleStore.hover-h) {
-                                    PeopleStore.hover-leave(PeopleStore.hover-id);
-                                }
-                            }
-                            changed mouse-x => { msg-pointer.check(); }
-                            changed mouse-y => { msg-pointer.check(); }
-                            changed has-hover => { msg-pointer.check(); }
-                        msg-list := ListView {
-                            visible: !root.posts-mode;
-                            property <int> tick: root.scroll-tick;
-                            property <int> d-tick: root.divider-tick;
-                            property <int> a-tick: root.anchor-tick;
-                            property <bool> anchoring: false;
-                            // Stay pinned to the newest message while content grows (images loading).
-                            property <bool> pinned: true;
-                            // After a jump to the divider its real position corrects the estimate
-                            // (rows that are not on screen only have an estimated height).
-                            property <bool> aligning: false;
-                            changed pinned => {
-                                root.at-bottom = self.pinned;
-                                root.at-bottom-changed(self.pinned);
-                            }
-                            changed tick => {
-                                self.pinned = true;
-                                self.content-y = min(0px, self.visible-height - self.content-height);
-                            }
-                            changed a-tick => {
-                                self.aligning = true;
-                                self.anchoring = true;
-                                self.pinned = false;
-                            }
-                            changed d-tick => {
-                                self.aligning = true;
-                                self.content-y = min(0px, 24px - self.content-height * root.divider-index / max(1, root.messages.length));
-                            }
-                            // The content height the last `changed content-height` saw. A content-y change
-                            // that arrives with a different height is the content growing under the
-                            // view (a card, an image or a voice bubble got its real height), not the
-                            // user scrolling up, so it must not unpin the list from the newest message.
-                            property <length> seen-height: 0px;
-                            // Whether the view is at the very bottom, as the user left it.
-                            function recheck() {
-                                self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
-                            }
-                            // The user scrolled (wheel, drag, scrollbar): that is never growth.
-                            scrolled => { self.recheck(); }
-                            changed content-height => {
-                                self.seen-height = self.content-height;
-                                if self.pinned && !self.aligning {
-                                    self.content-y = min(0px, self.visible-height - self.content-height);
-                                }
-                            }
-                            changed content-y => {
-                                // Pinned only at the very bottom: rows that get their real height while
-                                // scrolling up change the content height, and a looser margin pulled the
-                                // list back down (the list shook when scrolling up).
-                                if self.content-height == self.seen-height {
-                                    self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
-                                }
-                                if self.content-y > -40px && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
-                                    // Until the older page lands: one request per arrival at the top.
-                                    self.aligning = true;
-                                    root.load-older();
-                                }
-                            }
-                                for m in root.messages: MessageRow {
-                                    m: m;
-                                    max-bubble: min(720px, msg-list.width * 0.75);
-                                    pane-top: msg-list.absolute-position.y;
-                                    in-channel: root.current-is-channel && root.thread-root == "";
-                                    select-mode: root.select-mode;
-                                    changed y => {
-                                        if msg-list.aligning && !msg-list.anchoring && (m.new-above || m.flash) {
-                                            msg-list.content-y = min(0px, 24px - self.y);
-                                        }
-                                    }
-                                    react(k) => { root.react(m.id, k); }
-                                    reply => { root.reply(m.id); }
-                                    edit => { root.edit(m.id); }
-                                    more-reactions(x, y) => {
-                                        root.picker-msg-id = m.id;
-                                        root.picker-x = x;
-                                        root.picker-y = y;
-                                        root.picker-open = true;
-                                        root.picker-search("");
-                                    }
-                                    menu(x, y) => {
-                                        root.menu-msg = m;
-                                        root.menu-preview = false;
-                                        root.menu-x = x;
-                                        root.menu-y = y;
-                                        root.menu-open = true;
-                                        if root.current-is-channel { FindStore.command("menu-follow", m.id); }
-                                    }
-                                    show-readers(x, top, bottom) => {
-                                        root.readers-msg = m;
-                                        root.readers-x = x;
-                                        root.readers-top = top;
-                                        root.readers-bottom = bottom;
-                                        root.readers-open = true;
-                                    }
-                                    toggle-select => { root.toggle-select(m.id); }
-                                    retry-send => { root.retry-send(m.id); }
-                                    discard-send => { root.discard-send(m.id); }
-                                    open-url(u) => { root.open-url(u); }
-                                    open-thread => { root.open-thread(m.id); }
-                                    profile(id) => {
-                                        if id != "" {
-                                            PeopleStore.card-by-hover = false;
-                                            PeopleStore.anchor-w = 0;
-                                            PeopleStore.command("profile", id);
-                                        }
-                                    }
-                                    profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
-                                    photo-hover(id, on, x, y, w, h) => {
-                                        if on {
-                                            PeopleStore.hover-enter(id, x, y, w, h);
-                                        } else {
-                                            PeopleStore.hover-leave(id);
-                                        }
-                                    }
-                                }
-                        }
-                        }
-                        if root.posts-mode: ChannelPosts {
-                            width: parent.width;
-                            height: parent.height;
-                            z: 4;
-                            scroll-tick: root.scroll-tick;
-                            loading-older: root.loading-older;
-                            channel: root.current-title;
-                            load-older => { root.load-older(); }
-                            react(id, k) => { root.react(id, k); }
-                            edit(id) => { root.edit(id); }
-                            more-reactions(id, x, y) => {
-                                root.picker-msg-id = id;
-                                root.picker-x = x;
-                                root.picker-y = y;
-                                root.picker-open = true;
-                                root.picker-search("");
-                            }
-                            menu(m, x, y) => {
-                                root.menu-msg = m;
-                                root.menu-preview = false;
-                                root.menu-x = x;
-                                root.menu-y = y;
-                                root.menu-open = true;
-                                FindStore.command("menu-follow", m.id);
-                            }
-                            open-url(u) => { root.open-url(u); }
-                            profile(id) => { if id != "" { PeopleStore.command("profile", id); } }
-                            retry-send(id) => { root.retry-send(id); }
-                            discard-send(id) => { root.discard-send(id); }
-                        }
-                        // Alt+Shift+M lands here: the arrow keys, Page Up/Down, Home and End scroll the list.
-                        msg-scope := FocusScope {
-                            width: 0px;
-                            height: 0px;
-                            property <int> tick: root.msg-focus-tick;
-                            changed tick => { self.focus(); }
-                            key-pressed(event) => {
-                                if event.text == Key.UpArrow { msg-list.content-y = min(0px, msg-list.content-y + 48px); msg-list.recheck(); return accept; }
-                                if event.text == Key.DownArrow { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - 48px)); msg-list.recheck(); return accept; }
-                                if event.text == Key.PageUp { msg-list.content-y = min(0px, msg-list.content-y + msg-list.visible-height * 0.9); msg-list.recheck(); return accept; }
-                                if event.text == Key.PageDown { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - msg-list.visible-height * 0.9)); msg-list.recheck(); return accept; }
-                                if event.text == Key.Home { msg-list.content-y = 0px; msg-list.recheck(); return accept; }
-                                if event.text == Key.End { root.scroll-tick += 1; return accept; }
-                                if event.text == Key.Escape { root.focus-tick += 1; return accept; }
-                                reject
-                            }
-                        }
-                        // Once the bigger list is laid out, the row that was first goes back to the
-                        // top of the view: from below, ensure-row-visible puts it there, measured
-                        // (rows that were never drawn only have an estimated height).
-                        Timer {
-                            interval: 30ms;
-                            running: msg-list.anchoring;
-                            triggered => {
-                                msg-list.anchoring = false;
-                                msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
-                                msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
-                            }
-                        }
-                        Timer {
-                            interval: 700ms;
-                            running: msg-list.aligning;
-                            triggered => { msg-list.aligning = false; }
-                        }
-                        if !root.at-bottom && root.messages.length > 0 && !root.posts-mode: Rectangle {
-                            z: 5;
-                            x: (parent.width - self.width) / 2;
-                            y: parent.height - self.height - 12px;
-                            width: jump-text.preferred-width + 28px;
-                            height: 32px;
-                            border-radius: 16px;
-                            background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
-                            drop-shadow-blur: 8px;
-                            drop-shadow-color: #00000080;
-                            jump-text := Text {
-                                text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
-                                color: #ffffff;
-                                font-size: 12px * Theme.font-scale;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                            jump-touch := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    root.scroll-tick += 1;
-                                    root.jump-to-newest();
-                                }
-                            }
-                        }
-                        if root.unavailable: Rectangle {
-                            z: 7;
-                            background: Theme.main;
-                            VerticalLayout {
-                                alignment: center;
-                                spacing: 12px;
-                                padding-left: 24px;
-                                padding-right: 24px;
-                                Image { source: @image-url("icons/chat.svg"); colorize: Theme.border; width: 72px; height: 72px; }
-                                Text {
-                                    text: root.unavailable-text;
-                                    color: Theme.fg-subtle;
-                                    font-size: 14px * Theme.font-scale;
-                                    horizontal-alignment: center;
-                                    wrap: word-wrap;
-                                }
-                            }
-                        }
-                        // The Posts tab shows its own line (posts load at the top or the bottom).
-                        if root.loading-older && !root.posts-mode: Rectangle {
-                            y: 8px;
-                            height: 24px;
-                            width: 200px;
-                            x: (parent.width - 200px) / 2;
-                            border-radius: 12px;
-                            background: Theme.surface;
-                            Spinner { x: 12px; y: 5px; }
-                            Text {
-                                x: 30px;
-                                width: parent.width - 38px;
-                                text: @tr("Loading older messages…");
-                                color: Theme.fg-muted;
-                                font-size: 12px * Theme.font-scale;
-                                horizontal-alignment: center;
-                            }
-                        }
-                        // Opening a chat or channel that has nothing stored yet: grey bubbles with a
-                        // highlight passing over them until its newest page arrives.
-                        if root.loading-latest && root.messages.length == 0 && !root.unavailable && root.thread-root == "": SkeletonMessages {
-                            z: 4;
-                            label: root.posts-mode ? @tr("Loading posts") : @tr("Loading messages");
-                        }
-                        if root.loading-latest && !root.loading-older: Rectangle {
-                            z: 6;
-                            // Below the Posts tab's "Post in channel" bar.
-                            y: root.posts-mode ? 52px : 8px;
-                            height: 24px;
-                            width: latest-text.preferred-width + 52px;
-                            x: (parent.width - self.width) / 2;
-                            border-radius: 12px;
-                            background: Theme.surface;
-                            Spinner { x: 12px; y: 5px; }
-                            latest-text := Text {
-                                x: 30px;
-                                width: parent.width - 42px;
-                                text: root.posts-mode ? @tr("Loading new posts…") : @tr("Loading new messages…");
-                                color: Theme.fg-muted;
-                                font-size: 12px * Theme.font-scale;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                        }
+                    MessagePane {
+                        anchor-index: root.anchor-index;
+                        anchor-tick: root.anchor-tick;
+                        at-bottom <=> root.at-bottom;
+                        at-bottom-changed(a0) => { root.at-bottom-changed(a0); }
+                        current-is-channel: root.current-is-channel;
+                        current-title: root.current-title;
+                        discard-send(a0) => { root.discard-send(a0); }
+                        divider-index: root.divider-index;
+                        divider-tick: root.divider-tick;
+                        edit(a0) => { root.edit(a0); }
+                        focus-tick <=> root.focus-tick;
+                        jump-to-newest => { root.jump-to-newest(); }
+                        load-older => { root.load-older(); }
+                        loading-latest: root.loading-latest;
+                        loading-older: root.loading-older;
+                        menu-msg <=> root.menu-msg;
+                        menu-open <=> root.menu-open;
+                        menu-preview <=> root.menu-preview;
+                        menu-x <=> root.menu-x;
+                        menu-y <=> root.menu-y;
+                        messages: root.messages;
+                        msg-focus-tick: root.msg-focus-tick;
+                        new-count: root.new-count;
+                        open-thread(a0) => { root.open-thread(a0); }
+                        open-url(a0) => { root.open-url(a0); }
+                        picker-msg-id <=> root.picker-msg-id;
+                        picker-open <=> root.picker-open;
+                        picker-search(a0) => { root.picker-search(a0); }
+                        picker-x <=> root.picker-x;
+                        picker-y <=> root.picker-y;
+                        posts-mode: root.posts-mode;
+                        react(a0, a1) => { root.react(a0, a1); }
+                        readers-bottom <=> root.readers-bottom;
+                        readers-msg <=> root.readers-msg;
+                        readers-open <=> root.readers-open;
+                        readers-top <=> root.readers-top;
+                        readers-x <=> root.readers-x;
+                        reply(a0) => { root.reply(a0); }
+                        retry-send(a0) => { root.retry-send(a0); }
+                        scroll-tick <=> root.scroll-tick;
+                        select-mode: root.select-mode;
+                        thread-root: root.thread-root;
+                        toggle-select(a0) => { root.toggle-select(a0); }
+                        unavailable: root.unavailable;
+                        unavailable-text: root.unavailable-text;
                     }
 
                     // The chat's scheduled messages ("Sending on …"), below the newest message.
@@ -1551,116 +942,55 @@ export component AppWindow inherits Window {
 
     // The chat popups (message menu, Seen by list, reaction picker) draw above the floating call
     // window (z 45), which can sit over the message they were opened from.
-    if root.login-state == "ready" && root.menu-open: Rectangle {
+    if root.login-state == "ready" && root.menu-open: MessageMenuLayer {
         z: 46;
         width: root.width;
         height: root.height;
-        TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    root.menu-open = false;
-                }
-            }
-        }
-        msg-menu := MessageMenu {
-            x: root.menu-left;
-            y: root.menu-top;
-            init => {
-                root.menu-w = self.width;
-                root.menu-h = self.height;
-            }
-            changed height => { root.menu-h = self.height; }
-            // Esc: the window's keys do not see it (the menu is not inside them).
-            close => { root.menu-open = false; root.focus-tick += 1; }
-            mine: root.menu-msg.mine;
-            saved: root.menu-msg.saved;
-            translate: root.menu-msg.translate;
-            translate-message => { root.menu-open = false; MediaStore.command("translate", root.menu-msg.id); }
-            see-original => { root.menu-open = false; MediaStore.command("original", root.menu-msg.id); }
-            // Channel posts offer it too; that write is not known yet and says so (actions.rs).
-            can-pin: true;
-            can-follow: !root.menu-preview && root.current-is-channel && root.thread-root == "";
-            pinned: root.menu-msg.pinned;
-            urls: root.menu-msg.urls;
-            reader-count: root.menu-msg.reader-list.length;
-            show-readers => {
-                root.menu-open = false;
-                root.readers-msg = root.menu-msg;
-                root.readers-x = root.menu-left + root.menu-w;
-                root.readers-top = root.menu-top;
-                root.readers-bottom = root.menu-top - 4px;
-                root.readers-open = true;
-            }
-            preview: root.menu-preview;
-            unpin => { root.menu-open = false; PeopleStore.command("pin-unpin", root.menu-msg.id); }
-            open-link(u) => { root.menu-open = false; root.open-url(u); }
-            copy-link-url(u) => { root.menu-open = false; MediaStore.command("link-copy", u); }
-            immersive-reader => { root.menu-open = false; root.reader-msg = root.menu-msg; root.reader-open = true; }
-            share-outlook => { root.menu-open = false; MediaStore.command("outlook", root.menu-msg.id); }
-            report => { root.menu-open = false; MediaStore.command("report", root.menu-msg.id); }
-            translation-settings => { root.menu-open = false; SettingsStore.show("general"); }
-            create-task => { root.menu-open = false; TasksStore.command("task-from-message", root.menu-msg.plain); }
-            following: FindStore.menu-following;
-            // One follow path for channel posts: the same call as the post card's menu.
-            toggle-follow => {
-                root.menu-open = false;
-                ChannelStore.command(FindStore.menu-following ? "unfollow" : "follow-msg", root.menu-msg.id);
-                FindStore.menu-following = !FindStore.menu-following;
-            }
-            reply => {
-                root.menu-open = false;
-                // On the Posts tab a reply goes into the thread: the panel's composer.
-                if root.posts-mode && ChannelStore.thread-id != "" {
-                    ChannelStore.thread-focus-tick += 1;
-                } else if root.posts-mode {
-                    ChannelStore.open-thread(root.menu-msg.id, true);
-                } else {
-                    root.reply(root.menu-msg.id);
-                }
-            }
-            forward-one => {
-                root.menu-open = false;
-                root.forward-count = 1;
-                root.forward-preview-author = root.menu-msg.sender;
-                root.forward-preview-text = root.menu-msg.plain;
-                root.forward-open = true;
-                root.forward-begin(root.menu-msg.id);
-            }
-            forward-many => {
-                root.menu-open = false;
-                root.select-mode = true;
-                root.select-begin(root.menu-msg.id);
-            }
-            copy-link => { root.menu-open = false; root.copy-link(root.menu-msg.id); }
-            toggle-save => { root.menu-open = false; root.toggle-save(root.menu-msg.id); }
-            pin => { root.menu-open = false; root.pin(root.menu-msg.id); }
-            mark-unread => { root.menu-open = false; root.mark-unread(root.menu-msg.id); }
-            remind(delay) => { root.menu-open = false; RemindStore.command("remind", root.menu-msg.id + "\u{9}" + delay); }
-            edit => { root.menu-open = false; root.edit(root.menu-msg.id); }
-            delete => { root.menu-open = false; root.delete(root.menu-msg.id); }
-        }
+        copy-link(a0) => { root.copy-link(a0); }
+        current-is-channel: root.current-is-channel;
+        delete(a0) => { root.delete(a0); }
+        edit(a0) => { root.edit(a0); }
+        focus-tick <=> root.focus-tick;
+        forward-begin(a0) => { root.forward-begin(a0); }
+        forward-count <=> root.forward-count;
+        forward-open <=> root.forward-open;
+        forward-preview-author <=> root.forward-preview-author;
+        forward-preview-text <=> root.forward-preview-text;
+        mark-unread(a0) => { root.mark-unread(a0); }
+        menu-h <=> root.menu-h;
+        menu-left: root.menu-left;
+        menu-msg: root.menu-msg;
+        menu-open <=> root.menu-open;
+        menu-preview: root.menu-preview;
+        menu-top: root.menu-top;
+        menu-w <=> root.menu-w;
+        open-url(a0) => { root.open-url(a0); }
+        pin(a0) => { root.pin(a0); }
+        posts-mode: root.posts-mode;
+        reader-msg <=> root.reader-msg;
+        reader-open <=> root.reader-open;
+        readers-bottom <=> root.readers-bottom;
+        readers-msg <=> root.readers-msg;
+        readers-open <=> root.readers-open;
+        readers-top <=> root.readers-top;
+        readers-x <=> root.readers-x;
+        reply(a0) => { root.reply(a0); }
+        select-begin(a0) => { root.select-begin(a0); }
+        select-mode <=> root.select-mode;
+        thread-root: root.thread-root;
+        toggle-save(a0) => { root.toggle-save(a0); }
     }
 
-    if root.login-state == "ready" && root.readers-open: Rectangle {
+    if root.login-state == "ready" && root.readers-open: SeenByLayer {
         z: 46;
         width: root.width;
         height: root.height;
-        TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    root.readers-open = false;
-                }
-            }
-        }
-        SeenByList {
-            x: root.readers-left;
-            y: root.readers-y;
-            readers: root.readers-msg.reader-list;
-            init => { root.readers-h = self.height; }
-            changed height => { root.readers-h = self.height; }
-            // Esc: the window's keys do not see it (the popup is not inside them).
-            close => { root.readers-open = false; root.focus-tick += 1; }
-        }
+        focus-tick <=> root.focus-tick;
+        readers-h <=> root.readers-h;
+        readers-left: root.readers-left;
+        readers-msg: root.readers-msg;
+        readers-open <=> root.readers-open;
+        readers-y: root.readers-y;
     }
 
     if root.login-state == "ready" && root.reader-open: ImmersiveReader {
@@ -1693,114 +1023,48 @@ export component AppWindow inherits Window {
         close => { PaletteStore.open = false; root.palette-done(); }
     }
 
-    if root.login-state == "ready" && root.picker-open: Rectangle {
+    if root.login-state == "ready" && root.picker-open: ReactionPickerLayer {
         z: 46;
         width: root.width;
         height: root.height;
-        TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    root.picker-open = false;
-                }
-            }
-        }
-        ReactionPicker {
-            x: max(8px, min(root.picker-x, root.width - self.width - 8px));
-            y: max(8px, min(root.picker-y, root.height - self.height - 8px));
-            items: root.picker-items;
-            search(q) => { root.picker-search(q); }
-            pick(key) => {
-                root.picker-open = false;
-                root.react(root.picker-msg-id, key);
-            }
-        }
+        picker-items: root.picker-items;
+        picker-msg-id: root.picker-msg-id;
+        picker-open <=> root.picker-open;
+        picker-search(a0) => { root.picker-search(a0); }
+        picker-x: root.picker-x;
+        picker-y: root.picker-y;
+        react(a0, a1) => { root.react(a0, a1); }
     }
 
-    if root.login-state == "ready" && root.forward-open: Rectangle {
+    if root.login-state == "ready" && root.forward-open: ForwardLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        ForwardDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            results: root.forward-results;
-            picked: root.forward-picked;
-            count: root.forward-count;
-            preview-author: root.forward-preview-author;
-            preview-text: root.forward-preview-text;
-            search(q) => { root.forward-search(q); }
-            toggle(id) => { root.forward-toggle(id); }
-            send(note) => { root.forward-send(note); }
-            cancel => {
-                root.forward-open = false;
-                root.forward-cancel();
-            }
-        }
+        forward-cancel => { root.forward-cancel(); }
+        forward-count: root.forward-count;
+        forward-open <=> root.forward-open;
+        forward-picked: root.forward-picked;
+        forward-preview-author: root.forward-preview-author;
+        forward-preview-text: root.forward-preview-text;
+        forward-results: root.forward-results;
+        forward-search(a0) => { root.forward-search(a0); }
+        forward-send(a0) => { root.forward-send(a0); }
+        forward-toggle(a0) => { root.forward-toggle(a0); }
     }
 
-    if root.login-state == "ready" && PeopleStore.participants-open: Rectangle {
+    if root.login-state == "ready" && PeopleStore.participants-open: ParticipantsLayer {
         width: root.width;
         height: root.height;
-        TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    PeopleStore.participants-open = false;
-                }
-            }
-        }
-        ParticipantsPanel {
-            x: root.width - self.width - 16px;
-            y: 108px;
-            // A 1:1 chat can't be left; its "Add people" starts a group chat.
-            can-leave: PeopleStore.header-group;
-            members: PeopleStore.members;
-            add-results: PeopleStore.add-results;
-            open-profile(id) => {
-                PeopleStore.participants-open = false;
-                PeopleStore.command("profile", id);
-            }
-            add-query(q) => { PeopleStore.command("add-query", q); }
-            add-pick(id) => { PeopleStore.command("add-pick", id); }
-            history-changed(on) => { PeopleStore.command("add-history", on ? "on" : "off"); }
-            leave => {
-                PeopleStore.participants-open = false;
-                PeopleStore.leave-confirm = root.current-id;
-            }
-            close => { PeopleStore.participants-open = false; }
-        }
+        current-id: root.current-id;
     }
 
-    if root.login-state == "ready" && PeopleStore.leave-confirm != "": Rectangle {
+    if root.login-state == "ready" && PeopleStore.leave-confirm != "": LeaveChatLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        LeaveConfirm {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            confirm => {
-                PeopleStore.command("leave", PeopleStore.leave-confirm);
-                PeopleStore.leave-confirm = "";
-            }
-            cancel => { PeopleStore.leave-confirm = ""; }
-        }
     }
 
-    if root.login-state == "ready" && ChatHeaderStore.remove-history != "": Rectangle {
+    if root.login-state == "ready" && ChatHeaderStore.remove-history != "": RemoveHistoryLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        RemoveHistoryConfirm {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            confirm => {
-                ListStore.command("remove-history", ChatHeaderStore.remove-history);
-                ChatHeaderStore.remove-history = "";
-            }
-            cancel => { ChatHeaderStore.remove-history = ""; }
-        }
     }
 
     if root.login-state == "ready" && FindStore.tab-menu-id != "": ChannelTabOverlays {
@@ -1808,15 +1072,9 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 
-    if root.login-state == "ready" && FindStore.tab-add-open: Rectangle {
+    if root.login-state == "ready" && FindStore.tab-add-open: AddTabLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { clicked => { FindStore.tab-add-open = false; } }
-        AddTabDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-        }
     }
 
     // Resting on a photo opens its person's card next to it, as in Teams. The timer lives here,
@@ -1857,63 +1115,15 @@ export component AppWindow inherits Window {
         win-h: root.height;
     }
 
-    if root.login-state == "ready" && PeopleStore.card-open: Rectangle {
+    if root.login-state == "ready" && PeopleStore.card-open: ProfileCardLayer {
+        z: PeopleStore.card-by-hover && TopBarStore.search-open ? 66 : 50;
         width: root.width;
         height: root.height;
-        // Above the call window too (its roster photos open cards), and above the search
-        // dropdown (z 65) for a hover card opened from one of its rows.
-        z: PeopleStore.card-by-hover && TopBarStore.search-open ? 66 : 50;
-        // A clicked card closes on a click anywhere else; a hover card when the pointer leaves
-        // it and its photo (so the photo under it keeps its hover).
-        if !PeopleStore.card-by-hover: TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    PeopleStore.card-open = false;
-                }
-            }
-        }
-        profile-card := ProfileCard {
-            // Next to the photo it belongs to: on its right (on its left when that does not
-            // fit), top-aligned with it or, near the bottom, bottom-aligned (flipped above),
-            // and always inside the window. Without a photo, in the middle as before.
-            property <bool> anchored: PeopleStore.anchor-w > 0;
-            property <length> right-x: PeopleStore.anchor-x + PeopleStore.anchor-w + 8px;
-            property <length> side-x: self.right-x + self.width <= root.width - 8px ? self.right-x : PeopleStore.anchor-x - self.width - 8px;
-            property <length> side-y: PeopleStore.anchor-y + self.height <= root.height - 8px ? PeopleStore.anchor-y : PeopleStore.anchor-y + PeopleStore.anchor-h - self.height;
-            x: self.anchored ? max(8px, min(self.side-x, root.width - self.width - 8px)) : (root.width - self.width) / 2;
-            y: self.anchored ? max(8px, min(self.side-y, root.height - self.height - 8px)) : max(8px, min(160px, root.height - self.height - 8px));
-            init => {
-                root.card-left = self.x;
-                root.card-top = self.y;
-                root.card-w = self.width;
-                root.card-h = self.height;
-            }
-            changed x => { root.card-left = self.x; }
-            changed y => { root.card-top = self.y; }
-            changed width => { root.card-w = self.width; }
-            changed height => { root.card-h = self.height; }
-            anchor-hovered: PeopleStore.hover-id != "" && PeopleStore.hover-id == PeopleStore.card.id;
-            limit: root.height - 16px;
-            hover-mode: PeopleStore.card-by-hover;
-            quick-message(t) => {
-                PeopleStore.card-open = false;
-                PeopleStore.command("profile-message", t);
-            }
-            copy-email => { PeopleStore.command("profile-copy-email", ""); }
-            chat(id) => {
-                PeopleStore.card-open = false;
-                PeopleStore.command("profile-chat", id);
-            }
-            video(id) => {
-                WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet.");
-            }
-            call-number(n) => { root.open-url("tel:" + n); }
-            open-photo(id) => {
-                PeopleStore.card-open = false;
-                MediaStore.command("photo", id);
-            }
-            close => { PeopleStore.card-open = false; }
-        }
+        card-h <=> root.card-h;
+        card-left <=> root.card-left;
+        card-top <=> root.card-top;
+        card-w <=> root.card-w;
+        open-url(a0) => { root.open-url(a0); }
     }
 
     // The full profile, opened from the card (Teams opens the same window).
@@ -1938,73 +1148,26 @@ export component AppWindow inherits Window {
         call-number(n) => { root.open-url("tel:" + n); }
     }
 
-    if root.login-state == "ready" && ListStore.dialog == "leave-channel": Rectangle {
+    if root.login-state == "ready" && ListStore.dialog == "leave-channel": LeaveChannelLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        LeaveChannelDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            confirm => {
-                ListStore.command("channel-leave", ListStore.dialog-target);
-                ListStore.dialog = "";
-            }
-            cancel => { ListStore.dialog = ""; }
-        }
     }
 
-    if root.login-state == "ready" && RemindStore.open: Rectangle {
+    if root.login-state == "ready" && RemindStore.open: RemindLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { clicked => { RemindStore.open = false; } }
-        RemindPanel {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            close => { RemindStore.open = false; }
-        }
     }
 
-    if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): Rectangle {
+    if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): SectionDialogLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        SectionDialog {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 3);
-            confirm(name) => {
-                ListStore.command(ListStore.dialog, ListStore.dialog-target + "\u{9}" + name);
-                ListStore.dialog = "";
-            }
-            cancel => { ListStore.dialog = ""; }
-        }
     }
 
     // The OneDrive file picker, opened from the composer's "Attach cloud files" (the OneDrive view
     // draws its own).
-    if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": Rectangle {
+    if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": DrivePickerLayer {
         width: root.width;
         height: root.height;
-        background: Theme.scrim;
-        TouchArea { }
-        DriveFilePicker {
-            x: (root.width - self.width) / 2;
-            y: max(8px, (root.height - self.height) / 2);
-            title: DriveStore.picker-title;
-            folders-only: DriveStore.picker-folders-only;
-            rows: DriveStore.picker-rows;
-            crumbs: DriveStore.picker-crumbs;
-            loading: DriveStore.picker-loading;
-            can-choose: DriveStore.picker-can-choose;
-            choose-label: @tr("Attach");
-            open(id) => { DriveStore.command("pick-open", id); }
-            crumb(i) => { DriveStore.command("pick-crumb", "" + i); }
-            pick(id) => { DriveStore.command("pick-select", id); }
-            choose => { DriveStore.command("pick-choose", ""); }
-            cancel => { DriveStore.dialog = ""; DriveStore.command("pick-cancel", ""); }
-        }
     }
     // Teams management: the "Your teams and channels" page covers the area right of the rail, and
     // its dialogs cover the window (see teams_page.slint and teams_dialogs.slint).
