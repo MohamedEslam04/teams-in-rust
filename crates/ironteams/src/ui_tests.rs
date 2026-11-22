@@ -1673,7 +1673,8 @@ fn composer_more_menu_switches_the_enter_behavior() {
         0
     );
     more.mock_single_click(PointerEventButton::Left);
-    let opts: Vec<_> = ElementHandle::find_by_element_id(&app, "ComposerMoreMenu::enter-opt").collect();
+    let opts: Vec<_> =
+        ElementHandle::find_by_element_id(&app, "ComposerMoreMenu::enter-opt").collect();
     assert_eq!(opts.len(), 2, "send the message, start a new line");
 
     opts[1].mock_single_click(PointerEventButton::Left);
