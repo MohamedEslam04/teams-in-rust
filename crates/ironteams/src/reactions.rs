@@ -3,7 +3,7 @@
 //! Teams names six reactions (`like heart laugh surprised sad angry`); every other emoji is
 //! `<hex>_<name>` (for example `1f525_fire`), which [`crate::markdown::reaction_emoji`] decodes.
 
-use crate::data::{color_for, initials, Pixels, ReactorData};
+use crate::data::{Pixels, ReactorData, color_for, initials};
 use emoji::Emoji;
 
 /// Most rows the picker shows at once.
