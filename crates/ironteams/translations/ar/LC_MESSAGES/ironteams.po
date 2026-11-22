@@ -1070,6 +1070,9 @@ msgstr "تحديد الرسالة"
 msgid "More reactions"
 msgstr "مزيد من التفاعلات"
 
+msgid "Add reaction"
+msgstr "إضافة تفاعل"
+
 msgid "More actions"
 msgstr "مزيد من الإجراءات"
 

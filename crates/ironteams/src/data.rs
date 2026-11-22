@@ -143,14 +143,27 @@ pub struct MeetingCardData {
     pub join_chat: String,
 }
 
+/// One person on a reaction's hover card.
+#[derive(Clone)]
+pub struct ReactorData {
+    pub name: String,
+    pub initials: String,
+    pub color: u32,
+    pub avatar: Option<Pixels>,
+}
+
 #[derive(Clone)]
 pub struct ReactData {
     pub key: String,
     pub emoji: String,
+    /// The reaction's name, the card's header ("Laugh").
+    pub name: String,
     pub count: i32,
     pub mine: bool,
-    /// Display names of who reacted, comma separated (the chip tooltip).
+    /// Display names of who reacted, comma separated (the chip's accessible label).
     pub names: String,
+    /// Everyone who reacted, in the order Teams lists them.
+    pub people: Vec<ReactorData>,
 }
 
 #[derive(Clone)]

@@ -12,7 +12,7 @@ use slint::{
 
 use crate::backend::{Cmd, Engine};
 use crate::ui::UiHandle;
-use crate::{AppWindow, Msg, ReactionItem, demo};
+use crate::{AppWindow, Msg, demo};
 use std::sync::Arc;
 use store::Store;
 use teams_proto::Client;
@@ -52,6 +52,7 @@ pub(crate) mod overflow;
 mod overlay_order;
 mod palette;
 mod people;
+mod reaction_card;
 pub(crate) mod responsive;
 mod saved;
 mod scroll;
@@ -1025,31 +1026,6 @@ fn select_bar_forward_is_disabled_without_ticks() {
     click(&forward);
     assert!(!app.get_forward_open());
     assert!(log.borrow().is_empty());
-}
-
-#[test]
-fn reaction_chip_tooltip_lists_who_reacted() {
-    let mut m = msg("m1", "react to me", false);
-    m.reactions = ModelRc::new(VecModel::from(vec![ReactionItem {
-        key: "like".into(),
-        emoji: "👍".into(),
-        count: 2,
-        mine: true,
-        names: "Sara Hassan, You".into(),
-    }]));
-    let app = app_with_messages(vec![m]);
-    assert_eq!(
-        ElementHandle::find_by_element_id(&app, "ReactionChip::tip").count(),
-        0
-    );
-    let chip = ElementHandle::find_by_element_type_name(&app, "ReactionChip")
-        .next()
-        .expect("reaction chip");
-    hover(&app, &chip);
-    let tip = ElementHandle::find_by_element_id(&app, "ReactionChip::tip")
-        .next()
-        .expect("tooltip while hovering");
-    assert_eq!(label(&tip), "Sara Hassan, You");
 }
 
 #[test]

@@ -16,8 +16,8 @@ use crate::data::{
 use crate::reactions;
 use crate::{
     AppWindow, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem, LinkCard,
-    LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, ReaderItem,
-    Recipient, TeamRow, VideoClipItem, VoiceItem,
+    LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, Reactor,
+    ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
 };
 use slint::{
     Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel, Weak,
@@ -176,9 +176,25 @@ fn msg(m: MsgData) -> Msg {
                 .map(|r| ReactionItem {
                     key: r.key.into(),
                     emoji: r.emoji.into(),
+                    name: r.name.into(),
                     count: r.count,
                     mine: r.mine,
                     names: r.names.into(),
+                    people: model(
+                        r.people
+                            .into_iter()
+                            .map(|p| {
+                                let (img, has_img) = img(&p.avatar);
+                                Reactor {
+                                    name: p.name.into(),
+                                    initials: p.initials.into(),
+                                    color: rgb(p.color),
+                                    img,
+                                    has_img,
+                                }
+                            })
+                            .collect(),
+                    ),
                 })
                 .collect(),
         ),

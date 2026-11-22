@@ -3,6 +3,7 @@
 //! Teams names six reactions (`like heart laugh surprised sad angry`); every other emoji is
 //! `<hex>_<name>` (for example `1f525_fire`), which [`crate::markdown::reaction_emoji`] decodes.
 
+use crate::data::{Pixels, ReactorData, color_for, initials};
 use emoji::Emoji;
 
 /// Most rows the picker shows at once.
@@ -61,6 +62,72 @@ fn item(e: &Emoji) -> PickerItem {
         emoji: e.ch.to_string(),
         name: e.name.to_string(),
     }
+}
+
+/// Upper-cases the first letter ("clapping hands" -> "Clapping hands").
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
+/// The reaction's name for the hover card's header: the six Teams names ("Laugh"), else the emoji
+/// table's name ("Fire"), else the key's words title-cased.
+pub fn reaction_name(key: &str) -> String {
+    if let Some((_, _, name)) = NAMED.iter().find(|(k, _, _)| *k == key) {
+        return capitalize(name);
+    }
+    let plain = |s: &str| s.replace('\u{fe0f}', "");
+    let ch = plain(&crate::markdown::reaction_emoji(key));
+    if let Some(e) = emoji::all().iter().find(|e| plain(e.ch) == ch) {
+        return capitalize(e.name);
+    }
+    let words = key.split_once('_').map_or(key, |(_, rest)| rest);
+    words
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(capitalize)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The people on a reaction's card, in order. I show under my own full name, as Teams does;
+/// someone not yet known is "Someone" and listed in the second value, to be looked up.
+pub fn reactors(
+    users: &[&str],
+    me: &str,
+    my_name: &str,
+    name_of: impl Fn(&str) -> Option<String>,
+    avatar_of: impl Fn(&str) -> Option<Pixels>,
+) -> (Vec<ReactorData>, Vec<String>) {
+    let mut missing = Vec::new();
+    let people = users
+        .iter()
+        .map(|mri| {
+            let name = if *mri == me {
+                Some(if my_name.trim().is_empty() {
+                    "You".to_string()
+                } else {
+                    my_name.to_string()
+                })
+            } else {
+                name_of(mri).filter(|n| !n.trim().is_empty())
+            };
+            let name = name.unwrap_or_else(|| {
+                missing.push((*mri).to_string());
+                "Someone".to_string()
+            });
+            ReactorData {
+                initials: initials(&name),
+                color: color_for(mri),
+                avatar: avatar_of(mri),
+                name,
+            }
+        })
+        .collect();
+    (people, missing)
 }
 
 /// Picker rows for a search. An empty query lists the Teams reactions, then the emoji table;
@@ -123,6 +190,77 @@ mod tests {
         assert_eq!(items.len(), PICKER_LIMIT);
         let named = items.iter().filter(|i| i.key == "like").count();
         assert_eq!(named, 1, "no duplicate of the named reactions");
+    }
+
+    #[test]
+    fn teams_reactions_are_named() {
+        let names: Vec<_> = ["like", "heart", "laugh", "surprised", "sad", "angry"]
+            .iter()
+            .map(|k| reaction_name(k))
+            .collect();
+        assert_eq!(
+            names,
+            ["Like", "Heart", "Laugh", "Surprised", "Sad", "Angry"]
+        );
+    }
+
+    #[test]
+    fn other_reactions_use_the_emoji_name_or_the_key_words() {
+        assert_eq!(reaction_name("1f525_fire"), "Fire");
+        assert_eq!(reaction_name("loudlycrying"), "Loudly crying face");
+        // A key that decodes to no emoji: its words, title-cased.
+        assert_eq!(reaction_name("zzz_party_time"), "Party Time");
+        assert_eq!(reaction_name("zzqx"), "Zzqx");
+    }
+
+    fn lookup(mri: &str) -> Option<String> {
+        match mri {
+            "8:sara" => Some("Sara Hassan".into()),
+            "8:blank" => Some("  ".into()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn reactors_carry_name_initials_and_a_stable_colour() {
+        let users = ["8:sara", "8:me"];
+        let (people, missing) = reactors(&users, "8:me", "Omar Khaled", lookup, |_| None);
+        assert!(missing.is_empty());
+        let names: Vec<_> = people.iter().map(|p| p.name.as_str()).collect();
+        // I am listed under my own full name, in the order given.
+        assert_eq!(names, ["Sara Hassan", "Omar Khaled"]);
+        let initials: Vec<_> = people.iter().map(|p| p.initials.as_str()).collect();
+        assert_eq!(initials, ["SH", "OK"]);
+        assert_eq!(people[0].color, color_for("8:sara"));
+        assert_eq!(people[1].color, color_for("8:me"));
+        assert!(people.iter().all(|p| p.avatar.is_none()));
+    }
+
+    #[test]
+    fn reactors_without_a_known_name_are_someone_and_get_looked_up() {
+        let users = ["8:sara", "8:ghost", "8:blank"];
+        let (people, missing) = reactors(&users, "8:me", "Omar Khaled", lookup, |_| None);
+        let names: Vec<_> = people.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Sara Hassan", "Someone", "Someone"]);
+        assert_eq!(missing, ["8:ghost", "8:blank"]);
+        assert_eq!(people[1].initials, "SO");
+    }
+
+    #[test]
+    fn my_reaction_falls_back_to_you_without_a_name() {
+        let (people, missing) = reactors(&["8:me"], "8:me", " ", lookup, |_| None);
+        assert!(missing.is_empty());
+        assert_eq!(people[0].name, "You");
+    }
+
+    #[test]
+    fn reactors_take_their_photo_from_the_cache() {
+        let px = Pixels::new(2, 2);
+        let (people, _) = reactors(&["8:sara", "8:ghost"], "8:me", "", lookup, |m| {
+            (m == "8:sara").then(|| px.clone())
+        });
+        assert!(people[0].avatar.is_some());
+        assert!(people[1].avatar.is_none());
     }
 
     #[test]

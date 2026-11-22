@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { Msg } from "types.slint";
-import { Avatar, FileCard, Icon, IconButton, LoopCardView, MeetLinkCard, ReactionChip } from "widgets.slint";
+import { AddReactionChip, Avatar, FileCard, Icon, IconButton, LoopCardView, MeetLinkCard, ReactionChip } from "widgets.slint";
 import { CalStore } from "calendar_store.slint";
 import { CardView } from "card_view.slint";
 import { LinkCardView, MediaStore } from "media.slint";
@@ -373,6 +373,10 @@ export component MessageRow inherits TouchArea {
                             r: r;
                             clicked => { root.react(r.key); }
                         }
+                        // After the reactions, as in Teams: add another (opens the picker below it).
+                        if !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed: AddReactionChip {
+                            clicked => { root.more-reactions(self.absolute-position.x, self.absolute-position.y + self.height + 4px); }
+                        }
                     }
 
                     if root.m.failed: HorizontalLayout {
@@ -451,7 +455,7 @@ export component MessageRow inherits TouchArea {
                                 et := TouchArea { mouse-cursor: pointer; clicked => { root.react(e.k); } }
                             }
                             IconButton {
-                                icon: @image-url("icons/emoji.svg"); tooltip: @tr("More reactions");
+                                icon: @image-url("icons/emoji-add.svg"); tooltip: @tr("More reactions");
                                 size: 30px;
                                 clicked => { root.more-reactions(bar.absolute-position.x + bar.width - 308px, bar.absolute-position.y + bar.height + 4px); }
                             }

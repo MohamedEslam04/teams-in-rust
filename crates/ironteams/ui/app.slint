@@ -23,6 +23,8 @@ import { ParticipantsPanel, LeaveConfirm } from "participants.slint";
 import { PinnedBanner } from "pinned_banner.slint";
 import { ImmersiveReader } from "reader.slint";
 import { ProfileCard } from "profile_card.slint";
+import { ReactionCard } from "reaction_card.slint";
+import { ReactionHover } from "reaction_hover.slint";
 import { TeamsStore } from "teams_store.slint";
 import { TeamsPage } from "teams_page.slint";
 import { TeamsDialogs } from "teams_dialogs.slint";
@@ -53,7 +55,7 @@ import { Motion, PopIn, SkeletonMessages, Spinner, TypingIndicator } from "motio
 
 export { Theme } from "theme.slint";
 export { Motion, TypingStore } from "motion.slint";
-export { ReaderItem } from "types.slint";
+export { ReaderItem, Reactor } from "types.slint";
 export { PersonItem, PinnedItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "types.slint";
 export { EmojiApi } from "composer.slint";
 export { SpellApi, SpellWord } from "spelling.slint";
@@ -1818,6 +1820,12 @@ export component AppWindow inherits Window {
     changed hover-chat => {
         PeopleStore.hover-id = "";
         PeopleStore.hover-armed = false;
+    }
+
+    // Who reacted, under the chip being hovered (above every message row).
+    if ReactionHover.open: ReactionCard {
+        win-w: root.width;
+        win-h: root.height;
     }
 
     if root.login-state == "ready" && PeopleStore.card-open: Rectangle {

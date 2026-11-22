@@ -46,7 +46,11 @@ export struct CardRow {
     img-h: length,
 }
 
-export struct ReactionItem { key: string, emoji: string, count: int, mine: bool, names: string }
+// One person on a reaction's hover card: a photo (`img`) or else their initials on `color`.
+export struct Reactor { name: string, initials: string, color: color, img: image, has-img: bool }
+// A reaction chip: `name` heads the hover card ("Laugh"), `people` fill it, `names` is the joined
+// list for the chip's accessible label.
+export struct ReactionItem { key: string, emoji: string, name: string, count: int, mine: bool, names: string, people: [Reactor] }
 export struct EmojiItem { key: string, emoji: string, name: string }
 export struct Recipient { id: string, title: string, initials: string, color: color, picked: bool }
 // One emoji of the composer's emoji panel and `:xx` autocomplete.
