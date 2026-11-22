@@ -29,6 +29,10 @@ jobs:
     with:
       all-platforms: true
 
+  # The RPM build's cargo cache (and the Flatpak's) is saved from here; the release restores it.
+  packages:
+    uses: ./.github/workflows/packaging.yml
+
   linux:
     runs-on: ubuntu-22.04
     steps:
