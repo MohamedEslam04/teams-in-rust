@@ -11,7 +11,7 @@ use slint::{
 };
 
 use crate::backend::{Cmd, Engine};
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 use crate::{AppWindow, Msg, demo};
 use std::sync::Arc;
 use store::Store;

@@ -5,7 +5,7 @@
 //! the UI. This keeps memory small: only the current conversation window is materialized.
 
 use crate::data::Pixels;
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 use drafts::reply_preview;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -112,7 +112,7 @@ pub use media::MediaCmd;
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
 pub use remind::{RemindCmd, ReminderData, SnoozedData};
-pub use scheduled::{ScheduledCmd, ScheduledData};
+pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
 pub use video_clips::{ClipCamera, ClipCmd, ClipDevices, Picture};

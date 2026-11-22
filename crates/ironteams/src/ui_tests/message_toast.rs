@@ -3,7 +3,8 @@
 //! reactions on hover, the header's buttons and the stack of three.
 
 use super::*;
-use crate::ui::message_toast::{MAX_CARDS, Toast};
+use crate::ui::message_toast::MAX_CARDS;
+use crate::ui_api::Toast;
 use crate::{MessageToastStore, SettingsStore};
 use i_slint_backend_testing::AccessibleRole;
 

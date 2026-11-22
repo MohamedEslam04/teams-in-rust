@@ -181,7 +181,7 @@ mod tests {
         thread_local! { static INIT: std::sync::Once = const { std::sync::Once::new() }; }
         INIT.with(|once| once.call_once(i_slint_backend_testing::init_no_event_loop));
         let window = crate::AppWindow::new().unwrap();
-        let ui = crate::ui::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
         let e = Engine::new(
             teams_proto::Client::offline("test").unwrap(),
             store::Store::open_in_memory().unwrap(),

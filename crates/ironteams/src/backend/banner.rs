@@ -262,7 +262,7 @@ impl Engine {
         } else {
             None
         };
-        self.ui.message_toast(crate::ui::message_toast::Toast {
+        self.ui.message_toast(crate::ui_api::Toast {
             rtl_title: render::base_direction(&title) == render::Dir::Rtl,
             rtl_text: render::base_direction(&text) == render::Dir::Rtl,
             conversation: p.conversation,

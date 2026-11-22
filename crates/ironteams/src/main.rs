@@ -29,6 +29,7 @@ mod suggest;
 mod topbar;
 mod tray_wiring;
 mod ui;
+mod ui_api;
 #[cfg(test)]
 mod ui_tests;
 mod update_check;
@@ -42,7 +43,7 @@ use slint::ComponentHandle;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use teams_proto::Client;
-use ui::UiHandle;
+use ui_api::UiHandle;
 
 /// Signs in (stored session or device code), then runs the engine until the app quits.
 async fn app_main(

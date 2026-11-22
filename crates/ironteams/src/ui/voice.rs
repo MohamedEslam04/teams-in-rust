@@ -3,31 +3,10 @@
 
 use super::{UiHandle, model};
 use crate::backend::{Cmd, VoiceCmd};
+use crate::ui_api::{PlayerView, RecorderView};
 use crate::{AppWindow, VoiceRecStore, VoiceStore};
 use slint::ComponentHandle;
 use tokio::sync::mpsc::UnboundedSender;
-
-/// What the player shows: the message playing or paused, and where it is.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct PlayerView {
-    pub key: String,
-    pub playing: bool,
-    pub position_ms: i32,
-    pub loading_key: String,
-    pub speed: f32,
-}
-
-/// What the recorder bar shows.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct RecorderView {
-    /// "idle" | "starting" | "recording" | "paused" | "sending"
-    pub state: &'static str,
-    pub elapsed_ms: i32,
-    pub levels: Vec<f32>,
-    pub preview_playing: bool,
-    pub preview_ms: i32,
-    pub problem: String,
-}
 
 impl UiHandle {
     pub fn voice_player(&self, v: PlayerView) {

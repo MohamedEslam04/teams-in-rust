@@ -5,7 +5,7 @@
 use super::{UiHandle, img, rgb};
 use crate::AppWindow;
 use crate::backend::{Cmd, ListsCmd};
-use crate::data::Pixels;
+use crate::ui_api::Toast;
 use crate::{MessageToastStore, ToastCard};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::cell::RefCell;
@@ -14,27 +14,6 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 /// Cards on the screen at once; a newer card pushes the oldest one out.
 pub const MAX_CARDS: usize = 3;
-
-/// One message as the card shows it.
-pub struct Toast {
-    pub conversation: String,
-    /// Where a reply goes (the chat, or a channel message's thread).
-    pub target: String,
-    /// The message, for the quick reactions.
-    pub message: String,
-    pub title: String,
-    /// "Name:" in a group chat, empty in a 1:1 chat.
-    pub sender: String,
-    pub text: String,
-    pub initials: String,
-    pub color: u32,
-    pub avatar: Option<Pixels>,
-    pub meeting: bool,
-    pub can_reply: bool,
-    pub can_mute: bool,
-    pub rtl_title: bool,
-    pub rtl_text: bool,
-}
 
 thread_local! {
     static TOASTS: RefCell<Option<Rc<VecModel<ToastCard>>>> = const { RefCell::new(None) };
