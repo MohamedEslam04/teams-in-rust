@@ -4,8 +4,9 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalCheck, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
 
 // Colors of the answers in the attendee list and the response buttons.
 
@@ -36,7 +37,7 @@ component EventActions inherits VerticalLayout {
     if CalStore.peek.can-respond: VerticalLayout {
         spacing: 6px;
         CalCheck { label: "Email organizer"; checked <=> root.send; }
-        CalField { placeholder: "Add a message (optional)"; text <=> root.comment; }
+        Field { variant: FieldVariant.bare; placeholder: "Add a message (optional)"; text <=> root.comment; }
         HorizontalLayout {
             spacing: 6px;
             alignment: start;

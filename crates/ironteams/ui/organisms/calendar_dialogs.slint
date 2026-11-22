@@ -4,8 +4,9 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalCheck, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
 
 // The New ▾ menu. Types that need Graph VirtualEvent.* open in the web (marked ↗).
 export component NewMenu inherits CalCard {
@@ -194,8 +195,8 @@ export component PromptDialog inherits Modal {
             alignment: start;
             Text { text: CalStore.prompt-title; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; wrap: word-wrap; }
             if CalStore.prompt-message != "": Text { text: CalStore.prompt-message; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
-            if CalStore.prompt-label1 != "": CalField { placeholder: CalStore.prompt-label1; text <=> CalStore.prompt-text1; accepted => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); } }
-            if CalStore.prompt-label2 != "": CalField { placeholder: CalStore.prompt-label2; text <=> CalStore.prompt-text2; }
+            if CalStore.prompt-label1 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label1; text <=> CalStore.prompt-text1; accepted => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); } }
+            if CalStore.prompt-label2 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label2; text <=> CalStore.prompt-text2; }
             if CalStore.prompt-check-label != "": CalCheck { label: CalStore.prompt-check-label; checked <=> CalStore.prompt-check; }
             if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             HorizontalLayout {
@@ -283,9 +284,9 @@ export component SettingsDialog inherits Modal {
             HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                CalField { width: 90px; placeholder: "09:00"; text <=> root.work-start; }
+                Field { variant: FieldVariant.bare; width: 90px; placeholder: "09:00"; text <=> root.work-start; }
                 Text { text: "to"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-                CalField { width: 90px; placeholder: "17:00"; text <=> root.work-end; }
+                Field { variant: FieldVariant.bare; width: 90px; placeholder: "17:00"; text <=> root.work-end; }
             }
             CalCheck { label: "Show weekends in the week and month views"; checked <=> root.weekends; }
             CalCheck { label: "Show week numbers"; checked <=> root.week-numbers; }
@@ -293,7 +294,7 @@ export component SettingsDialog inherits Modal {
             if root.tz-on: VerticalLayout {
                 spacing: 4px;
                 Text { text: root.tz-label != "" ? root.tz-label : "No time zone picked yet"; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
-                CalField {
+                Field { variant: FieldVariant.bare;
                     placeholder: "Search time zones, like Cairo or Eastern";
                     text <=> root.tz-query;
                     edited(t) => { CalStore.command("zone-search", t); }
@@ -376,7 +377,7 @@ export component ShareDialog inherits Modal {
                 }
             }
             Text { text: "Share with"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
-            CalField { placeholder: "name@company.com"; text <=> root.email; }
+            Field { variant: FieldVariant.bare; placeholder: "name@company.com"; text <=> root.email; }
             HorizontalLayout {
                 spacing: 4px;
                 alignment: start;

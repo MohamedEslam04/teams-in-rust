@@ -72,44 +72,6 @@ export component KitSearch inherits Rectangle {
     public function focus-input() { input.focus(); }
 }
 
-// A labelled single-line text field for the dialogs.
-export component KitField inherits Rectangle {
-    in property <string> label;
-    in-out property <string> text;
-    in property <bool> autofocus: false;
-    callback accepted();
-    height: 58px;
-    VerticalLayout {
-        spacing: 4px;
-        Text { text: root.label; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; overflow: elide; }
-        Rectangle {
-            height: 32px;
-            border-radius: 4px;
-            background: Theme.sidebar;
-            border-width: 1px;
-            border-color: input.has-focus ? Theme.accent : Theme.border;
-            input := TextInput {
-                x: 10px;
-                width: parent.width - 20px;
-                height: parent.height;
-                text <=> root.text;
-                color: Theme.fg;
-                font-size: 13px * Theme.font-scale;
-                vertical-alignment: center;
-                single-line: true;
-                accessible-role: text-input;
-                accessible-label: root.label;
-                accepted => { root.accepted(); }
-            }
-        }
-    }
-    init => {
-        if root.autofocus {
-            input.focus();
-        }
-    }
-}
-
 export component KitMenuRow inherits Rectangle {
     in property <string> label;
     in property <bool> danger: false;

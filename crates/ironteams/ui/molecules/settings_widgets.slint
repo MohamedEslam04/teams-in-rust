@@ -251,48 +251,6 @@ export component SRadio inherits Rectangle {
     rt := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
 }
 
-// A single-line text box with a label. `committed` fires on Enter and when focus leaves.
-export component SField inherits VerticalLayout {
-    in property <string> label;
-    in property <string> placeholder;
-    in property <string> initial;
-    out property <string> text <=> input.text;
-    callback committed(string);
-    // Every keystroke.
-    callback edited(string);
-    spacing: 4px;
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
-    Rectangle {
-        height: max(30px, input.preferred-height + 12px);
-        max-width: 360px;
-        border-radius: 4px;
-        background: Theme.surface;
-        border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.border;
-        input := TextInput {
-            x: 10px;
-            width: parent.width - 20px;
-            text: root.initial;
-            color: Theme.fg;
-            font-size: Theme.font-body;
-            single-line: true;
-            vertical-alignment: center;
-            accessible-role: text-input;
-            accessible-label: root.label;
-            edited => { root.edited(self.text); }
-            accepted => { root.committed(self.text); }
-            changed has-focus => { if !self.has-focus { root.committed(self.text); } }
-        }
-        if input.text == "" && root.placeholder != "": Text {
-            x: 10px;
-            text: root.placeholder;
-            color: Theme.fg-subtle;
-            font-size: Theme.font-body;
-            vertical-alignment: center;
-        }
-    }
-}
-
 // A person row with one action button (Unblock, Remove).
 export component SPersonRow inherits Rectangle {
     in property <string> name;

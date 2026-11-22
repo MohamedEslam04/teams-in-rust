@@ -4,10 +4,11 @@
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SChoice, SChoiceRow, SField, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
+import { SChoice, SChoiceRow, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
 
 component Para inherits Text {
     color: Theme.fg-muted;
@@ -66,10 +67,10 @@ export component GeneralPage inherits VerticalLayout {
             value: SettingsStore.time-format;
             picked(v) => { SettingsStore.time-format = v; SettingsStore.command("time-format", v); }
         }
-        SField {
+        Field { variant: FieldVariant.settings;
             label: @tr("Time zone");
             placeholder: @tr("System: {}", SettingsStore.system-time-zone);
-            initial: SettingsStore.time-zone;
+            text: SettingsStore.time-zone;
             committed(t) => { SettingsStore.command("time-zone", t); }
         }
         Para { text: @tr("An IANA name such as Africa/Cairo. Leave it empty to follow the system. Chat times, the calendar, OneDrive and Store dates use it. A name that is not a time zone is ignored and the system zone is used."); }
@@ -200,7 +201,7 @@ export component AccountsPage inherits VerticalLayout {
     SSection {
         title: @tr("Add an account");
         hint: @tr("Pick a short name (letters, digits, - _ .), then restart IronTeams: it shows a code to sign in with, on this computer, for the new account. The accounts stay separate.");
-        new-account := SField {
+        new-account := Field { variant: FieldVariant.settings;
             label: @tr("Name for the new account");
             placeholder: "work";
         }
@@ -365,7 +366,7 @@ export component NotificationsPage inherits VerticalLayout {
         }
         if SettingsStore.pause-custom-open: VerticalLayout {
             spacing: 6px;
-            pause-at := SField { label: @tr("Pause until"); placeholder: "2026-12-31 17:30"; }
+            pause-at := Field { variant: FieldVariant.settings; label: @tr("Pause until"); placeholder: "2026-12-31 17:30"; }
             Button { variant: ButtonVariant.settings;
                 label: @tr("Pause notifications until then");
                 clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
@@ -408,8 +409,8 @@ export component NotificationsPage inherits VerticalLayout {
             HorizontalLayout {
                 spacing: 12px;
                 alignment: start;
-                SField { label: @tr("From"); initial: SettingsStore.quiet-start; width: 120px; committed(t) => { SettingsStore.command("quiet-start", t); } }
-                SField { label: @tr("To"); initial: SettingsStore.quiet-end; width: 120px; committed(t) => { SettingsStore.command("quiet-end", t); } }
+                Field { variant: FieldVariant.settings; label: @tr("From"); text: SettingsStore.quiet-start; width: 120px; committed(t) => { SettingsStore.command("quiet-start", t); } }
+                Field { variant: FieldVariant.settings; label: @tr("To"); text: SettingsStore.quiet-end; width: 120px; committed(t) => { SettingsStore.command("quiet-end", t); } }
             }
         }
     }

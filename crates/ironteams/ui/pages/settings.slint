@@ -6,9 +6,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
-import { SField, SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
+import { SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -567,7 +568,7 @@ export component ProfileMenu inherits Rectangle {
                         padding-top: 4px;
                         spacing: 6px;
                         Text { text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message"); color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: SettingsStore.me-status; }
-                        note := SField { label: @tr("New status message"); initial: SettingsStore.me-status; }
+                        note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; }
                         Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: Theme.font-small; }
                         for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
                             group: @tr("Clear message after");
@@ -662,10 +663,10 @@ export component ProfileMenu inherits Rectangle {
                 checked: SettingsStore.status-duration == d.v;
                 picked => { SettingsStore.status-duration = d.v; }
             }
-            if SettingsStore.status-duration == "custom": SField {
+            if SettingsStore.status-duration == "custom": Field { variant: FieldVariant.settings;
                 label: @tr("Reset at");
                 placeholder: "2026-12-31 17:30";
-                initial: SettingsStore.status-custom;
+                text: SettingsStore.status-custom;
                 edited(t) => { SettingsStore.status-custom = t; }
             }
         }

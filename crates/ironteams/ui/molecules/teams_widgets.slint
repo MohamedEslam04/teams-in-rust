@@ -2,48 +2,6 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 
-// A labelled single-line text box. `text` follows what is typed; `initial` is the starting text.
-export component TField inherits Rectangle {
-    in property <string> label;
-    in property <string> initial;
-    in property <string> placeholder;
-    out property <string> text <=> input.text;
-    callback edited(string);
-    callback accepted(string);
-    height: 58px;
-    VerticalLayout {
-        spacing: 4px;
-        Text { text: root.label; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
-        Rectangle {
-            height: 32px;
-            border-radius: 4px;
-            background: Theme.sidebar;
-            border-width: 1px;
-            border-color: input.has-focus ? Theme.accent : Theme.border;
-            input := TextInput {
-                x: 10px;
-                width: parent.width - 20px;
-                text: root.initial;
-                color: Theme.fg;
-                font-size: 13px * Theme.font-scale;
-                single-line: true;
-                vertical-alignment: center;
-                accessible-role: text-input;
-                accessible-label: root.label;
-                edited => { root.edited(self.text); }
-                accepted => { root.accepted(self.text); }
-            }
-            if input.text == "" && root.placeholder != "": Text {
-                x: 10px;
-                text: root.placeholder;
-                color: Theme.fg-subtle;
-                font-size: 13px * Theme.font-scale;
-                vertical-alignment: center;
-            }
-        }
-    }
-}
-
 // A check box row.
 export component TCheck inherits Rectangle {
     in property <string> label;

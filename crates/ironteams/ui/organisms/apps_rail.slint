@@ -6,8 +6,9 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, RailApp } from "../stores/apps_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ScrollView } from "std-widgets.slint";
-import { AppTile, KitSearch, KitMenuRow, KitMenuFrame, KitField } from "../molecules/apps_kit.slint";
+import { AppTile, KitSearch, KitMenuRow, KitMenuFrame } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
 
 // One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
 component RailEntry inherits Rectangle {
@@ -362,9 +363,9 @@ export component AppsOverlays inherits Rectangle {
                         }
                     }
                 }
-                if AppsStore.form-label1 != "": KitField { label: AppsStore.form-label1; text <=> AppsStore.form-text1; autofocus: true; accepted => { root.submit(); } }
-                if AppsStore.form-label2 != "": KitField { label: AppsStore.form-label2; text <=> AppsStore.form-text2; accepted => { root.submit(); } }
-                if AppsStore.form-label3 != "": KitField { label: AppsStore.form-label3; text <=> AppsStore.form-text3; accepted => { root.submit(); } }
+                if AppsStore.form-label1 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label1; text <=> AppsStore.form-text1; autofocus: true; accepted => { root.submit(); } }
+                if AppsStore.form-label2 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label2; text <=> AppsStore.form-text2; accepted => { root.submit(); } }
+                if AppsStore.form-label3 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label3; text <=> AppsStore.form-text3; accepted => { root.submit(); } }
                 if AppsStore.form-error != "": Text { text: AppsStore.form-error; color: Theme.danger; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Problem: " + AppsStore.form-error; }
                 HorizontalLayout {
                     spacing: 8px;

@@ -38,45 +38,6 @@ export component CalCheck inherits Rectangle {
     }
 }
 
-export component CalField inherits Rectangle {
-    in-out property <string> text <=> input.text;
-    in property <string> placeholder;
-    in property <bool> multiline: false;
-    in property <length> field-height: 30px;
-    callback edited(string);
-    callback accepted();
-    height: root.multiline ? max(root.field-height, 88px) : root.field-height;
-    border-radius: 4px;
-    background: Theme.sidebar;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.border;
-    input := TextInput {
-        x: 8px;
-        y: root.multiline ? 6px : 0px;
-        width: parent.width - 16px;
-        height: root.multiline ? parent.height - 12px : parent.height;
-        color: Theme.fg;
-        font-size: 13px * Theme.font-scale;
-        single-line: !root.multiline;
-        wrap: root.multiline ? word-wrap : no-wrap;
-        vertical-alignment: root.multiline ? top : center;
-        accessible-role: text-input;
-        accessible-label: root.placeholder;
-        accessible-placeholder-text: root.placeholder;
-        edited => { root.edited(self.text); }
-        accepted => { root.accepted(); }
-    }
-    if input.text == "": Text {
-        x: 8px;
-        y: root.multiline ? 6px : 0px;
-        height: root.multiline ? 20px : parent.height;
-        text: root.placeholder;
-        color: Theme.fg-subtle;
-        font-size: 13px * Theme.font-scale;
-        vertical-alignment: center;
-    }
-}
-
 // A card for popovers and dialogs.
 export component CalCard inherits Rectangle {
     border-radius: 8px;
