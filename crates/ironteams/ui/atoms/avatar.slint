@@ -46,7 +46,7 @@ export component Avatar inherits Rectangle {
     in property <int> text-weight: 600;
     // `tone` also stays behind the photo.
     in property <bool> tone-under-img: false;
-    // The photo's accessible name; "" leaves the photo out of the accessibility tree.
+    // The photo's accessible name.
     in property <string> photo-label;
     width: size;
     height: size;
@@ -65,18 +65,11 @@ export component Avatar inherits Rectangle {
         height: root.size;
         border-radius: root.corner;
         clip: true;
-        if root.photo-label == "": Image {
+        Image {
             source: root.img;
             width: root.size;
             height: root.size;
             image-fit: cover;
-        }
-        if root.photo-label != "": Image {
-            source: root.img;
-            width: root.size;
-            height: root.size;
-            image-fit: cover;
-            accessible-role: image;
             accessible-label: root.photo-label;
         }
     }

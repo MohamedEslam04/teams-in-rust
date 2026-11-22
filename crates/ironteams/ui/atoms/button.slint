@@ -166,8 +166,6 @@ component ButtonBody inherits Rectangle {
             : 400;
         horizontal-alignment: root.inline-row ? left : center;
         vertical-alignment: root.stacked ? top : center;
-        // The meeting card's label is read through the button.
-        accessible-role: root.variant == ButtonVariant.card ? none : text;
     }
     if root.inline-row && root.chevron: Icon {
         x: root.width - root.pad - 12px;
