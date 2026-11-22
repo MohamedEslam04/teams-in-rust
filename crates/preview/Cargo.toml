@@ -11,7 +11,7 @@ publish = false
 hayro = "0.9.0"
 onedrive = { version = "0.0.0", path = "../onedrive" }
 png = "0.18.1"
-reqwest = "0.13.5"
+reqwest = { version = "0.13.5", default-features = false }
 teams-proto = { version = "0.0.0", path = "../teams-proto" }
 thiserror = "2.0.21"
 

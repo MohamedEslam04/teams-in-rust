@@ -126,8 +126,8 @@ pub struct TlsRelay {
     pub server_name: String,
 }
 
-/// TLS client settings trusting the web PKI roots. The ring provider is named explicitly: the
-/// tree enables both of rustls' providers, so its process default is ambiguous.
+/// TLS client settings trusting the web PKI roots. The ring provider is named explicitly,
+/// so this does not depend on the process default being installed.
 pub fn client_config() -> Arc<ClientConfig> {
     let roots = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),

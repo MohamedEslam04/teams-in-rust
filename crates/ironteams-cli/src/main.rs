@@ -508,6 +508,8 @@ async fn calendar_check(client: &Client, args: &[String]) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // reqwest has no TLS provider of its own; install the app's (ring) before any client.
+    teams_proto::client::install_crypto_provider();
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new(
             compat::var("IRONTEAMS_LOG").unwrap_or_default(),

@@ -82,9 +82,11 @@ pub struct Client {
     state: Arc<Mutex<State>>,
 }
 
-/// Installs the rustls crypto provider once (both reqwest and the websocket use rustls).
+/// Installs the rustls crypto provider once (both reqwest and the websocket use rustls). It is
+/// ring, the provider the WebRTC stack needs anyway; reqwest has no built-in one
+/// (`rustls-no-provider`), so a client built before this call panics.
 pub fn install_crypto_provider() {
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 fn build_http() -> Result<reqwest::Client> {
@@ -747,6 +749,7 @@ mod tests {
     #[tokio::test]
     async fn only_a_read_whose_connection_failed_is_sent_again() {
         // Nothing listens on port 1: the connection fails before any answer.
+        install_crypto_provider();
         let err = reqwest::Client::new()
             .get("http://127.0.0.1:1/")
             .send()
