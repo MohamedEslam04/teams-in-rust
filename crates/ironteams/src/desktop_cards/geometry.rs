@@ -103,6 +103,26 @@ mod tests {
     }
 
     #[test]
+    fn a_window_grown_for_a_new_card_moves_up_and_keeps_its_bottom_edge() {
+        // The window backends place the whole stack as one window by its top-left corner: a
+        // call card (164 px with its shadow), a reminder under it, then the call gone.
+        let area = work_area(FULL_HD, 1.0, Os::Linux);
+        let one = corner(area, (372, 164), 16);
+        let two = corner(area, (372, 164 + 8 + 120), 16);
+        let after = corner(area, (372, 32 + 120), 16);
+        assert_eq!(one, (1920 - 372 - 16, 1080 - 44 - 16 - 164));
+        assert_eq!(
+            two,
+            (one.0, one.1 - 128),
+            "taller: moved up by the new card"
+        );
+        assert_eq!(after, (one.0, 1080 - 44 - 16 - 152), "shorter: moved down");
+        for (top, h) in [(one.1, 164), (two.1, 292), (after.1, 152)] {
+            assert_eq!(top + h, 1080 - 44 - 16, "the bottom edge stays");
+        }
+    }
+
+    #[test]
     fn a_second_monitor_and_a_scaled_screen_keep_the_corner() {
         let right = Rect {
             x: 1920,
