@@ -7,7 +7,7 @@
 // text and the selection. The preview strip shows the converted message before it is sent.
 import { Theme } from "../tokens/theme.slint";
 import { ScrollView } from "std-widgets.slint";
-import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 
 // The result of an action: the new text and selection (byte offsets). `ok` false: nothing changed.
 export struct FormatEdit { ok: bool, text: string, anchor: int, cursor: int }
