@@ -114,7 +114,7 @@ pub use remind::{RemindCmd, ReminderData, SnoozedData};
 pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
-pub use video_clips::{ClipCamera, ClipCmd, ClipDevices, Picture};
+pub use video_clips::{ClipCamera, ClipCmd, ClipDevices};
 pub use voice_messages::VoiceCmd;
 
 /// Commands sent by the UI.
