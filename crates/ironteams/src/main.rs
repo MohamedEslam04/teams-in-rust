@@ -23,6 +23,7 @@ mod media_data;
 mod mention;
 #[cfg(not(target_os = "linux"))]
 mod native_tray;
+mod offline_start;
 mod reactions;
 mod send_options;
 mod shortcuts;
@@ -66,16 +67,15 @@ async fn app_main(
         }
         return;
     }
-    let engine = loop {
+    let (engine, offline) = loop {
         match sign_in(&ui).await {
-            Ok(e) => break e,
+            Ok(SignedIn::Online(e)) => break (e, false),
+            Ok(SignedIn::Offline(e)) => break (e, true),
             Err(err) => {
                 tracing::error!(%err, "sign-in failed");
                 ui.login_error(format!("Sign-in failed: {err}"));
-                while let Some(c) = cmds.recv().await {
-                    if matches!(c, Cmd::RetryLogin) {
-                        break;
-                    }
+                if !wait_for_retry(&mut cmds).await {
+                    return;
                 }
                 ui.login_checking();
             }
@@ -88,7 +88,15 @@ async fn app_main(
             tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         }
     });
-    engine.start();
+    if offline {
+        engine.start_cached(offline_start::OFFLINE_NOTICE);
+        if !reconnect(&ui, &engine, &mut cmds).await {
+            return;
+        }
+        engine.go_online().await;
+    } else {
+        engine.start();
+    }
     // Development aid: open a conversation on startup.
     if let Ok(target) = compat::var("IRONTEAMS_OPEN") {
         let e = engine.clone();
@@ -130,18 +138,121 @@ fn demo_engine(ui: &UiHandle) -> anyhow::Result<Arc<Engine>> {
     Ok(engine)
 }
 
-async fn sign_in(ui: &UiHandle) -> anyhow::Result<Arc<Engine>> {
+/// How [`sign_in`] ended: with fresh tokens, or with the saved chats while Microsoft is out of reach.
+enum SignedIn {
+    Online(Arc<Engine>),
+    Offline(Arc<Engine>),
+}
+
+/// Waits for the sign-in screen's Retry, dropping other commands. False when the app quits.
+async fn wait_for_retry(cmds: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>) -> bool {
+    while let Some(c) = cmds.recv().await {
+        if matches!(c, Cmd::RetryLogin) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Offline start: runs the commands of the saved-chats view while refreshing the session again
+/// (5 s, 10, 20, 40, then every minute) until it works. A session Microsoft rejects meanwhile
+/// goes to the sign-in screen, and the new sign-in takes over the engine's client. False when
+/// the app quits.
+async fn reconnect(
+    ui: &UiHandle,
+    engine: &Arc<Engine>,
+    cmds: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>,
+) -> bool {
+    let mut attempt = 0;
+    let mut failed_shown = false;
+    loop {
+        let delay = offline_start::retry_delay(attempt);
+        let refresh = async {
+            tokio::time::sleep(delay).await;
+            engine.refresh_session().await
+        };
+        tokio::pin!(refresh);
+        // The saved chats stay usable while a refresh waits for its answer.
+        let refreshed = loop {
+            tokio::select! {
+                r = &mut refresh => break r,
+                cmd = cmds.recv() => match cmd {
+                    Some(cmd) => engine.dispatch(cmd),
+                    None => return false,
+                },
+            }
+        };
+        attempt = attempt.saturating_add(1);
+        let err = match refreshed {
+            Ok(()) => {
+                tracing::info!(attempt, "back online");
+                return true;
+            }
+            Err(err) => err,
+        };
+        match offline_start::on_refresh_error(&err, true) {
+            offline_start::OnRefreshError::Offline => {
+                tracing::info!(%err, attempt, "still offline");
+                continue;
+            }
+            // Not a rejected session and not a missing network (a 403 from Teams, say): the
+            // saved chats stay, the error shows once and the refresh keeps trying.
+            offline_start::OnRefreshError::Fail => {
+                tracing::warn!(%err, attempt, "refreshing the session failed");
+                if !failed_shown {
+                    failed_shown = true;
+                    ui.banner(format!("Sign-in failed: {err}"));
+                }
+                continue;
+            }
+            offline_start::OnRefreshError::SignIn => {}
+        }
+        tracing::warn!(%err, "stored session rejected while offline, signing in again");
+        loop {
+            let cfg = engine.config();
+            match device_code(ui, &cfg).await {
+                Ok(client) => {
+                    engine.adopt_sign_in(client).await;
+                    ui.ready(data::initials(engine.my_name()));
+                    return true;
+                }
+                Err(err) => {
+                    tracing::error!(%err, "sign-in failed");
+                    ui.login_error(format!("Sign-in failed: {err}"));
+                    if !wait_for_retry(cmds).await {
+                        return false;
+                    }
+                    ui.login_checking();
+                }
+            }
+        }
+    }
+}
+
+async fn sign_in(ui: &UiHandle) -> anyhow::Result<SignedIn> {
     let paths = session::Paths::new()?;
     let mut cfg = paths.load_config()?;
     let client = match session::stored_session(&cfg)? {
-        Some(sess) => match Client::resume(sess).await {
-            Ok(c) => c,
-            Err(teams_proto::Error::Auth(msg)) => {
-                tracing::warn!(%msg, "stored session rejected, signing in again");
-                device_code(ui, &cfg).await?
+        Some(sess) => {
+            let client = Client::restore(sess)?;
+            match client.sign_in_stored().await {
+                Ok(()) => client,
+                Err(e) => {
+                    let has_cache = cfg.self_mri.is_some() && paths.db_path_for(&cfg).is_file();
+                    match offline_start::on_refresh_error(&e, has_cache) {
+                        offline_start::OnRefreshError::Offline => {
+                            tracing::warn!(err = %e, "Teams unreachable, starting from the saved chats");
+                            return Ok(SignedIn::Offline(saved_engine(ui, &paths, cfg, client)?));
+                        }
+                        offline_start::OnRefreshError::SignIn => {
+                            tracing::warn!(err = %e, "stored session rejected, signing in again");
+                            device_code(ui, &cfg).await?
+                        }
+                        offline_start::OnRefreshError::Fail => return Err(e.into()),
+                    }
+                }
             }
-            Err(e) => return Err(e.into()),
-        },
+        }
         None => device_code(ui, &cfg).await?,
     };
     session::persist(&cfg, &client).await?;
@@ -162,6 +273,31 @@ async fn sign_in(ui: &UiHandle) -> anyhow::Result<Arc<Engine>> {
     cfg.self_mri = Some(me.clone());
     cfg.display_name = Some(my_name.clone());
     paths.save_config(&cfg)?;
+    let store = store::Store::open(&paths.db_path_for(&cfg))?;
+    ui.ready(data::initials(&my_name));
+    Ok(SignedIn::Online(Engine::new(
+        client,
+        store,
+        cfg,
+        ui.clone(),
+        me,
+        my_name,
+    )))
+}
+
+/// The engine of an offline start: who the user is comes from the config, the chats from the
+/// account's database. `client` has the stored session, not refreshed yet.
+fn saved_engine(
+    ui: &UiHandle,
+    paths: &session::Paths,
+    cfg: session::Config,
+    client: Client,
+) -> anyhow::Result<Arc<Engine>> {
+    let me = cfg
+        .self_mri
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("no saved account"))?;
+    let my_name = cfg.display_name.clone().unwrap_or_else(|| "Me".into());
     let store = store::Store::open(&paths.db_path_for(&cfg))?;
     ui.ready(data::initials(&my_name));
     Ok(Engine::new(client, store, cfg, ui.clone(), me, my_name))
