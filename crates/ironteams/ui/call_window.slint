@@ -368,7 +368,7 @@ component ShareMenu inherits Rectangle {
 component Tile inherits Rectangle {
     in property <CallPerson> p;
     // The avatar's size, at most (the speaker view's large tile has a bigger one).
-    in property <length> avatar-size: 72px;
+    in property <length> avatar-size: 96px;
     // Our camera in our tile, the other side's video in theirs: their meeting gallery slot, else
     // the call's one remote picture.
     property <bool> self-view: root.p.me && CallStore.camera && CallStore.has-self-view;
@@ -388,43 +388,52 @@ component Tile inherits Rectangle {
         accessible-role: image;
         accessible-label: root.self-view ? "Your video" : root.p.name + "'s video";
     }
-    // Speaking: the accent outline, as Teams draws it; a raised hand also shows it.
-    border-width: root.p.speaking || root.p.hand ? 2px : 0px;
-    border-color: Theme.accent;
     if !root.self-view && !root.gallery && !root.remote: Avatar {
         initials: root.p.initials;
         img: root.p.photo;
         has-img: root.p.has-photo;
-        size: min(root.avatar-size, root.height / 2);
+        size: min(root.avatar-size, root.height * 0.5);
         x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2 - 10px;
+        y: (root.height - self.height) / 2;
     }
-    HorizontalLayout {
-        x: 10px;
-        y: root.height - 30px;
-        height: 22px;
-        width: root.width - 20px;
-        spacing: 6px;
-        if root.p.muted: Icon {
-            source: @image-url("icons/mic-off.svg");
-            width: 16px;
-            height: 16px;
-            y: 3px;
-        }
-        Text {
-            text: CallStore.tagged-name(root.p) + (root.p.me ? " (You)" : "");
-            color: Theme.fg;
-            font-size: 12px * Theme.font-scale;
-            overflow: elide;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-        }
-        if root.p.hand: Icon {
-            source: @image-url("icons/hand.svg");
-            tint: Theme.accent;
-            width: 16px;
-            height: 16px;
-            y: 3px;
+    // The name in a dark pill at the bottom left: the name, then muted, then the raised hand.
+    Rectangle {
+        x: 8px;
+        y: root.height - self.height - 8px;
+        height: 24px;
+        width: max(0px, min(row.preferred-width, root.width - 16px));
+        border-radius: 4px;
+        background: #00000099;
+        row := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 6px;
+            Text {
+                text: CallStore.tagged-name(root.p) + (root.p.me ? " (You)" : "");
+                color: Theme.fg;
+                font-size: 12px * Theme.font-scale;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if root.p.muted: Rectangle {
+                width: 16px;
+                Icon {
+                    source: @image-url("icons/mic-off.svg");
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+            if root.p.hand: Rectangle {
+                width: 16px;
+                Icon {
+                    source: @image-url("icons/hand.svg");
+                    tint: Theme.accent;
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
         }
     }
     // Their live reaction, in the corner while it floats.
@@ -439,6 +448,15 @@ component Tile inherits Rectangle {
         vertical-alignment: center;
         accessible-role: text;
         accessible-label: root.p.name + "'s reaction: " + root.p.reaction-name;
+    }
+    // Speaking: the accent outline, as Teams draws it; a raised hand also shows it. A last child,
+    // so it draws over the video too.
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: root.border-radius;
+        border-width: root.p.speaking || root.p.hand ? 2px : 0px;
+        border-color: Theme.accent;
     }
 }
 
@@ -587,14 +605,21 @@ component SharingBanner inherits Rectangle {
 // What fills the middle: the lobby, connecting, the participants' tiles, or a shared screen.
 component Stage inherits Rectangle {
     property <bool> content: CallStore.view-mode == "content" && CallStore.content-shared();
-    property <int> count: max(1, min(CallStore.in-call, 12));
+    property <int> count: max(1, min(CallStore.in-call, 16));
     property <int> cols: count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
     property <int> rows: Math.ceil(count / cols);
     property <length> gap: 8px;
-    property <length> tile-w: (root.width - 32px - (cols - 1) * gap) / cols;
     // The room under the "You're sharing your screen" banner while we present.
     property <length> top: CallStore.sharing ? 60px : 0px;
-    property <length> tile-h: min(tile-w * 9 / 16, (root.height - top - 32px - (rows - 1) * gap) / rows);
+    // Tiles are always 16:9: as wide as the width allows, shrunk when the height is the limit.
+    property <length> tile-h: max(0px, min(
+        (root.width - 32px - (cols - 1) * gap) / cols * 9 / 16,
+        (root.height - top - 32px - (rows - 1) * gap) / rows));
+    property <length> tile-w: tile-h * 16 / 9;
+    property <length> grid-h: rows * tile-h + (rows - 1) * gap;
+    // How many tiles the last row has, so it is centred like the others.
+    property <int> last-n: count - (rows - 1) * cols;
+    pure function row-w(n: int) -> length { return n * tile-w + (n - 1) * gap; }
     // The speaker view: the others in a strip under the speaker's tile, at most eight.
     property <int> strip-n: max(0, min(CallStore.speaker-people.length - 1, 8));
     property <length> strip-h: min(120px, root.height / 4);
@@ -646,8 +671,10 @@ component Stage inherits Rectangle {
                 p: p;
                 width: root.tile-w;
                 height: root.tile-h;
-                x: 16px + Math.mod(i, root.cols) * (root.tile-w + root.gap);
-                y: root.top + (root.height - root.top - root.rows * root.tile-h - (root.rows - 1) * root.gap) / 2
+                // Each row is centred: a full one has `cols` tiles, the last one what remains.
+                x: (root.width - root.row-w(Math.floor(i / root.cols) == root.rows - 1 ? root.last-n : root.cols)) / 2
+                    + Math.mod(i, root.cols) * (root.tile-w + root.gap);
+                y: root.top + (root.height - root.top - root.grid-h) / 2
                     + Math.floor(i / root.cols) * (root.tile-h + root.gap);
             }
         }

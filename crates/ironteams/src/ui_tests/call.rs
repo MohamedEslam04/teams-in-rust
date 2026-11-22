@@ -883,6 +883,54 @@ fn the_speaker_view_shows_the_latest_speaker_large_and_the_others_below() {
     assert!(!c.shows("Active speaker: Bo Ström"));
 }
 
+/// The gallery with fifteen people: four columns of 16:9 tiles, and the last row (three tiles)
+/// centred under the others, as in Teams.
+#[test]
+fn the_gallery_keeps_tiles_16_by_9_and_centres_the_last_row() {
+    let c = CallHarness::new();
+    c.connected();
+    let names: Vec<String> = (1..=15).map(|n| format!("Person {n:02}")).collect();
+    c.fake.emit(Event::Roster(
+        names
+            .iter()
+            .map(|n| Person {
+                name: n.clone(),
+                mri: format!("8:orgid:example-{}", n.replace(' ', "-")),
+                ..Default::default()
+            })
+            .collect(),
+    ));
+    // Each tile's name sits at the same place inside it, so its position stands for the tile's.
+    let mut at: Vec<(f32, f32)> = names
+        .iter()
+        .map(|n| {
+            let p = c.with_role(n, AccessibleRole::Text).absolute_position();
+            (p.x, p.y)
+        })
+        .collect();
+    at.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.total_cmp(&b.0)));
+    let rows: Vec<&[(f32, f32)]> = at.chunk_by(|a, b| (a.1 - b.1).abs() < 1.).collect();
+    assert_eq!(
+        rows.iter().map(|r| r.len()).collect::<Vec<_>>(),
+        [4, 4, 4, 3],
+        "four columns, the last row short"
+    );
+    let gap = 8.;
+    let w = rows[0][1].0 - rows[0][0].0 - gap;
+    let h = rows[1][0].1 - rows[0][0].1 - gap;
+    assert!(w > 0. && h > 0., "tiles have a size: {w} x {h}");
+    assert!(
+        (w / h - 16. / 9.).abs() < 0.02,
+        "tiles are 16:9, got {w} x {h}"
+    );
+    // The last row starts half a tile (and half a gap) in from the first row's start.
+    let shift = rows[3][0].0 - rows[0][0].0;
+    assert!(
+        (shift - (w + gap) / 2.).abs() < 1.,
+        "the last row is centred: shifted {shift}, tile {w}"
+    );
+}
+
 #[test]
 fn photos_replace_the_initials_of_the_people_who_have_one() {
     use slint::Model;
