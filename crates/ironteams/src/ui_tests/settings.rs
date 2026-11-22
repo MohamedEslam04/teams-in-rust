@@ -1142,6 +1142,8 @@ fn sound_switches_and_meeting_chats_build_the_teams_write() {
     let ui = window(Home::new("sounds"));
     let app = &ui.app;
     open_page(app, "notifications");
+    // The page's sound and preview rows sit below the notification style and the banner rows.
+    tall_window(app);
     let mut d = server(PrivacySettings::default());
     d.notifications = Some(NotificationSettings::from_properties(&serde_json::json!({
         "userPersonalSettings": serde_json::json!({

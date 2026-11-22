@@ -24,7 +24,7 @@ pub fn work_area(monitor: Rect, scale: f64, os: super::select::Os) -> Rect {
     use super::select::Os;
     let (top, bottom) = match os {
         Os::Windows => (0.0, 48.0),
-        Os::MacOs => (25.0, 70.0),
+        Os::Mac => (25.0, 70.0),
         Os::Linux | Os::Other => (0.0, 44.0),
     };
     let (top, bottom) = (
@@ -128,7 +128,7 @@ mod tests {
             }
         );
         assert_eq!(work_area(FULL_HD, 2.0, Os::Linux).h, 1080 - 88);
-        let mac = work_area(FULL_HD, 1.0, Os::MacOs);
+        let mac = work_area(FULL_HD, 1.0, Os::Mac);
         assert_eq!((mac.y, mac.h), (25, 1080 - 25 - 70));
         // A tiny monitor never underflows.
         let tiny = Rect {
@@ -137,6 +137,6 @@ mod tests {
             w: 100,
             h: 20,
         };
-        assert_eq!(work_area(tiny, 1.0, Os::MacOs).h, 0);
+        assert_eq!(work_area(tiny, 1.0, Os::Mac).h, 0);
     }
 }

@@ -209,8 +209,8 @@ impl State {
                 return;
             };
             // wl_shm ARGB8888 is premultiplied, little endian: B, G, R, A in memory.
-            for (px, out) in pixels.iter().zip(canvas.chunks_exact_mut(4)) {
-                out.copy_from_slice(&[px.blue, px.green, px.red, px.alpha]);
+            for (px, out) in pixels.iter().zip(canvas.as_chunks_mut::<4>().0) {
+                *out = [px.blue, px.green, px.red, px.alpha];
             }
             let surface = layer.wl_surface();
             surface.set_buffer_scale(scale);

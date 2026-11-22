@@ -8,7 +8,7 @@ use super::protocol::Backend;
 pub enum Os {
     Linux,
     Windows,
-    MacOs,
+    Mac,
     Other,
 }
 
@@ -19,7 +19,7 @@ impl Os {
         } else if cfg!(windows) {
             Os::Windows
         } else if cfg!(target_os = "macos") {
-            Os::MacOs
+            Os::Mac
         } else {
             Os::Other
         }
@@ -72,7 +72,7 @@ pub fn choose(os: Os, caps: &Caps, force: Option<Force>) -> Option<Backend> {
         (Os::Linux, None) if caps.wayland && caps.layer_shell => Some(Backend::LayerShell),
         (Os::Linux, None) if caps.x11 => Some(Backend::X11),
         (Os::Linux, _) => None,
-        (Os::Windows | Os::MacOs, _) => Some(Backend::Native),
+        (Os::Windows | Os::Mac, _) => Some(Backend::Native),
         (Os::Other, _) => None,
     }
 }
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn windows_and_macos_use_a_native_window() {
-        for os in [Os::Windows, Os::MacOs] {
+        for os in [Os::Windows, Os::Mac] {
             assert_eq!(choose(os, &Caps::default(), None), Some(Backend::Native));
         }
         assert_eq!(choose(Os::Other, &KDE_WAYLAND, None), None);
