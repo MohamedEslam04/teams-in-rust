@@ -165,6 +165,8 @@ impl State {
         if let Some(layer) = &self.layer {
             if (w, h) != self.size || !self.configured {
                 layer.set_size(w, h);
+                // Drawn again once the compositor has configured the new size.
+                self.configured = false;
             }
             // Clicks on the shadow around the cards go to what is under it.
             if let Ok(region) = Region::new(&self.compositor) {
