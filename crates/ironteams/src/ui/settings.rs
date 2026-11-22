@@ -13,7 +13,7 @@
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, open-files, perm, switch-account, switch-org, add-account, remove-account,
 //! refresh-license, restart, sign-out, view-account, report-problem, check-updates, check-now,
-//! release-notes, status, work-location, status-note, banner-photo, banner-actions, notify-sound,
+//! release-notes, status, work-location, status-note, notification-style, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
 //! focus-duration, keyword-add, keyword-remove, open-chat-at, link-previews, photo-change,
 //! photo-remove, check-updates-menu, auto-update, beta-updates, restart-update.
@@ -143,11 +143,28 @@ impl SettingsEnv {
             hooks: Hooks {
                 autostart: Autostart::desktop(None),
                 test_notification: Box::new(|| {
-                    let _ = notify_rust::Notification::new()
-                        .appname("IronTeams")
-                        .summary("IronTeams")
-                        .body("This is a test notification.")
-                        .show();
+                    // A Teams card when the cards are on, like the notifications it stands for.
+                    std::thread::spawn(|| {
+                        use crate::desktop_cards::{client, protocol};
+                        let cards = crate::backend::quiet::load_prefs().notification_style
+                            == appearance::NotificationStyle::Cards;
+                        let card = protocol::Card {
+                            id: client::next_id(),
+                            title: "IronTeams".into(),
+                            text: "This is a test notification.".into(),
+                            initials: "IT".into(),
+                            color: 0x5b5fc7,
+                            ..protocol::Card::default()
+                        };
+                        if cards && client::show(card, Box::new(|_| {})) {
+                            return;
+                        }
+                        let _ = notify_rust::Notification::new()
+                            .appname("IronTeams")
+                            .summary("IronTeams")
+                            .body("This is a test notification.")
+                            .show();
+                    });
                 }),
                 open_url: Box::new(|u| {
                     let _ = crate::external::open(u);
@@ -560,6 +577,10 @@ fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_auto_update(gp.auto_update);
     g.set_beta_updates(gp.beta_updates);
     g.set_banner_photo(gp.banner_photo);
+    g.set_notification_style(s(match gp.notification_style {
+        appearance::NotificationStyle::Cards => "cards",
+        appearance::NotificationStyle::System => "system",
+    }));
     g.set_banner_actions(gp.banner_actions);
     g.set_check_spelling(gp.check_spelling);
     if gp.check_spelling {
@@ -1596,6 +1617,16 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_accounts(w, &c);
         }
         // --- Updates (opt-in; local) ---
+        "notification-style" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.notification_style = match arg {
+                "system" => appearance::NotificationStyle::System,
+                _ => appearance::NotificationStyle::Cards,
+            };
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "banner-photo" | "banner-actions" => {
             let mut c = shared.borrow_mut();
             if name == "banner-photo" {

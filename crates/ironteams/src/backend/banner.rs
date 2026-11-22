@@ -6,9 +6,10 @@
 //! without markup the sender is written as "Name: message". Settings › Notifications turns the
 //! photo and the buttons off (`GeneralPrefs::banner_photo`, `banner_actions`).
 //!
-//! Where a message shows is decided by [`route`]: while the IronTeams window is the active one
-//! the message is a card inside the window (`ui::message_toast`), otherwise the desktop
-//! notification below. A server with `inline-reply` (KDE Plasma) gets a "Reply" button that opens
+//! Where a notification shows is decided by [`route`]: while the IronTeams window is the active
+//! one a message is a card inside the window (`ui::message_toast`); otherwise a Teams card on
+//! the desktop (`cards.rs`, `crate::desktop_cards`) when Settings › Notifications › "Notification
+//! style" says so, or the desktop notification below. A server with `inline-reply` (KDE Plasma) gets a "Reply" button that opens
 //! a text field in the notification; what is typed arrives on D-Bus (`banner_reply`) and is sent
 //! to the chat by [`Engine::quick_reply`], the same path the cards use.
 
@@ -20,24 +21,58 @@ use std::sync::Arc;
 /// The placeholder of the quick reply box, on the card and in the notification.
 pub const REPLY_PLACEHOLDER: &str = "Send a quick reply";
 
-/// Where a message that passed the notification rules is shown.
+/// Where a notification that passed the notification rules is shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
-    /// Nowhere: paused, quiet hours, Focus mode, a muted chat.
+    /// Nowhere: paused, quiet hours, Focus mode, a muted chat; a call while the window (and its
+    /// own incoming-call toast) is in front.
     Held,
     /// A card in the IronTeams window, which the user is looking at.
     InApp,
-    /// A desktop notification.
-    Desktop,
+    /// A Teams card on the desktop, drawn by the card host.
+    Card,
+    /// The desktop's notification (freedesktop, Windows toast, macOS).
+    System,
 }
 
-/// One decision (`quiet::should_banner`), then the place: a card while the window is the active
-/// one, a desktop notification otherwise.
-pub fn route(decision: &Decision<'_>, window_active: bool) -> Route {
-    match decision {
-        Decision::Hidden(_) => Route::Held,
-        Decision::Show { .. } if window_active => Route::InApp,
-        Decision::Show { .. } => Route::Desktop,
+/// What raised the notification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Message,
+    /// A calendar reminder or start notice.
+    Calendar,
+    /// An incoming call.
+    Call,
+}
+
+/// What the place depends on besides the notification rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Where {
+    /// The IronTeams window is the active one.
+    pub window_active: bool,
+    /// Settings › Notifications › "Notification style" is "Teams cards".
+    pub cards: bool,
+    /// The desktop's Do Not Disturb is on (KDE: the notification server is inhibited).
+    pub dnd: bool,
+}
+
+/// One decision (`quiet::should_banner`), then the place. A message is a card in the window
+/// while the window is the active one. Calendar notices go to the desktop even then (there is
+/// no in-app card for them). A call while the window is active rings in the window's own toast.
+/// Otherwise a Teams card when the style says so, except under the desktop's Do Not Disturb:
+/// then the system notification, which the desktop keeps quietly in its history; a call still
+/// shows its card, as calls ring through Do Not Disturb.
+pub fn route(decision: &Decision<'_>, source: Source, w: &Where) -> Route {
+    if matches!(decision, Decision::Hidden(_)) {
+        return Route::Held;
+    }
+    match source {
+        Source::Message if w.window_active => Route::InApp,
+        Source::Call if w.window_active => Route::Held,
+        Source::Call if w.cards => Route::Card,
+        _ if w.dnd => Route::System,
+        _ if w.cards => Route::Card,
+        _ => Route::System,
     }
 }
 
@@ -189,7 +224,7 @@ fn caps() -> &'static Caps {
 }
 
 /// The sender's photo as a file the notification server can read (written once per person).
-fn photo_file(mri: &str, bytes: &[u8]) -> Option<PathBuf> {
+pub(super) fn photo_file(mri: &str, bytes: &[u8]) -> Option<PathBuf> {
     let dir = session::Paths::new().ok()?.cache_dir.join("notify");
     std::fs::create_dir_all(&dir).ok()?;
     let name: String = mri
@@ -219,7 +254,7 @@ pub(super) struct Pending {
     pub photo: Option<Vec<u8>>,
 }
 
-fn general_prefs() -> appearance::general::GeneralPrefs {
+pub(super) fn general_prefs() -> appearance::general::GeneralPrefs {
     session::Paths::new()
         .map(|paths| super::settings::Local::load(&paths.config_dir).general)
         .unwrap_or_default()
@@ -447,23 +482,118 @@ mod tests {
         assert!(offer(&no_actions, true).hints.is_empty());
     }
 
+    fn at(window_active: bool, cards: bool, dnd: bool) -> Where {
+        Where {
+            window_active,
+            cards,
+            dnd,
+        }
+    }
+
+    const SHOW: Decision<'static> = Decision::Show { keyword: None };
+
     #[test]
     fn a_message_shows_where_the_user_is_looking() {
-        let show = Decision::Show { keyword: None };
-        assert_eq!(route(&show, true), Route::InApp);
-        assert_eq!(route(&show, false), Route::Desktop);
+        // Window in front: the card inside it, whatever the style or Do Not Disturb.
+        for cards in [true, false] {
+            for dnd in [true, false] {
+                assert_eq!(
+                    route(&SHOW, Source::Message, &at(true, cards, dnd)),
+                    Route::InApp
+                );
+            }
+        }
         let keyword = Decision::Show {
             keyword: Some("urgent"),
         };
-        assert_eq!(route(&keyword, true), Route::InApp);
+        assert_eq!(
+            route(&keyword, Source::Message, &at(true, true, false)),
+            Route::InApp
+        );
+        // Window behind: a Teams card, or the system notification with the System style.
+        assert_eq!(
+            route(&SHOW, Source::Message, &at(false, true, false)),
+            Route::Card
+        );
+        assert_eq!(
+            route(&keyword, Source::Message, &at(false, true, false)),
+            Route::Card
+        );
+        assert_eq!(
+            route(&SHOW, Source::Message, &at(false, false, false)),
+            Route::System
+        );
     }
 
     #[test]
-    fn muted_paused_and_focused_out_messages_show_nowhere() {
+    fn do_not_disturb_sends_messages_and_reminders_to_the_system_but_calls_still_ring() {
+        assert_eq!(
+            route(&SHOW, Source::Message, &at(false, true, true)),
+            Route::System
+        );
+        for active in [true, false] {
+            assert_eq!(
+                route(&SHOW, Source::Calendar, &at(active, true, true)),
+                Route::System
+            );
+        }
+        assert_eq!(
+            route(&SHOW, Source::Call, &at(false, true, true)),
+            Route::Card
+        );
+        assert_eq!(
+            route(&SHOW, Source::Call, &at(false, false, true)),
+            Route::System
+        );
+    }
+
+    #[test]
+    fn calendar_notices_go_to_the_desktop_even_with_the_window_in_front() {
+        for active in [true, false] {
+            assert_eq!(
+                route(&SHOW, Source::Calendar, &at(active, true, false)),
+                Route::Card
+            );
+            assert_eq!(
+                route(&SHOW, Source::Calendar, &at(active, false, false)),
+                Route::System
+            );
+        }
+    }
+
+    #[test]
+    fn a_call_rings_in_the_window_when_it_is_in_front_else_on_the_desktop() {
+        for cards in [true, false] {
+            assert_eq!(
+                route(&SHOW, Source::Call, &at(true, cards, false)),
+                Route::Held
+            );
+        }
+        assert_eq!(
+            route(&SHOW, Source::Call, &at(false, true, false)),
+            Route::Card
+        );
+        assert_eq!(
+            route(&SHOW, Source::Call, &at(false, false, false)),
+            Route::System
+        );
+    }
+
+    #[test]
+    fn muted_paused_and_focused_out_notifications_show_nowhere() {
         use super::super::quiet::Why;
         for why in [Why::Paused, Why::QuietHours, Why::Focus, Why::Routing] {
-            for active in [true, false] {
-                assert_eq!(route(&Decision::Hidden(why), active), Route::Held);
+            for source in [Source::Message, Source::Calendar, Source::Call] {
+                for active in [true, false] {
+                    for cards in [true, false] {
+                        for dnd in [true, false] {
+                            assert_eq!(
+                                route(&Decision::Hidden(why), source, &at(active, cards, dnd)),
+                                Route::Held
+                            );
+                        }
+                    }
+                }
             }
         }
     }

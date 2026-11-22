@@ -1179,6 +1179,11 @@ impl Engine {
     fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64) {
         let engine = self.clone();
         let rt = tokio::runtime::Handle::current();
+        // A Teams card on the desktop when the cards are on (`cards.rs`, with its own fallback).
+        let body = reminders::reminder_body(&r, now);
+        if self.reminder_card(&r.id, r.start_ms, &r.subject, &body, r.join_url.as_deref()) {
+            return;
+        }
         tokio::task::spawn_blocking(move || {
             let mut n = notify_rust::Notification::new();
             n.appname("IronTeams")
@@ -1257,6 +1262,22 @@ impl Engine {
             s.fired.insert((id.clone(), start_ms));
         }
         self.reminder_call(&id, "dismissReminder", None).await
+    }
+
+    /// Snooze for `minutes` (a desktop card's Snooze menu: 5, 10 or 15).
+    pub(super) async fn snooze_reminder_for(
+        &self,
+        id: String,
+        start_ms: i64,
+        minutes: i64,
+    ) -> anyhow::Result<()> {
+        let until = now_ms() + minutes.clamp(1, 24 * 60) * 60_000;
+        self.cal
+            .lock()
+            .snoozed
+            .insert((id.clone(), start_ms), until);
+        self.reminder_call(&id, "snoozeReminder", Some(&snooze_body(until)))
+            .await
     }
 }
 

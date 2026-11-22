@@ -1288,6 +1288,28 @@ fn notification_look_switches_start_on_and_save() {
 }
 
 #[test]
+fn notification_style_starts_on_teams_cards_and_saves_the_choice() {
+    let home = Home::new("notification-style");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    assert_eq!(store(app).get_notification_style(), "cards");
+    press(app, "Notification style: System notifications");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::System
+    );
+    assert_eq!(store(app).get_notification_style(), "system");
+    press(app, "Notification style: Teams cards");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::Cards
+    );
+}
+
+#[test]
 fn quiet_hours_and_keyword_alerts_save_to_the_temp_home() {
     let _turn = TIME_FORMAT.lock().unwrap_or_else(|e| e.into_inner());
     let home = Home::new("quiet-keywords");

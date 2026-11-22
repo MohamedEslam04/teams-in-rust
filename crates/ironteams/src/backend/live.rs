@@ -240,8 +240,13 @@ impl Engine {
         let focus = quiet::focus_active(quiet::focus_until(&prefs), now.timestamp_millis());
         let decision =
             quiet::should_banner(&inc, chrono::Local::now().naive_local(), &prefs, focus);
-        // The one decision is made; where it shows depends on the window being the active one.
-        let route = super::banner::route(&decision, self.focused.load(Ordering::Relaxed));
+        // The one decision is made; where it shows depends on the window being the active one
+        // and on the notification style.
+        let route = super::banner::route(
+            &decision,
+            super::banner::Source::Message,
+            &super::cards::here(self.focused.load(Ordering::Relaxed)),
+        );
         let keyword = match decision {
             Decision::Show { keyword } => keyword,
             Decision::Hidden(why) => {
@@ -291,6 +296,7 @@ impl Engine {
         };
         match route {
             super::banner::Route::InApp => self.show_toast(pending),
+            super::banner::Route::Card => self.message_card(pending),
             _ => self.show_banner(pending),
         }
     }
