@@ -131,6 +131,14 @@ pub enum SettingsCmd {
     RefreshLicense,
     /// The date or time format changed: draw the rows that show times again.
     Redraw,
+    /// The Storage page opened: read how much disk each kind of data takes and show it.
+    LoadStorage,
+    /// The media cache limit was written to the config: sweep to the new budget now, then show
+    /// the sizes.
+    ApplyMediaLimit,
+    /// Storage "Delete old update backups": the updater's `backup-*` folders, not the live
+    /// message cache.
+    DeleteUpdateBackups,
 }
 
 /// A permission's label on the App permissions page.

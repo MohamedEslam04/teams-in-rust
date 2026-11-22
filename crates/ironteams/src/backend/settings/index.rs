@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------------------------
 // Find in Settings.
 
-pub const PAGES: [(&str, &str); 12] = [
+pub const PAGES: [(&str, &str); 13] = [
     ("general", "General"),
     ("chats", "Chats and channels"),
     ("accounts", "Accounts and orgs"),
@@ -12,6 +12,7 @@ pub const PAGES: [(&str, &str); 12] = [
     ("devices", "Devices"),
     ("calls", "Calls"),
     ("files", "Files and links"),
+    ("storage", "Storage"),
     ("permissions", "App permissions"),
     ("about", "About"),
 ];
@@ -153,6 +154,26 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "office documents desktop browser",
     ),
     ("files", "Links", "browser url"),
+    (
+        "storage",
+        "Media cache limit",
+        "storage disk space size maximum pictures voice video downloads",
+    ),
+    (
+        "storage",
+        "Clear media cache",
+        "storage disk space free up delete pictures voice video downloads",
+    ),
+    (
+        "storage",
+        "Delete old update backups",
+        "storage disk space free up update backup version",
+    ),
+    (
+        "storage",
+        "Clear all cached data",
+        "storage disk space free up delete messages cache database reset",
+    ),
     (
         "permissions",
         "App permissions",

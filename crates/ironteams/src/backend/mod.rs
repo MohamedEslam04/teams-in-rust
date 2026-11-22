@@ -87,7 +87,6 @@ pub use activity::ActivityCmd;
 #[cfg(test)]
 pub(crate) use activity::{State as ActivityState, row_data as activity_row_data};
 pub use appstore::AppsCmd;
-#[allow(unused_imports)] // The Settings page names it (`Engine::cache_sizes`).
 pub(crate) use cache::CacheSizes;
 #[cfg(test)]
 pub use cal::{
@@ -214,11 +213,9 @@ pub enum Cmd {
     SetEnterSends(bool),
     /// Settings > Storage "Clear media cache": the pictures in memory, the media files on disk
     /// and the stored profile pictures (`cache_ops`).
-    #[allow(dead_code)] // The Settings page sends it.
     ClearMediaCache,
     /// Settings > Storage "Clear all cached data": the media cache and the cached messages,
     /// users and teams; the chat list, drafts, the outbox and saved messages stay.
-    #[allow(dead_code)] // The Settings page sends it.
     ClearAllCache,
     /// The composer text changed.
     DraftEdited(String),
@@ -917,8 +914,8 @@ impl Engine {
                 self.cfg.lock().unwrap().enter_sends = on;
                 self.save_cfg();
             }
-            Cmd::ClearMediaCache => self.clear_media_cache().await?,
-            Cmd::ClearAllCache => self.clear_all_cache().await?,
+            Cmd::ClearMediaCache => self.clear_media_cache_cmd().await?,
+            Cmd::ClearAllCache => self.clear_all_cache_cmd().await?,
             Cmd::EmojiUsed(ch) => {
                 {
                     let mut cfg = self.cfg.lock().unwrap();

@@ -190,6 +190,33 @@ pub(super) fn remove_account_cache(paths: &session::Paths, removed: &session::Ac
     }
 }
 
+/// The Storage page's name for a media cache limit in MB (`None`: no limit).
+pub(super) fn limit_slug(mb: Option<u32>) -> String {
+    mb.map_or_else(|| "none".to_string(), |mb| mb.to_string())
+}
+
+/// The limit a Storage choice names: `Some(None)` is "No limit", `None` is not a limit at all.
+pub(super) fn limit_from_slug(slug: &str) -> Option<Option<u32>> {
+    match slug {
+        "none" => Some(None),
+        mb => mb.parse().ok().map(Some),
+    }
+}
+
+/// The Storage page opened: shows the saved limit and asks the engine for the sizes.
+pub(super) fn open_storage(w: &AppWindow, shared: &Shared) {
+    let c = shared.borrow();
+    let g = w.global::<SettingsStore>();
+    g.set_confirm_clear_all(false);
+    g.set_storage_loaded(false);
+    if let Some(cfg) = config(&c) {
+        g.set_media_cache_limit(s(limit_slug(cfg.media_cache_mb)));
+    }
+    if let Some(tx) = &c.tx {
+        let _ = tx.send(Cmd::Settings(SettingsCmd::LoadStorage));
+    }
+}
+
 pub(super) fn license_done(w: &AppWindow, r: Result<(), String>) {
     match r {
         Ok(()) => {

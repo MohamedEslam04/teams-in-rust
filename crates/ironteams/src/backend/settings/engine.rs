@@ -22,6 +22,12 @@ impl Engine {
                 #[cfg(feature = "calls")]
                 self.push_calls_page();
             }
+            SettingsCmd::LoadStorage => self.push_storage().await,
+            SettingsCmd::ApplyMediaLimit => {
+                self.sweep_cache().await;
+                self.push_storage().await;
+            }
+            SettingsCmd::DeleteUpdateBackups => self.delete_update_backups().await?,
             SettingsCmd::RefreshLicense => {
                 let r = self.refresh_license().await.map_err(|e| e.to_string());
                 self.ui.settings_license(r);

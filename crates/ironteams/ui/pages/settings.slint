@@ -8,7 +8,7 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
 import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
-import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
+import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage, StoragePage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
@@ -110,6 +110,7 @@ export component SettingsPage inherits Rectangle {
                         {key: "devices", label: @tr("Devices"), icon: @image-url("../icons/video.svg")},
                         {key: "calls", label: @tr("Calls"), icon: @image-url("../icons/call-direct.svg")},
                         {key: "files", label: @tr("Files and links"), icon: @image-url("../icons/file.svg")},
+                        {key: "storage", label: @tr("Storage"), icon: @image-url("../icons/folder.svg")},
                         {key: "permissions", label: @tr("App permissions"), icon: @image-url("../icons/shortcut.svg")},
                     ]: SNavItem {
                         label: p.label;
@@ -160,7 +161,7 @@ export component SettingsPage inherits Rectangle {
                         }
                         if SettingsStore.query == "": Text {
                             horizontal-alignment: Theme.start-align;
-                            text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
+                            text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
                             color: Theme.fg;
                             font-size: Theme.font-title;
                             font-weight: 700;
@@ -181,6 +182,7 @@ export component SettingsPage inherits Rectangle {
                         if SettingsStore.query == "" && SettingsStore.page == "devices": DevicesPage { }
                         if SettingsStore.query == "" && SettingsStore.page == "calls": CallsSettingsPage { }
                         if SettingsStore.query == "" && SettingsStore.page == "files": FilesPage { }
+                        if SettingsStore.query == "" && SettingsStore.page == "storage": StoragePage { }
                         if SettingsStore.query == "" && SettingsStore.page == "permissions": PermissionsPage { }
                         if SettingsStore.query == "" && SettingsStore.page == "about": AboutPage { }
                     }

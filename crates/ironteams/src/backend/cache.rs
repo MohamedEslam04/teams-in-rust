@@ -133,6 +133,28 @@ pub(super) fn clean_temp(cache_dir: &Path, older_than: Duration) -> u64 {
     freed
 }
 
+/// Deletes the updater's `backup-*` folders in the data dir (never the live message cache, which
+/// has no such prefix). Returns the bytes freed.
+pub(super) fn clear_backups(data_dir: &Path) -> u64 {
+    let mut freed = 0;
+    for entry in fs::read_dir(data_dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        let is_backup = entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(BACKUP_PREFIX);
+        if !is_backup || !fs::symlink_metadata(&path).is_ok_and(|m| m.is_dir()) {
+            continue;
+        }
+        let size = dir_size(&path);
+        match fs::remove_dir_all(&path) {
+            Ok(()) => freed += size,
+            Err(err) => tracing::warn!(%err, "update backup not deleted"),
+        }
+    }
+    freed
+}
+
 /// Deletes the whole media cache. Returns the bytes freed.
 pub(super) fn clear_media(cache_dir: &Path) -> u64 {
     let dir = media_dir(cache_dir);
@@ -378,6 +400,22 @@ mod tests {
                 backups_bytes: 500,
             }
         );
+    }
+
+    #[test]
+    fn clearing_the_backups_leaves_the_live_database_and_everything_else() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path();
+        let live = put(data, "cache.sqlite", 50, DAY);
+        let other = put(data, "cache-work.sqlite", 50, DAY);
+        let marker = put(data, "last-version", 5, DAY);
+        put(data, "backup-1.0.0/data/cache.sqlite", 400, DAY);
+        put(data, "backup-1.1.0/config/config.json", 100, DAY);
+        assert_eq!(clear_backups(data), 500);
+        assert!(!data.join("backup-1.0.0").exists());
+        assert!(!data.join("backup-1.1.0").exists());
+        assert!(live.exists() && other.exists() && marker.exists());
+        assert_eq!(clear_backups(data), 0, "nothing left to delete");
     }
 
     #[test]

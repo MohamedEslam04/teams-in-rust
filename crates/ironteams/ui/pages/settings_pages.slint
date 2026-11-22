@@ -764,6 +764,68 @@ export component FilesPage inherits VerticalLayout {
     }
 }
 
+// One line of the disk space list: what it is and how big it is. Read out as "<label> size".
+component StorageRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> bold: false;
+    height: 28px;
+    accessible-role: text;
+    accessible-label: root.label + " " + @tr("size");
+    property <string> shown: SettingsStore.storage-loaded ? root.value : @tr("Calculating…");
+    accessible-value: root.shown;
+    HorizontalLayout {
+        spacing: 12px;
+        Text { text: root.label; color: Theme.fg; font-size: Theme.font-body; font-weight: root.bold ? 600 : 400; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; horizontal-alignment: Theme.start-align; }
+        Text { text: root.shown; color: Theme.fg-muted; font-size: Theme.font-body; font-weight: root.bold ? 600 : 400; vertical-alignment: center; }
+    }
+}
+
+export component StoragePage inherits VerticalLayout {
+    alignment: start;
+    SSection {
+        title: @tr("Disk space");
+        hint: @tr("What IronTeams keeps on this computer.");
+        StorageRow { label: @tr("Messages database"); value: SettingsStore.storage-db; }
+        StorageRow { label: @tr("Media (pictures, voice, video)"); value: SettingsStore.storage-media; }
+        StorageRow { label: @tr("Temporary files"); value: SettingsStore.storage-temp; }
+        StorageRow { label: @tr("Update backups"); value: SettingsStore.storage-backups; }
+        StorageRow { label: @tr("Total"); value: SettingsStore.storage-total; bold: true; }
+    }
+    SSection {
+        title: @tr("Media cache");
+        hint: @tr("Pictures and media download again when needed. Messages stay.");
+        SChoiceRow {
+            label: @tr("Media cache limit");
+            hint: @tr("When the media cache grows past this, the oldest files are deleted.");
+            options: [{v: "250", l: @tr("250 MB")}, {v: "500", l: @tr("500 MB (default)")}, {v: "1024", l: @tr("1 GB")}, {v: "2048", l: @tr("2 GB")}, {v: "none", l: @tr("No limit")}];
+            value: SettingsStore.media-cache-limit;
+            picked(v) => { SettingsStore.media-cache-limit = v; SettingsStore.command("media-cache-limit", v); }
+        }
+        Button { variant: ButtonVariant.settings; label: @tr("Clear media cache"); clicked => { SettingsStore.command("clear-media-cache", ""); } }
+    }
+    SSection {
+        title: @tr("Update backups");
+        hint: @tr("Before a new version starts, IronTeams keeps a copy of your saved chats and settings from the version before. Deleting the copies frees space. Your current chats are not touched.");
+        Button { variant: ButtonVariant.settings; label: @tr("Delete old update backups"); clicked => { SettingsStore.command("delete-update-backups", ""); } }
+    }
+    SSection {
+        title: @tr("All cached data");
+        hint: @tr("Removes saved messages and media from this computer; they download again. Drafts, unsent messages, saved items and favourites stay.");
+        if !SettingsStore.confirm-clear-all: Button { variant: ButtonVariant.settings; label: @tr("Clear all cached data"); danger: true; clicked => { SettingsStore.confirm-clear-all = true; } }
+        if SettingsStore.confirm-clear-all: VerticalLayout {
+            spacing: 6px;
+            Para { text: @tr("Clear all saved messages and media from this computer? They download again when needed."); }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                Button { variant: ButtonVariant.settings; label: @tr("Cancel clearing"); clicked => { SettingsStore.confirm-clear-all = false; } }
+                Button { variant: ButtonVariant.settings; label: @tr("Yes, clear all cached data"); danger: true; clicked => { SettingsStore.confirm-clear-all = false; SettingsStore.command("clear-all-cache", ""); } }
+            }
+        }
+    }
+}
+
 export component PermissionsPage inherits VerticalLayout {
     alignment: start;
     SSection {
