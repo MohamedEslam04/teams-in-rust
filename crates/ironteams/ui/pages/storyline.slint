@@ -1,0 +1,176 @@
+// The Storyline tab of a 1:1 chat (and of the self chat), as in Teams: the person's card (photo,
+// name, Followers / Following / Posts) and their newest Viva Engage posts. Filled by
+// `backend/storyline.rs`. Read only: posting to a storyline is blocked (plan T2.9), so "Share
+// thoughts…" and the post types are drawn disabled and say why.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Avatar } from "../atoms/widgets.slint";
+import { EPost, PostCard } from "engage.slint";
+import { SkeletonList } from "../tokens/motion.slint";
+
+export global StorylineStore {
+    in property <string> name;
+    in property <string> initials;
+    in property <color> color;
+    in property <image> photo;
+    in property <bool> has-photo;
+    // -1 while unknown.
+    in property <int> followers: -1;
+    in property <int> following: -1;
+    in property <int> posts-count: -1;
+    in property <[EPost]> posts;
+    in property <bool> loading;
+    // Why the counts and posts are missing ("" when they are not).
+    in property <string> note;
+}
+
+// A write control that is shown but cannot be used; resting on it says why.
+component Unavailable inherits Rectangle {
+    in property <string> label;
+    in property <length> min-w: 64px;
+    property <string> why: @tr("Posting to Storyline isn't available yet");
+    height: 32px;
+    min-width: root.min-w;
+    preferred-width: lbl.preferred-width + 24px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+    opacity: 0.6;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.why;
+    accessible-enabled: false;
+    lbl := Text {
+        x: 12px;
+        width: parent.width - 24px;
+        text: root.label;
+        color: Theme.fg-muted;
+        font-size: 13px * Theme.font-scale;
+        horizontal-alignment: Theme.start-align;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+    t := TouchArea { mouse-cursor: not-allowed; }
+    // Above the control: the card above was drawn first, so this covers it.
+    if t.has-hover: Rectangle {
+        x: 0px;
+        y: -self.height - 4px;
+        width: tip.preferred-width + 16px;
+        height: tip.preferred-height + 10px;
+        border-radius: 4px;
+        background: Theme.sidebar;
+        border-width: 1px;
+        border-color: Theme.border;
+        tip := Text { text: root.why; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; horizontal-alignment: center; accessible-role: none; }
+    }
+}
+
+component Count inherits Text {
+    in property <int> n;
+    in property <string> what;
+    text: (root.n < 0 ? "–" : root.n) + " " + root.what;
+    color: Theme.fg-muted;
+    font-size: 13px * Theme.font-scale;
+    overflow: elide;
+    accessible-role: text;
+    accessible-label: root.what + ": " + (root.n < 0 ? @tr("unknown") : root.n);
+}
+
+export component StorylineView inherits Rectangle {
+    background: Theme.main;
+    accessible-role: groupbox;
+    accessible-label: @tr("Storyline");
+    TouchArea { }
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        // The person's card.
+        Rectangle {
+            height: card.preferred-height;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            card := HorizontalLayout {
+                padding: 16px;
+                spacing: 16px;
+                Avatar {
+                    initials: StorylineStore.initials;
+                    tone: StorylineStore.color;
+                    img: StorylineStore.photo;
+                    has-img: StorylineStore.has-photo;
+                    size: 64px;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    Text {
+                        text: StorylineStore.name;
+                        color: Theme.fg;
+                        font-size: 18px * Theme.font-scale;
+                        font-weight: 700;
+                        overflow: elide;
+                        horizontal-alignment: Theme.start-align;
+                    }
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: start;
+                        Count { n: StorylineStore.followers; what: @tr("Followers"); }
+                        Count { n: StorylineStore.following; what: @tr("Following"); }
+                        Count { n: StorylineStore.posts-count; what: @tr("Posts"); }
+                    }
+                }
+            }
+        }
+        // The write controls, disabled.
+        Rectangle {
+            height: compose.preferred-height;
+            border-radius: Theme.radius;
+            background: Theme.surface;
+            compose := VerticalLayout {
+                padding: 12px;
+                spacing: 10px;
+                Unavailable { label: @tr("Share thoughts…"); min-w: 120px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Unavailable { label: @tr("Discussion"); }
+                    Unavailable { label: @tr("Question"); }
+                    Unavailable { label: @tr("Praise"); }
+                    Unavailable { label: @tr("Poll"); }
+                }
+            }
+        }
+        if StorylineStore.note != "": Text {
+            text: StorylineStore.note;
+            color: Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            wrap: word-wrap;
+            horizontal-alignment: Theme.start-align;
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                alignment: start;
+                if StorylineStore.loading && StorylineStore.posts.length == 0: SkeletonList { count: 3; avatar: 36px; row-height: 88px; label: @tr("Loading posts…"); }
+                if StorylineStore.loading && StorylineStore.posts.length > 0: Text {
+                    text: @tr("Loading posts…");
+                    color: Theme.fg-subtle;
+                    font-size: 13px * Theme.font-scale;
+                }
+                if StorylineStore.posts.length > 0: Text {
+                    text: @tr("Recent Viva Engage posts by {}", StorylineStore.name);
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    overflow: elide;
+                }
+                if !StorylineStore.loading && StorylineStore.note == "" && StorylineStore.posts.length == 0: Text {
+                    text: @tr("No posts yet.");
+                    color: Theme.fg-subtle;
+                    font-size: 13px * Theme.font-scale;
+                }
+                for p in StorylineStore.posts: PostCard { p: p; }
+            }
+        }
+    }
+}

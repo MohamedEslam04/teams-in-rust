@@ -1,0 +1,430 @@
+import { Theme } from "../tokens/theme.slint";
+import { ReactionItem, FileItem } from "../tokens/types.slint";
+import { Motion } from "../tokens/motion.slint";
+import { ReactionHover } from "reaction_hover.slint";
+
+export component Icon inherits Image {
+    in property <color> tint: Theme.fg-muted;
+    width: 20px;
+    height: 20px;
+    colorize: tint;
+    image-fit: contain;
+}
+
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> tooltip;
+    in property <length> size: 32px;
+    in property <color> tint: Theme.fg-muted;
+    in property <bool> active: false;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: 4px;
+    background: touch.has-hover || active ? Theme.surface-hover : transparent;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.tooltip;
+    accessible-action-default => { root.clicked(); }
+    Icon {
+        source: root.icon;
+        tint: touch.has-hover || root.active ? Theme.accent : root.tint;
+        animate tint { duration: Motion.quick; }
+        // A press nudges the glyph in.
+        transform-scale: touch.pressed ? 0.88 : 1.0;
+        animate transform-scale { duration: Motion.quick; }
+        width: root.size * 0.6;
+        height: root.size * 0.6;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Avatar inherits Rectangle {
+    in property <string> initials;
+    in property <color> tone: Theme.accent-strong;
+    in property <image> img;
+    in property <bool> has-img: false;
+    in property <length> size: 32px;
+    // Teams availability (`Available`, `Busy`, `DoNotDisturb`, `BeRightBack`, `Away`, `Offline`,
+    // their `…Idle` forms); "" draws no dot.
+    in property <string> presence: "";
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: root.has-img ? transparent : root.tone;
+    if !root.has-img: Text {
+        text: root.initials;
+        color: #ffffff;
+        font-size: root.size * 0.38;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if root.has-img: Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: root.size / 2;
+        clip: true;
+        Image {
+            source: root.img;
+            width: root.size;
+            height: root.size;
+            image-fit: cover;
+        }
+    }
+    if root.presence != "": dot := Rectangle {
+        property <string> p: root.presence;
+        width: max(8px, root.size * 0.3);
+        height: self.width;
+        x: root.size - self.width + 1px;
+        y: root.size - self.height + 1px;
+        border-radius: self.width / 2;
+        border-width: 2px;
+        border-color: Theme.surface;
+        // Offline (and an unknown status) is a grey ring, as in Teams.
+        property <bool> ring: !(p == "Available" || p == "AvailableIdle" || p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb" || p == "BeRightBack" || p == "Away");
+        background: (p == "Available" || p == "AvailableIdle") ? Theme.presence-available
+            : (p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb") ? Theme.presence-busy
+            : (p == "BeRightBack" || p == "Away") ? Theme.presence-away
+            : Theme.surface;
+        accessible-role: image;
+        accessible-label: @tr("Presence");
+        accessible-value: root.presence;
+        if dot.ring: Rectangle {
+            x: 2px;
+            y: 2px;
+            width: dot.width - 4px;
+            height: self.width;
+            border-radius: self.width / 2;
+            border-width: max(1px, self.width * 0.2);
+            border-color: Theme.presence-offline;
+        }
+    }
+}
+
+// A round avatar drawing a glyph instead of initials (group and meeting chats).
+export component GlyphAvatar inherits Rectangle {
+    in property <image> icon;
+    in property <color> tone;
+    in property <color> tint;
+    in property <length> size: 32px;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: root.tone;
+    accessible-role: image;
+    Icon { source: root.icon; width: root.size * 0.56; height: root.size * 0.56; tint: root.tint; }
+}
+
+export component Pill inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    border-radius: 13px;
+    border-width: 1px;
+    border-color: active ? Theme.accent : Theme.border;
+    background: active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : transparent);
+    animate background { duration: Motion.quick; }
+    animate border-color { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text { text: root.label; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+    }
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// A collapsible section of the chat list (Quick views, Favorites, Groups…), drawn as Teams does:
+// a chevron that points down while the section is open and right while it is folded, a quieter
+// semibold label, and a hover highlight. The chevron swaps its picture rather than rotating:
+// a rotation on the Icon wrapper was not drawn, so an open section kept pointing right.
+export component SectionHeader inherits Rectangle {
+    in property <string> label;
+    in-out property <bool> expanded: true;
+    height: 32px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-expandable: true;
+    accessible-expanded: root.expanded;
+    accessible-action-default => { Motion.toggled = true; root.expanded = !root.expanded; }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
+        Icon {
+            source: root.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg");
+            tint: touch.has-hover ? Theme.fg : Theme.fg-muted;
+            width: 12px;
+            height: 12px;
+            y: (parent.height - 12px) / 2;
+        }
+        Text {
+            text: root.label;
+            color: touch.has-hover ? Theme.fg : Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { Motion.toggled = true; root.expanded = !root.expanded; } }
+}
+
+export component ReactionChip inherits Rectangle {
+    in property <ReactionItem> r;
+    callback clicked();
+    height: 24px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: r.mine ? Theme.accent : Theme.border;
+    background: r.mine ? #34365c : Theme.surface;
+    animate background { duration: Motion.quick; }
+    // A reaction pops in (fade and grow, 150 ms).
+    property <bool> shown: Theme.reduced-motion;
+    opacity: root.shown ? 1.0 : 0.0;
+    transform-scale: root.shown ? 1.0 : 0.8;
+    animate opacity { duration: Motion.fast; easing: ease-out; }
+    animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    Timer {
+        interval: 16ms;
+        running: !root.shown;
+        triggered => { root.shown = true; }
+    }
+    accessible-role: button;
+    accessible-label: root.r.name + ": " + root.r.names;
+    accessible-action-default => { root.clicked(); }
+    // Which hover card this chip opened (see `ReactionHover`).
+    property <int> token;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        Text { text: root.r.emoji; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+        // As in Teams, the count only shows once more than one person reacted.
+        if root.r.count > 1: count := Text { text: root.r.count; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        // Who reacted opens in a card below the chip (reaction_card.slint).
+        changed has-hover => {
+            if self.has-hover {
+                root.token = ReactionHover.enter(root.r.name, root.r.people, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
+            } else {
+                ReactionHover.leave(root.token);
+            }
+        }
+    }
+    Timer {
+        interval: 250ms;
+        running: touch.has-hover;
+        triggered => { ReactionHover.beat(root.token); }
+    }
+}
+
+// The chip after the reactions: a smiley with a plus, in the chips' pill shape, that opens the
+// reaction picker.
+export component AddReactionChip inherits Rectangle {
+    callback clicked();
+    height: 24px;
+    width: 32px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: @tr("Add reaction");
+    accessible-action-default => { root.clicked(); }
+    Icon {
+        source: @image-url("../icons/emoji-add.svg");
+        tint: touch.has-hover ? Theme.accent : Theme.fg-muted;
+        animate tint { duration: Motion.quick; }
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+component CardMenuRow inherits Rectangle {
+    in property <string> label;
+    callback clicked();
+    height: 32px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Text { x: 10px; width: parent.width - 20px; text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component FileCard inherits Rectangle {
+    in property <FileItem> f;
+    callback open();
+    // The "…" menu: download, copy, share or web (see `MediaCmd::FileCard`).
+    callback action(string);
+    height: 56px;
+    border-radius: 4px;
+    background: ta.has-hover ? Theme.surface-hover : Theme.sidebar;
+    animate background { duration: Motion.quick; }
+    border-width: 1px;
+    border-color: Theme.border;
+    HorizontalLayout {
+        padding: 10px;
+        padding-right: 44px;
+        spacing: 10px;
+        Rectangle {
+            width: 36px;
+            background: #ffffff;
+            border-radius: 2px;
+            Text { text: root.f.ext; color: #141414; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Text { text: root.f.name; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+            Text { text: root.f.detail != "" ? root.f.detail : @tr("Opens in the browser"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        accessible-role: button;
+        accessible-label: "Open " + root.f.name;
+        accessible-action-default => { root.open(); }
+        clicked => { root.open(); }
+    }
+    file-more := IconButton {
+        x: parent.width - 38px;
+        y: (parent.height - 28px) / 2;
+        size: 28px;
+        icon: @image-url("../icons/more.svg");
+        tooltip: @tr("More options for {}", root.f.name);
+        clicked => { file-menu.show(); }
+    }
+    file-menu := PopupWindow {
+        x: parent.width - 200px;
+        // Above the card when there is room (new messages sit at the bottom of the window).
+        y: root.absolute-position.y > 240px ? -((root.f.place != "" ? 5 : 4) * 32px + 12px) : parent.height;
+        width: 200px;
+        height: file-items.preferred-height + 2px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000080;
+            file-items := VerticalLayout {
+                padding: 4px;
+                CardMenuRow { label: @tr("Open"); clicked => { file-menu.close(); root.open(); } }
+                CardMenuRow { label: @tr("Download"); clicked => { file-menu.close(); root.action("download"); } }
+                CardMenuRow { label: @tr("Copy link"); clicked => { file-menu.close(); root.action("copy"); } }
+                CardMenuRow { label: @tr("Share"); clicked => { file-menu.close(); root.action("share"); } }
+                CardMenuRow {
+                    visible: root.f.place != "";
+                    height: root.f.place != "" ? 32px : 0px;
+                    label: @tr("Open in {}", root.f.place);
+                    clicked => { file-menu.close(); root.action("web"); }
+                }
+            }
+        }
+    }
+}
+
+// A Loop component link, drawn as a card: the Loop mark, its title and "Open in Loop".
+export component LoopCardView inherits Rectangle {
+    in property <string> title;
+    in property <string> url;
+    callback open(string);
+    height: 56px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: loop-touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    accessible-role: button;
+    accessible-label: @tr("Open {} in Loop", root.title);
+    accessible-action-default => { root.open(root.url); }
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Rectangle {
+            width: 36px;
+            border-radius: 6px;
+            background: @linear-gradient(135deg, #6b4ce6 0%, #2f8be6 100%);
+            Text { text: "L"; color: #ffffff; font-size: 18px * Theme.font-scale; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Text { text: root.title; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+            Text { text: @tr("Open in Loop"); color: Theme.accent; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+    }
+    loop-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(root.url); }
+    }
+}
+
+// A Teams meeting link in a message, drawn as a compact card: "Meeting link" and a Join button
+// that opens the pre-join screen for it.
+export component MeetLinkCard inherits Rectangle {
+    in property <string> url;
+    callback join(string);
+    height: 56px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.sidebar;
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Rectangle {
+            width: 36px;
+            border-radius: 6px;
+            background: Theme.accent-strong;
+            Icon { source: @image-url("../icons/video.svg"); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: 20px; height: 20px; tint: #ffffff; }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text { text: @tr("Meeting link"); color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+            Text { text: @tr("Teams meeting"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+        Rectangle {
+            width: join-label.preferred-width + 24px;
+            border-radius: 4px;
+            background: join-touch.has-hover ? Theme.accent : Theme.accent-strong;
+            accessible-role: button;
+            accessible-label: @tr("Join meeting");
+            accessible-action-default => { root.join(root.url); }
+            join-label := Text {
+                text: @tr("Join");
+                color: #ffffff;
+                font-size: 13px * Theme.font-scale;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            join-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.join(root.url); }
+            }
+        }
+    }
+}

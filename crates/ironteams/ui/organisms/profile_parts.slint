@@ -1,0 +1,431 @@
+// Pieces shared by the profile card (hover or click) and the full profile window: the row of
+// action icons and the body (quick message, status box, contact, organization). They read the
+// card's person from `PeopleStore` (`card-*`), as Teams shows the same content in both.
+import { Theme } from "../tokens/theme.slint";
+import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { DirectCallStore } from "call_incoming.slint";
+import { SkeletonList } from "../tokens/motion.slint";
+
+// A flat icon button with a hover background and a tooltip below it.
+export component ActionIcon inherits Rectangle {
+    in property <image> icon;
+    in property <string> tip;
+    in property <bool> enabled: true;
+    callback clicked();
+    min-width: 40px;
+    border-radius: 4px;
+    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    animate background { duration: 120ms; }
+    accessible-role: button;
+    accessible-label: root.tip;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    Icon {
+        source: root.icon;
+        tint: !root.enabled ? Theme.fg-subtle : touch.has-hover ? Theme.accent : Theme.fg;
+        width: 20px;
+        height: 20px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if root.enabled { root.clicked(); } }
+    }
+    if touch.has-hover && root.tip != "": Rectangle {
+        y: root.height + 4px;
+        x: (root.width - self.width) / 2;
+        z: 100;
+        width: tip-text.preferred-width + 16px;
+        height: tip-text.preferred-height + 10px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        tip-text := Text {
+            x: 8px;
+            y: 5px;
+            text: root.tip;
+            color: Theme.fg;
+            font-size: 12px * Theme.font-scale;
+        }
+    }
+}
+
+// Chat, organization, video call and audio call. `spread` makes them equal-width across the
+// row (the card); otherwise they sit at fixed width from the start (under the name in the
+// full profile). There is no LinkedIn button: IronTeams has no API for it.
+export component ProfileActions inherits Rectangle {
+    in property <bool> spread: true;
+    callback chat();
+    callback org();
+    callback video();
+    HorizontalLayout {
+        spacing: root.spread ? 0px : 4px;
+        alignment: root.spread ? LayoutAlignment.stretch : LayoutAlignment.start;
+        chat-icon := ActionIcon {
+            icon: @image-url("../icons/chat.svg");
+            tip: @tr("Chat");
+            horizontal-stretch: root.spread ? 1 : 0;
+            preferred-width: 44px;
+            clicked => { root.chat(); }
+        }
+        org-icon := ActionIcon {
+            icon: @image-url("../icons/org-chart.svg");
+            tip: @tr("Organization");
+            horizontal-stretch: root.spread ? 1 : 0;
+            preferred-width: 44px;
+            clicked => { root.org(); }
+        }
+        video-icon := ActionIcon {
+            icon: @image-url("../icons/video.svg");
+            tip: @tr("Video call");
+            horizontal-stretch: root.spread ? 1 : 0;
+            preferred-width: 44px;
+            clicked => { root.video(); }
+        }
+        phone-icon := ActionIcon {
+            icon: @image-url("../icons/call-direct.svg");
+            tip: @tr("Audio call");
+            enabled: DirectCallStore.available;
+            horizontal-stretch: root.spread ? 1 : 0;
+            preferred-width: 44px;
+            clicked => { DirectCallStore.command("dial-person", PeopleStore.card.id); }
+        }
+    }
+}
+
+// A label and a value, for the extra fields under "Show more" and the Profile tab.
+export component InfoRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> link: false;
+    height: max(24px, val.preferred-height + 6px);
+    accessible-role: text;
+    accessible-label: root.label;
+    accessible-value: root.value;
+    HorizontalLayout {
+        spacing: 12px;
+        Text { text: root.label; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 96px; horizontal-stretch: 0; }
+        val := Text { text: root.value; color: root.link ? Theme.accent : Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
+    }
+}
+
+// A round icon (the work location) with its tooltip.
+component RoundIcon inherits Rectangle {
+    in property <image> icon;
+    in property <string> tip;
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: image;
+    accessible-label: root.tip;
+    Icon {
+        source: root.icon;
+        tint: Theme.fg;
+        width: 18px;
+        height: 18px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea { }
+    if touch.has-hover && root.tip != "": Rectangle {
+        y: root.height + 4px;
+        x: root.width - self.width;
+        z: 100;
+        width: tip-text.preferred-width + 16px;
+        height: tip-text.preferred-height + 10px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        tip-text := Text {
+            x: 8px;
+            y: 5px;
+            text: root.tip;
+            color: Theme.fg;
+            font-size: 12px * Theme.font-scale;
+        }
+    }
+}
+
+// What the card and the Overview tab show under the header, in this order: a quick message,
+// the status box, the contact block and the organization. The parent scrolls it.
+export component ProfileBody inherits Rectangle {
+    callback quick-message(string);
+    callback copy-email();
+    // "Profile >".
+    callback open-profile();
+    // "Direct reports >" and "Show organization".
+    callback open-org();
+    callback call-number(string);
+    in property <length> pad: 16px;
+    property <bool> more: false;
+    property <bool> is-person: PeopleStore.card.kind == "person";
+    // The number the contact block shows: the work phone, else the mobile.
+    property <string> shown-phone: PeopleStore.card-phone != "" ? PeopleStore.card-phone : PeopleStore.card-mobile;
+    property <bool> has-status: PeopleStore.card-presence-label != "" || PeopleStore.card-free-at != "" || PeopleStore.card-work-hours != "" || PeopleStore.card-work-location-kind != "";
+    property <bool> has-more: PeopleStore.card-job-title != "" || PeopleStore.card-department != "" || PeopleStore.card-location != "" || PeopleStore.card-work != "" || PeopleStore.card-manager != "" || (PeopleStore.card-mobile != "" && PeopleStore.card-phone != "");
+    property <color> dot: (PeopleStore.card-presence == "Available" || PeopleStore.card-presence == "AvailableIdle") ? Theme.presence-available
+        : (PeopleStore.card-presence == "Busy" || PeopleStore.card-presence == "BusyIdle" || PeopleStore.card-presence == "DoNotDisturb") ? Theme.presence-busy
+        : (PeopleStore.card-presence == "BeRightBack" || PeopleStore.card-presence == "Away") ? Theme.presence-away : Theme.presence-offline;
+    height: lay.preferred-height;
+
+    lay := VerticalLayout {
+        padding: root.pad;
+        spacing: 12px;
+        alignment: start;
+
+        if PeopleStore.card-ooo != "": Rectangle {
+            height: 30px;
+            border-radius: 4px;
+            background: #b4009e40;
+            accessible-role: text;
+            accessible-label: @tr("Out of office");
+            accessible-value: PeopleStore.card-ooo;
+            card-ooo := Text { x: 10px; width: parent.width - 20px; text: PeopleStore.card-ooo; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
+        }
+
+        // The details (email, location, time) are being read.
+        if PeopleStore.card-loading && root.is-person: SkeletonList { count: 3; avatar: 0px; row-height: 30px; label: @tr("Loading details"); }
+
+        if root.is-person && !PeopleStore.card-loading: Rectangle {
+            height: 36px;
+            border-radius: 4px;
+            background: Theme.main;
+            border-width: 1px;
+            border-color: quick.has-focus ? Theme.accent : Theme.border;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 4px;
+                padding-top: 3px;
+                padding-bottom: 3px;
+                spacing: 4px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    quick := TextInput {
+                        width: parent.width;
+                        height: parent.height;
+                        color: Theme.fg;
+                        font-size: 13px * Theme.font-scale;
+                        single-line: true;
+                        vertical-alignment: center;
+                        accessible-role: text-input;
+                        accessible-label: @tr("Send a quick message");
+                        accepted => {
+                            if self.text != "" {
+                                root.quick-message(self.text);
+                                self.text = "";
+                            }
+                        }
+                    }
+                    if quick.text == "": Text { x: 0; text: @tr("Send a quick message"); color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; height: parent.height; }
+                }
+                quick-send := IconButton {
+                    icon: @image-url("../icons/send.svg");
+                    tooltip: @tr("Send");
+                    size: 28px;
+                    clicked => {
+                        if quick.text != "" {
+                            root.quick-message(quick.text);
+                            quick.text = "";
+                        }
+                    }
+                }
+            }
+        }
+
+        if PeopleStore.card-note != "": card-note := Text { text: PeopleStore.card-note; color: Theme.fg; font-size: 12px * Theme.font-scale; font-italic: true; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: self.text; }
+
+        // Status box: presence and when they are free, work hours and location; the time there.
+        if root.is-person && !PeopleStore.card-loading && (root.has-status || PeopleStore.card-time != ""): status-box := Rectangle {
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+            height: status-lay.preferred-height + 2px;
+            status-lay := VerticalLayout {
+                if root.has-status: HorizontalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    Rectangle {
+                        width: 16px;
+                        Rectangle {
+                            y: 2px;
+                            width: 14px;
+                            height: 14px;
+                            border-radius: 7px;
+                            background: root.dot;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        card-presence := Text {
+                            text: PeopleStore.card-presence-label + (PeopleStore.card-free-at != "" ? ((PeopleStore.card-presence-label != "" ? " • " : "") + @tr("Free at {}", PeopleStore.card-free-at)) : "");
+                            color: Theme.fg;
+                            font-size: 13px * Theme.font-scale;
+                            font-weight: 700;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                            accessible-label: @tr("Availability");
+                            accessible-value: self.text;
+                        }
+                        if PeopleStore.card-work-hours != "": card-work-hours := Text {
+                            text: @tr("Work hours: {}", PeopleStore.card-work-hours);
+                            color: Theme.fg-muted;
+                            font-size: 12px * Theme.font-scale;
+                            wrap: word-wrap;
+                        }
+                    }
+                    if PeopleStore.card-work-location-kind != "": location-icon := RoundIcon {
+                        icon: PeopleStore.card-work-location-kind == "office" ? @image-url("../icons/building.svg") : @image-url("../icons/home.svg");
+                        tip: PeopleStore.card-work-location;
+                    }
+                }
+                if root.has-status && PeopleStore.card-time != "": Rectangle { height: 1px; background: Theme.border; }
+                if PeopleStore.card-time != "": HorizontalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    Rectangle {
+                        width: 16px;
+                        Icon { source: @image-url("../icons/clock.svg"); tint: Theme.fg-muted; width: 16px; height: 16px; y: 1px; }
+                    }
+                    card-time := Text {
+                        text: PeopleStore.card-time;
+                        color: Theme.fg;
+                        font-size: 13px * Theme.font-scale;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                        accessible-role: text;
+                        accessible-label: @tr("Local time");
+                        accessible-value: self.text;
+                    }
+                }
+            }
+        }
+
+        // Profile >, the email and phone as links, and the rest under Show more.
+        if root.is-person && !PeopleStore.card-loading: VerticalLayout {
+            spacing: 6px;
+            card-profile-head := Rectangle {
+                height: 26px;
+                accessible-role: button;
+                accessible-label: @tr("Profile");
+                accessible-action-default => { root.open-profile(); }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 2px;
+                    Text { text: @tr("Profile"); color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                    Icon { source: @image-url("../icons/chevron-right.svg"); tint: Theme.fg; width: 18px; height: 18px; y: 4px; }
+                }
+                head-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-profile(); } }
+            }
+            if PeopleStore.card-email != "": card-email := Rectangle {
+                height: 28px;
+                border-radius: 4px;
+                background: email-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Copy email {}", PeopleStore.card-email);
+                HorizontalLayout {
+                    padding-left: 2px;
+                    spacing: 10px;
+                    Rectangle { width: 18px; Icon { source: @image-url("../icons/envelope.svg"); tint: Theme.fg-muted; width: 18px; height: 18px; y: 5px; } }
+                    Text { text: PeopleStore.card-email; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                }
+                email-touch := TouchArea { mouse-cursor: pointer; clicked => { root.copy-email(); } }
+            }
+            if root.shown-phone != "": card-phone := Rectangle {
+                height: 28px;
+                border-radius: 4px;
+                background: phone-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: PeopleStore.card-phone != "" ? @tr("Work phone") : @tr("Mobile");
+                accessible-value: root.shown-phone;
+                HorizontalLayout {
+                    padding-left: 2px;
+                    spacing: 10px;
+                    Rectangle { width: 18px; Icon { source: @image-url("../icons/call-direct.svg"); tint: Theme.fg-muted; width: 18px; height: 18px; y: 5px; } }
+                    Text { text: root.shown-phone; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                }
+                phone-touch := TouchArea { mouse-cursor: pointer; clicked => { root.call-number(root.shown-phone); } }
+            }
+            if root.has-more: show-more := Rectangle {
+                height: 26px;
+                accessible-role: button;
+                accessible-label: root.more ? @tr("Show less") : @tr("Show more");
+                accessible-action-default => { root.more = !root.more; }
+                Text { x: 2px; text: root.more ? @tr("Show less") : @tr("Show more"); color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+                more-touch := TouchArea { mouse-cursor: pointer; clicked => { root.more = !root.more; } }
+            }
+            if root.more && PeopleStore.card-job-title != "": InfoRow { label: @tr("Job title"); value: PeopleStore.card-job-title; }
+            if root.more && PeopleStore.card-department != "": InfoRow { label: @tr("Department"); value: PeopleStore.card-department; }
+            if root.more && PeopleStore.card-work != "": InfoRow { label: @tr("Company"); value: PeopleStore.card-work; }
+            if root.more && PeopleStore.card-location != "": InfoRow { label: @tr("Office"); value: PeopleStore.card-location; }
+            if root.more && PeopleStore.card-mobile != "" && PeopleStore.card-phone != "": InfoRow { label: @tr("Mobile"); value: PeopleStore.card-mobile; }
+            if root.more && PeopleStore.card-manager != "": InfoRow { label: @tr("Manager"); value: PeopleStore.card-manager; }
+        }
+
+        // Organization: the direct reports and who they report to.
+        if root.is-person && !PeopleStore.card-loading && (PeopleStore.card-reports-count > 0 || PeopleStore.card-manager-person.id != ""): VerticalLayout {
+            spacing: 8px;
+            Rectangle { height: 1px; background: Theme.border; }
+            if PeopleStore.card-reports-count > 0: reports-head := Rectangle {
+                height: 26px;
+                accessible-role: button;
+                accessible-label: @tr("Direct reports ({})", "" + PeopleStore.card-reports-count);
+                accessible-action-default => { root.open-org(); }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 2px;
+                    Text { text: @tr("Direct reports ({})", "" + PeopleStore.card-reports-count); color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                    Icon { source: @image-url("../icons/chevron-right.svg"); tint: Theme.fg; width: 18px; height: 18px; y: 4px; }
+                }
+                reports-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-org(); } }
+            }
+            if PeopleStore.card-reports-count > 0: HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                height: 32px;
+                for r in PeopleStore.card-reports: Avatar {
+                    initials: r.initials;
+                    tone: r.color;
+                    img: r.avatar;
+                    has-img: r.has-avatar;
+                    size: 32px;
+                    accessible-role: image;
+                    accessible-label: r.name;
+                }
+            }
+            if PeopleStore.card-manager-person.id != "": HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                height: 28px;
+                accessible-role: text;
+                accessible-label: @tr("Reports to");
+                accessible-value: PeopleStore.card-manager-person.name;
+                Text { text: @tr("Reports to"); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                Avatar {
+                    initials: PeopleStore.card-manager-person.initials;
+                    tone: PeopleStore.card-manager-person.color;
+                    img: PeopleStore.card-manager-person.avatar;
+                    has-img: PeopleStore.card-manager-person.has-avatar;
+                    size: 24px;
+                    y: 2px;
+                }
+                Text { text: PeopleStore.card-manager-person.name; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
+            }
+            show-org := Rectangle {
+                height: 26px;
+                accessible-role: button;
+                accessible-label: @tr("Show organization");
+                accessible-action-default => { root.open-org(); }
+                Text { x: 2px; text: @tr("Show organization"); color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+                org-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-org(); } }
+            }
+        }
+    }
+}

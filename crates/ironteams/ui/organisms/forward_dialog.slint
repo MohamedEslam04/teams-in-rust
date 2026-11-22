@@ -1,0 +1,178 @@
+// Forward dialog: pick recipients among existing chats and channels, add an optional message,
+// see a preview of what is forwarded. The result list and the picked set live in Rust.
+import { Theme } from "../tokens/theme.slint";
+import { Recipient } from "../tokens/types.slint";
+import { Avatar, IconButton } from "../atoms/widgets.slint";
+
+export component ForwardDialog inherits Rectangle {
+    // Search results and the recipients picked so far.
+    in property <[Recipient]> results;
+    in property <[Recipient]> picked;
+    // What is forwarded: one message (author + text) or `count` messages.
+    in property <int> count: 1;
+    in property <string> preview-author;
+    in property <string> preview-text;
+    callback search(string);
+    callback toggle(string);
+    callback send(string);
+    callback cancel();
+
+    width: 460px;
+    height: 520px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000a0;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            height: 28px;
+            Text { text: "Forward"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+            IconButton { icon: @image-url("../icons/close.svg"); size: 28px; clicked => { root.cancel(); } }
+        }
+
+        Text { text: "Add recipients"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
+        Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: recipient-input.has-focus ? Theme.accent : Theme.border;
+            recipient-input := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                single-line: true;
+                vertical-alignment: center;
+                accessible-role: text-input;
+                accessible-placeholder-text: "Search chats and channels";
+                init => { self.focus(); }
+                edited => { root.search(self.text); }
+            }
+            if recipient-input.text == "": Text {
+                x: 10px;
+                text: "Search chats and channels";
+                color: Theme.fg-subtle;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.picked.length > 0: HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            for p in root.picked: Rectangle {
+                height: 24px;
+                width: min(chip-text.preferred-width, 160px) + 26px;
+                border-radius: 12px;
+                background: #34365c;
+                chip-text := Text { x: 10px; width: parent.width - 26px; text: p.title; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                Text { x: parent.width - 16px; text: "×"; color: Theme.fg-muted; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
+                TouchArea { mouse-cursor: pointer; clicked => { root.toggle(p.id); } }
+            }
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                for r in root.results: Rectangle {
+                    height: 40px;
+                    border-radius: 4px;
+                    background: hit.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: checkbox;
+                    accessible-label: r.title;
+                    accessible-checked: r.picked;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 10px;
+                        Avatar { initials: r.initials; tone: r.color; size: 28px; y: 6px; }
+                        Text { text: r.title; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                        Text { text: r.picked ? "✓" : ""; color: Theme.accent; font-size: 15px * Theme.font-scale; vertical-alignment: center; }
+                    }
+                    hit := TouchArea { mouse-cursor: pointer; clicked => { root.toggle(r.id); } }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 56px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            HorizontalLayout {
+                padding: 8px;
+                spacing: 8px;
+                Rectangle { width: 3px; background: Theme.accent; }
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: root.count > 1 ? root.count + " messages" : root.preview-author;
+                        color: Theme.fg-muted;
+                        font-size: 11px * Theme.font-scale;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    if root.count <= 1: Text { text: root.preview-text; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; overflow: elide; }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: note.has-focus ? Theme.accent : Theme.border;
+            note := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                single-line: true;
+                vertical-alignment: center;
+                accessible-role: text-input;
+                accessible-placeholder-text: "Add a message (optional)";
+            }
+            if note.text == "": Text {
+                x: 10px;
+                text: "Add a message (optional)";
+                color: Theme.fg-subtle;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+            }
+        }
+
+        HorizontalLayout {
+            height: 34px;
+            spacing: 8px;
+            alignment: end;
+            Rectangle {
+                width: 80px;
+                border-radius: 4px;
+                background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+                Text { text: "Cancel"; color: Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                cancel-touch := TouchArea { mouse-cursor: pointer; clicked => { root.cancel(); } }
+            }
+            Rectangle {
+                width: 90px;
+                border-radius: 4px;
+                opacity: root.picked.length > 0 ? 1.0 : 0.5;
+                background: Theme.accent-strong;
+                accessible-role: button;
+                accessible-label: "Forward message";
+                Text { text: "Forward"; color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                send-touch := TouchArea {
+                    enabled: root.picked.length > 0;
+                    mouse-cursor: pointer;
+                    clicked => { root.send(note.text); }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,119 @@
+// The composer's GIF picker: a search box (trending when empty) and a grid of previews from
+// Teams' Giphy extension, and a Stickers tab with Teams' stickers (popular ones when the search
+// is empty). Rust fills `GifStore`; picking sends the GIF or sticker to the open chat.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+
+export struct GifItem { title: string, preview: image, has-preview: bool }
+
+export global GifStore {
+    in property <[GifItem]> items;
+    in property <string> status;
+    // "gif" or "sticker": what the grid holds.
+    in-out property <string> tab: "gif";
+    callback command(string, string);
+}
+
+export component GifPicker inherits Rectangle {
+    callback picked();
+    in-out property <string> query;
+
+    function search() {
+        GifStore.command(GifStore.tab == "gif" ? "search" : "stickers", root.query);
+    }
+
+    function open-tab(k: string) {
+        if GifStore.tab != k {
+            GifStore.tab = k;
+            root.search();
+        }
+    }
+    property <length> cell: (self.width - 20px - 2 * 6px) / 3;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: groupbox;
+    accessible-label: GifStore.tab == "gif" ? @tr("GIFs") : @tr("Stickers");
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+        HorizontalLayout {
+            height: 30px;
+            spacing: 4px;
+            alignment: start;
+            for t in [{ k: "gif", l: @tr("GIFs") }, { k: "sticker", l: @tr("Stickers") }]: tab-item := Rectangle {
+                property <bool> active: GifStore.tab == t.k;
+                width: tab-label.preferred-width + 20px;
+                border-radius: 4px;
+                background: tab-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: AccessibleRole.tab;
+                accessible-label: t.l;
+                accessible-checked: self.active;
+                accessible-action-default => { root.open-tab(t.k); }
+                tab-label := Text {
+                    text: t.l;
+                    color: tab-item.active ? Theme.fg : Theme.fg-muted;
+                    font-size: 13px * Theme.font-scale;
+                    font-weight: tab-item.active ? 600 : 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                Rectangle { y: parent.height - 2px; height: 2px; background: tab-item.active ? Theme.accent : transparent; }
+                tab-touch := TouchArea { mouse-cursor: pointer; clicked => { root.open-tab(t.k); } }
+            }
+        }
+        Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: gif-search.has-focus ? Theme.accent : Theme.border;
+            gif-search := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text <=> root.query;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                single-line: true;
+                vertical-alignment: center;
+                accessible-role: text-input;
+                accessible-label: GifStore.tab == "gif" ? @tr("Search GIFs") : @tr("Search stickers");
+                accepted => { root.search(); }
+            }
+            if root.query == "": Text { x: 10px; height: parent.height; vertical-alignment: center; text: GifStore.tab == "gif" ? @tr("Search GIFs (Enter)") : @tr("Search stickers (Enter)"); color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+        }
+        if GifStore.status != "": Text { text: GifStore.status; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
+        ScrollView {
+            vertical-stretch: 1;
+            viewport-height: ceil(GifStore.items.length / 3) * (root.cell + 6px);
+            for g[i] in GifStore.items: Rectangle {
+                x: mod(i, 3) * (root.cell + 6px);
+                y: floor(i / 3) * (root.cell + 6px);
+                width: root.cell;
+                height: root.cell;
+                border-radius: 4px;
+                clip: true;
+                background: gif-touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+                accessible-role: button;
+                accessible-label: g.title;
+                accessible-action-default => {
+                    GifStore.command("pick", i);
+                    root.picked();
+                }
+                if g.has-preview: Image { width: parent.width; height: parent.height; source: g.preview; image-fit: cover; }
+                if !g.has-preview: Text { width: parent.width - 8px; x: 4px; height: parent.height; text: g.title; color: Theme.fg-subtle; font-size: 10px * Theme.font-scale; wrap: word-wrap; horizontal-alignment: center; vertical-alignment: center; }
+                gif-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        GifStore.command("pick", i);
+                        root.picked();
+                    }
+                }
+            }
+        }
+        if GifStore.tab == "gif": Text { text: @tr("Powered by GIPHY"); color: Theme.fg-subtle; font-size: 10px * Theme.font-scale; horizontal-alignment: right; }
+    }
+}

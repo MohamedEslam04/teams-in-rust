@@ -1,0 +1,554 @@
+// The top bar's pieces: Back and Forward, the search box with its dropdown (suggestions, recent
+// searches, slash commands) and the "Settings and more" menu. Rust fills `TopBarStore`
+// (`src/ui/topbar.rs`, logic in `src/topbar.rs`); the UI reports what the user did through
+// `command(name, argument)`.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Avatar, Icon } from "../atoms/widgets.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { PersonHover } from "../molecules/people.slint";
+import { ZoomRow } from "../molecules/settings_widgets.slint";
+import { SkeletonRow } from "../tokens/motion.slint";
+
+// One row of the dropdown. `kind`: command | person | chat | channel | message | search | recent
+// | clear. A message hit has `title` (its sender), `subtitle` (its chat), a one-line `snippet` with
+// the matching words in bold, `time`, and the sender's picture when known.
+export struct TopRow {
+    kind: string,
+    id: string,
+    title: string,
+    subtitle: string,
+    initials: string,
+    color: color,
+    section: string,
+    insert: string,
+    snippet: styled-text,
+    snippet-plain: string,
+    time: string,
+    rtl: bool,
+    // A person row: whose hover card the photo opens.
+    person: string,
+    avatar: image,
+    has-avatar: bool,
+    // Where the row's body starts in the list (below its group's heading).
+    top: length,
+}
+
+export global TopBarStore {
+    // The text of the search box.
+    in-out property <string> input;
+    in-out property <bool> search-open: false;
+    in property <[TopRow]> rows;
+    // The server is being asked for message hits: grey rows hold their place under the others.
+    in property <bool> searching: false;
+    // The row the arrow keys chose, -1 for none.
+    in-out property <int> selected: -1;
+    in property <bool> can-back: false;
+    in property <bool> can-forward: false;
+    // Where the box is, so the dropdown opens under it.
+    in-out property <length> box-x: 288px;
+    in-out property <length> box-w: 420px;
+    in-out property <bool> more-open: false;
+    // This press closed the "…" menu (app.slint `pointer-pressed`): on the "…" button it stays
+    // closed (the button toggles it).
+    in-out property <bool> more-closed-by-press: false;
+
+    // input, focus, close, activate, submit, back, forward, visit.
+    callback command(string, string);
+}
+
+// Back or Forward: an arrow that is dimmed when there is nowhere to go.
+component NavButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <angle> turn: 0deg;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    Icon {
+        source: root.icon;
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        transform-rotation: root.turn;
+        tint: root.enabled ? Theme.fg-muted : Theme.fg-subtle;
+        opacity: root.enabled ? 1.0 : 0.45;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component NavButtons inherits Rectangle {
+    width: 60px;
+    NavButton {
+        x: 0px;
+        y: 10px;
+        icon: @image-url("../icons/back.svg");
+        label: @tr("Go back");
+        enabled: TopBarStore.can-back;
+        clicked => { TopBarStore.command("back", ""); }
+    }
+    NavButton {
+        x: 32px;
+        y: 10px;
+        icon: @image-url("../icons/chevron-right.svg");
+        label: @tr("Go forward");
+        enabled: TopBarStore.can-forward;
+        clicked => { TopBarStore.command("forward", ""); }
+    }
+}
+
+// The search box. Typing filters the chat list as before and opens the dropdown; Enter searches,
+// or runs a command that starts with "/".
+export component TopSearch inherits Rectangle {
+    public function focus-input() { input.focus(); }
+    // Puts the cursor in the box with a "/" typed, so the command list opens (Ctrl+/).
+    public function start-command() {
+        input.focus();
+        TopBarStore.input = "/";
+        TopBarStore.command("input", "/");
+    }
+    height: 32px;
+    y: 8px;
+    min-width: 180px;
+    max-width: 640px;
+    horizontal-stretch: 2;
+    border-radius: 4px;
+    background: input.has-focus ? Theme.sidebar : Theme.surface;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    changed width => { TopBarStore.box-x = self.absolute-position.x; TopBarStore.box-w = self.width; }
+    scope := FocusScope {
+        capture-key-pressed(event) => {
+            if event.text == Key.DownArrow && TopBarStore.search-open && TopBarStore.rows.length > 0 {
+                TopBarStore.selected = min(TopBarStore.selected + 1, TopBarStore.rows.length - 1);
+                return accept;
+            }
+            if event.text == Key.UpArrow && TopBarStore.search-open && TopBarStore.rows.length > 0 {
+                TopBarStore.selected = max(TopBarStore.selected - 1, -1);
+                return accept;
+            }
+            if event.text == Key.Escape && input.text != "" {
+                TopBarStore.command("clear", "");
+                return accept;
+            }
+            if event.text == Key.Escape && TopBarStore.search-open {
+                TopBarStore.command("close", "");
+                return accept;
+            }
+            if event.text == Key.Return {
+                if TopBarStore.search-open && TopBarStore.selected >= 0 && TopBarStore.selected < TopBarStore.rows.length {
+                    TopBarStore.command("activate", "" + TopBarStore.selected);
+                } else {
+                    TopBarStore.command("submit", input.text);
+                }
+                return accept;
+            }
+            reject
+        }
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
+            input := TextInput {
+                text <=> TopBarStore.input;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-role: text-input;
+                accessible-label: @tr("Search");
+                edited => { TopBarStore.command("input", self.text); }
+                changed has-focus => {
+                    if self.has-focus {
+                        TopBarStore.box-x = root.absolute-position.x;
+                        TopBarStore.box-w = root.width;
+                        TopBarStore.command("focus", self.text);
+                    }
+                }
+            }
+            // Clears the box, as deleting the text would, and leaves the cursor in it.
+            if input.text != "": Rectangle {
+                width: 20px;
+                height: 20px;
+                y: 6px;
+                border-radius: 4px;
+                background: clear-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Clear search");
+                accessible-action-default => {
+                    TopBarStore.command("clear", "");
+                    input.focus();
+                }
+                Icon {
+                    source: @image-url("../icons/close.svg");
+                    width: 12px;
+                    height: 12px;
+                    x: 4px;
+                    y: 4px;
+                    tint: Theme.fg-muted;
+                }
+                clear-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        TopBarStore.command("clear", "");
+                        input.focus();
+                    }
+                }
+            }
+        }
+    }
+    if input.text == "": Text {
+        x: 36px;
+        text: @tr("Search, or type / for commands");
+        color: Theme.fg-subtle;
+        font-size: 13px * Theme.font-scale;
+        vertical-alignment: center;
+        overflow: elide;
+        width: parent.width - 46px;
+    }
+}
+
+// One row of the dropdown.
+component DropRow inherits Rectangle {
+    in property <TopRow> data;
+    in property <bool> chosen;
+    callback clicked();
+    property <length> head: root.data.section != "" ? 24px : 0px;
+    property <length> body: root.data.kind == "message" ? 52px : 36px;
+    // The pointer is on the person's photo, which sits above the row's TouchArea: the row keeps
+    // its highlight.
+    property <bool> photo-over;
+    height: root.head + root.body;
+    VerticalLayout {
+        if root.data.section != "": HorizontalLayout {
+            height: 24px;
+            padding-left: 12px;
+            Text {
+                text: root.data.section;
+                color: Theme.fg-muted;
+                font-size: 11px * Theme.font-scale;
+                font-weight: 700;
+                vertical-alignment: bottom;
+                horizontal-alignment: Theme.start-align;
+            }
+        }
+        Rectangle {
+            height: root.body;
+            border-radius: 4px;
+            background: root.chosen || touch.has-hover || (root.photo-over && root.data.kind == "person" && root.data.person != "") ? Theme.surface-hover : transparent;
+            accessible-role: list-item;
+            accessible-label: root.data.title;
+            accessible-description: root.data.kind == "message" ? root.data.snippet-plain + " · " + root.data.subtitle + " · " + root.data.time : root.data.subtitle;
+            accessible-action-default => { root.clicked(); }
+            // A message hit: who and where on the first line, the text around the match below.
+            if root.data.kind == "message": HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                Avatar {
+                    y: 12px;
+                    size: 28px;
+                    initials: root.data.initials;
+                    tone: root.data.color;
+                    img: root.data.avatar;
+                    has-img: root.data.has-avatar;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: root.data.title;
+                            color: Theme.fg;
+                            font-size: 13px * Theme.font-scale;
+                            font-weight: 600;
+                            overflow: elide;
+                            horizontal-stretch: 0;
+                            min-width: 24px;
+                        }
+                        Text {
+                            text: root.data.subtitle;
+                            color: Theme.fg-subtle;
+                            font-size: 12px * Theme.font-scale;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            min-width: 24px;
+                        }
+                        Text {
+                            text: root.data.time;
+                            color: Theme.fg-subtle;
+                            font-size: 11px * Theme.font-scale;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+                    }
+                    // One line: what does not fit is cut at the edge.
+                    Rectangle {
+                        height: 18px;
+                        clip: true;
+                        StyledText {
+                            width: parent.width;
+                            text: root.data.snippet;
+                            default-color: Theme.fg-muted;
+                            default-font-size: 12px * Theme.font-scale;
+                            horizontal-alignment: root.data.rtl ? right : left;
+                        }
+                    }
+                }
+            }
+            if root.data.kind != "message": HorizontalLayout {
+                width: parent.width;
+                height: parent.height;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                if root.data.kind == "person" || root.data.kind == "chat" || root.data.kind == "channel": Avatar {
+                    y: 6px;
+                    size: 24px;
+                    initials: root.data.initials;
+                    tone: root.data.color;
+                }
+                if root.data.kind == "recent" || root.data.kind == "search": Icon {
+                    y: 10px;
+                    width: 16px;
+                    height: 16px;
+                    source: root.data.kind == "recent" ? @image-url("../icons/history.svg") : @image-url("../icons/search.svg");
+                }
+                if root.data.kind == "command": Text {
+                    text: root.data.title;
+                    color: Theme.mention;
+                    font-size: 13px * Theme.font-scale;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 0;
+                    max-width: 200px;
+                }
+                if root.data.kind != "command": Text {
+                    text: root.data.title;
+                    color: root.data.kind == "clear" ? Theme.accent : Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.data.subtitle;
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: root.data.kind == "command" ? 1 : 0;
+                }
+            }
+            touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+            // The photo opens the person's card on hover; a click still picks the row. After the
+            // row's own TouchArea, which would otherwise take the pointer from the photo.
+            if root.data.kind == "person" && root.data.person != "": photo-hover := PersonHover {
+                x: 12px;
+                y: 6px;
+                width: 24px;
+                height: 24px;
+                person: root.data.person;
+                click-opens: false;
+                over <=> root.photo-over;
+                activated => { root.clicked(); }
+            }
+        }
+    }
+}
+
+// The list under the search box. Placed by `app.slint` over everything else.
+export component SearchDropdown inherits Rectangle {
+    property <length> shown-height: min(420px, col.preferred-height + 8px);
+    property <int> chosen: TopBarStore.selected;
+    // Keeps the row the arrow keys chose in view.
+    changed chosen => {
+        if self.chosen >= 0 && self.chosen < TopBarStore.rows.length {
+            // Rust works out where each row starts; a message hit is taller.
+            root.top-of-chosen = TopBarStore.rows[self.chosen].top;
+            root.chosen-height = TopBarStore.rows[self.chosen].kind == "message" ? 52px : 36px;
+            if root.top-of-chosen < -sv.content-y {
+                sv.content-y = -root.top-of-chosen;
+            } else if root.top-of-chosen + root.chosen-height > -sv.content-y + sv.height {
+                sv.content-y = -(root.top-of-chosen + root.chosen-height - sv.height);
+            }
+        }
+    }
+    property <length> top-of-chosen;
+    property <length> chosen-height;
+    width: max(340px, TopBarStore.box-w);
+    property <bool> waiting: TopBarStore.searching && TopBarStore.input != "";
+    height: TopBarStore.rows.length == 0 && !root.waiting ? 44px : root.shown-height;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #00000080;
+    accessible-role: list;
+    accessible-label: @tr("Search suggestions");
+    // Keeps clicks on the list from closing it.
+    TouchArea { }
+    if TopBarStore.rows.length == 0 && !root.waiting: Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: @tr("Search chats, people and messages. Type / for commands.");
+        color: Theme.fg-muted;
+        font-size: 12px * Theme.font-scale;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    sv := ScrollView {
+        visible: TopBarStore.rows.length > 0 || root.waiting;
+        col := VerticalLayout {
+            padding: 4px;
+            for r[i] in TopBarStore.rows: DropRow {
+                data: r;
+                chosen: TopBarStore.selected == i;
+                clicked => { TopBarStore.command("activate", "" + i); }
+            }
+            if root.waiting: Rectangle {
+                height: 80px;
+                accessible-role: text;
+                accessible-label: @tr("Searching messages");
+                SkeletonRow { y: 0px; height: 40px; avatar: 24px; }
+                SkeletonRow { y: 40px; height: 40px; avatar: 24px; opacity: 0.6; }
+            }
+        }
+    }
+}
+
+// A line of the "Settings and more" menu.
+component MenuItem inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    callback clicked();
+    height: 36px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 10px;
+        Icon { source: root.icon; width: 16px; height: 16px; y: 10px; }
+        Text { text: root.label; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; overflow: elide; }
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The "…" button next to the avatar.
+export component MoreButton inherits Rectangle {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    background: touch.has-hover || TopBarStore.more-open ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: @tr("Settings and more");
+    accessible-action-default => { TopBarStore.more-open = !TopBarStore.more-open; }
+    Icon { source: @image-url("../icons/more.svg"); width: 18px; height: 18px; x: 6px; y: 6px; }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if !TopBarStore.more-closed-by-press { TopBarStore.more-open = !TopBarStore.more-open; }
+            TopBarStore.more-closed-by-press = false;
+        }
+    }
+}
+
+// "Settings and more": Settings, Zoom, Saved, Keyboard shortcuts, Check for updates, About and Help.
+export component MoreMenu inherits Rectangle {
+    callback show-shortcuts();
+    callback open-saved();
+    // How tall the panel is (app.slint `pointer-pressed` knows its place).
+    out property <length> panel-height: panel.height;
+    // Clicking outside closes it (a press the window reported closed it already).
+    TouchArea { clicked => { TopBarStore.more-open = false; } }
+    menu-keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { TopBarStore.more-open = false; return accept; }
+            reject
+        }
+    }
+    init => { menu-keys.focus(); }
+    panel := Rectangle {
+        x: root.width - self.width - 52px;
+        y: 46px;
+        width: 260px;
+        height: items.preferred-height;
+        border-radius: 8px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: #00000080;
+        accessible-role: groupbox;
+        accessible-label: @tr("Settings and more");
+        TouchArea { }
+        items := VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+            MenuItem {
+                label: @tr("Settings");
+                icon: @image-url("../icons/settings.svg");
+                clicked => { TopBarStore.more-open = false; SettingsStore.show("general"); }
+            }
+            ZoomRow { }
+            MenuItem {
+                label: @tr("Saved");
+                icon: @image-url("../icons/star.svg");
+                clicked => { TopBarStore.more-open = false; root.open-saved(); }
+            }
+            MenuItem {
+                label: @tr("Keyboard shortcuts");
+                icon: @image-url("../icons/shortcut.svg");
+                clicked => { TopBarStore.more-open = false; root.show-shortcuts(); }
+            }
+            MenuItem {
+                label: @tr("Check for updates");
+                icon: @image-url("../icons/sync.svg");
+                clicked => { TopBarStore.more-open = false; SettingsStore.command("check-updates-menu", ""); }
+            }
+            MenuItem {
+                label: @tr("About");
+                icon: @image-url("../icons/info.svg");
+                clicked => { TopBarStore.more-open = false; SettingsStore.show("about"); }
+            }
+            MenuItem {
+                label: @tr("Help");
+                icon: @image-url("../icons/open.svg");
+                clicked => { TopBarStore.more-open = false; TopBarStore.command("help", ""); }
+            }
+            MenuItem {
+                label: @tr("Feedback");
+                icon: @image-url("../icons/reply.svg");
+                clicked => { TopBarStore.more-open = false; TopBarStore.command("feedback", ""); }
+            }
+            MenuItem {
+                label: @tr("Get the mobile app");
+                icon: @image-url("../icons/open.svg");
+                clicked => { TopBarStore.more-open = false; TopBarStore.command("mobile-app", ""); }
+            }
+        }
+    }
+}

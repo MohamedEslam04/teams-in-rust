@@ -1,0 +1,378 @@
+// The Store: home, search results, a category, an app's page, Manage your apps and the Store
+// settings. Add, Remove and Update only show the request they would send (see AppsOverlays).
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { AppsStore, AppCard } from "../stores/apps_store.slint";
+import { AppTile, KitButton, KitSearch, KitMenuRow, KitMenuFrame, KitBadge, KitPill, AppCardView } from "../molecules/apps_kit.slint";
+
+// Cards in as many columns as fit.
+component CardGrid inherits Rectangle {
+    in property <[AppCard]> apps;
+    property <int> cols: max(1, floor(root.width / 300px));
+    property <length> cell: (root.width - (root.cols - 1) * 12px) / root.cols;
+    height: ceil(root.apps.length / root.cols) * 124px;
+    for a[i] in root.apps: AppCardView {
+        x: mod(i, root.cols) * (root.cell + 12px);
+        y: floor(i / root.cols) * 124px;
+        width: root.cell;
+        app: a;
+        clicked => { AppsStore.command("app-page", a.id); }
+    }
+}
+
+component SectionTitle inherits Rectangle {
+    in property <string> text;
+    in property <string> link;
+    callback link-clicked();
+    height: 36px;
+    HorizontalLayout {
+        spacing: 12px;
+        Text { text: root.text; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+        Rectangle { horizontal-stretch: 1; }
+        if root.link != "": KitButton { y: 2px; label: root.link; clicked => { root.link-clicked(); } }
+    }
+}
+
+component Facts inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 12px;
+    Text { text: root.label; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; width: 96px; vertical-alignment: top; }
+    Text { text: root.value; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; horizontal-stretch: 1; }
+}
+
+component AppPageView inherits ScrollView {
+    property <int> shot: AppsStore.app-shot;
+    callback open-add(length, length);
+    VerticalLayout {
+        width: parent.width - 12px;
+        padding: 20px;
+        spacing: 14px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 16px;
+            AppTile {
+                icon: AppsStore.app-icon;
+                has-icon: AppsStore.app-has-icon;
+                letter: AppsStore.app-letter;
+                tone: AppsStore.app-color;
+                size: 72px;
+            }
+            VerticalLayout {
+                spacing: 4px;
+                alignment: center;
+                horizontal-stretch: 1;
+                Text { text: AppsStore.app-name; color: Theme.fg; font-size: 22px * Theme.font-scale; font-weight: 700; overflow: elide; }
+                Text { text: AppsStore.app-developer + (AppsStore.app-version != "" ? " · version " + AppsStore.app-version : ""); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; overflow: elide; }
+                Text {
+                    text: AppsStore.app-rating + (AppsStore.app-rating != "" && AppsStore.app-price != "" ? " · " : "") + AppsStore.app-price + ((AppsStore.app-rating != "" || AppsStore.app-price != "") && AppsStore.app-cert != "" ? " · " : "") + AppsStore.app-cert;
+                    color: Theme.fg-muted;
+                    font-size: 12px * Theme.font-scale;
+                    overflow: elide;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            add-btn := KitButton {
+                label: AppsStore.app-installed ? "Add to another place" : "Add";
+                primary: true;
+                chevron: true;
+                enabled: AppsStore.app-targets.length > 0;
+                clicked => { root.open-add(self.absolute-position.x, self.absolute-position.y + self.height); }
+            }
+            if AppsStore.app-installed && AppsStore.app-opens-here: KitButton { label: "Open"; clicked => { AppsStore.command("open-app", AppsStore.app-id); } }
+            if AppsStore.app-update: KitButton { label: "Update"; clicked => { AppsStore.command("app-update", AppsStore.app-id); } }
+            if AppsStore.app-installed: KitButton { label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", AppsStore.app-id); } }
+            if AppsStore.app-installed && AppsStore.app-can-pin && !AppsStore.app-pinned: KitButton { label: "Pin to app bar"; clicked => { AppsStore.command("pin", AppsStore.app-id); } }
+            if AppsStore.app-installed && AppsStore.app-pinned: KitButton { label: "Unpin from app bar"; clicked => { AppsStore.command("unpin", AppsStore.app-id); } }
+            KitButton { label: "Share"; clicked => { AppsStore.command("app-share", AppsStore.app-id); } }
+        }
+        if AppsStore.app-blurb != "": Text { text: AppsStore.app-blurb; color: Theme.fg; font-size: 14px * Theme.font-scale; wrap: word-wrap; }
+        if AppsStore.app-shot-count > 0: HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            height: 220px;
+            IconButton { y: 94px; icon: @image-url("../icons/chevron-left.svg"); tooltip: "Previous screenshot"; clicked => { AppsStore.app-shot = max(0, AppsStore.app-shot - 1); } }
+            Rectangle {
+                width: 360px;
+                border-radius: 6px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+                accessible-role: image;
+                accessible-label: "Screenshot " + (root.shot + 1) + " of " + AppsStore.app-shot-count;
+                if root.shot < AppsStore.app-shots.length: Image {
+                    source: AppsStore.app-shots[root.shot];
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: contain;
+                }
+            }
+            IconButton { y: 94px; icon: @image-url("../icons/chevron-right.svg"); tooltip: "Next screenshot"; clicked => { AppsStore.app-shot = min(AppsStore.app-shot-count - 1, AppsStore.app-shot + 1); } }
+        }
+        if AppsStore.app-description != "": Text { text: AppsStore.app-description; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+        Facts { label: "Works in"; value: AppsStore.app-works-in == "" ? "Not stated" : AppsStore.app-works-in; }
+        if AppsStore.app-categories != "": Facts { label: "Categories"; value: AppsStore.app-categories; }
+        Facts { label: "Installs"; value: "Teams does not show install counts to this client."; }
+        if AppsStore.app-device.length > 0: Facts {
+            label: "Device access";
+            value: "Asks for: " + AppsStore.app-device[0] + (AppsStore.app-device.length > 1 ? ", " + AppsStore.app-device[1] : "") + (AppsStore.app-device.length > 2 ? " and " + (AppsStore.app-device.length - 2) + " more" : "") + ". Change this in Store settings.";
+        }
+        if AppsStore.app-rsc.length > 0: Facts {
+            label: "Permissions";
+            value: "Resource-specific consent: " + AppsStore.app-rsc[0] + (AppsStore.app-rsc.length > 1 ? " and " + (AppsStore.app-rsc.length - 1) + " more" : "");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            if AppsStore.app-privacy != "": KitButton { label: "Privacy policy"; clicked => { AppsStore.command("app-link", "privacy"); } }
+            if AppsStore.app-terms != "": KitButton { label: "Terms of use"; clicked => { AppsStore.command("app-link", "terms"); } }
+        }
+    }
+}
+
+component ManageView inherits ScrollView {
+    VerticalLayout {
+        width: parent.width - 12px;
+        padding: 20px;
+        spacing: 8px;
+        alignment: start;
+        Text { text: "Manage your apps"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; }
+        Text { text: AppsStore.manage-note; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
+        if AppsStore.manage.length == 0 && !AppsStore.store-loading: Text { text: AppsStore.store-status != "" ? AppsStore.store-status : "You have no apps installed."; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+        for a in AppsStore.manage: Rectangle {
+            height: 56px;
+            border-radius: 6px;
+            background: Theme.sidebar;
+            accessible-role: list-item;
+            accessible-label: a.name;
+            accessible-description: a.update ? "Update available" : "Up to date";
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 12px;
+                AppTile { icon: a.icon; has-icon: a.has-icon; letter: a.letter; tone: a.color; size: 36px; y: 10px; }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text { text: a.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; overflow: elide; }
+                    Text { text: a.developer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+                }
+                if a.update: KitBadge { y: 18px; text: "Update available"; tone: "warn"; }
+                if a.update: KitButton { y: 12px; label: "Update"; clicked => { AppsStore.command("app-update", a.id); } }
+                KitButton { y: 12px; label: "Details"; clicked => { AppsStore.command("app-page", a.id); } }
+                KitButton { y: 12px; label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", a.id); } }
+            }
+        }
+    }
+}
+
+component SettingsView inherits ScrollView {
+    VerticalLayout {
+        width: parent.width - 12px;
+        padding: 20px;
+        spacing: 6px;
+        alignment: start;
+        Text { text: "Store settings"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; }
+        Text { text: AppsStore.policy-text; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+        Text {
+            text: "App permissions. An app that is not allowed here cannot use the camera, location, notifications or external links. They are kept on this computer.";
+            color: Theme.fg-subtle;
+            font-size: 12px * Theme.font-scale;
+            wrap: word-wrap;
+        }
+        if AppsStore.perms.length == 0: Text { text: "None of your apps asks for device access."; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+        for p[i] in AppsStore.perms: Rectangle {
+            height: 40px;
+            border-radius: 4px;
+            background: touch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: checkbox;
+            accessible-label: p.app-name + ": " + p.label;
+            accessible-checked: p.allowed;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 12px;
+                Text { text: p.app-name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; width: 200px; overflow: elide; }
+                Text { text: p.label; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: p.allowed ? "Allowed" : "Blocked"; color: p.allowed ? #6bd69b : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                Rectangle {
+                    width: 36px;
+                    height: 20px;
+                    y: 10px;
+                    border-radius: 10px;
+                    background: p.allowed ? Theme.accent-strong : #4a4a4a;
+                    Rectangle { x: p.allowed ? 18px : 2px; y: 2px; width: 16px; height: 16px; border-radius: 8px; background: #ffffff; }
+                }
+            }
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AppsStore.command("grant", p.app-id + "|" + p.perm + "|" + (p.allowed ? "off" : "on")); }
+            }
+        }
+    }
+}
+
+export component StoreView inherits Rectangle {
+    background: Theme.main;
+    init => { AppsStore.command("store-enter", ""); }
+    property <string> menu;
+    property <length> menu-x;
+    property <length> menu-y;
+    property <bool> browsing: AppsStore.store-page == "home" || AppsStore.store-page == "results" || AppsStore.store-page == "category";
+    function open-menu(name: string, x: length, y: length) {
+        root.menu = name;
+        root.menu-x = x - root.absolute-position.x;
+        root.menu-y = y - root.absolute-position.y;
+    }
+    function go-home() {
+        AppsStore.store-query = "";
+        AppsStore.command("store-home", "");
+    }
+
+    VerticalLayout {
+        store-head := Rectangle {
+            // A narrow window: a shorter search box, and Devices and Manage your apps as icons.
+            property <bool> narrow: self.width < 1000px;
+            height: 60px;
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 16px;
+                spacing: 10px;
+                Text { text: "Store"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                KitSearch {
+                    y: 14px;
+                    width: store-head.narrow ? 180px : 340px;
+                    placeholder: "Search for agents and apps";
+                    label: "Search the Store";
+                    text <=> AppsStore.store-query;
+                    accepted(t) => { AppsStore.command("store-search", t); }
+                }
+                KitButton { y: 14px; label: "Home"; active: AppsStore.store-page == "home"; clicked => { root.go-home(); } }
+                KitButton { y: 14px; label: "Featured"; chevron: true; clicked => { root.open-menu("featured", self.absolute-position.x, self.absolute-position.y + self.height); } }
+                KitButton { y: 14px; label: "Categories"; chevron: true; clicked => { root.open-menu("categories", self.absolute-position.x, self.absolute-position.y + self.height); } }
+                if !store-head.narrow: KitButton { y: 14px; label: "Devices"; clicked => { AppsStore.command("app-link", "devices"); } }
+                Rectangle { horizontal-stretch: 1; }
+                if !store-head.narrow: KitButton { y: 14px; label: "Manage your apps"; active: AppsStore.store-page == "manage"; clicked => { AppsStore.command("manage", ""); } }
+                if store-head.narrow: IconButton { y: 14px; icon: @image-url("../icons/video.svg"); tooltip: "Devices"; clicked => { AppsStore.command("app-link", "devices"); } }
+                if store-head.narrow: IconButton { y: 14px; icon: @image-url("../icons/grid.svg"); tooltip: "Manage your apps"; active: AppsStore.store-page == "manage"; clicked => { AppsStore.command("manage", ""); } }
+                IconButton { y: 14px; icon: @image-url("../icons/settings.svg"); tooltip: "Store settings"; active: AppsStore.store-page == "settings"; clicked => { AppsStore.command("store-settings", ""); } }
+            }
+        }
+        // The filters: one row, or two when the window is narrow (nothing leaves the window).
+        if root.browsing: filters := Rectangle {
+            property <bool> two-rows: self.width < 860px;
+            height: self.two-rows ? 72px : 40px;
+            VerticalLayout {
+                alignment: start;
+                HorizontalLayout {
+                    height: 36px;
+                    padding-left: 20px;
+                    padding-right: 16px;
+                    spacing: 6px;
+                    alignment: start;
+                    Text { text: "Works in"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                    for s in [{k: "all", l: "All"}, {k: "personal", l: "Personal"}, {k: "chat", l: "Chat"}, {k: "team", l: "Team"}, {k: "meeting", l: "Meeting"}]: KitPill {
+                        y: 5px;
+                        label: s.l;
+                        active: AppsStore.scope-filter == s.k;
+                        clicked => { AppsStore.command("store-scope", s.k); }
+                    }
+                    if !filters.two-rows: HorizontalLayout {
+                        spacing: 6px;
+                        padding-left: 10px;
+                        Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                            y: 5px;
+                            label: s.l;
+                            active: AppsStore.kind-filter == s.k;
+                            clicked => { AppsStore.command("store-kind", s.k); }
+                        }
+                    }
+                }
+                if filters.two-rows: HorizontalLayout {
+                    height: 36px;
+                    padding-left: 20px;
+                    padding-right: 16px;
+                    spacing: 6px;
+                    alignment: start;
+                    Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                    for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                        y: 5px;
+                        label: s.l;
+                        active: AppsStore.kind-filter == s.k;
+                        clicked => { AppsStore.command("store-kind", s.k); }
+                    }
+                }
+            }
+        }
+        if AppsStore.store-page == "home": ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                width: parent.width - 12px;
+                padding: 20px;
+                padding-top: 6px;
+                spacing: 8px;
+                alignment: start;
+                SectionTitle { text: "Popular on Teams"; link: "See all"; link-clicked => { AppsStore.command("store-category", "popularApps"); } }
+                if AppsStore.popular.length == 0 && !AppsStore.store-loading && AppsStore.store-status != "": Text { text: AppsStore.store-status; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                if AppsStore.store-loading && AppsStore.popular.length == 0: Text { text: "Loading the Store…"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                CardGrid { apps: AppsStore.popular; }
+                if AppsStore.org-apps.length > 0: SectionTitle { text: "Built for your org"; link: "See all"; link-clicked => { AppsStore.command("store-category", "org"); } }
+                if AppsStore.org-apps.length > 0: CardGrid { apps: AppsStore.org-apps; }
+            }
+        }
+        if AppsStore.store-page == "results" || AppsStore.store-page == "category": ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                width: parent.width - 12px;
+                padding: 20px;
+                padding-top: 6px;
+                spacing: 8px;
+                alignment: start;
+                SectionTitle { text: AppsStore.store-title; }
+                if AppsStore.store-loading: Text { text: "Loading…"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                if AppsStore.store-status != "": Text { text: AppsStore.store-status; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                CardGrid { apps: AppsStore.cards; }
+            }
+        }
+        if AppsStore.store-page == "app": AppPageView {
+            vertical-stretch: 1;
+            open-add(x, y) => { root.open-menu("add", x, y); }
+        }
+        if AppsStore.store-page == "manage": ManageView { vertical-stretch: 1; }
+        if AppsStore.store-page == "settings": SettingsView { vertical-stretch: 1; }
+    }
+
+    if root.menu != "": Rectangle {
+        TouchArea { clicked => { root.menu = ""; } }
+        KitMenuFrame {
+            x: max(8px, min(root.menu-x, root.width - self.width - 8px));
+            y: max(8px, min(root.menu-y, root.height - self.height - 8px));
+            menu-width: 240px;
+            if root.menu == "featured": VerticalLayout {
+                for n in AppsStore.featured: KitMenuRow {
+                    label: n.label;
+                    clicked => { root.menu = ""; AppsStore.command("store-category", n.key); }
+                }
+            }
+            if root.menu == "categories": VerticalLayout {
+                for n in AppsStore.categories: KitMenuRow {
+                    label: n.label;
+                    hint: n.count;
+                    clicked => { root.menu = ""; AppsStore.command("store-category", n.key); }
+                }
+            }
+            if root.menu == "add": VerticalLayout {
+                for n in AppsStore.app-targets: KitMenuRow {
+                    label: n.label;
+                    clicked => { root.menu = ""; AppsStore.command("app-add", n.key); }
+                }
+            }
+        }
+    }
+}

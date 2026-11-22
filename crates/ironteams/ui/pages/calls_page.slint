@@ -1,0 +1,550 @@
+// The Calls page of the rail (plans/calls.md K1.1 to K1.3): "Type a name" and Speed dial on the
+// left, History with Teams' filters in the centre, and the Voicemail list under its filter.
+// Filled by src/ui/calls_page.rs; commands go to backend/calls_page.rs:
+// open, filter <all|missed|incoming|outgoing|voicemail>, query <text>, call <mri>, chat <mri>,
+// speed-toggle <mri>, speed-up <mri>, speed-down <mri>, voicemail-play <id>, voicemail-read <id>,
+// voicemail-unread <id>, voicemail-delete <id>, voicemail-call <id>, hide <call id>, copy <text>.
+
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton, Avatar, Pill } from "../atoms/widgets.slint";
+import { ListView } from "std-widgets.slint";
+import { FileMenuItem } from "../organisms/find.slint";
+import { PersonHover } from "../molecules/people.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { SkeletonList } from "../tokens/motion.slint";
+
+export struct CallHistoryItem {
+    id: string,
+    mri: string,
+    name: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    direction: string,
+    outcome: string,
+    missed: bool,
+    when: string,
+    duration: string,
+    group: bool,
+    speed: bool,
+    // The other party's phone number (a PSTN call), "" for a person.
+    number: string,
+}
+
+export struct CallPersonItem {
+    mri: string,
+    name: string,
+    detail: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    speed: bool,
+}
+
+export struct VoicemailItem {
+    id: string,
+    name: string,
+    initials: string,
+    color: color,
+    when: string,
+    duration: string,
+    transcript: string,
+    unread: bool,
+}
+
+export global CallsPageStore {
+    // True when IronTeams was built with calls; the rail shows the Calls item only then.
+    in property <bool> available;
+    in property <string> filter: "all";
+    in property <[CallHistoryItem]> history;
+    in property <[VoicemailItem]> voicemails;
+    in property <[CallPersonItem]> results;
+    in property <[CallPersonItem]> speed;
+    in property <bool> loading;
+    in property <string> error;
+    in property <string> voicemail-error;
+    // The search box holds a phone number (tidied); IronTeams cannot place that call yet.
+    in property <string> dial;
+    callback command(string, string);
+
+    // The second line of a history row: what happened to the call.
+    public pure function outcome-label(outcome: string, direction: string) -> string {
+        if outcome == "missed" {
+            return direction == "incoming" ? @tr("Missed") : @tr("No answer");
+        }
+        if outcome == "declined" { return @tr("Declined"); }
+        if outcome == "voicemail" { return @tr("Voicemail"); }
+        return direction == "incoming" ? @tr("Incoming") : @tr("Outgoing");
+    }
+}
+
+// A person with a Call button and the speed-dial star; on the speed dial also up and down.
+component PersonLine inherits Rectangle {
+    in property <CallPersonItem> person;
+    in property <bool> reorder: false;
+    callback call();
+    callback star();
+    callback up();
+    callback down();
+    height: 48px;
+    background: line-touch.has-hover ? Theme.surface-hover : transparent;
+    border-radius: 4px;
+    // The buttons sit inside the TouchArea so it keeps its hover while they are pointed at.
+    line-touch := TouchArea {
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 4px;
+            spacing: 4px;
+            Avatar { size: 32px; y: 8px; initials: root.person.initials; tone: root.person.color; img: root.person.avatar; has-img: root.person.has-avatar; PersonHover { person: root.person.mri; } }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                padding-left: 4px;
+                Text { text: root.person.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
+                if root.person.detail != "": Text { text: root.person.detail; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
+            }
+            if root.reorder && line-touch.has-hover: Rectangle {
+                y: 10px;
+                width: 28px;
+                height: 28px;
+                border-radius: 4px;
+                background: up-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Move up");
+                // The up arrow is the down chevron turned over.
+                Icon { source: @image-url("../icons/chevron-down.svg"); width: 16px; height: 16px; transform-rotation: 180deg; tint: up-touch.has-hover ? Theme.accent : Theme.fg-muted; }
+                up-touch := TouchArea { mouse-cursor: pointer; clicked => { root.up(); } }
+            }
+            if root.reorder && line-touch.has-hover: IconButton {
+                y: 10px;
+                size: 28px;
+                icon: @image-url("../icons/chevron-down.svg");
+                tooltip: @tr("Move down");
+                clicked => { root.down(); }
+            }
+            IconButton {
+                y: 10px;
+                size: 28px;
+                icon: @image-url("../icons/star.svg");
+                active: root.person.speed;
+                tooltip: root.person.speed ? @tr("Remove from speed dial") : @tr("Add to speed dial");
+                clicked => { root.star(); }
+            }
+            call-button := IconButton {
+                y: 10px;
+                size: 28px;
+                icon: @image-url("../icons/call-direct.svg");
+                tooltip: @tr("Call {}", root.person.name);
+                clicked => { root.call(); }
+            }
+        }
+    }
+}
+
+component HistoryLine inherits Rectangle {
+    in property <CallHistoryItem> item;
+    callback call();
+    callback chat();
+    callback star();
+    // The "…" button or a right click: where the menu goes, in window coordinates.
+    callback more(length, length);
+    height: 56px;
+    background: row-touch.has-hover ? Theme.surface-hover : transparent;
+    row-touch := TouchArea {
+        pointer-event(e) => {
+            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                root.more(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+        HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        spacing: 12px;
+        Avatar { size: 36px; y: 10px; initials: root.item.initials; tone: root.item.color; img: root.item.avatar; has-img: root.item.has-avatar; PersonHover { person: root.item.mri; } }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.item.name;
+                color: root.item.missed ? Theme.danger : Theme.fg;
+                font-size: 14px * Theme.font-scale;
+                font-weight: root.item.missed ? 600 : 400;
+                overflow: elide;
+                horizontal-alignment: Theme.start-align;
+            }
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                Icon {
+                    width: 14px;
+                    height: 14px;
+                    source: root.item.group ? @image-url("../icons/users.svg") : @image-url("../icons/call-direct.svg");
+                    tint: root.item.missed ? Theme.danger : Theme.fg-subtle;
+                }
+                Text {
+                    text: CallsPageStore.outcome-label(root.item.outcome, root.item.direction);
+                    color: root.item.missed ? Theme.danger : Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    overflow: elide;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            width: 96px;
+            Text { text: root.item.when; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; horizontal-alignment: right; overflow: elide; }
+            Text { text: root.item.duration; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-alignment: right; overflow: elide; }
+        }
+        if root.item.mri != "": HorizontalLayout {
+            spacing: 2px;
+            IconButton {
+                y: 12px;
+                size: 32px;
+                icon: @image-url("../icons/star.svg");
+                active: root.item.speed;
+                tooltip: root.item.speed ? @tr("Remove from speed dial") : @tr("Add to speed dial");
+                clicked => { root.star(); }
+            }
+            IconButton {
+                y: 12px;
+                size: 32px;
+                icon: @image-url("../icons/chat.svg");
+                tooltip: @tr("Chat");
+                clicked => { root.chat(); }
+            }
+            call-back := IconButton {
+                y: 12px;
+                size: 32px;
+                icon: @image-url("../icons/call-direct.svg");
+                tooltip: @tr("Call back");
+                clicked => { root.call(); }
+            }
+        }
+        more-button := IconButton {
+            y: 12px;
+            size: 32px;
+            icon: @image-url("../icons/more.svg");
+            tooltip: @tr("More actions for {}", root.item.name);
+            clicked => { root.more(self.absolute-position.x, self.absolute-position.y + self.height); }
+        }
+    } }
+}
+
+component VoicemailLine inherits Rectangle {
+    in property <VoicemailItem> item;
+    callback play();
+    callback mark-read();
+    callback mark-unread();
+    callback call-back();
+    callback delete();
+    height: 72px;
+    clip: true;
+    background: vm-touch.has-hover ? Theme.surface-hover : transparent;
+    vm-touch := TouchArea { HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 12px;
+        spacing: 12px;
+        Avatar { size: 36px; y: 18px; initials: root.item.initials; tone: root.item.color; }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text { text: root.item.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: root.item.unread ? 700 : 400; overflow: elide; horizontal-alignment: Theme.start-align; }
+            Text {
+                text: root.item.transcript != "" ? root.item.transcript : @tr("No transcript");
+                color: Theme.fg-subtle;
+                font-size: 12px * Theme.font-scale;
+                overflow: elide;
+                wrap: no-wrap;
+                horizontal-alignment: Theme.start-align;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            width: 96px;
+            Text { text: root.item.when; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; horizontal-alignment: right; overflow: elide; }
+            Text { text: root.item.duration; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-alignment: right; overflow: elide; }
+        }
+        if root.item.unread: Pill { y: 23px; label: @tr("Mark as read"); clicked => { root.mark-read(); } }
+        if !root.item.unread: Pill { y: 23px; label: @tr("Mark as unread"); clicked => { root.mark-unread(); } }
+        Pill { y: 23px; label: @tr("Call back"); clicked => { root.call-back(); } }
+        play-button := Pill { y: 23px; label: @tr("Play"); clicked => { root.play(); } }
+        IconButton {
+            y: 20px;
+            size: 32px;
+            icon: @image-url("../icons/trash.svg");
+            tooltip: @tr("Delete voicemail from {}", root.item.name);
+            clicked => { root.delete(); }
+        }
+    } }
+}
+
+export component CallsPage inherits Rectangle {
+    // Opens the 1:1 chat with this person (app.slint switches the view to Chat).
+    callback open-chat(string);
+    // "View contacts": the people search (app.slint switches the view).
+    callback view-contacts();
+    // The history row whose "…" menu is open, and where.
+    property <bool> menu-open: false;
+    property <CallHistoryItem> menu-item;
+    property <length> menu-x;
+    property <length> menu-y;
+    // The window's width (from app.slint): a narrow window gets a narrower left pane and the
+    // History filters without their title.
+    in property <length> window-width: 1400px;
+    // The Speed dial's Add was pressed: the hint says how.
+    property <bool> adding: false;
+    property <bool> narrow: root.window-width < 900px;
+    background: Theme.main;
+
+    HorizontalLayout {
+        // Left: Type a name, results, Speed dial.
+        Rectangle {
+            width: root.narrow ? 240px : 320px;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text { text: @tr("Calls"); color: Theme.fg; font-size: 20px * Theme.font-scale; font-weight: 700; horizontal-alignment: Theme.start-align; }
+                HorizontalLayout {
+                spacing: 6px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 34px;
+                    border-radius: 4px;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: query.has-focus ? Theme.accent : Theme.border;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 9px; }
+                        query := TextInput {
+                            vertical-alignment: center;
+                            color: Theme.fg;
+                            font-size: 13px * Theme.font-scale;
+                            single-line: true;
+                            accessible-label: @tr("Type a name");
+                            edited => { CallsPageStore.command("query", self.text); }
+                        }
+                    }
+                    if query.text == "": Text {
+                        x: 30px;
+                        text: @tr("Type a name");
+                        color: Theme.fg-subtle;
+                        font-size: 13px * Theme.font-scale;
+                        vertical-alignment: center;
+                    }
+                }
+                // Calls the first person found (a phone number can't be called yet).
+                Pill {
+                    y: 4px;
+                    label: @tr("Call");
+                    active: CallsPageStore.results.length > 0;
+                    clicked => {
+                        if CallsPageStore.results.length > 0 {
+                            CallsPageStore.command("call", CallsPageStore.results[0].mri);
+                            query.text = "";
+                        }
+                    }
+                }
+                }
+                // A phone number: shown as a call, but disabled until IronTeams can dial numbers.
+                if CallsPageStore.dial != "": Rectangle {
+                    height: 40px;
+                    border-radius: 4px;
+                    background: Theme.surface;
+                    accessible-role: button;
+                    accessible-label: @tr("Call {}", CallsPageStore.dial);
+                    accessible-description: @tr("IronTeams can't call phone numbers yet.");
+                    accessible-enabled: false;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 8px;
+                        Icon { source: @image-url("../icons/call-direct.svg"); width: 16px; height: 16px; y: 12px; tint: Theme.fg-subtle; }
+                        Text { text: @tr("Call {}", CallsPageStore.dial); color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-alignment: Theme.start-align; accessible-role: none; }
+                    }
+                }
+                if CallsPageStore.dial != "": Text {
+                    text: @tr("IronTeams can't call phone numbers yet. Use Teams or your phone for this call.");
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    wrap: word-wrap;
+                    horizontal-alignment: Theme.start-align;
+                }
+                for p in CallsPageStore.results: PersonLine {
+                    person: p;
+                    call => { query.text = ""; CallsPageStore.command("call", p.mri); }
+                    star => { CallsPageStore.command("speed-toggle", p.mri); }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text { text: @tr("Speed dial"); color: Theme.fg-muted; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-alignment: Theme.start-align; horizontal-stretch: 1; }
+                    // Add: find the person above, then star them (speed dial is kept on this computer).
+                    IconButton { icon: @image-url("../icons/plus.svg"); size: 26px; tooltip: @tr("Add to speed dial"); clicked => { query.focus(); root.adding = true; } }
+                }
+                if root.adding && CallsPageStore.speed.length > 0: Text {
+                    text: @tr("Type a name above, then star the person.");
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    wrap: word-wrap;
+                    horizontal-alignment: Theme.start-align;
+                }
+                if CallsPageStore.speed.length == 0: Text {
+                    text: @tr("Star someone in History or in the search results to add them here.");
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    wrap: word-wrap;
+                    horizontal-alignment: Theme.start-align;
+                }
+                for p in CallsPageStore.speed: PersonLine {
+                    person: p;
+                    reorder: true;
+                    call => { CallsPageStore.command("call", p.mri); }
+                    star => { CallsPageStore.command("speed-toggle", p.mri); }
+                    up => { CallsPageStore.command("speed-up", p.mri); }
+                    down => { CallsPageStore.command("speed-down", p.mri); }
+                }
+                Rectangle { vertical-stretch: 1; }
+                Pill { label: @tr("View contacts"); clicked => { root.view-contacts(); } }
+                // Call forwarding: IronTeams can't read or change it yet (Settings › Calls says why).
+                Rectangle {
+                    height: 34px;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    accessible-role: button;
+                    accessible-label: @tr("Call forwarding");
+                    accessible-description: @tr("Unknown: IronTeams can't read it yet");
+                    accessible-action-default => { SettingsStore.show("calls"); }
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 6px;
+                        Icon { source: @image-url("../icons/forward.svg"); width: 14px; height: 14px; y: 10px; }
+                        Text { text: @tr("Forwarding: unknown"); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; accessible-role: none; }
+                        Text { text: "▾"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                    }
+                    TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.show("calls"); } }
+                }
+                Pill { label: @tr("Custom Setup"); clicked => { SettingsStore.show("calls"); } }
+            }
+        }
+
+        // Centre: History (or Voicemail).
+        VerticalLayout {
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                height: 56px;
+                padding-left: 16px;
+                padding-right: 12px;
+                spacing: 8px;
+                if !root.narrow: Text { text: @tr("History"); color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                for f in [
+                    {key: "all", label: @tr("All")},
+                    {key: "missed", label: @tr("Missed")},
+                    {key: "incoming", label: @tr("Incoming")},
+                    {key: "outgoing", label: @tr("Outgoing")},
+                    {key: "voicemail", label: @tr("Voicemail")}
+                ]: Pill {
+                    y: 15px;
+                    label: f.label;
+                    active: CallsPageStore.filter == f.key;
+                    clicked => { CallsPageStore.command("filter", f.key); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                IconButton {
+                    y: 12px;
+                    icon: @image-url("../icons/sync.svg");
+                    tooltip: @tr("Refresh");
+                    clicked => { CallsPageStore.command("open", ""); }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            if CallsPageStore.loading: SkeletonList { count: 7; avatar: 36px; row-height: 60px; label: @tr("Loading…"); }
+            if CallsPageStore.filter != "voicemail" && CallsPageStore.error != "": Text { text: CallsPageStore.error; color: Theme.danger; font-size: 13px * Theme.font-scale; horizontal-alignment: center; height: 40px; vertical-alignment: center; wrap: word-wrap; overflow: elide; }
+            if CallsPageStore.filter == "voicemail" && CallsPageStore.voicemail-error != "": Text { text: CallsPageStore.voicemail-error; color: Theme.danger; font-size: 13px * Theme.font-scale; horizontal-alignment: center; height: 40px; vertical-alignment: center; wrap: word-wrap; overflow: elide; }
+            if !CallsPageStore.loading && CallsPageStore.filter != "voicemail" && CallsPageStore.error == "" && CallsPageStore.history.length == 0: Text {
+                text: @tr("No calls to show");
+                color: Theme.fg-muted;
+                font-size: 13px * Theme.font-scale;
+                horizontal-alignment: center;
+                height: 40px;
+                vertical-alignment: center;
+            }
+            if !CallsPageStore.loading && CallsPageStore.filter == "voicemail" && CallsPageStore.voicemail-error == "" && CallsPageStore.voicemails.length == 0: Text {
+                text: @tr("No voicemail");
+                color: Theme.fg-muted;
+                font-size: 13px * Theme.font-scale;
+                horizontal-alignment: center;
+                height: 40px;
+                vertical-alignment: center;
+            }
+            if CallsPageStore.filter != "voicemail": ListView {
+                vertical-stretch: 1;
+                for r in CallsPageStore.history: HistoryLine {
+                    item: r;
+                    call => { CallsPageStore.command("call", r.mri); }
+                    chat => { root.open-chat(r.mri); }
+                    star => { CallsPageStore.command("speed-toggle", r.mri); }
+                    more(ax, ay) => {
+                        root.menu-item = r;
+                        root.menu-x = ax - root.absolute-position.x;
+                        root.menu-y = ay - root.absolute-position.y;
+                        root.menu-open = true;
+                    }
+                }
+            }
+            if CallsPageStore.filter == "voicemail": ListView {
+                vertical-stretch: 1;
+                for v in CallsPageStore.voicemails: VoicemailLine {
+                    item: v;
+                    play => { CallsPageStore.command("voicemail-play", v.id); }
+                    mark-read => { CallsPageStore.command("voicemail-read", v.id); }
+                    mark-unread => { CallsPageStore.command("voicemail-unread", v.id); }
+                    call-back => { CallsPageStore.command("voicemail-call", v.id); }
+                    delete => { CallsPageStore.command("voicemail-delete", v.id); }
+                }
+            }
+        }
+    }
+
+    // The history row menu, closed by a click anywhere else.
+    if root.menu-open: Rectangle {
+        width: root.width;
+        height: root.height;
+        TouchArea { clicked => { root.menu-open = false; } }
+        Rectangle {
+            x: max(8px, min(root.menu-x, root.width - self.width - 8px));
+            y: max(8px, min(root.menu-y, root.height - self.height - 8px));
+            width: 220px;
+            height: history-menu.preferred-height;
+            border-radius: 6px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000090;
+            accessible-role: groupbox;
+            accessible-label: @tr("Call actions");
+            TouchArea { }
+            history-menu := VerticalLayout {
+                padding: 6px;
+                if root.menu-item.mri != "": FileMenuItem { label: @tr("Call back"); clicked => { root.menu-open = false; CallsPageStore.command("call", root.menu-item.mri); } }
+                if root.menu-item.mri != "": FileMenuItem { label: @tr("Chat"); clicked => { root.menu-open = false; root.open-chat(root.menu-item.mri); } }
+                if root.menu-item.mri != "": FileMenuItem {
+                    label: root.menu-item.speed ? @tr("Remove from speed dial") : @tr("Add to speed dial");
+                    clicked => { root.menu-open = false; CallsPageStore.command("speed-toggle", root.menu-item.mri); }
+                }
+                FileMenuItem { label: @tr("Copy name"); clicked => { root.menu-open = false; CallsPageStore.command("copy", root.menu-item.name); } }
+                if root.menu-item.number != "": FileMenuItem { label: @tr("Copy number"); clicked => { root.menu-open = false; CallsPageStore.command("copy", root.menu-item.number); } }
+                FileMenuItem { label: @tr("Remove from view"); clicked => { root.menu-open = false; CallsPageStore.command("hide", root.menu-item.id); } }
+            }
+        }
+    }
+}
