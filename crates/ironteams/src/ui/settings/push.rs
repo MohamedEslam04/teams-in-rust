@@ -201,6 +201,22 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_ringtone_file(s(file_label(l.calls.ringtone_file.as_deref())));
     g.set_message_sound(s(l.sounds.message.slug()));
     g.set_message_sound_file(s(file_label(l.sounds.message_file.as_deref())));
+    g.set_urgent_sound(s(l.sounds.urgent.slug()));
+    g.set_download_teams_sounds(l.sounds.download_teams_sounds);
+    // Teams' own sounds, from the one table.
+    let originals = |slot| {
+        model(
+            sounds::teams_assets::of_slot(slot)
+                .map(|o| SOption {
+                    v: s(o.slug),
+                    l: s(o.label),
+                })
+                .collect::<Vec<_>>(),
+        )
+    };
+    g.set_ringtone_originals(originals(Slot::Ring));
+    g.set_message_originals(originals(Slot::Message));
+    g.set_urgent_originals(originals(Slot::Urgent));
     push_devices(w, c);
     push_perms(w, c);
 }

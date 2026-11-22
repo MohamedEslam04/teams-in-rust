@@ -123,10 +123,16 @@ export global SettingsStore {
 
     // --- Calls ---
     in-out property <string> call-feedback: "sometimes"; // always | sometimes | never
-    in-out property <string> ringtone: "default"; // default | chime | soft | pulse | custom
+    in-out property <string> ringtone: "default"; // default | a Teams ringtone | ironteams | chime | soft | pulse | custom
+    // Teams' own sounds, from the table in `teams_assets` (the default first).
+    in-out property <[SOption]> ringtone-originals;
+    in-out property <[SOption]> message-originals;
+    in-out property <[SOption]> urgent-originals;
     in-out property <string> ringtone-file; // the custom file's name ("" for none)
-    in-out property <string> message-sound: "default"; // default | chime | soft | pulse | custom
+    in-out property <string> message-sound: "default"; // default (Teams' Tap) | a Teams sound | ironteams | chime | soft | pulse | custom
+    in-out property <string> urgent-sound: "default"; // default (Teams' Prioritize) | escalate | alarm
     in-out property <string> message-sound-file;
+    in-out property <bool> download-teams-sounds: true;
 
     // --- Files and links (X1.6) ---
     in-out property <string> open-files: "browser"; // ironteams | browser | desktop
