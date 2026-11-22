@@ -81,6 +81,11 @@ impl Engine {
         Ok(())
     }
 
+    /// A chat is popped out into its own window.
+    pub(in crate::backend) fn popout_is_open(&self) -> bool {
+        self.media.lock().unwrap().popout.is_some()
+    }
+
     /// Pushes the popped-out chat's messages (and its queued sends) to its window.
     pub(in crate::backend) fn render_popout(self: &Arc<Self>) {
         let Some(conv) = self.media.lock().unwrap().popout.clone() else {

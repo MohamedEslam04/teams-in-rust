@@ -150,7 +150,7 @@ fn take(all: bool) -> Vec<String> {
 
 impl Engine {
     /// Looks up the wanted people's presence: the new ones soon after they are wanted, everyone
-    /// once a minute (live only).
+    /// once a minute while the window is in sight (live only).
     pub(super) fn start_people_presence(self: &Arc<Self>) {
         let e = self.clone();
         want(&e.me);
@@ -161,8 +161,13 @@ impl Engine {
                         tokio::time::sleep(GATHER).await;
                         false
                     }
-                    _ = tokio::time::sleep(REFRESH) => true,
+                    // Out of sight the round waits for the window to be shown, then runs at once.
+                    _ = e.visible_tick(REFRESH) => true,
                 };
+                if !e.is_visible() {
+                    // The people wanted meanwhile stay wanted: the round on show takes them.
+                    continue;
+                }
                 let people = take(all);
                 if people.is_empty() {
                     continue;

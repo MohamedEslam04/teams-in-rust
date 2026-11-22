@@ -226,6 +226,7 @@ pub(crate) fn show_and_raise(w: &AppWindow) {
     use slint::winit_030::WinitWindowAccessor;
     let _ = w.show();
     w.window().set_minimized(false);
+    crate::window_watch::shown(w);
     // Wayland may refuse to raise without an activation token; the window is shown anyway.
     w.window().with_winit_window(|ww| ww.focus_window());
 }
@@ -278,6 +279,9 @@ pub fn run(window: &AppWindow, hidden_flag: bool) -> Result<(), slint::PlatformE
             }
             if close_action(registered, keep_running()) == CloseAction::Quit {
                 let _ = slint::quit_event_loop();
+            } else if let Some(w) = weak.upgrade() {
+                // Out of sight: the engine goes quiet until the window is shown again.
+                crate::window_watch::hidden(&w);
             }
             slint::CloseRequestResponse::HideWindow
         }
@@ -291,6 +295,7 @@ pub fn run(window: &AppWindow, hidden_flag: bool) -> Result<(), slint::PlatformE
     if !start_hidden(hidden_flag, open_in_background, registered) {
         window.show()?;
     }
+    crate::window_watch::update(window);
     // `run_event_loop_until_quit` keeps going with no window shown, which close-to-tray needs.
     let result = slint::run_event_loop_until_quit();
     let _ = window.hide();

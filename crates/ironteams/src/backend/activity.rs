@@ -477,10 +477,7 @@ impl Engine {
     /// Pushes the list, the badges and the preview of the selected item to the UI.
     pub(crate) fn render_activity(self: &Arc<Self>, list: bool, preview: bool) {
         if list {
-            let (visible, unread) = {
-                let st = self.activity.lock().unwrap();
-                (st.visible(), st.unread())
-            };
+            let visible = self.activity.lock().unwrap().visible();
             let rows: Vec<ActivityData> = visible
                 .iter()
                 .map(|i| {
@@ -489,26 +486,31 @@ impl Engine {
                 })
                 .collect();
             self.ui.activity(rows);
-            let current = self.view.lock().unwrap().current.clone();
-            // A snoozed chat leaves the unread counts until it comes back.
-            let snoozed = self.remind_snoozed();
-            let now = teams_proto::time::now_ms();
-            let unread_chats = self
-                .store
-                .lock()
-                .unwrap()
-                .conversations(ConvFilter::Unread, 300)
-                .unwrap_or_default();
-            let chats =
-                super::remind::filter_snoozed(unread_chats, |c| c.id.as_str(), &snoozed, now)
-                    .iter()
-                    .filter(|c| c.kind != ConvKind::Channel && current.as_deref() != Some(&c.id))
-                    .count();
-            self.ui.badges(unread as i32, chats as i32);
+            self.render_badges();
         }
         if preview && self.activity.lock().unwrap().selected.is_some() {
             self.render_preview();
         }
+    }
+
+    /// Pushes the unread counts (the window title, the rail, the tray and the launcher badge).
+    pub(super) fn render_badges(&self) {
+        let unread = self.activity.lock().unwrap().unread();
+        let current = self.view.lock().unwrap().current.clone();
+        // A snoozed chat leaves the unread counts until it comes back.
+        let snoozed = self.remind_snoozed();
+        let now = teams_proto::time::now_ms();
+        let unread_chats = self
+            .store
+            .lock()
+            .unwrap()
+            .conversations(ConvFilter::Unread, 300)
+            .unwrap_or_default();
+        let chats = super::remind::filter_snoozed(unread_chats, |c| c.id.as_str(), &snoozed, now)
+            .iter()
+            .filter(|c| c.kind != ConvKind::Channel && current.as_deref() != Some(&c.id))
+            .count();
+        self.ui.badges(unread as i32, chats as i32);
     }
 
     fn store_conv(&self, thread_id: &str) -> Option<ConversationRow> {
