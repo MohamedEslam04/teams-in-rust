@@ -1,4 +1,4 @@
-Docs synced to commit df8c757f ("Merge remote-tracking branch 'origin/dev' into feat/arch-split-files", 2026-11-22)
+Docs synced to commit be977c73 ("Merge feat/ui-organisms: composer and app.slint split into organisms, duplicate component names resolved", 2026-11-22)
 
 # Architecture
 

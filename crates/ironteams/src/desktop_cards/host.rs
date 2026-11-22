@@ -1,5 +1,5 @@
 //! The card host: the same executable started as `ironteams --toast-host`. It reads cards from
-//! stdin, draws them with `CardHost` (`ui/message_toast.slint`) and writes what the user did to
+//! stdin, draws them with `CardHost` (`ui/organisms/message_toast.slint`) and writes what the user did to
 //! stdout, one JSON line each (`protocol`). Nothing in it knows about Teams.
 //!
 //! The stack logic ([`plan`], [`apply`], the callbacks in [`wire`]) is shared by every backend and
