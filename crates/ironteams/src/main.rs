@@ -2,6 +2,8 @@
 // A release build on Windows is a GUI program: no console window next to it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+#[cfg(test)]
+mod architecture_tests;
 mod backend;
 mod catch_up;
 mod composer;
