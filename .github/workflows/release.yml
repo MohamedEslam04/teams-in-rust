@@ -61,6 +61,7 @@ env:
 jobs:
   meta:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
@@ -83,6 +84,7 @@ jobs:
 
   icons:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick icnsutils
@@ -101,6 +103,7 @@ jobs:
     needs: [meta, icons]
     # The oldest supported runner, so the binary runs on older glibc too.
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
@@ -154,6 +157,7 @@ jobs:
   windows:
     needs: [meta, icons]
     runs-on: windows-latest
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
@@ -231,6 +235,7 @@ jobs:
             arch: x86_64
             channel: osx-x64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       PRERELEASE: ${{ needs.meta.outputs.prerelease }}
@@ -324,6 +329,7 @@ jobs:
       && (needs.gate.result == 'success' || (inputs.skip-gate && needs.gate.result == 'skipped'))
     needs: [meta, gate, linux, windows, macos, packages]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     env:
