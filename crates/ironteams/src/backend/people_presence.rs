@@ -212,16 +212,6 @@ impl Engine {
     pub(crate) fn test_set_presence(self: &Arc<Self>, mri: &str, availability: &str) {
         self.apply_presence(mri, availability, "");
     }
-
-    /// The same with what the person is doing.
-    pub(crate) fn test_set_presence_activity(
-        self: &Arc<Self>,
-        mri: &str,
-        availability: &str,
-        activity: &str,
-    ) {
-        self.apply_presence(mri, availability, activity);
-    }
 }
 
 #[cfg(test)]
