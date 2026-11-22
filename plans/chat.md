@@ -202,6 +202,18 @@ Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
   - **What.** "Send the message" (default), or "Start a new line", where Ctrl+Enter sends.
   - **Done when.** A UI test covers both modes.
 
+### 5.11 Moving around a long chat
+- [ ] Impact 4, effort 3. Seen: Teams quoted replies (a click goes to the original), "N new messages" above the list, Ctrl+F.
+  - **What.**
+    - Jump to the first message: the chat header's "…" menu and Ctrl+Alt+Home (Ctrl+Home in the focused message pane). Home and End keep scrolling the loaded list.
+    - Jump to a date: a dialog (the header's "…" menu, or a click on a day line in the list) takes `YYYY-MM-DD` or Yesterday, A week ago, A month ago, A year ago, and lands on the first message of that day or after it.
+    - A reply's quote is a link to the original message; when it is gone, a notice says "The original message is not available".
+    - "↑ New messages · N" floats beside "↓ Jump to newest" while the unread divider is above the view; a click scrolls back to it.
+    - Ctrl+F opens Find in chat (Find in channel in a channel); pressed again, it goes back to the box.
+  - **How.** `Engine::load_to_start` and `load_back` (`backend/people/pins_and_receipts.rs`) page the history back from the oldest stored message with no page limit, counting in the loading line; a newer jump or leaving the chat stops them (`nav_seq`). They land through the pin jump's path (`land_on`: the list window grows, the row is flashed, `Scroll::Divider`), after reading the holes the grown window reaches (`fill_history_gaps`). The quote's target is the reply's `itemid` (`Msg.quote-id`). `load_until_found` now pages back from the oldest stored message (it asked for the page before the newest one each time).
+  - **Done when.** A UI test covers each; a live check pages a long chat back to its start.
+  - **Status (2026-11-22).** Built with tests (`cargo test -p ironteams ui_tests::chat_navigation`, `shortcuts::`, `pins_and_receipts::day_tests`, `store oldest_compose_ms`). Not checked live: paging a real chat back to its first message, and a channel (only chats have the items; a channel's Posts list has its own paging). The notices from the engine are English only, like the other engine notices.
+
 ---
 
 ## Phase 6: people and conversations

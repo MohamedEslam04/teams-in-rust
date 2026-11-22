@@ -1,8 +1,9 @@
 // The conversation's messages: the list (pinned to the newest message, jumps to the unread
-// divider and to a found message), a channel's posts, the jump-to-newest button and the loading
-// and unavailable notices.
+// divider and to a found message), a channel's posts, the jump-to-newest and "New messages"
+// buttons, the "Jump to a date" dialog and the loading and unavailable notices.
 import { ChannelPosts } from "channel_posts.slint";
 import { FindStore } from "../stores/find_store.slint";
+import { JumpDateDialog } from "jump_date.slint";
 import { ListView } from "std-widgets.slint";
 import { MessageRow } from "message_row.slint";
 import { Msg } from "../tokens/types.slint";
@@ -22,10 +23,14 @@ export component MessagePane inherits Rectangle {
     in property <int> divider-tick;
     callback edit(string);
     in-out property <int> focus-tick;
+    // A reply's quote was clicked: the quoted message's id.
+    callback jump-to-message(string);
     callback jump-to-newest;
     callback load-older;
     in property <bool> loading-latest;
     in property <bool> loading-older;
+    // Messages a jump (to the first message, to a date) has read so far (0: none).
+    in property <int> loading-progress;
     in-out property <Msg> menu-msg;
     in-out property <bool> menu-open;
     in-out property <bool> menu-preview;
@@ -56,7 +61,22 @@ export component MessagePane inherits Rectangle {
     callback toggle-select(string);
     in property <bool> unavailable;
     in property <string> unavailable-text;
+    // Row of the "New messages" divider (-1: none) and the messages from others from there on.
+    in property <int> unread-count;
+    in property <int> unread-index: -1;
     vertical-stretch: 1;
+    // The list's own bottom buttons.
+    property <bool> show-newest: !root.at-bottom && root.messages.length > 0 && !root.posts-mode;
+    // The "New messages" divider is above the view. Rows that are not on screen only have an
+    // estimated place (as for the jump to the divider), so it must be a row's height above.
+    property <bool> unread-above: root.unread-index >= 0 && root.unread-index < root.messages.length && !root.posts-mode
+        && msg-list.content-y + msg-list.content-height * root.unread-index / max(1, root.messages.length) + 48px < 0px;
+    // Puts row `i` of the list near the top. Its place is estimated; the divider or flashed row
+    // there corrects it once it is laid out (`aligning`).
+    function show-row(i: int) {
+        msg-list.aligning = true;
+        msg-list.content-y = min(0px, 24px - msg-list.content-height * i / max(1, root.messages.length));
+    }
     // Sees every pointer move over the list and passes it on. The list rebuilds
     // its rows when it jumps (a new message scrolls it down), and a photo
     // rebuilt under the pointer never hears that the pointer left: this tells
@@ -105,10 +125,7 @@ export component MessagePane inherits Rectangle {
             self.anchoring = true;
             self.pinned = false;
         }
-        changed d-tick => {
-            self.aligning = true;
-            self.content-y = min(0px, 24px - self.content-height * root.divider-index / max(1, root.messages.length));
-        }
+        changed d-tick => { root.show-row(root.divider-index); }
         // The content height the last `changed content-height` saw. A content-y change
         // that arrives with a different height is the content growing under the
         // view (a card, an image or a voice bubble got its real height), not the
@@ -156,6 +173,9 @@ export component MessagePane inherits Rectangle {
                 pane-top: msg-list.absolute-position.y;
                 in-channel: root.current-is-channel && root.thread-root == "";
                 select-mode: root.select-mode;
+                can-jump: root.thread-root == "" && !root.select-mode;
+                jump-to-message(id) => { root.jump-to-message(id); }
+                pick-date => { PeopleStore.jump-date-open = true; }
                 changed y => {
                     if msg-list.aligning && !msg-list.anchoring && (m.new-above || m.flash) {
                         msg-list.content-y = min(0px, 24px - self.y);
@@ -239,7 +259,9 @@ export component MessagePane inherits Rectangle {
         retry-send(id) => { root.retry-send(id); }
         discard-send(id) => { root.discard-send(id); }
     }
-    // Alt+Shift+M lands here: the arrow keys, Page Up/Down, Home and End scroll the list.
+    // Alt+Shift+M lands here: the arrow keys, Page Up/Down, Home and End scroll the list
+    // (Home to the oldest loaded message, End to the newest); Ctrl+Home jumps to the chat's very
+    // first message, reading its whole history.
     msg-scope := FocusScope {
         width: 0px;
         height: 0px;
@@ -250,6 +272,10 @@ export component MessagePane inherits Rectangle {
             if event.text == Key.DownArrow { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - 48px)); msg-list.recheck(); return accept; }
             if event.text == Key.PageUp { msg-list.content-y = min(0px, msg-list.content-y + msg-list.visible-height * 0.9); msg-list.recheck(); return accept; }
             if event.text == Key.PageDown { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - msg-list.visible-height * 0.9)); msg-list.recheck(); return accept; }
+            if event.text == Key.Home && event.modifiers.control {
+                if root.thread-root == "" && !root.posts-mode { PeopleStore.command("jump-first", ""); }
+                return accept;
+            }
             if event.text == Key.Home { msg-list.content-y = 0px; msg-list.recheck(); return accept; }
             if event.text == Key.End { root.scroll-tick += 1; return accept; }
             if event.text == Key.Escape { root.focus-tick += 1; return accept; }
@@ -282,29 +308,54 @@ export component MessagePane inherits Rectangle {
         running: msg-list.aligning;
         triggered => { msg-list.aligning = false; }
     }
-    if !root.at-bottom && root.messages.length > 0 && !root.posts-mode: Rectangle {
+    // The bottom buttons, side by side: "↑ New messages" (back to the divider) and Jump to newest.
+    if root.show-newest || root.unread-above: Rectangle {
         z: 5;
-        x: (parent.width - self.width) / 2;
         y: parent.height - self.height - 12px;
-        width: jump-text.preferred-width + 28px;
         height: 32px;
-        border-radius: 16px;
-        background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
-        border-width: 1px;
-        border-color: Theme.accent-strong;
-        jump-text := Text {
-            text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
-            color: #ffffff;
-            font-size: 12px * Theme.font-scale;
-            font-weight: 600;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-        }
-        jump-touch := TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
-                root.scroll-tick += 1;
-                root.jump-to-newest();
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            if root.unread-above: Rectangle {
+                width: unread-text.preferred-width + 28px;
+                border-radius: 16px;
+                background: unread-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.accent;
+                unread-text := Text {
+                    text: @tr("↑ New messages · {}", root.unread-count);
+                    color: Theme.fg;
+                    font-size: 12px * Theme.font-scale;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                unread-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.show-row(root.unread-index); }
+                }
+            }
+            if root.show-newest: Rectangle {
+                width: jump-text.preferred-width + 28px;
+                border-radius: 16px;
+                background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
+                border-width: 1px;
+                border-color: Theme.accent-strong;
+                jump-text := Text {
+                    text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
+                    color: #ffffff;
+                    font-size: 12px * Theme.font-scale;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                jump-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.scroll-tick += 1;
+                        root.jump-to-newest();
+                    }
+                }
             }
         }
     }
@@ -330,20 +381,22 @@ export component MessagePane inherits Rectangle {
     if root.loading-older && !root.posts-mode: Rectangle {
         y: 8px;
         height: 24px;
-        width: 200px;
-        x: (parent.width - 200px) / 2;
+        // A jump to the first message or a date counts what it has read.
+        width: max(200px, older-text.preferred-width + 52px);
+        x: (parent.width - self.width) / 2;
         border-radius: 12px;
         background: Theme.surface;
         Spinner { x: 12px; y: 5px; }
-        Text {
+        older-text := Text {
             x: 30px;
             width: parent.width - 38px;
-            text: @tr("Loading older messages…");
+            text: root.loading-progress > 0 ? @tr("Loading older messages… ({} read)", root.loading-progress) : @tr("Loading older messages…");
             color: Theme.fg-muted;
             font-size: 12px * Theme.font-scale;
             horizontal-alignment: center;
         }
     }
+    if PeopleStore.jump-date-open && !root.posts-mode: JumpDateDialog { z: 8; }
     // Opening a chat or channel that has nothing stored yet: grey bubbles with a
     // highlight passing over them until its newest page arrives.
     if root.loading-latest && root.messages.length == 0 && !root.unavailable && root.thread-root == "": SkeletonMessages {

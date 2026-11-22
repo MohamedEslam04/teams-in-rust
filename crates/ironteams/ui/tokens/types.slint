@@ -107,6 +107,7 @@ export struct Msg {
     subject: string,
     quote-author: string,
     quote-text: string,
+    quote-id: string,      // the message the reply quote points to ("": none)
     body: styled-text,
     plain: string,
     rtl: bool,

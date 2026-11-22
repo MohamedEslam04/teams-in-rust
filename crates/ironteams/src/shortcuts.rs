@@ -4,12 +4,19 @@
 //! Ctrl+Alt+E, Alt+Shift+N, Shift+Esc and Alt+Q stay in `app.slint` where they always were.
 
 use crate::{AppWindow, Msg, ShortcutApi};
+use slint::platform::Key;
 use slint::{ComponentHandle, Model, ModelRc, SharedString};
 
 /// The action of a chord, or `""`. `key` is the key's text (case is ignored).
 pub fn action(key: &str, ctrl: bool, alt: bool, shift: bool) -> &'static str {
+    // Ctrl+Alt+Home: the open chat's very first message (Ctrl+Home stays with the text boxes).
+    if ctrl && alt && !shift && key.chars().eq([char::from(Key::Home)]) {
+        return "jump-first";
+    }
     let k = key.to_lowercase();
     match (ctrl, alt, shift, k.as_str()) {
+        // Find in chat (or in channel).
+        (true, false, false, "f") => "find",
         (true, false, false, ".") => "shortcuts",
         (true, false, true, "p") => "palette",
         (true, false, false, "e") => "search-box",
@@ -74,6 +81,19 @@ mod tests {
         assert_eq!(action("O", false, true, true), "attach-file");
         assert_eq!(action("A", false, true, true), "audio-call");
         assert_eq!(action("v", false, true, true), "video-call");
+        assert_eq!(action("F", true, false, false), "find");
+        let home = char::from(Key::Home).to_string();
+        assert_eq!(action(&home, true, true, false), "jump-first");
+    }
+
+    #[test]
+    fn home_without_both_ctrl_and_alt_is_left_to_the_text_boxes_and_the_list() {
+        let home = char::from(Key::Home).to_string();
+        assert_eq!(action(&home, true, false, false), "");
+        assert_eq!(action(&home, false, false, false), "");
+        assert_eq!(action(&home, true, true, true), "");
+        // Ctrl+Shift+F stays the chat list filter.
+        assert_eq!(action("f", true, false, true), "filter-box");
     }
 
     #[test]

@@ -254,7 +254,7 @@ impl Engine {
     /// Reads the holes in the cache that a window of the newest `limit + PAGE` rows reaches into,
     /// each from its newer edge down (a few pages at most per call). Returns false when the
     /// network read failed: the window must not grow over a hole.
-    async fn fill_history_gaps(self: &Arc<Self>, conv: &str, limit: usize) -> bool {
+    pub(super) async fn fill_history_gaps(self: &Arc<Self>, conv: &str, limit: usize) -> bool {
         for _ in 0..GAP_PAGES {
             let gap = {
                 let st = self.store.lock().unwrap();

@@ -106,6 +106,22 @@ export component HeaderMenu inherits Rectangle {
                 }
             }
             MenuItem { variant: MenuItemVariant.header; label: @tr("Copy link"); clicked => { ListStore.command("copy-link", root.chat-id); root.done(); } }
+            // The chat's history: back to its very first message, or to a day.
+            MenuItem { variant: MenuItemVariant.header;
+                label: @tr("Jump to first message");
+                keys: "Ctrl+Alt+Home";
+                clicked => {
+                    PeopleStore.command("jump-first", "");
+                    root.done();
+                }
+            }
+            MenuItem { variant: MenuItemVariant.header;
+                label: @tr("Jump to a date");
+                clicked => {
+                    PeopleStore.jump-date-open = true;
+                    root.done();
+                }
+            }
             MenuItem { variant: MenuItemVariant.header;
                 label: @tr("Remove chat history");
                 danger: true;

@@ -99,6 +99,8 @@ export component ShortcutsDialog inherits Rectangle {
                     Heading { variant: HeadingVariant.group; text: "Messages"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Alt+Shift+R"; what: "Focus the compose box"; }
                     Row { keys: "Alt+Shift+M"; what: "Focus the message pane"; }
+                    Row { keys: "Ctrl+F"; what: @tr("Find in chat or channel"); }
+                    Row { keys: "Ctrl+Alt+Home"; what: @tr("Jump to the first message of the chat"); }
                     Row { keys: "Ctrl+Shift+X"; what: "Expand the composer"; }
                     Row { keys: "Alt+Shift+O"; what: "Attach a file"; }
                     Row { keys: "Ctrl+Shift+R"; what: "Record a voice message (Esc deletes it, Enter sends it)"; }

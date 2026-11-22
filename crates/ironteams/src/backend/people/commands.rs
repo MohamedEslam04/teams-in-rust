@@ -83,12 +83,17 @@ impl Engine {
                 self.set_receipts(on);
                 Ok(())
             }
+            PeopleCmd::JumpFirst => self.jump_to_first().await,
+            PeopleCmd::JumpDate(day) => self.jump_to_date(&day).await,
+            PeopleCmd::QuoteJump(id) => self.jump_to_quote(&id).await,
         }
     }
 
     /// Called when a chat is opened: drops what belonged to the previous one and starts loading
     /// members, pins and read receipts of the new one.
     pub(in super::super) fn on_chat_opened(self: &Arc<Self>, conv: &str) {
+        // A jump still reading the previous chat's history stops.
+        self.begin_nav();
         {
             let mut p = self.people.lock().unwrap();
             p.entries.clear();

@@ -23,6 +23,18 @@ fn commands_parse_by_name() {
         PeopleCmd::parse("receipts", "off"),
         Some(PeopleCmd::Receipts(false))
     );
+    assert_eq!(
+        PeopleCmd::parse("jump-first", ""),
+        Some(PeopleCmd::JumpFirst)
+    );
+    assert_eq!(
+        PeopleCmd::parse("jump-date", "days:7"),
+        Some(PeopleCmd::JumpDate("days:7".into()))
+    );
+    assert_eq!(
+        PeopleCmd::parse("quote-jump", "1700000000000"),
+        Some(PeopleCmd::QuoteJump("1700000000000".into()))
+    );
     assert_eq!(PeopleCmd::parse("nope", ""), None);
 }
 

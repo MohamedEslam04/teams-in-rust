@@ -94,6 +94,8 @@ fn the_menu_has_the_teams_items_in_order() {
             "Move to section",
             "Mute",
             "Copy link",
+            "Jump to first message",
+            "Jump to a date",
             "Remove chat history"
         ]
     );

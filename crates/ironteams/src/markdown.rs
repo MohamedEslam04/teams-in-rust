@@ -8,6 +8,8 @@ use render::{Block, Dir, RichBlock, RichDoc, RichList, RichTable, RichText, Span
 pub struct Rendered {
     pub quote_author: String,
     pub quote_text: String,
+    /// The id of the message the reply quote points to (`""`: none, or not a reply).
+    pub quote_id: String,
     pub markdown: String,
     pub plain: String,
     pub rtl: bool,
@@ -99,10 +101,14 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
     for b in &rt.blocks {
         match b {
             Block::Quote {
-                author, preview, ..
+                message_id,
+                author,
+                preview,
+                ..
             } if r.quote_text.is_empty() && md.is_empty() => {
                 r.quote_author = author.clone().unwrap_or_default();
                 r.quote_text = preview.clone();
+                r.quote_id = message_id.clone().unwrap_or_default();
             }
             Block::Quote { preview, .. } => {
                 md.push(format!("> {}", escape(preview)));
@@ -485,6 +491,7 @@ mod tests {
         let x = r(&html);
         assert_eq!(x.quote_author, "Sara");
         assert_eq!(x.quote_text, "original text");
+        assert_eq!(x.quote_id, "1", "the quoted message, for the jump to it");
         assert_eq!(x.markdown, "my reply");
     }
 

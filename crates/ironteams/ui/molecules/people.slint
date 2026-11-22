@@ -138,10 +138,14 @@ export global PeopleStore {
     // Read receipts on (shown on your newest message).
     in property <bool> receipts-on: true;
 
+    // The "Jump to a date" dialog of the open chat is shown.
+    in-out property <bool> jump-date-open: false;
+
     // (name, argument). Names: mention-query, mention-pick, new-chat-open, new-chat-close,
     // new-chat-query, new-chat-add, new-chat-remove, new-chat-name, new-chat-send, rename,
     // participants-open, add-query, add-pick, add-history, leave, profile, profile-copy-email,
-    // profile-chat, pin-jump, pin-unpin, receipts.
+    // profile-chat, pin-jump, pin-unpin, receipts, jump-first, jump-date (YYYY-MM-DD or days:N),
+    // quote-jump (the quoted message's id).
     callback command(string, string);
 }
 

@@ -1,0 +1,53 @@
+// "Jump to a date" (the chat header's … menu, or a click on a day line in the chat): a day typed as
+// YYYY-MM-DD, or one of the quick choices. The chat then reads its history back to that day and
+// scrolls to its first message (`PeopleStore` "jump-date", see src/backend/people).
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
+import { ModalDialog } from "../atoms/dialog_frame.slint";
+import { PeopleStore } from "../molecules/people.slint";
+
+export component JumpDateDialog inherits ModalDialog {
+    title: @tr("Jump to a date");
+    panel-width: 460px;
+    panel-height: 240px;
+    close => { PeopleStore.jump-date-open = false; }
+    function go(day: string) {
+        PeopleStore.command("jump-date", day);
+        PeopleStore.jump-date-open = false;
+    }
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        day := Field {
+            variant: FieldVariant.dialog;
+            label: @tr("Date");
+            placeholder: @tr("YYYY-MM-DD");
+            autofocus: true;
+            accepted(t) => {
+                if t != "" {
+                    root.go(t);
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Button { variant: ButtonVariant.subtle; label: @tr("Yesterday"); clicked => { root.go("days:1"); } }
+            Button { variant: ButtonVariant.subtle; label: @tr("A week ago"); clicked => { root.go("days:7"); } }
+            Button { variant: ButtonVariant.subtle; label: @tr("A month ago"); clicked => { root.go("days:30"); } }
+            Button { variant: ButtonVariant.subtle; label: @tr("A year ago"); clicked => { root.go("days:365"); } }
+        }
+        Rectangle { vertical-stretch: 1; }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button { variant: ButtonVariant.dialog; label: @tr("Cancel"); clicked => { PeopleStore.jump-date-open = false; } }
+            Button { variant: ButtonVariant.dialog;
+                label: @tr("Jump");
+                primary: true;
+                enabled: day.text != "";
+                clicked => { root.go(day.text); }
+            }
+        }
+    }
+}
