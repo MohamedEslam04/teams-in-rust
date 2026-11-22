@@ -46,6 +46,11 @@ impl Typing {
         });
     }
 
+    /// When the next typing event runs out, if anyone is typing.
+    pub(crate) fn next_lapse(&self) -> Option<Instant> {
+        self.by_chat.values().flatten().map(|t| t.2).min()
+    }
+
     /// The names typing in `chat`, in the order they started.
     pub(crate) fn names(&self, chat: &str) -> Vec<String> {
         self.by_chat
@@ -114,5 +119,22 @@ mod tests {
         t.stop("c1", "u2");
         assert!(t.chats().is_empty());
         t.stop("c9", "u1");
+    }
+
+    #[test]
+    fn the_next_lapse_is_the_soonest_in_any_chat() {
+        let t0 = Instant::now();
+        let mut t = Typing::default();
+        assert_eq!(t.next_lapse(), None, "nobody typing: nothing to wait for");
+        t.note("c1", "u1", "Mia", t0 + Duration::from_secs(2));
+        t.note("c2", "u2", "Omar", t0);
+        assert_eq!(t.next_lapse(), Some(t0 + TYPING_TTL));
+        t.stop("c2", "u2");
+        assert_eq!(
+            t.next_lapse(),
+            Some(t0 + Duration::from_secs(2) + TYPING_TTL)
+        );
+        t.expire(t0 + Duration::from_secs(9));
+        assert_eq!(t.next_lapse(), None);
     }
 }
