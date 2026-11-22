@@ -79,8 +79,9 @@ export struct MeetingPerson { name: string, initials: string, color: color }
 // A meeting event drawn as a card (ui/meeting_card.slint). `kind`: "call" | "recording" |
 // "transcript". `state`: a call "started" | "ended", else "ready" | "progress" | "failed".
 // `url`: where Play opens the recording ("" offers none). `recap-chat`: the meeting chat whose
-// Recap tab the card opens ("" offers none). `more`: people beyond the ones in `people`.
-export struct MeetingCard { kind: string, title: string, detail: string, people: [MeetingPerson], more: int, state: string, url: string, recap-chat: string }
+// Recap tab the card opens ("" offers none). `join-chat`: the meeting chat whose Join the card
+// offers ("" offers none). `more`: people beyond the ones in `people`.
+export struct MeetingCard { kind: string, title: string, detail: string, people: [MeetingPerson], more: int, state: string, url: string, recap-chat: string, join-chat: string }
 
 // One person who has seen my message: their initials in a small coloured circle, and their name.
 export struct ReaderItem { initials: string, color: color, name: string }
