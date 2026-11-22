@@ -1024,6 +1024,50 @@ mod tests {
     }
 
     #[test]
+    fn a_daily_series_shows_its_title_and_organizer_on_every_day_not_no_title() {
+        // What delta delivers: bare occurrences and the series master with the details.
+        let bare = |id: &str, day: i64| {
+            ev(
+                id,
+                day,
+                9.0,
+                9.25,
+                0,
+                json!({"subject": "", "type": "occurrence", "seriesMasterId": "m1"}),
+            )
+        };
+        let master = ev(
+            "m1",
+            -30,
+            9.0,
+            9.25,
+            0,
+            json!({"subject": "Morning Standup", "type": "seriesMaster",
+                "organizer": {"emailAddress": {"name": "Olivia", "address": "olivia@contoso.com"}}}),
+        );
+        let mut cache = calendar::EventCache::default();
+        cache.apply(
+            [master, bare("o1", 0), bare("o2", 1), bare("o3", 2)]
+                .into_iter()
+                .map(calendar::EventChange::Upsert)
+                .collect(),
+        );
+        let events = cache.in_range(i64::MIN / 2, i64::MAX / 2);
+        let data = build(&events, &ctx(View::WorkWeek, &utc));
+        assert_eq!(
+            data.blocks.len(),
+            3,
+            "one block per occurrence, none for the master"
+        );
+        for b in &data.blocks {
+            assert_eq!(b.title, "Morning Standup");
+            assert_eq!(b.organizer, "Olivia");
+            assert!(b.look.recurring);
+        }
+        assert!(data.blocks.iter().all(|b| b.title != "(No title)"));
+    }
+
+    #[test]
     fn overlapping_events_sit_side_by_side_in_their_day_column() {
         let a = ev("a", 0, 9.0, 10.0, 0, json!({}));
         let b = ev("b", 0, 9.5, 10.5, 0, json!({}));
