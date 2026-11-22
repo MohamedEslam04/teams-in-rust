@@ -1,0 +1,160 @@
+// OneDrive's Share dialog: people to share with, their permission, and the link.
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { SearchBox } from "../atoms/search_box.slint";
+import { DialogFrame } from "../atoms/dialog_frame.slint";
+import { DriveStore } from "../stores/drive_store.slint";
+
+export component ShareDialog inherits DialogFrame {
+    title: "Share " + DriveStore.share-name;
+    dialog-width: 560px;
+    height: 640px;
+    // Link settings, kept here until "Create link".
+    property <string> link-scope: "organization";
+    property <string> link-type: "view";
+    property <bool> link-block: false;
+    property <int> link-days: 0;
+    Flickable {
+        vertical-stretch: 1;
+        content-height: body.preferred-height;
+        body := VerticalLayout {
+            spacing: 8px;
+            Text { text: DriveStore.share-status; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Share status " + DriveStore.share-status; }
+            Text { text: "Share with people"; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; }
+            SearchBox { clip-placeholder: true;
+                placeholder: "Search for people";
+                label: "Search for people";
+                edited(t) => { DriveStore.command("share-search", t); }
+            }
+            if DriveStore.share-picked.length > 0: HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                for p in DriveStore.share-picked: Rectangle {
+                    height: 24px;
+                    width: min(pn.preferred-width, 160px) + 26px;
+                    border-radius: 12px;
+                    background: Theme.dark ? #34365c : #e3e4fa;
+                    accessible-role: button;
+                    accessible-label: "Remove " + p.name;
+                    pn := Text { x: 10px; width: parent.width - 26px; text: p.name; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                    Text { x: parent.width - 16px; text: "×"; color: Theme.fg-muted; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("share-pick", p.id); } }
+                }
+            }
+            for p in DriveStore.share-results: Rectangle {
+                height: 36px;
+                border-radius: 4px;
+                background: ph.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: checkbox;
+                accessible-label: p.name;
+                accessible-checked: p.picked;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 10px;
+                    Text { text: p.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: p.detail; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: p.picked ? "✓" : ""; color: Theme.accent; font-size: 15px * Theme.font-scale; vertical-alignment: center; }
+                }
+                ph := TouchArea { mouse-cursor: pointer; clicked => { DriveStore.command("share-pick", p.id); } }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Pill { label: "Can edit"; active: DriveStore.share-role == "write"; clicked => { DriveStore.command("share-role", "write"); } }
+                Pill { label: "Can view"; active: DriveStore.share-role == "read"; clicked => { DriveStore.command("share-role", "read"); } }
+            }
+            Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: note.has-focus ? Theme.accent : Theme.border;
+                note := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    single-line: true;
+                    vertical-alignment: center;
+                    accessible-role: text-input;
+                    accessible-label: "Message";
+                }
+                if note.text == "": Text { x: 10px; text: "Add a message (optional)"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+            }
+            HorizontalLayout {
+                alignment: end;
+                Button { variant: ButtonVariant.flat;
+                    label: "Send";
+                    primary: true;
+                    enabled: DriveStore.share-picked.length > 0;
+                    clicked => { DriveStore.command("share-send", note.text); }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            Text { text: "Link settings"; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Pill { label: "Anyone"; active: root.link-scope == "anyone"; clicked => { root.link-scope = "anyone"; } }
+                Pill { label: "People in your organization"; active: root.link-scope == "organization"; clicked => { root.link-scope = "organization"; } }
+                Pill { label: "Specific people"; active: root.link-scope == "users"; clicked => { root.link-scope = "users"; } }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Pill { label: "View"; active: root.link-type == "view"; clicked => { root.link-type = "view"; } }
+                Pill { label: "Edit"; active: root.link-type == "edit"; clicked => { root.link-type = "edit"; root.link-block = false; } }
+                if root.link-type == "view": Pill { label: "Block download"; active: root.link-block; clicked => { root.link-block = !root.link-block; } }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Pill { label: "No expiry"; active: root.link-days == 0; clicked => { root.link-days = 0; } }
+                Pill { label: "7 days"; active: root.link-days == 7; clicked => { root.link-days = 7; } }
+                Pill { label: "30 days"; active: root.link-days == 30; clicked => { root.link-days = 30; } }
+            }
+            HorizontalLayout {
+                alignment: end;
+                Button { variant: ButtonVariant.flat;
+                    label: "Create link";
+                    clicked => { DriveStore.command("share-link", root.link-scope + "," + root.link-type + "," + (root.link-block ? "1" : "0") + "," + root.link-days); }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            Text { text: "Manage access"; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; }
+            for p in DriveStore.share-perms: Rectangle {
+                height: 40px;
+                accessible-role: list-item;
+                accessible-label: p.who;
+                accessible-description: p.role + (p.detail != "" ? ", " + p.detail : "");
+                HorizontalLayout {
+                    padding-left: 4px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text { text: p.who; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+                        if p.detail != "": Text { text: p.detail; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+                    }
+                    if p.editable: Pill {
+                        y: 7px;
+                        label: p.role == "write" ? "Can edit" : "Can view";
+                        clicked => { DriveStore.command("share-perm-role", p.id + "|" + (p.role == "write" ? "read" : "write")); }
+                    }
+                    if !p.editable: Text { text: p.role == "owner" ? "Owner" : (p.role == "write" ? "Can edit" : "Can view"); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                    if p.editable: IconButton {
+                        y: 7px;
+                        icon: @image-url("../icons/close.svg");
+                        tooltip: "Remove access for " + p.who;
+                        size: 26px;
+                        clicked => { DriveStore.command("share-perm-remove", p.id); }
+                    }
+                }
+            }
+            if DriveStore.share-perms.length == 0: Text { text: "Only you have access."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; }
+        }
+    }
+}

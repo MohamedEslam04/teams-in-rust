@@ -13,6 +13,7 @@
 use super::Engine;
 use super::mentions;
 use crate::send_options::sending_label;
+use crate::ui_api::ScheduledData;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use teams_proto::scheduled::ScheduledMessage;
@@ -44,14 +45,6 @@ impl ScheduledCmd {
             _ => return None,
         })
     }
-}
-
-/// One bubble of the open chat: client message id, "Sending on …", the text.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScheduledData {
-    pub id: String,
-    pub label: String,
-    pub text: String,
 }
 
 /// The waiting messages of `conv` (still in the future at `now`), soonest first.

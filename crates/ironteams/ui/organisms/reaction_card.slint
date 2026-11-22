@@ -1,0 +1,110 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Reactor } from "../tokens/types.slint";
+import { Avatar } from "../atoms/avatar.slint";
+import { ReactionHover } from "../atoms/reaction_hover.slint";
+
+// One person who reacted: a small round photo (their initials without one) and their full name.
+// Keyboard focus draws a white outline around the row.
+component ReactorRow inherits Rectangle {
+    in property <Reactor> p;
+    height: 28px;
+    border-radius: 4px;
+    border-width: scope.has-focus ? 1px : 0px;
+    border-color: #ffffff;
+    accessible-role: list-item;
+    accessible-label: root.p.name;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        Rectangle {
+            width: 20px;
+            Avatar {
+                y: (parent.height - self.height) / 2;
+                size: 20px;
+                initials: root.p.initials;
+                tone: root.p.color;
+                img: root.p.img;
+                has-img: root.p.has-img;
+            }
+        }
+        Text {
+            text: root.p.name;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    scope := FocusScope { focus-on-tab-navigation: true; }
+}
+
+// Who reacted, as in Teams: a card below the hovered chip (above it when there is no room below)
+// with the reaction's name, then a row per person; more than ten scroll. It is drawn once, at
+// the window's top level, so the message rows under the chip never cover it. It stays while the
+// pointer is on the chip or on the card, and closes a moment after it leaves both.
+export component ReactionCard inherits Rectangle {
+    // The window it sits in.
+    in property <length> win-w;
+    in property <length> win-h;
+    property <length> rows-h: min(ReactionHover.people.length, 10) * 28px;
+    property <length> below-y: ReactionHover.ay + ReactionHover.ah + 4px;
+    property <int> seen-beats;
+    z: 60;
+    width: 200px;
+    height: 8px + 24px + self.rows-h;
+    x: max(8px, min(ReactionHover.ax, root.win-w - self.width - 8px));
+    y: self.below-y + self.height <= root.win-h - 8px ? self.below-y : max(8px, ReactionHover.ay - 4px - self.height);
+    border-radius: 4px;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #000000a0;
+    accessible-role: groupbox;
+    accessible-label: ReactionHover.name;
+
+    card-touch := TouchArea {
+        VerticalLayout {
+            padding: 4px;
+            header := Rectangle {
+                height: 24px;
+                accessible-role: text;
+                accessible-label: ReactionHover.name;
+                Text {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    text: ReactionHover.name;
+                    color: Theme.fg-muted;
+                    font-size: 12px * Theme.font-scale;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            ListView {
+                height: root.rows-h;
+                for p in ReactionHover.people: ReactorRow { p: p; }
+            }
+        }
+    }
+
+    // Closes shortly after the pointer left the chip and the card.
+    Timer {
+        interval: 250ms;
+        running: !ReactionHover.chip-hover && !card-touch.has-hover;
+        triggered => { ReactionHover.close(); }
+    }
+    // The chip ticks while the pointer is on it; no ticks means the chip is gone (its message
+    // was redrawn), so the card closes.
+    Timer {
+        interval: 800ms;
+        running: ReactionHover.chip-hover && !card-touch.has-hover;
+        triggered => {
+            if ReactionHover.beats == root.seen-beats {
+                ReactionHover.close();
+            }
+            root.seen-beats = ReactionHover.beats;
+        }
+    }
+}

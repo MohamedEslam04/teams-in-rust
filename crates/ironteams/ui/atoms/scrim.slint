@@ -1,0 +1,16 @@
+// Covers what is behind a popover or a dialog and catches the clicks outside it.
+
+export enum ScrimVariant {
+    // Invisible: only closes the popover on a click outside it.
+    clear,
+    // Dims what is behind a dialog.
+    dim,
+}
+
+export component Scrim inherits Rectangle {
+    in property <ScrimVariant> variant: ScrimVariant.clear;
+    callback dismissed();
+    background: root.variant == ScrimVariant.dim ? #00000099 : transparent;
+    TouchArea { clicked => { root.dismissed(); } }
+    @children
+}

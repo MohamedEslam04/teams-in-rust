@@ -18,9 +18,9 @@ mod policy;
 mod synth;
 mod wav;
 
-use super::quiet::{self, Decision, Incoming};
 use super::ringtone::RingtoneChoice;
 use super::{Engine, call_presence, people_presence, settings};
+use crate::support::quiet::{self, Decision, Incoming};
 use cursor::Cursor;
 use policy::{Burst, Status, Switches};
 use serde::{Deserialize, Serialize};

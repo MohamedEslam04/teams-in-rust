@@ -11,7 +11,7 @@ use slint::{
 };
 
 use crate::backend::{Cmd, Engine};
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 use crate::{AppWindow, Msg, demo};
 use std::sync::Arc;
 use store::Store;
@@ -32,6 +32,7 @@ mod clip_loop;
 mod composer_apps;
 mod composer_gaps;
 mod composer_send;
+mod desktop_cards;
 mod drive;
 mod engage;
 mod find;

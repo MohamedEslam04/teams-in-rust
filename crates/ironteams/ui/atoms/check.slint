@@ -1,0 +1,232 @@
+// Check boxes and switches. Each variant draws exactly like the copy it replaces (ui/README.md
+// maps the old names).
+//
+// `CheckBox` is the box alone; its owner keeps the state (`toggled` asks for the other state).
+// `Check` is a box with its label: it flips `checked` itself, then says so through `toggled`.
+// `Switch` is an on/off switch with its label; `settings` flips `checked` itself, the others
+// leave the state to their owner.
+import { Theme } from "../tokens/theme.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { Icon } from "widgets.slint";
+
+export enum CheckBoxVariant {
+    // An 18px square with a check mark (Loop task lists).
+    square,
+    // A round green tick (Tasks app).
+    round,
+    // A square with a text tick on the sidebar colour (OneDrive's file selection).
+    drive,
+}
+
+export component CheckBox inherits Rectangle {
+    in property <CheckBoxVariant> variant: CheckBoxVariant.square;
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled(bool);
+    property <bool> round: root.variant == CheckBoxVariant.round;
+    property <bool> drive: root.variant == CheckBoxVariant.drive;
+    width: 18px;
+    height: 18px;
+    border-radius: root.round ? 9px : 3px;
+    border-width: root.round ? 1.5px : 1px;
+    border-color: root.round ? (root.checked ? #6bd69b : Theme.fg-subtle)
+        : root.checked ? Theme.accent
+        : root.drive ? Theme.fg-subtle : Theme.fg-muted;
+    background: root.round ? (root.checked ? #1d3a2a : transparent)
+        : root.checked ? Theme.accent-strong
+        : root.drive ? Theme.sidebar : transparent;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-checkable: root.variant == CheckBoxVariant.square;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.toggled(!root.checked); }
+    if root.variant == CheckBoxVariant.square && root.checked: Icon { source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: #ffffff; }
+    if root.round: Text { text: root.checked ? "✓" : ""; color: #6bd69b; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    if root.drive: Text { text: root.checked ? "✓" : ""; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+}
+
+export enum CheckVariant {
+    // Teams dialogs: an 18px box, the label and an optional hint line below it.
+    dialog,
+    // Calendar panels: a 16px box in `tone` (a calendar's colour) and an eliding label.
+    toolbar,
+}
+
+export component Check inherits Rectangle {
+    in property <CheckVariant> variant: CheckVariant.dialog;
+    in-out property <bool> checked;
+    in property <string> label;
+    // `dialog`: a second, quieter line.
+    in property <string> hint;
+    in property <bool> enabled: true;
+    // `toolbar`: the box colour when checked.
+    in property <color> tone: Theme.accent-strong;
+    callback toggled(bool);
+    property <bool> toolbar: root.variant == CheckVariant.toolbar;
+    property <length> text-x: root.toolbar ? 24px : 28px;
+    height: root.toolbar ? 26px : (root.hint == "" ? 30px : 46px);
+    preferred-width: root.toolbar ? lbl.preferred-width + 30px : col.preferred-width + 28px;
+    min-width: root.toolbar ? 0px : col.min-width + 28px;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.flip(); }
+    function flip() {
+        if root.enabled {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+    Rectangle {
+        x: 0px;
+        y: root.toolbar ? 5px : 6px;
+        width: root.toolbar ? 16px : 18px;
+        height: self.width;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: root.checked ? (root.toolbar ? root.tone : Theme.accent) : Theme.border;
+        background: root.checked ? (root.toolbar ? root.tone : Theme.accent-strong) : transparent;
+        if root.checked && !root.toolbar: Icon { source: @image-url("../icons/check.svg"); tint: #ffffff; width: 14px; height: 14px; }
+        if root.checked && root.toolbar: Text { text: "✓"; color: #ffffff; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    col := VerticalLayout {
+        x: root.text-x;
+        width: root.width - root.text-x;
+        height: root.height;
+        alignment: center;
+        lbl := Text {
+            text: root.label;
+            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: root.toolbar ? TextOverflow.elide : TextOverflow.clip;
+        }
+        if !root.toolbar && root.hint != "": Text { text: root.hint; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+    }
+    TouchArea { mouse-cursor: pointer; clicked => { root.flip(); } }
+}
+
+export enum SwitchVariant {
+    // Settings page: a 40px switch after a wrapping label and hint; follows the page's text
+    // size; a Find result can scroll to it.
+    settings,
+    // Call side panels: a 34px switch after a label and a hint, the row highlights on hover.
+    panel,
+    // Call roster options: a 36px row, label and 34px switch.
+    row,
+    // Pre-join screen: an icon, the switch and its state as text, in the call button size.
+    icon,
+}
+
+export component Switch inherits Rectangle {
+    in property <SwitchVariant> variant: SwitchVariant.settings;
+    in property <string> label;
+    in property <string> hint;
+    in property <image> icon;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    property <bool> settings: root.variant == SwitchVariant.settings;
+    property <bool> with-icon: root.variant == SwitchVariant.icon;
+    property <length> track-width: root.settings ? 40px : 34px;
+    // Where the label column starts and how wide it is.
+    property <length> col-x: root.variant == SwitchVariant.panel || root.variant == SwitchVariant.row ? 6px : root.with-icon ? 90px : 0px;
+    property <length> col-width: root.settings ? root.width - 12px - 40px
+        : root.variant == SwitchVariant.panel ? root.width - 6px - 4px - 8px - 34px
+        : root.variant == SwitchVariant.row ? root.width - 12px - 8px - 34px
+        : lbl.preferred-width;
+    height: root.settings ? max(32px, col.preferred-height + 8px)
+        : root.variant == SwitchVariant.panel ? col.preferred-height + 8px
+        : root.variant == SwitchVariant.row ? 36px
+        : 50px;
+    // `icon`: the width it asks for (its owner sets `width: self.natural-width`).
+    out property <length> natural-width: lbl.preferred-width + 90px;
+    border-radius: root.with-icon ? 6px : root.settings ? 0px : 4px;
+    background: !root.settings && touch.has-hover ? Theme.surface-hover : transparent;
+    // Opened by a Find result: tells the page where this row is.
+    Timer {
+        running: root.settings && root.label != "" && root.label == SettingsStore.target;
+        interval: 60ms;
+        triggered => {
+            SettingsStore.target-y = root.absolute-position.y;
+            SettingsStore.target = "";
+        }
+    }
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-description: root.variant == SwitchVariant.panel ? root.hint : "";
+    accessible-checkable: !root.settings;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.flip(); }
+    function flip() {
+        if root.enabled {
+            if root.settings {
+                root.checked = !root.checked;
+                root.toggled(root.checked);
+            } else {
+                root.toggled(!root.checked);
+            }
+        }
+    }
+    if root.with-icon: Icon {
+        x: 20px;
+        y: 15px;
+        source: root.icon;
+        tint: Theme.fg;
+    }
+    col := VerticalLayout {
+        x: root.col-x;
+        y: root.variant == SwitchVariant.panel ? 4px : 0px;
+        width: root.col-width;
+        height: root.variant == SwitchVariant.panel ? root.height - 8px : root.height;
+        alignment: root.variant == SwitchVariant.panel ? LayoutAlignment.stretch : LayoutAlignment.center;
+        lbl := Text {
+            horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
+            text: root.label;
+            color: root.settings && !root.enabled ? Theme.fg-subtle : Theme.fg;
+            font-size: root.settings ? Theme.font-body : 13px * Theme.font-scale;
+            wrap: root.settings ? TextWrap.word-wrap : TextWrap.no-wrap;
+            overflow: root.variant == SwitchVariant.panel || root.variant == SwitchVariant.row ? TextOverflow.elide : TextOverflow.clip;
+            vertical-alignment: root.variant == SwitchVariant.panel ? TextVerticalAlignment.top : TextVerticalAlignment.center;
+        }
+        if root.hint != "" && (root.settings || root.variant == SwitchVariant.panel): Text {
+            horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
+            text: root.hint;
+            color: Theme.fg-subtle;
+            font-size: root.settings ? Theme.font-small : 11px * Theme.font-scale;
+            wrap: word-wrap;
+        }
+    }
+    Rectangle {
+        x: root.settings ? root.width - 40px
+            : root.variant == SwitchVariant.panel ? root.width - 4px - 34px
+            : root.variant == SwitchVariant.row ? root.width - 6px - 34px
+            : 48px;
+        y: root.settings ? (root.height - 20px) / 2
+            : root.variant == SwitchVariant.panel ? 4px
+            : root.variant == SwitchVariant.row ? 9px
+            : 16px;
+        width: root.track-width;
+        height: root.settings ? 20px : 18px;
+        border-radius: self.height / 2;
+        border-width: root.settings ? (root.checked ? 0px : 1px) : 1px;
+        border-color: root.settings ? Theme.fg-muted : (root.checked ? Theme.accent-strong : Theme.border);
+        background: root.settings ? (root.checked ? (root.enabled ? Theme.accent-strong : Theme.fg-subtle) : transparent)
+            : (root.checked ? Theme.accent-strong : Theme.surface-hover);
+        Rectangle {
+            x: root.settings ? (root.checked ? parent.width - self.width - 4px : 4px) : (root.checked ? parent.width - 15px : 3px);
+            y: root.settings ? 4px : 3px;
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            background: root.settings && !root.checked ? Theme.fg-muted : #ffffff;
+            animate x { duration: root.settings && !Theme.reduced-motion ? 120ms : 0ms; }
+        }
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.flip(); } }
+}

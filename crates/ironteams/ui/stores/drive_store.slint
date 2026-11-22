@@ -1,0 +1,101 @@
+// What the OneDrive view and the file picker show. The Rust backend fills DriveStore; every
+// action goes out through DriveStore.command(name, argument).
+
+
+export struct DriveRow {
+    id: string,
+    name: string,
+    kind: string, // folder | word | excel | powerpoint | pdf | image | video | audio | markdown | text | code | archive | other
+    modified: string,
+    modified-by: string,
+    size: string,
+    location: string,
+    activity: string,
+    selected: bool,
+    favorite: bool,
+    is-folder: bool,
+    shortcut: bool,
+    header: bool,
+    index: int,
+    thumb: image,
+    has-thumb: bool,
+}
+
+export struct DriveNav { key: string, label: string }
+
+export struct DriveCard { id: string, title: string, reason: string, kind: string, thumb: image, has-thumb: bool }
+
+export struct SharePerson { id: string, name: string, detail: string, picked: bool }
+
+export struct SharePerm { id: string, who: string, role: string, detail: string, link: bool, editable: bool }
+
+export struct DriveVersion { id: string, when: string, by: string, size: string, current: bool }
+
+export global DriveStore {
+    in property <string> section: "home";
+    in property <string> title;
+    in property <[DriveRow]> rows;
+    // Home's "For you" cards
+    in property <[DriveCard]> cards;
+    in property <int> item-count;
+    in property <[string]> crumbs;
+    in property <[DriveNav]> quick;
+    in property <bool> grid;
+    in property <string> sort: "name";
+    in property <bool> ascending: true;
+    in property <string> group: "none";
+    in property <bool> col-modified: true;
+    in property <bool> col-modified-by: true;
+    in property <bool> col-size: true;
+    in property <bool> col-location;
+    in property <bool> col-activity;
+    in property <string> type-filter: "all";
+    in-out property <string> filter;
+    in-out property <string> search;
+    in property <string> status;
+    in property <bool> loading;
+    in property <bool> more;
+    in property <int> sel-count;
+    in property <string> sel-name;
+    in property <bool> sel-has-folder;
+    in property <bool> sel-all-favorite;
+    // "" | prompt | confirm | picker | share | versions | info | preview
+    in-out property <string> dialog;
+    // prompt (the name dialog of New folder and Rename)
+    in-out property <string> prompt-kind;
+    in-out property <string> prompt-title;
+    in-out property <string> prompt-text;
+    // the second field of the link prompt (the web address)
+    in-out property <string> prompt-text2;
+    // info (Details, Sync)
+    in property <string> info-title;
+    in property <string> info-text;
+    // preview
+    in property <string> preview-title;
+    in property <string> preview-kind; // image | pages | text | markdown
+    in property <int> preview-page; // pages: the page shown, from 1
+    in property <int> preview-pages; // pages: how many
+    in property <image> preview-image;
+    in property <string> preview-text;
+    in property <styled-text> preview-body;
+    // versions
+    in property <string> versions-name;
+    in property <[DriveVersion]> versions;
+    // share
+    in property <string> share-name;
+    in property <[SharePerson]> share-results;
+    in property <[SharePerson]> share-picked;
+    in property <[SharePerm]> share-perms;
+    in property <string> share-role: "write";
+    in property <string> share-status;
+    // the file picker
+    in property <string> picker-purpose;
+    in property <string> picker-title;
+    in property <bool> picker-folders-only;
+    in property <[DriveRow]> picker-rows;
+    in property <[string]> picker-crumbs;
+    in property <bool> picker-loading;
+    in property <bool> picker-can-choose;
+    // (name, argument). See backend/drive/cmd.rs for the list.
+    callback command(string, string);
+}

@@ -1,0 +1,59 @@
+// Call waiting: the call on hold, as a bar at the top of the call window and in the floating
+// call, like Teams': "<name> · On hold" with Resume (the held call comes back and the shown one
+// goes on hold) and End. Shown while `CallStore.held-name` is set.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+
+export component HeldBar inherits Rectangle {
+    // The floating call's slimmer bar.
+    in property <bool> compact;
+    height: root.compact ? 34px : 40px;
+    border-radius: root.compact ? 4px : 0px;
+    background: Theme.dark ? #3a3320 : #fff4ce;
+    accessible-role: groupbox;
+    accessible-label: CallStore.held-name + " · On hold";
+    HorizontalLayout {
+        padding-left: root.compact ? 8px : 14px;
+        padding-right: root.compact ? 4px : 8px;
+        spacing: 6px;
+        alignment: stretch;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                source: @image-url("../icons/call-direct.svg");
+                tint: Theme.fg-muted;
+                width: 16px;
+                height: 16px;
+            }
+        }
+        Text {
+            text: CallStore.held-name + " · On hold";
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+            accessible-role: text;
+            accessible-label: self.text;
+        }
+        VerticalLayout {
+            alignment: center;
+            Button { variant: ButtonVariant.solid; base-width: 64px;
+                label: "Resume";
+                accessible-label: "Resume the call on hold";
+                primary: true;
+                clicked => { CallStore.command("resume", ""); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Button { variant: ButtonVariant.solid; base-width: 64px;
+                label: "End";
+                accessible-label: "End the call on hold";
+                clicked => { CallStore.command("end-held", ""); }
+            }
+        }
+    }
+}

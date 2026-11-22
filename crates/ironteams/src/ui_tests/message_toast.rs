@@ -1,9 +1,10 @@
-//! The message card shown inside the window (`ui/message_toast.slint`), driven through the real
+//! The message card shown inside the window (`ui/organisms/message_toast.slint`), driven through the real
 //! window: what it shows, the reply box (Enter sends to the card's chat, Escape closes), the quick
 //! reactions on hover, the header's buttons and the stack of three.
 
 use super::*;
-use crate::ui::message_toast::{MAX_CARDS, Toast};
+use crate::ui::message_toast::MAX_CARDS;
+use crate::ui_api::Toast;
 use crate::{MessageToastStore, SettingsStore};
 use i_slint_backend_testing::AccessibleRole;
 

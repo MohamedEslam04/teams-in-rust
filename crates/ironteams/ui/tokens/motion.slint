@@ -1,0 +1,256 @@
+// Motion and loading polish shared by every page: the timings (they all honour Settings >
+// Appearance > Reduce motion through `Theme.reduced-motion`), the shimmer skeletons shown while a
+// view loads, the spinner for buttons and inline work, a fading image, a pop-in and the typing
+// indicator.
+//
+// Nothing here runs while idle: a looping animation reads `animation-tick()` only while its element
+// exists (the skeletons and the spinner are created under an `if` on the loading flag, so they are
+// gone once the content is there) and not at all with reduced motion.
+import { Theme } from "theme.slint";
+
+export global Motion {
+    // Animations may play (Reduce motion is off).
+    out property <bool> running: !Theme.reduced-motion;
+    // Hover and press feedback.
+    out property <duration> quick: Theme.reduced-motion ? 0ms : 120ms;
+    // Fades, pops and menus.
+    out property <duration> fast: Theme.reduced-motion ? 0ms : 150ms;
+    // State changes (sent to seen, a section opening).
+    out property <duration> normal: Theme.reduced-motion ? 0ms : 200ms;
+    // Where a popup or a reaction starts before it grows to 1.
+    out property <float> pop-from: Theme.reduced-motion ? 1.0 : 0.97;
+    // A section was just opened or closed by the user: the rows it creates slide open (rows that
+    // exist at start-up, or after a refresh, are placed at once). The sidebar clears it.
+    in-out property <bool> toggled: false;
+}
+
+// Who is typing, as the backend reports it (`ui.rs` `typing`).
+export global TypingStore {
+    // The people typing in the open chat.
+    in property <[string]> names;
+    // The chats with someone typing: the list shows dots on them.
+    in property <[string]> chats;
+    out property <string> text: names.length == 0 ? ""
+        : names.length == 1 ? @tr("{} is typing…", names[0])
+        : names.length == 2 ? @tr("{} and {} are typing…", names[0], names[1])
+        : @tr("Several people are typing…");
+}
+
+// A grey bar or block with a highlight passing over it (about 1.4 s a pass). With reduced motion it
+// is a still grey shape.
+export component Skeleton inherits Rectangle {
+    property <color> hl: Theme.dark ? #ffffff14 : #ffffffb0;
+    property <float> phase: Motion.running ? mod(animation-tick() / 1ms, 1400) / 1400 : 0;
+    border-radius: 4px;
+    background: Theme.dark ? #ffffff10 : #0000000f;
+    clip: true;
+    if Motion.running: Rectangle {
+        width: root.width * 0.6;
+        x: -self.width + (root.width + self.width) * root.phase;
+        background: @linear-gradient(90deg, root.hl.transparentize(1) 0%, root.hl 50%, root.hl.transparentize(1) 100%);
+    }
+}
+
+export component SkeletonCircle inherits Skeleton {
+    in property <length> size: 32px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+}
+
+// An avatar and two lines of text, like a chat, activity or search row.
+export component SkeletonRow inherits Rectangle {
+    // 0 draws no avatar.
+    in property <length> avatar: 32px;
+    // Width of the first line as a share of the room (the second one is shorter).
+    in property <float> share: 0.6;
+    height: 56px;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 10px;
+        if root.avatar > 0px: SkeletonCircle {
+            size: root.avatar;
+            y: (parent.height - root.avatar) / 2;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+            Rectangle { height: 12px; Skeleton { width: parent.width * root.share; height: 12px; } }
+            Rectangle { height: 10px; Skeleton { width: parent.width * root.share * 0.7; height: 10px; } }
+        }
+    }
+}
+
+// Several rows, fading out towards the bottom. `label` is what a screen reader says.
+export component SkeletonList inherits Rectangle {
+    in property <int> count: 6;
+    in property <length> avatar: 32px;
+    in property <length> row-height: 56px;
+    in property <string> label: @tr("Loading");
+    height: lay.preferred-height;
+    accessible-role: text;
+    accessible-label: root.label;
+    lay := VerticalLayout {
+        alignment: start;
+        for i in root.count: SkeletonRow {
+            avatar: root.avatar;
+            height: root.row-height;
+            share: mod(i, 2) == 0 ? 0.6 : 0.45;
+            opacity: max(0.3, 1.0 - i * 0.14);
+        }
+    }
+}
+
+// The open chat's messages while its history is read: a few bubbles on both sides.
+export component SkeletonMessages inherits Rectangle {
+    in property <string> label: @tr("Loading messages");
+    accessible-role: text;
+    accessible-label: root.label;
+    VerticalLayout {
+        alignment: start;
+        padding: 20px;
+        spacing: 16px;
+        for i in [0, 1, 2, 3, 4]: bubble := Rectangle {
+            property <bool> mine: mod(i, 2) == 1;
+            height: 64px;
+            opacity: max(0.3, 1.0 - i * 0.16);
+            if !bubble.mine: SkeletonCircle { size: 32px; }
+            Skeleton {
+                x: bubble.mine ? parent.width - self.width : 42px;
+                width: 90px + 40px * mod(i, 3);
+                height: 12px;
+            }
+            Skeleton {
+                x: bubble.mine ? parent.width - self.width : 42px;
+                y: 18px;
+                width: 220px + 40px * mod(i, 2);
+                height: 36px;
+                border-radius: 8px;
+            }
+        }
+    }
+}
+
+// A small arc turning while a button or an inline action works. Still with reduced motion.
+export component Spinner inherits Rectangle {
+    in property <length> size: 14px;
+    in property <color> tint: Theme.fg-muted;
+    width: root.size;
+    height: root.size;
+    accessible-role: none;
+    // (A transform is not applied to a component's root element, so the arc is a child.)
+    Image {
+        source: @image-url("../icons/spinner.svg");
+        width: root.size;
+        height: root.size;
+        colorize: root.tint;
+        image-fit: contain;
+        transform-rotation: Motion.running ? mod(animation-tick() / 1ms, 900) / 900 * 360deg : 0deg;
+    }
+}
+
+// A picture that shows a soft placeholder until it is `loaded`, then fades in (150 ms).
+export component FadeImage inherits Rectangle {
+    in property <image> source;
+    in property <bool> loaded;
+    in property <ImageFit> image-fit: ImageFit.cover;
+    background: Theme.sidebar;
+    clip: true;
+    if !root.loaded: Skeleton { width: root.width; height: root.height; border-radius: 0px; }
+    Image {
+        source: root.source;
+        width: root.width;
+        height: root.height;
+        image-fit: root.image-fit;
+        opacity: root.loaded ? 1.0 : 0.0;
+        animate opacity { duration: Motion.fast; easing: ease-out; }
+    }
+}
+
+// Fades in and grows from `from` to 1 (150 ms) when it appears; menus use 0.97, badges and
+// reactions a smaller start. The first frame is drawn at the start value, a timer then flips it.
+export component PopIn inherits Rectangle {
+    in property <float> from-scale: Motion.pop-from;
+    property <bool> shown: Theme.reduced-motion;
+    opacity: root.shown ? 1.0 : 0.0;
+    transform-scale: root.shown ? 1.0 : root.from-scale;
+    animate opacity { duration: Motion.fast; easing: ease-out; }
+    animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    Timer {
+        interval: 16ms;
+        running: !root.shown;
+        triggered => { root.shown = true; }
+    }
+    @children
+}
+
+// A section's rows when the user opens it: they fade in (200 ms) instead of appearing. Rows that
+// exist at start-up are drawn at once (`Motion.toggled` is only set by a click). The height is
+// not animated: clipped rows would be out of reach of the pointer and of screen readers.
+export component Reveal inherits Rectangle {
+    property <bool> shown: !Motion.toggled || Theme.reduced-motion;
+    height: lay.preferred-height;
+    opacity: root.shown ? 1.0 : 0.0;
+    animate opacity { duration: Motion.normal; easing: ease-out; }
+    Timer {
+        interval: 16ms;
+        running: !root.shown;
+        triggered => { root.shown = true; }
+    }
+    lay := VerticalLayout {
+        alignment: start;
+        @children
+    }
+}
+
+// Three dots rising one after the other (1.2 s a round, 0.15 s apart). Still with reduced motion.
+export component TypingDots inherits Rectangle {
+    in property <color> tint: Theme.fg-muted;
+    in property <length> dot: 4px;
+    property <float> t: Motion.running ? mod(animation-tick() / 1ms, 1200) / 1200 : 0;
+    width: root.dot * 3 + root.dot * 2 * 0.75;
+    height: root.dot * 2.5;
+    accessible-role: none;
+    for i in [0, 1, 2]: Rectangle {
+        property <float> p: mod(root.t - i * 0.15 + 1, 1);
+        property <float> bump: Motion.running && p < 0.5 ? Math.sin(p * 360deg) : 0;
+        width: root.dot;
+        height: root.dot;
+        border-radius: root.dot / 2;
+        x: i * root.dot * 1.75;
+        y: root.height - root.dot - root.dot * 1.5 * bump;
+        background: root.tint;
+        opacity: Motion.running ? 0.45 + 0.55 * bump : 0.8;
+    }
+}
+
+// "<Name> is typing…" at the bottom of the message list, above the composer. It fades in and out
+// (150 ms) and keeps its text while it fades out.
+export component TypingIndicator inherits Rectangle {
+    property <bool> active: TypingStore.names.length > 0;
+    property <float> fade: root.active ? 1.0 : 0.0;
+    property <string> now: TypingStore.text;
+    property <string> last;
+    animate fade { duration: Motion.fast; easing: ease-in-out; }
+    changed now => {
+        if root.now != "" { root.last = root.now; }
+    }
+    height: 22px * root.fade;
+    opacity: root.fade;
+    clip: true;
+    accessible-role: text;
+    accessible-label: root.active ? TypingStore.text : "";
+    if root.fade > 0.01: HorizontalLayout {
+        padding-left: 24px;
+        spacing: 8px;
+        TypingDots { y: (parent.height - self.height) / 2; }
+        Text {
+            text: root.active ? TypingStore.text : root.last;
+            color: Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

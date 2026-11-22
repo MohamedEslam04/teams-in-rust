@@ -1,0 +1,108 @@
+// The one text field of the app: a single-line (or, for `bare`, optionally multi-line) text box,
+// with its label above it on every variant but `bare`. Each variant draws exactly like the copy it
+// replaces (ui/README.md maps the old names).
+//
+// `text` is what the box holds: a binding to it is the starting text, which typing replaces.
+// `edited` fires on every keystroke, `accepted` on Enter, and `committed` on Enter and when the
+// focus leaves the box.
+import { Theme } from "../tokens/theme.slint";
+
+export enum FieldVariant {
+    // Teams dialogs: muted 12px label over a 32px box.
+    dialog,
+    // App screens' dialogs: as `dialog`, the label elides.
+    kit,
+    // Settings page: label in the body size, a box that grows with the text, at most 360px wide.
+    settings,
+    // Calendar panels: the box alone; `placeholder` is its accessible name.
+    bare,
+}
+
+export component Field inherits Rectangle {
+    in property <FieldVariant> variant: FieldVariant.dialog;
+    in property <string> label;
+    in property <string> placeholder;
+    in-out property <string> text <=> input.text;
+    // `bare`: a box of several lines.
+    in property <bool> multiline: false;
+    // `bare`: the height of a single-line box.
+    in property <length> field-height: 30px;
+    // Focus the box when it is shown.
+    in property <bool> autofocus: false;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    callback committed(string);
+    public function focus-input() { input.focus(); }
+
+    property <bool> bare: root.variant == FieldVariant.bare;
+    property <bool> settings: root.variant == FieldVariant.settings;
+    property <length> inset: root.bare ? 8px : 10px;
+    property <length> text-size: root.settings ? Theme.font-body : 13px * Theme.font-scale;
+
+    // `bare`: the box's own height.
+    property <length> bare-height: root.multiline ? max(root.field-height, 88px) : root.field-height;
+
+    height: root.bare ? root.bare-height
+        : root.settings ? lay.preferred-height
+        : 58px;
+
+    lay := VerticalLayout {
+        spacing: root.bare ? 0px : 4px;
+        if !root.bare: Text {
+            horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
+            text: root.label;
+            color: root.settings ? Theme.fg : Theme.fg-muted;
+            font-size: root.settings ? Theme.font-body : 12px * Theme.font-scale;
+            overflow: root.variant == FieldVariant.kit ? TextOverflow.elide : TextOverflow.clip;
+        }
+        box := Rectangle {
+            height: root.bare ? root.bare-height : root.settings ? max(30px, input.preferred-height + 12px) : 32px;
+            max-width: root.settings ? 360px : 100000px;
+            border-radius: 4px;
+            background: root.settings ? Theme.surface : Theme.sidebar;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.accent : Theme.border;
+            input := TextInput {
+                x: root.inset;
+                y: root.bare ? (root.multiline ? 6px : 0px) : (parent.height - self.height) / 2;
+                width: parent.width - root.inset * 2;
+                height: root.bare ? (root.multiline ? parent.height - 12px : parent.height)
+                    : root.variant == FieldVariant.kit ? parent.height
+                    : self.preferred-height;
+                color: Theme.fg;
+                font-size: root.text-size;
+                single-line: !root.multiline;
+                wrap: root.multiline ? TextWrap.word-wrap : TextWrap.no-wrap;
+                vertical-alignment: root.multiline ? TextVerticalAlignment.top : TextVerticalAlignment.center;
+                accessible-role: text-input;
+                accessible-label: root.bare ? root.placeholder : root.label;
+                accessible-placeholder-text: root.bare ? root.placeholder : "";
+                edited => { root.edited(self.text); }
+                accepted => {
+                    root.accepted(self.text);
+                    root.committed(self.text);
+                }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.committed(self.text);
+                    }
+                }
+            }
+            if input.text == "" && (root.bare || root.placeholder != ""): Text {
+                x: root.inset;
+                y: root.bare && root.multiline ? 6px : (parent.height - self.height) / 2;
+                height: root.bare ? (root.multiline ? 20px : parent.height) : self.preferred-height;
+                text: root.placeholder;
+                color: Theme.fg-subtle;
+                font-size: root.text-size;
+                vertical-alignment: center;
+            }
+        }
+    }
+    init => {
+        if root.autofocus {
+            input.focus();
+        }
+    }
+}

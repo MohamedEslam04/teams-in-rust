@@ -185,7 +185,7 @@ fn tray_set_focus(on: bool) {
 
 /// Focus mode on (for the duration chosen in Settings) or off, from the tray.
 fn toggle_focus(w: &AppWindow, on: bool) {
-    use crate::backend::quiet;
+    use crate::support::quiet;
     let now = chrono::Local::now();
     let until = on.then(|| {
         let duration = quiet::load_prefs().focus_duration;
@@ -199,7 +199,7 @@ fn toggle_focus(w: &AppWindow, on: bool) {
 /// Shows the Focus mode state everywhere: the top bar indicator and Settings, the tray
 /// checkmark, and a timer that turns it off when it ends.
 pub fn apply_focus(w: &AppWindow, until: Option<i64>) {
-    use crate::backend::quiet;
+    use crate::support::quiet;
     let now = chrono::Utc::now().timestamp_millis();
     let active = quiet::focus_active(until, now);
     crate::ui::settings::show_focus(w, until.filter(|_| active));
@@ -285,8 +285,8 @@ pub fn run(window: &AppWindow, hidden_flag: bool) -> Result<(), slint::PlatformE
 
     let general = appearance::GeneralPrefs::load();
     set_keep_running(general.keep_running_on_close);
-    crate::backend::quiet::init_focus(&general, chrono::Utc::now().timestamp_millis());
-    apply_focus(window, crate::backend::quiet::focus_until(&general));
+    crate::support::quiet::init_focus(&general, chrono::Utc::now().timestamp_millis());
+    apply_focus(window, crate::support::quiet::focus_until(&general));
     let open_in_background = general.open_in_background;
     if !start_hidden(hidden_flag, open_in_background, registered) {
         window.show()?;

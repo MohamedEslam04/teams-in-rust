@@ -1,0 +1,74 @@
+// The card that transfers the call to another device or person.
+import { Theme } from "../tokens/theme.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { PeopleSearch } from "call_people.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+
+// "Transfer": pick a person, then "Transfer now" (blind transfer). Opening it holds the call.
+export component TransferCard inherits Rectangle {
+    property <string> to-id;
+    property <string> to-name;
+    height: card.preferred-height;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000080;
+    accessible-role: groupbox;
+    accessible-label: "Transfer";
+    card := VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+        Text {
+            text: "Transfer";
+            color: Theme.fg;
+            font-size: 14px * Theme.font-scale;
+            font-weight: 600;
+        }
+        Text {
+            text: "The call is on hold. Pick who takes it.";
+            color: Theme.fg-subtle;
+            font-size: 12px * Theme.font-scale;
+            wrap: word-wrap;
+        }
+        if root.to-id == "": PeopleSearch {
+            placeholder: "Transfer to";
+            picked(f) => {
+                root.to-id = f.id;
+                root.to-name = f.name;
+            }
+        }
+        if root.to-id != "": HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: "To: " + root.to-name;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            Button { variant: ButtonVariant.action;
+                label: "Change";
+                clicked => { root.to-id = ""; }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button { variant: ButtonVariant.action;
+                label: "Cancel";
+                clicked => { CallStore.menu = ""; }
+            }
+            if root.to-id != "": Button { variant: ButtonVariant.action;
+                label: "Transfer now";
+                primary: true;
+                clicked => {
+                    CallStore.command("transfer", root.to-id);
+                    CallStore.menu = "";
+                }
+            }
+        }
+    }
+}

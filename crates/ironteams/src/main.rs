@@ -2,12 +2,15 @@
 // A release build on Windows is a GUI program: no console window next to it.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+#[cfg(test)]
+mod architecture_tests;
 mod backend;
 mod catch_up;
 mod composer;
 mod composer_format;
 mod data;
 mod demo;
+mod desktop_cards;
 #[cfg(target_os = "linux")]
 mod desktop_entry;
 mod external;
@@ -26,9 +29,11 @@ mod shortcuts;
 mod snippets;
 mod spell;
 mod suggest;
+mod support;
 mod topbar;
 mod tray_wiring;
 mod ui;
+mod ui_api;
 #[cfg(test)]
 mod ui_tests;
 mod update_check;
@@ -42,7 +47,7 @@ use slint::ComponentHandle;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use teams_proto::Client;
-use ui::UiHandle;
+use ui_api::UiHandle;
 
 /// Signs in (stored session or device code), then runs the engine until the app quits.
 async fn app_main(
@@ -287,6 +292,21 @@ fn main() -> anyhow::Result<()> {
     }
     if args.first().map(String::as_str) == Some("--self-check") {
         return updater::self_check::run(args.iter().any(|a| a == "--packaged"));
+    }
+    if args.first().map(String::as_str) == Some(desktop_cards::HOST_ARG) {
+        // The notification cards on the desktop (`desktop_cards`): the app reads stdout, so the
+        // log goes to stderr.
+        configure_fonts();
+        tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .with_env_filter(
+                compat::var("IRONTEAMS_LOG")
+                    .ok()
+                    .and_then(|v| tracing_subscriber::EnvFilter::try_new(v).ok())
+                    .unwrap_or_else(|| "warn".into()),
+            )
+            .init();
+        return desktop_cards::host::run();
     }
     if args.iter().any(|a| a == "--call-demo") {
         // SAFETY: called at the start of main, before any other thread exists.

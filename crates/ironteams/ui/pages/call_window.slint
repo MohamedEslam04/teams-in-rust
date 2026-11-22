@@ -1,0 +1,196 @@
+// The call window: the pre-join screen, the Teams-like meeting view (top bar, stage, People and
+// More panels, lobby, reconnecting banner) and the call-ended screen. It covers the area right of
+// the rail (see app.slint); `CallMini` is the floating call while another page is open.
+//
+// Camera and screen sharing work when the call negotiates them (on by default; IRONTEAMS_CAMERA=0
+// and IRONTEAMS_SCREEN_SHARE=0 switch them off); someone else's share takes the stage (View >
+// Focus on content).
+// Reactions are drawn but disabled (no reaction API, crates/calling/src/signaling/controls.rs).
+import { Theme } from "../tokens/theme.slint";
+import { CallStore, CallPerson, CallCaption, CallFound, CallVideo } from "../stores/call_store.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
+import { PreJoin } from "../organisms/call_prejoin.slint";
+import { PeoplePanel, MorePanel } from "../organisms/call_people.slint";
+import { CaptionStrip } from "../molecules/call_captions.slint";
+import { HeldBar } from "../molecules/call_held.slint";
+import { CallFeedback } from "../organisms/call_feedback.slint";
+import { ReactionMenu, ReactionsOverlay } from "../molecules/call_reactions.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Stage, ViewMenu } from "../organisms/call_stage.slint";
+import { TopBar, ShareMenu, Banner, ControlBanner } from "../organisms/call_top_bar.slint";
+import { TransferCard } from "../organisms/call_transfer.slint";
+
+export { CallStore, CallPerson, CallCaption, CallFound, CallVideo }
+
+component InCall inherits Rectangle {
+    callback open-chat();
+    // Below this width the top bar's ~14 buttons do not fit: the less used ones go to More.
+    property <bool> fold: root.width < 820px;
+    VerticalLayout {
+        bar := TopBar { fold: root.fold; open-chat => { root.open-chat(); } }
+        // A meeting on hold (call waiting) has the "On hold" bar instead, with its Resume.
+        if CallStore.held && CallStore.kind == "direct": Banner {
+            message: "You put the call on hold. Select Resume to continue.";
+            tone: #4b4f8a;
+        }
+        if CallStore.held-name != "": HeldBar { }
+        if CallStore.phase == "reconnecting": Banner {
+            message: "Reconnecting… Your connection was interrupted.";
+            tone: #8a5a00;
+        }
+        if CallStore.error != "": Banner {
+            message: CallStore.error;
+            tone: #8b2a2d;
+            dismissable: true;
+        }
+        if CallStore.notice != "": Banner {
+            message: CallStore.notice;
+            tone: #3d3e66;
+            dismissable: true;
+            dismiss: "dismiss-notice";
+            dismiss-label: "Dismiss notice";
+        }
+        if CallStore.control-mode != "": ControlBanner { }
+        HorizontalLayout {
+            Stage { horizontal-stretch: 1; }
+            if CallStore.panel == "people": PeoplePanel { width: 320px; }
+            if CallStore.panel == "more": MorePanel { width: 320px; fold: root.fold; }
+        }
+    }
+    // The View button's dropdown, under the button.
+    if CallStore.menu == "view": ViewMenu {
+        x: root.fold ? root.width - self.width - 332px : min(bar.view-x, root.width - self.width - 12px);
+        y: 64px;
+        z: 30;
+    }
+    // Live captions over the bottom of the stage.
+    if CallStore.captions && CallStore.phase == "connected": CaptionStrip {
+        x: 16px;
+        width: root.width - 32px - (CallStore.panel != "" ? 320px : 0px);
+        y: root.height - self.height - 16px;
+        z: 20;
+    }
+    // Live reactions rise over the stage; the React menu sends ours.
+    ReactionsOverlay {
+        x: 0px;
+        y: bar.height;
+        width: root.width - (CallStore.panel != "" ? 320px : 0px);
+        height: root.height - bar.height;
+        z: 15;
+    }
+    if CallStore.menu == "react" && CallStore.phase == "connected": ReactionMenu {
+        x: Math.max(12px, root.fold ? root.width - self.width - 332px : Math.min(bar.react-x, root.width - self.width - 12px));
+        y: 64px;
+        z: 30;
+    }
+    // The transfer dialog, under the top bar.
+    if CallStore.menu == "transfer": TransferCard {
+        x: root.width - self.width - 12px;
+        y: 64px;
+        z: 30;
+        width: 340px;
+    }
+    // The Share chevron's dropdown (Give control).
+    if CallStore.menu == "share": ShareMenu {
+        x: root.width - self.width - 12px;
+        y: 64px;
+        z: 30;
+    }
+    // The mic button's dropdown.
+    if CallStore.menu == "devices" || CallStore.menu == "card-mic" || CallStore.menu == "card-speaker": Rectangle {
+        x: root.width - self.width - 12px;
+        y: 64px;
+        z: 30;
+        width: 300px;
+        height: card.preferred-height;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000080;
+        card := VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+            Text {
+                text: "Audio devices";
+                color: Theme.fg;
+                font-size: 14px * Theme.font-scale;
+                font-weight: 600;
+            }
+            DeviceSettings { prefix: "card"; }
+        }
+    }
+}
+
+component Ended inherits Rectangle {
+    background: Theme.main;
+    VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        Text {
+            text: CallStore.title;
+            color: Theme.fg;
+            font-size: 20px * Theme.font-scale;
+            font-weight: 600;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        Text {
+            text: CallStore.ended;
+            color: Theme.fg;
+            font-size: 15px * Theme.font-scale;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if CallStore.timer != "00:00": Text {
+            text: "Call duration " + CallStore.timer;
+            color: Theme.fg-subtle;
+            font-size: 13px * Theme.font-scale;
+            horizontal-alignment: center;
+        }
+        if CallStore.error != "": Text {
+            text: CallStore.error;
+            color: Theme.danger;
+            font-size: 13px * Theme.font-scale;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            if CallStore.can-rejoin: Button { variant: ButtonVariant.action;
+                label: "Rejoin";
+                primary: true;
+                clicked => { CallStore.command("rejoin", ""); }
+            }
+            Button { variant: ButtonVariant.action;
+                label: "Close";
+                clicked => { CallStore.command("close", ""); }
+            }
+        }
+    }
+    // The quality survey; Send and Dismiss both close the screen, as Close does. Send is one
+    // command (the backend keeps the answer, then closes): two would run in no set order.
+    if CallStore.feedback-open: CallFeedback {
+        width: root.width;
+        height: root.height;
+        sent(answer) => { CallStore.command("feedback", answer); }
+        dismissed => { CallStore.command("close", ""); }
+    }
+}
+
+export component CallWindow inherits Rectangle {
+    // The meeting chat: shrink the call to its floating bar and show the chat.
+    callback open-chat();
+    background: Theme.main;
+    // Nothing behind the call window takes clicks.
+    TouchArea { }
+    if CallStore.phase == "prejoin": PreJoin { width: root.width; height: root.height; }
+    if CallStore.in-call-phase(): InCall {
+        width: root.width;
+        height: root.height;
+        open-chat => { root.open-chat(); }
+    }
+    if CallStore.phase == "ended": Ended { width: root.width; height: root.height; }
+}

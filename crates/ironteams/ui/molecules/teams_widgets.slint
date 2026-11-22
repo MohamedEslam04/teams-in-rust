@@ -1,0 +1,30 @@
+// Small controls shared by the Teams management page and its dialogs.
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+
+// One choice out of a few, as a row of pills.
+export component TChoice inherits Rectangle {
+    in property <[{v: string, l: string}]> options;
+    in property <string> value;
+    in property <bool> enabled: true;
+    callback picked(string);
+    height: 30px;
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        for o in root.options: Rectangle {
+            height: 28px;
+            width: opt-text.preferred-width + 24px;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: root.value == o.v ? Theme.accent : Theme.border;
+            background: root.value == o.v ? #3b3d6b : (ot.has-hover && root.enabled ? Theme.surface-hover : transparent);
+            accessible-role: radio-button;
+            accessible-label: o.l;
+            accessible-checked: root.value == o.v;
+            accessible-action-default => { if root.enabled { root.picked(o.v); } }
+            opt-text := Text { text: o.l; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+            ot := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.picked(o.v); } }
+        }
+    }
+}

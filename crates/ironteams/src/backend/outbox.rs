@@ -721,7 +721,7 @@ mod tests {
     fn engine() -> Arc<Engine> {
         i_slint_backend_testing::init_no_event_loop();
         let window = crate::AppWindow::new().unwrap();
-        let ui = crate::ui::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
         let store = store::Store::open_in_memory().unwrap();
         store
             .upsert_conversation(&store::ConversationRow {
@@ -959,7 +959,7 @@ mod tests {
 
         i_slint_backend_testing::init_no_event_loop();
         let window = crate::AppWindow::new().unwrap();
-        let ui = crate::ui::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
         let e = Engine::new(
             client.clone(),
             store::Store::open_in_memory().unwrap(),

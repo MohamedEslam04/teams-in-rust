@@ -10,7 +10,7 @@
 
 use super::Engine;
 use crate::data::VoiceData;
-use crate::ui::{PlayerView, RecorderView};
+use crate::ui_api::{PlayerView, RecorderView};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
