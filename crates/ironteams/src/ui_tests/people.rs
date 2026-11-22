@@ -1175,13 +1175,18 @@ fn value_of(app: &AppWindow, text: &str) -> Option<String> {
         .find(|v| !v.is_empty())
 }
 
+/// A person the demo store does not know, so the chart shows the names its lists gave.
+fn org_mri(n: u8) -> String {
+    format!("8:orgid:11111111-0000-0000-0000-0000000000{n:02}")
+}
+
 fn cache_org_of_sara(h: &Harness) {
     h.engine.test_cache_org(
         &mri(3),
-        Some((mri(5).as_str(), "Omar Boss")),
+        Some((org_mri(5).as_str(), "Omar Boss")),
         Some(vec![
-            (mri(6).as_str(), "Report A"),
-            (mri(7).as_str(), "Report B"),
+            (org_mri(6).as_str(), "Report A"),
+            (org_mri(7).as_str(), "Report B"),
         ]),
     );
 }
@@ -1399,7 +1404,7 @@ fn view_profile_shows_the_overview_of_the_person_in_focus() {
     let s = ps(&h.app);
     assert_eq!(s.get_profile_tab(), 0, "the Overview tab");
     assert_eq!(s.get_card().name, "Report A");
-    assert_eq!(s.get_card().id, mri(6));
+    assert_eq!(s.get_card().id, org_mri(6));
     assert!(s.get_profile_open());
 }
 
