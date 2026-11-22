@@ -456,7 +456,7 @@ impl Engine {
         match self.client.get_presence(&ids).await {
             Ok(found) => {
                 for p in found {
-                    self.apply_presence(&p.mri, &p.availability);
+                    self.apply_presence(&p.mri, &p.availability, &p.activity);
                     let kind = location_kind(p.work_location.as_deref());
                     self.people.lock().unwrap().org.set_kind(&p.mri, kind);
                 }
