@@ -1121,11 +1121,10 @@ fn messages_containing_finds_text_in_one_chat_or_all_of_them() {
         ["1"]
     );
     assert_eq!(s.messages_containing(None, "%", 10).unwrap().len(), 1);
-    assert!(
-        s.messages_containing(None, "nothing", 10)
-            .unwrap()
-            .is_empty()
-    );
+    assert!(s
+        .messages_containing(None, "nothing", 10)
+        .unwrap()
+        .is_empty());
 }
 
 // ---- offline full-text search (migration v7) ---------------------------------------------
@@ -1430,14 +1429,12 @@ fn search_filters_narrow_by_conversation_sender_and_time() {
         }),
         ["3", "2"]
     );
-    assert!(
-        found(LocalFilters {
-            sender: Some("8:orgid:a"),
-            since_ms: Some(150),
-            ..in_c
-        })
-        .is_empty()
-    );
+    assert!(found(LocalFilters {
+        sender: Some("8:orgid:a"),
+        since_ms: Some(150),
+        ..in_c
+    })
+    .is_empty());
     assert_eq!(
         s.search_messages_local("plan", &LocalFilters::default(), 2)
             .unwrap()
@@ -1542,4 +1539,47 @@ fn system_event_messages_are_not_search_hits() {
         .unwrap();
     }
     assert_eq!(find(&s, "IronTeams"), ["1"]);
+}
+
+// ---- batch writes ------------------------------------------------------------------------
+
+#[test]
+fn a_batch_of_messages_roundtrips_and_is_searchable() {
+    let mut s = Store::open_in_memory().unwrap();
+    let batch = vec![
+        html_msg("b1", "c", 1, "<p>quarterly report</p>"),
+        html_msg("b2", "c", 2, "<p>lunch plans</p>"),
+        html_msg("b3", "c", 3, "<p>quarterly budget</p>"),
+    ];
+    s.upsert_messages(&batch).unwrap();
+    let got = s.messages_before("c", None, 10).unwrap();
+    assert_eq!(msg_ids(&got), ["b1", "b2", "b3"]);
+    assert_eq!(got[1].content_html, "<p>lunch plans</p>");
+    let mut hits = find(&s, "quarterly");
+    hits.sort();
+    assert_eq!(hits, ["b1", "b3"]);
+
+    // A second batch updates in place (the conflict path keeps the index in sync).
+    s.upsert_messages(&[html_msg("b1", "c", 1, "<p>annual report</p>")])
+        .unwrap();
+    assert_eq!(find(&s, "quarterly"), ["b3"]);
+    assert_eq!(find(&s, "annual"), ["b1"]);
+    s.upsert_messages(&[]).unwrap();
+}
+
+#[test]
+fn a_batch_of_conversations_roundtrips_and_keeps_favorites() {
+    let mut s = Store::open_in_memory().unwrap();
+    s.upsert_conversations(&[
+        conv("c1", ConvKind::Group, "One", 10),
+        conv("c2", ConvKind::Group, "Two", 20),
+    ])
+    .unwrap();
+    s.set_favorite("c1", true).unwrap();
+    s.upsert_conversations(&[conv("c1", ConvKind::Group, "One renamed", 30)])
+        .unwrap();
+    let c1 = s.conversation("c1").unwrap().unwrap();
+    assert_eq!(c1.title, "One renamed");
+    assert!(c1.favorite, "favorite is a local choice");
+    assert!(s.conversation("c2").unwrap().is_some());
 }

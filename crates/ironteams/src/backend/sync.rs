@@ -70,13 +70,15 @@ impl Engine {
         }
 
         {
-            let st = self.store.lock().unwrap();
+            let mut st = self.store.lock().unwrap();
             for t in &snap.teams {
                 st.upsert_team(&TeamRow {
                     id: t.id.clone(),
                     name: t.name.clone(),
                 })?;
             }
+            // Rows are collected and written in one transaction after the loop.
+            let mut rows = Vec::new();
             let mut seen = HashSet::new();
             for c in &convs {
                 let Some(kind) = kind_from(c.kind) else {
@@ -134,7 +136,7 @@ impl Engine {
                         m.sender_mri != self.me && m.compose_ms > c.read_horizon_ms
                     });
                 let existing = st.conversation(&c.id)?;
-                st.upsert_conversation(&ConversationRow {
+                rows.push(ConversationRow {
                     id: c.id.clone(),
                     kind,
                     title,
@@ -146,8 +148,9 @@ impl Engine {
                     unread,
                     favorite: false,
                     read_horizon_ms: manual.unwrap_or(c.read_horizon_ms),
-                })?;
+                });
             }
+            st.upsert_conversations(&rows)?;
             if teams_known {
                 for c in st.conversations(ConvFilter::Channels, 100_000)? {
                     if !channel_info.contains_key(&c.id) {
@@ -156,9 +159,10 @@ impl Engine {
                 }
             }
             // Channels that had no recent activity still belong in the Teams view.
+            let mut quiet = Vec::new();
             for (id, (tid, tname, cname)) in &channel_info {
                 if !seen.contains(id) && st.conversation(id)?.is_none() {
-                    st.upsert_conversation(&ConversationRow {
+                    quiet.push(ConversationRow {
                         id: id.clone(),
                         kind: ConvKind::Channel,
                         title: cname.clone(),
@@ -169,9 +173,10 @@ impl Engine {
                         unread: false,
                         favorite: false,
                         read_horizon_ms: 0,
-                    })?;
+                    });
                 }
             }
+            st.upsert_conversations(&quiet)?;
         }
         {
             let mut v = self.view.lock().unwrap();
@@ -203,12 +208,20 @@ impl Engine {
     }
 
     pub(super) fn store_messages(&self, msgs: &[Message], parent: Option<&str>) {
-        let st = self.store.lock().unwrap();
+        let mut st = self.store.lock().unwrap();
+        let rows: Vec<_> = msgs
+            .iter()
+            .filter(|m| !m.message_type.starts_with("Control/"))
+            .map(|m| row_from_message(m, parent))
+            .collect();
+        // One transaction for the page: the store lock is held for one commit, not one per row.
+        if let Err(err) = st.upsert_messages(&rows) {
+            tracing::warn!(%err, "storing messages failed");
+        }
         for m in msgs {
             if m.message_type.starts_with("Control/") {
                 continue;
             }
-            let _ = st.upsert_message(&row_from_message(m, parent));
             if m.sender_mri == self.me
                 && let Some(cmid) = &m.client_message_id
             {
