@@ -75,7 +75,7 @@ impl Engine {
                 .client
                 .messages(conv, None, crate::backend::PAGE as u32)
                 .await?;
-            self.store_messages(&page.messages, None);
+            self.store_newest_page(conv, &page.messages);
             self.mark(|d| d.messages = true);
         }
         Ok(())

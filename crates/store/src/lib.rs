@@ -435,6 +435,37 @@ impl Store {
         Ok(out)
     }
 
+    /// The `reactions_json` of the newest `window` top-level messages newer than `after_ms`
+    /// and not sent by `not_from` that carry a non-empty `"m"` (mentions) list, newest first.
+    /// A narrow prefilter for the chat list's "@" marker: the caller reads the mentions out of
+    /// the few rows returned instead of loading and parsing a window of full messages.
+    pub fn mention_candidates(
+        &self,
+        conversation_id: &str,
+        after_ms: i64,
+        not_from: &str,
+        window: usize,
+    ) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT reactions_json FROM ( \
+                 SELECT sender_mri, compose_ms, reactions_json FROM messages \
+                 WHERE conversation_id = ?1 AND parent_id IS NULL AND compose_ms > ?2 \
+                 ORDER BY compose_ms DESC, id DESC LIMIT ?3) \
+             WHERE sender_mri != ?4 \
+               AND CASE WHEN json_valid(reactions_json) \
+                        THEN coalesce(json_array_length(reactions_json, '$.m'), 0) > 0 \
+                        ELSE 0 END \
+             ORDER BY compose_ms DESC",
+        )?;
+        let rows = stmt
+            .query_map(
+                params![conversation_id, after_ms, limit_i64(window), not_from],
+                |r| r.get(0),
+            )?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(rows)
+    }
+
     /// Messages (replies included, deleted ones not) whose HTML contains `needle`, newest first,
     /// in one conversation or in all of them. SQLite's `LIKE` only folds ASCII case, so this is
     /// a prefilter: the caller confirms the match on the plain text.

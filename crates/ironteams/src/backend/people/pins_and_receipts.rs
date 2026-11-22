@@ -291,19 +291,18 @@ impl Engine {
 
     // ---- chat list marker ----------------------------------------------------
 
-    /// True when an unread message of `conv` (newer than the read horizon) mentions me.
+    /// True when an unread message of `conv` (newer than the read horizon) mentions me. Only
+    /// the newest 30 messages count; the store narrows them to those that carry mentions, so
+    /// the chat list does not load and parse a window of full messages per unread chat.
     pub(in super::super) fn has_unread_mention(&self, conv: &str, read_horizon_ms: i64) -> bool {
-        let rows = self
+        let candidates = self
             .store
             .lock()
             .unwrap()
-            .messages_before(conv, None, 30)
+            .mention_candidates(conv, read_horizon_ms, &self.me, 30)
             .unwrap_or_default();
-        rows.iter().any(|r| {
-            r.compose_ms > read_horizon_ms
-                && r.sender_mri != self.me
-                && serde_json::from_str::<Value>(&r.reactions_json)
-                    .is_ok_and(|p| mentions::mentions_me(&p, &self.me))
+        candidates.iter().any(|props| {
+            serde_json::from_str::<Value>(props).is_ok_and(|p| mentions::mentions_me(&p, &self.me))
         })
     }
 }
