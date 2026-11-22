@@ -23,7 +23,7 @@ env:
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
 
 jobs:
-  # The Windows and macOS clippy and test gate: run on the default branch, it saves their caches.
+  # The Windows and macOS test gate: run on the default branch, it saves their caches.
   gate:
     uses: ./.github/workflows/ci.yml
     with:

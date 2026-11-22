@@ -8,8 +8,8 @@
 # each channel (win, osx-arm64, osx-x64, linux); installed copies read them from the published
 # release and download only what changed.
 #
-# Nothing is published unless the whole CI gate (fmt, clippy and every test on Linux, Windows and
-# both macOS runners) passes and every packaged app passes `--self-check --packaged`. A tag with a
+# Nothing is published unless the whole CI gate (fmt and clippy on Linux, every test on Linux,
+# Windows and both macOS runners) passes and every packaged app passes `--self-check --packaged`. A tag with a
 # pre-release suffix (v1.2.0-beta.1) is published as a GitHub pre-release: only copies with
 # "Get beta updates" on take it.
 #
@@ -74,7 +74,7 @@ jobs:
           # v1.2.0-beta.1 and the like: a GitHub pre-release, for beta updates only.
           if [[ "$v" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
 
-  # fmt, clippy and the full test suite on Linux, Windows and both macOS runners.
+  # fmt and clippy on Linux, the full test suite on Linux, Windows and both macOS runners.
   gate:
     if: ${{ !inputs.skip-gate }}
     uses: ./.github/workflows/ci.yml
