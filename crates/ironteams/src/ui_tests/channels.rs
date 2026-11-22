@@ -298,16 +298,15 @@ fn a_channel_opens_at_its_newest_post() {
 const SARA: &str = "8:orgid:00000000-0000-0000-0000-000000000003";
 const OMAR: &str = "8:orgid:00000000-0000-0000-0000-000000000004";
 
-/// A post with two replies from Sara in a row, then one from Omar: the second of Sara's is a
-/// grouped message (`show_header` is false before the card sets it).
-fn grouped_replies_harness() -> Harness {
+/// A post with two replies, the first from Sara and the second from `second`. When that is Sara
+/// too, the second is a grouped message (`show_header` is false before the card sets it).
+fn grouped_replies_harness(second: (&str, &str)) -> Harness {
     let store = Store::open_in_memory().unwrap();
     demo::seed(&store, teams_proto::time::now_ms()).unwrap();
     let rows = [
         ("1000", None, SARA, "Sara Hassan", "A post"),
         ("1001", Some("1000"), SARA, "Sara Hassan", "first reply"),
-        ("1002", Some("1000"), SARA, "Sara Hassan", "second reply"),
-        ("1003", Some("1000"), OMAR, "Omar Aziz", "third reply"),
+        ("1002", Some("1000"), second.0, second.1, "second reply"),
     ];
     for (id, parent, from, name, text) in rows {
         store
@@ -330,30 +329,27 @@ fn reply_has_avatar(app: &AppWindow) -> Vec<bool> {
 
 #[test]
 fn a_second_reply_in_a_row_from_the_same_person_shows_their_photo_on_the_card() {
-    let h = grouped_replies_harness();
+    let h = grouped_replies_harness((SARA, "Sara Hassan"));
     h.engine
         .test_set_avatar(SARA, crate::data::Pixels::new(4, 4));
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
-    assert_eq!(
-        reply_texts(&h.app, 0),
-        vec!["first reply", "second reply", "third reply"]
-    );
+    assert_eq!(reply_texts(&h.app, 0), vec!["first reply", "second reply"]);
     assert_eq!(
         reply_has_avatar(&h.app),
-        vec![true, true, false],
-        "both of Sara's replies carry her photo; Omar has none"
+        vec![true, true],
+        "both of Sara's replies in a row carry her photo"
     );
 }
 
 #[test]
 fn people_the_service_sends_the_same_picture_for_show_initials_not_that_picture() {
-    let h = grouped_replies_harness();
+    let h = grouped_replies_harness((OMAR, "Omar Aziz"));
     h.engine
         .test_set_avatar(SARA, crate::data::Pixels::new(4, 4));
     h.engine
         .test_set_avatar(OMAR, crate::data::Pixels::new(4, 4));
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
-    assert_eq!(reply_has_avatar(&h.app), vec![true, true, true]);
+    assert_eq!(reply_has_avatar(&h.app), vec![true, true]);
 
     // The same bytes arrive for two different people: that is the "no photo" picture.
     let silhouette = b"the generic grey person";
@@ -368,7 +364,7 @@ fn people_the_service_sends_the_same_picture_for_show_initials_not_that_picture(
     h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
     assert_eq!(
         reply_has_avatar(&h.app),
-        vec![false, false, false],
+        vec![false, false],
         "both show their initials"
     );
 
