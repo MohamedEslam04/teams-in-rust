@@ -148,6 +148,17 @@ export global CallStore {
     // large, the rest in a strip) | "content" (a shared screen on the stage). A share that starts
     // switches to "content", as Teams does.
     in-out property <string> view-mode: "gallery";
+    // The gallery shows this many tiles per page, as Teams does (4 x 4).
+    in property <int> gallery-per-page: 16;
+    // The gallery page shown, from 0. The stage clamps it to the pages there are, and
+    // `ui/call.rs` pulls it back when people leave.
+    in-out property <int> gallery-page: 0;
+    // Who we pinned for ourselves (an MRI, "" for nobody): their tile is the speaker view's large
+    // one whoever speaks. Local only; set by `pin`.
+    in property <string> pinned;
+    // Pin a person for ourselves ("" unpins): `ui/call.rs` sets `pinned` and reorders
+    // `speaker-people`.
+    callback pin(string);
     // A 1:1 call we put on hold.
     in property <bool> held;
     // The people search's results for the invite box or the transfer dialog.
