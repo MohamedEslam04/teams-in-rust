@@ -424,6 +424,18 @@ fn upsert_user_preserves_avatar_when_new_is_none() {
 }
 
 #[test]
+fn clear_user_avatar_drops_only_the_picture() {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_user(&user("8:a", "Ann", Some(vec![1, 2, 3])))
+        .unwrap();
+    s.clear_user_avatar("8:a").unwrap();
+    let got = s.user("8:a").unwrap().unwrap();
+    assert_eq!(got.display_name, "Ann");
+    assert_eq!(got.avatar, None);
+    s.clear_user_avatar("8:missing").unwrap();
+}
+
+#[test]
 fn users_missing_profile() {
     let s = Store::open_in_memory().unwrap();
     s.upsert_user(&user("8:have", "Have", None)).unwrap();

@@ -641,6 +641,14 @@ impl Store {
         Ok(())
     }
 
+    /// Drops a user's stored avatar (`upsert_user` never does: it keeps the old one).
+    pub fn clear_user_avatar(&self, mri: &str) -> Result<()> {
+        self.conn
+            .prepare_cached("UPDATE users SET avatar = NULL WHERE mri = ?1")?
+            .execute([mri])?;
+        Ok(())
+    }
+
     pub fn user(&self, mri: &str) -> Result<Option<UserRow>> {
         Ok(self
             .conn

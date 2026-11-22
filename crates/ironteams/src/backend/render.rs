@@ -1,6 +1,7 @@
 //! The render loop: rebuilds the visible view data from the store and pushes it to the UI.
 
 use super::Engine;
+use super::avatar_placeholder::{self, Verdict};
 use super::outbox::{PENDING_PREFIX, row_from_outbox};
 use super::outsider::{Outsider, classify, is_guest_upn, tagged};
 use super::unread::{divider_index, open_at_divider, unread_after};
@@ -97,7 +98,9 @@ impl Engine {
             .flatten()
             .and_then(|u| u.avatar);
         let mut shown = None;
-        if let Some(bytes) = stored {
+        if let Some(bytes) = stored
+            && self.is_photo(mri, &bytes)
+        {
             let px = decode_image(&bytes, AVATAR_PX, AVATAR_PX);
             self.avatars
                 .lock()
@@ -112,6 +115,7 @@ impl Engine {
         let mri = mri.to_string();
         tokio::spawn(async move {
             if let Ok(bytes) = e.client.avatar(&e.me, &mri).await
+                && e.is_photo(&mri, &bytes)
                 && let Some(px) = decode_image(&bytes, AVATAR_PX, AVATAR_PX)
             {
                 e.avatars.lock().unwrap().insert(mri.clone(), Some(px));
@@ -134,6 +138,36 @@ impl Engine {
             }
         });
         shown
+    }
+
+    /// False when `bytes` is the picture the service sends for people without a photo (see
+    /// `avatar_placeholder`). Everyone found to have it shows initials: their cached picture and
+    /// their stored one are dropped, and a placeholder learned now is saved for the next start.
+    pub(crate) fn is_photo(self: &Arc<Self>, mri: &str, bytes: &[u8]) -> bool {
+        let verdict = self.avatar_placeholders.lock().unwrap().observe(mri, bytes);
+        let Verdict::Placeholder { clear, learned } = verdict else {
+            return true;
+        };
+        let mut cache = self.avatars.lock().unwrap();
+        for m in &clear {
+            cache.insert(m.clone(), None);
+        }
+        drop(cache);
+        let st = self.store.lock().unwrap();
+        for m in &clear {
+            let _ = st.clear_user_avatar(m);
+        }
+        if learned {
+            let saved = self.avatar_placeholders.lock().unwrap().save();
+            let _ = st.set_kv(avatar_placeholder::KV_KEY, &saved);
+        }
+        drop(st);
+        self.mark(|d| {
+            d.chats = true;
+            d.messages = true;
+            d.header = true;
+        });
+        false
     }
 
     /// Puts a decoded photo in the avatar cache, as a finished lookup would.
@@ -864,7 +898,9 @@ impl Engine {
                 id: r.id.clone(),
                 initials: initials(&sender),
                 color: color_for(&r.sender_mri),
-                avatar: if show_header && !mine {
+                // Every row of someone else carries the photo: the chat draws it on the first row
+                // of a group only (`show-header`), a card draws it on every row.
+                avatar: if !mine {
                     self.avatar(&r.sender_mri)
                 } else {
                     None
