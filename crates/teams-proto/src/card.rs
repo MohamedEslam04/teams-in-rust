@@ -109,6 +109,63 @@ pub fn parse_directory_user(user: &Value, manager: Option<&Value>) -> DirectoryD
     }
 }
 
+/// A person in the organization chart: the manager or one direct report.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OrgPerson {
+    pub mri: String,
+    pub name: String,
+    pub job_title: Option<String>,
+}
+
+/// A person's place in the organization: who they report to and who reports to them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OrgDetails {
+    pub manager: Option<OrgPerson>,
+    /// `None` when Graph would not list them (as opposed to an empty list: nobody reports to
+    /// this person).
+    pub reports: Option<Vec<OrgPerson>>,
+}
+
+/// `GET /v1.0/users/{oid}/manager` with the fields the chart shows.
+pub fn org_manager_url(oid: &str) -> String {
+    crate::graph::graph_url(
+        &["users", oid, "manager"],
+        "$select=id,displayName,jobTitle",
+    )
+}
+
+/// `GET /v1.0/users/{oid}/directReports`.
+pub fn direct_reports_url(oid: &str) -> String {
+    crate::graph::graph_url(
+        &["users", oid, "directReports"],
+        "$select=id,displayName,jobTitle&$top=100",
+    )
+}
+
+/// Reads a Graph `user` as a chart person (`None` without an id, or for a non-user object such
+/// as a contact).
+pub fn parse_org_person(v: &Value) -> Option<OrgPerson> {
+    use crate::graph::str_of;
+    let id = str_of(v, "id")?;
+    let kind = v["@odata.type"].as_str().unwrap_or("#microsoft.graph.user");
+    if kind != "#microsoft.graph.user" {
+        return None;
+    }
+    Some(OrgPerson {
+        mri: format!("8:orgid:{id}"),
+        name: str_of(v, "displayName").unwrap_or_default(),
+        job_title: str_of(v, "jobTitle"),
+    })
+}
+
+/// Reads a Graph `directReports` answer, people only, in the order Graph gives them.
+pub fn parse_direct_reports(v: &Value) -> Vec<OrgPerson> {
+    crate::graph::values(v)
+        .iter()
+        .filter_map(parse_org_person)
+        .collect()
+}
+
 /// Loki host prefixes to try for a chat-service URL, the user's own region first.
 pub fn loki_prefixes(chat_service: &str) -> Vec<&'static str> {
     let host = url::Url::parse(chat_service)
@@ -154,6 +211,38 @@ impl Client {
             ),
         );
         Ok(parse_directory_user(&user?, manager.ok().as_ref()))
+    }
+
+    /// A person's manager and direct reports from Graph (read only; UNVERIFIED live, like
+    /// [`Client::directory_details`]). A person without a manager has none; if the reports cannot
+    /// be listed `reports` is `None`.
+    pub async fn org_details(&self, mri: &str) -> Result<OrgDetails> {
+        let oid = crate::people::oid_of_mri(mri)
+            .ok_or_else(|| Error::Protocol("not a directory person".into()))?;
+        let (manager_url, reports_url) = (org_manager_url(oid), direct_reports_url(oid));
+        let (manager, reports) = tokio::join!(
+            self.json_as(
+                "org manager",
+                &Audience::Graph,
+                Method::GET,
+                &manager_url,
+                None
+            ),
+            self.json_as(
+                "direct reports",
+                &Audience::Graph,
+                Method::GET,
+                &reports_url,
+                None
+            ),
+        );
+        if let (Err(_), Err(e)) = (&manager, &reports) {
+            return Err(Error::Protocol(format!("org details: {e}")));
+        }
+        Ok(OrgDetails {
+            manager: manager.ok().as_ref().and_then(parse_org_person),
+            reports: reports.ok().as_ref().map(parse_direct_reports),
+        })
     }
 
     /// Name, email and (when Delve has them) job title, department and office of one person.
@@ -267,6 +356,38 @@ mod tests {
         assert_eq!(
             parse_directory_user(&json!({}), None),
             DirectoryDetails::default()
+        );
+    }
+
+    #[test]
+    fn org_urls_and_people() {
+        assert_eq!(
+            direct_reports_url("abc"),
+            "https://graph.microsoft.com/v1.0/users/abc/directReports?$select=id,displayName,jobTitle&$top=100"
+        );
+        assert_eq!(
+            org_manager_url("abc"),
+            "https://graph.microsoft.com/v1.0/users/abc/manager?$select=id,displayName,jobTitle"
+        );
+        let v = json!({"value": [
+            {"@odata.type": "#microsoft.graph.user", "id": "r1", "displayName": "Report One", "jobTitle": "Engineer"},
+            {"@odata.type": "#microsoft.graph.orgContact", "id": "c1", "displayName": "A Contact"},
+            {"displayName": "No Id"},
+            {"id": "r2", "displayName": "Report Two", "jobTitle": ""}
+        ]});
+        let r = parse_direct_reports(&v);
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].mri, "8:orgid:r1");
+        assert_eq!(r[0].name, "Report One");
+        assert_eq!(r[0].job_title.as_deref(), Some("Engineer"));
+        assert_eq!(r[1].mri, "8:orgid:r2");
+        assert_eq!(r[1].job_title, None);
+        assert!(parse_direct_reports(&json!({})).is_empty());
+        assert_eq!(
+            parse_org_person(&json!({"id": "m", "displayName": "Boss"}))
+                .unwrap()
+                .mri,
+            "8:orgid:m"
         );
     }
 

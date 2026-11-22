@@ -256,6 +256,19 @@ pub struct CardData {
     pub work: String,
     pub location: String,
     pub time: String,
+    /// When they are next free ("10:00 AM"), `""` when they are not busy or it is not known.
+    pub free_at: String,
+    /// Their work hours ("8:00 AM - 5:00 PM"), `""` when not known.
+    pub work_hours: String,
+    /// `office` or `remote` for the work location icon, `""` when none.
+    pub work_location_kind: String,
+    pub job_title: String,
+    pub department: String,
+    /// Up to six direct reports for the card, and how many there are (0 hides the section).
+    pub reports: Vec<PersonData>,
+    pub reports_count: usize,
+    /// Their manager, when known.
+    pub manager_person: Option<PersonData>,
     /// The person's availability (`Busy`, …) for the dot, `""` when unknown.
     pub presence: String,
     /// The same in words ("Do not disturb").
@@ -272,6 +285,22 @@ pub struct CardData {
     pub manager: String,
     /// `External` or `Guest` for a person outside our organization, `""` for a colleague.
     pub badge: String,
+}
+
+/// What the organization chart of the full profile shows: one person at the centre, their
+/// manager above and their direct reports below.
+#[derive(Clone, Default)]
+pub struct OrgData {
+    pub focus: PersonData,
+    /// `office`, `remote` or `""`.
+    pub location_kind: String,
+    pub manager: Option<PersonData>,
+    pub reports: Vec<PersonData>,
+    /// How many reports there are, `-1` when they could not be read.
+    pub reports_count: i32,
+    pub can_back: bool,
+    pub can_forward: bool,
+    pub loading: bool,
 }
 
 /// A forward target: an existing chat or channel.

@@ -1,30 +1,14 @@
-// Profile card: opened by clicking an avatar or a name. Photo, name, title, email (click to
-// copy), work location and the Chat and Email buttons.
+// Profile card: opened by hovering or clicking a photo or a name, laid out like the Teams web
+// card. A header with the big photo and the name, a row of action icons, then a scrolling body
+// (quick message, status, contact, organization; see profile_parts.slint). The data is the
+// card's person in `PeopleStore`.
 import { Theme } from "theme.slint";
-import { PersonItem } from "types.slint";
-import { Avatar, IconButton } from "widgets.slint";
-import { DirectCallStore } from "call_incoming.slint";
-import { CallPersonButton } from "call_outgoing.slint";
-import { Skeleton, SkeletonList } from "motion.slint";
+import { Avatar } from "widgets.slint";
+import { PeopleStore } from "people.slint";
+import { ProfileActions, ProfileBody } from "profile_parts.slint";
+import { ScrollView } from "std-widgets.slint";
 
 export component ProfileCard inherits Rectangle {
-    in property <PersonItem> person;
-    in property <bool> loading;
-    in property <string> email;
-    in property <string> work;
-    in property <string> location;
-    in property <string> local-time;
-    in property <string> presence;
-    in property <string> presence-label;
-    in property <string> work-location;
-    // Status message, "Out of office", work and mobile phone, manager: "" hides each.
-    in property <string> note;
-    in property <string> ooo;
-    in property <string> phone;
-    in property <string> mobile;
-    in property <string> manager;
-    // "External" or "Guest" for someone outside our organization ("" for a colleague).
-    in property <string> badge;
     // Opened by hovering a name or photo: it closes once the pointer is on neither it nor that
     // photo (`anchor-hovered`).
     in property <bool> hover-mode;
@@ -32,16 +16,17 @@ export component ProfileCard inherits Rectangle {
     callback quick-message(string);
     callback copy-email();
     callback chat(string);
-    callback send-email(string);
+    callback video(string);
+    callback call-number(string);
     callback open-photo(string);
     callback close();
 
     // The tallest the window lets it be: a taller card is cut at the bottom, not spilled out.
     in property <length> limit: 100000px;
-    width: 320px;
+    width: 340px;
     height: min(content.preferred-height, root.limit);
     clip: true;
-    border-radius: 8px;
+    border-radius: 4px;
     background: Theme.surface;
     border-width: 1px;
     border-color: Theme.border;
@@ -52,226 +37,59 @@ export component ProfileCard inherits Rectangle {
 
     hover-area := TouchArea {
     content := VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
         HorizontalLayout {
+            padding: 16px;
             spacing: 14px;
             Avatar {
-                initials: root.person.initials;
-                tone: root.person.color;
-                img: root.person.avatar;
-                has-img: root.person.has-avatar;
-                presence: root.presence;
+                initials: PeopleStore.card.initials;
+                tone: PeopleStore.card.color;
+                img: PeopleStore.card.avatar;
+                has-img: PeopleStore.card.has-avatar;
+                presence: PeopleStore.card-presence;
                 size: 72px;
                 // A click on the photo shows it large (the picture viewer).
-                if root.person.has-avatar: photo-touch := TouchArea {
+                if PeopleStore.card.has-avatar: photo-touch := TouchArea {
                     mouse-cursor: pointer;
                     accessible-role: button;
-                    accessible-label: "View photo of " + root.person.name;
-                    accessible-action-default => { root.open-photo(root.person.id); }
-                    clicked => { root.open-photo(root.person.id); }
+                    accessible-label: "View photo of " + PeopleStore.card.name;
+                    accessible-action-default => { root.open-photo(PeopleStore.card.id); }
+                    clicked => { root.open-photo(PeopleStore.card.id); }
                 }
             }
             VerticalLayout {
                 alignment: center;
                 spacing: 2px;
-                card-name := Text { text: root.person.name; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; wrap: word-wrap; accessible-role: text; accessible-label: root.person.name; }
-                if root.badge != "": card-badge := Text { text: "(" + root.badge + ")"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; accessible-role: text; accessible-label: root.badge; }
-                if root.person.subtitle != "": card-title := Text { text: root.person.subtitle; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: root.person.subtitle; }
-                if root.note != "": card-note := Text { text: root.note; color: Theme.fg; font-size: 12px * Theme.font-scale; font-italic: true; wrap: word-wrap; max-height: 34px; overflow: elide; accessible-role: text; accessible-label: "Status message"; accessible-value: self.text; }
-                if root.loading: Rectangle {
-                    height: 16px;
-                    accessible-role: text;
-                    accessible-label: "Loading";
-                    Skeleton { y: 4px; width: parent.width * 0.6; height: 8px; }
+                card-name := Text { text: PeopleStore.card.name; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; wrap: word-wrap; accessible-role: text; accessible-label: PeopleStore.card.name; }
+                if PeopleStore.card-badge != "": card-badge := Text { text: "(" + PeopleStore.card-badge + ")"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; accessible-role: text; accessible-label: PeopleStore.card-badge; }
+            }
+        }
+        // The action icons sit above the body, so their tooltips are not cut by it.
+        actions := ProfileActions {
+            height: 44px;
+            z: 5;
+            chat => { root.chat(PeopleStore.card.id); }
+            org => { PeopleStore.open-profile(2); }
+            video => { root.video(PeopleStore.card.id); }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        scroll-box := Rectangle {
+            preferred-height: min(body.height, 470px);
+            min-height: 0px;
+            vertical-stretch: 1;
+            ScrollView {
+                width: parent.width;
+                height: parent.height;
+                viewport-width: self.visible-width;
+                viewport-height: body.height;
+                body := ProfileBody {
+                    width: parent.width - 12px;
+                    quick-message(t) => { root.quick-message(t); }
+                    copy-email => { root.copy-email(); }
+                    open-profile => { PeopleStore.open-profile(1); }
+                    open-org => { PeopleStore.open-profile(2); }
+                    call-number(n) => { root.call-number(n); }
                 }
             }
-            IconButton { icon: @image-url("icons/close.svg"); tooltip: "Close"; size: 28px; clicked => { root.close(); } }
-        }
-
-        if root.ooo != "": Rectangle {
-            height: 30px;
-            border-radius: 4px;
-            background: #b4009e40;
-            accessible-role: text;
-            accessible-label: "Out of office";
-            accessible-value: root.ooo;
-            card-ooo := Text { x: 10px; width: parent.width - 20px; text: root.ooo; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
-        }
-        if root.presence-label != "": Rectangle {
-            height: 34px;
-            border-radius: 4px;
-            border-width: 1px;
-            border-color: Theme.border;
-            HorizontalLayout {
-                padding-left: 10px;
-                spacing: 8px;
-                Rectangle {
-                    width: 12px;
-                    height: 12px;
-                    y: (parent.height - 12px) / 2;
-                    border-radius: 6px;
-                    background: (root.presence == "Available" || root.presence == "AvailableIdle") ? #6bb700
-                        : (root.presence == "Busy" || root.presence == "BusyIdle" || root.presence == "DoNotDisturb") ? #c4314b
-                        : (root.presence == "BeRightBack" || root.presence == "Away") ? #ffaa44 : #8a8886;
-                }
-                card-presence := Text { text: root.presence-label; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; accessible-role: text; accessible-label: "Availability"; accessible-value: self.text; }
-            }
-        }
-        // The details (email, location, local time) are being read.
-        if root.loading && root.person.kind == "person": SkeletonList { count: 3; avatar: 0px; row-height: 30px; label: "Loading details"; }
-        if root.person.kind == "person" && !root.loading: Rectangle {
-            height: 32px;
-            border-radius: 4px;
-            background: Theme.main;
-            border-width: 1px;
-            border-color: quick.has-focus ? Theme.accent : Theme.border;
-            HorizontalLayout {
-                padding-left: 10px;
-                padding-right: 4px;
-                spacing: 4px;
-                Rectangle {
-                    horizontal-stretch: 1;
-                    quick := TextInput {
-                        width: parent.width;
-                        height: parent.height;
-                        color: Theme.fg;
-                        font-size: 13px * Theme.font-scale;
-                        single-line: true;
-                        vertical-alignment: center;
-                        accessible-role: text-input;
-                        accessible-label: "Send a quick message";
-                        accepted => {
-                            if self.text != "" {
-                                root.quick-message(self.text);
-                                self.text = "";
-                            }
-                        }
-                    }
-                    if quick.text == "": Text { x: 0; text: "Send a quick message"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; height: parent.height; }
-                }
-                quick-send := IconButton {
-                    icon: @image-url("icons/send.svg");
-                    tooltip: "Send";
-                    size: 28px;
-                    clicked => {
-                        if quick.text != "" {
-                            root.quick-message(quick.text);
-                            quick.text = "";
-                        }
-                    }
-                }
-            }
-        }
-        if root.email != "": card-email := Rectangle {
-            height: 30px;
-            border-radius: 4px;
-            background: email-touch.has-hover ? Theme.surface-hover : transparent;
-            accessible-role: button;
-            accessible-label: "Copy email " + root.email;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Email"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                Text { text: root.email; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-            email-touch := TouchArea { mouse-cursor: pointer; clicked => { root.copy-email(); } }
-        }
-        if root.work != "": Rectangle {
-            height: 24px;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Company"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-work := Text { text: root.work; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-        if root.location != "": Rectangle {
-            height: 24px;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Location"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-location := Text { text: root.location; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-        if root.work-location != "": Rectangle {
-            height: 24px;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Today"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-work-location := Text { text: root.work-location; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: text; accessible-label: "Work location"; accessible-value: self.text; }
-            }
-        }
-        if root.phone != "": Rectangle {
-            height: 24px;
-            accessible-role: text;
-            accessible-label: "Work phone";
-            accessible-value: root.phone;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Work phone"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-phone := Text { text: root.phone; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-        if root.mobile != "": Rectangle {
-            height: 24px;
-            accessible-role: text;
-            accessible-label: "Mobile";
-            accessible-value: root.mobile;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Mobile"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-mobile := Text { text: root.mobile; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-        if root.manager != "": Rectangle {
-            height: 24px;
-            accessible-role: text;
-            accessible-label: "Manager";
-            accessible-value: root.manager;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Manager"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-manager := Text { text: root.manager; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-        if root.local-time != "": Rectangle {
-            height: 24px;
-            HorizontalLayout {
-                padding-left: 6px;
-                spacing: 8px;
-                Text { text: "Local time"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; width: 64px; horizontal-stretch: 0; }
-                card-time := Text { text: root.local-time; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 8px;
-            height: 32px;
-            card-chat := Rectangle {
-                horizontal-stretch: 1;
-                border-radius: 4px;
-                background: chat-touch.has-hover ? Theme.accent : Theme.accent-strong;
-                accessible-role: button;
-                accessible-label: "Chat";
-                Text { text: "Chat"; color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                chat-touch := TouchArea { mouse-cursor: pointer; clicked => { root.chat(root.person.id); } }
-            }
-            if root.email != "": card-mail := Rectangle {
-                horizontal-stretch: 1;
-                border-radius: 4px;
-                background: mail-touch.has-hover ? Theme.surface-hover : Theme.surface-hover;
-                accessible-role: button;
-                accessible-label: "Email";
-                Text { text: "Email"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-                mail-touch := TouchArea { mouse-cursor: pointer; clicked => { root.send-email(root.email); } }
-            }
-            if DirectCallStore.available && root.person.kind == "person" && !root.loading: CallPersonButton { mri: root.person.id; }
         }
     }
     }

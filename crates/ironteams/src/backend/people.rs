@@ -56,6 +56,14 @@ pub enum PeopleCmd {
     ProfileChat(String),
     /// "Send a quick message" on the profile card: to the person the card shows.
     ProfileMessage(String),
+    /// Loads the full profile for this person (the card data, without the hover card).
+    ProfileModal(String),
+    /// The organization chart: opened at a person, moved to one, back, forward, home.
+    OrgOpen(String),
+    OrgFocus(String),
+    OrgBack,
+    OrgForward,
+    OrgHome,
     PinJump(String),
     PinUnpin(String),
     Receipts(bool),
@@ -84,6 +92,12 @@ impl PeopleCmd {
             "profile-copy-email" => PeopleCmd::ProfileCopyEmail,
             "profile-chat" => PeopleCmd::ProfileChat(a),
             "profile-message" => PeopleCmd::ProfileMessage(a),
+            "profile-modal" => PeopleCmd::ProfileModal(a),
+            "org-open" => PeopleCmd::OrgOpen(a),
+            "org-focus" => PeopleCmd::OrgFocus(a),
+            "org-back" => PeopleCmd::OrgBack,
+            "org-forward" => PeopleCmd::OrgForward,
+            "org-home" => PeopleCmd::OrgHome,
             "pin-jump" => PeopleCmd::PinJump(a),
             "pin-unpin" => PeopleCmd::PinUnpin(a),
             "receipts" => PeopleCmd::Receipts(arg == "on"),
@@ -131,6 +145,8 @@ pub(super) struct State {
     standing_asked: BTreeSet<String>,
     /// What profile cards learned, by person: a second card for them shows it at once.
     profiles: HashMap<String, (CardFacts, std::time::Instant)>,
+    /// The schedule, manager and reports the card and the organization chart read.
+    pub(super) org: super::people_card::OrgState,
     pins: HashMap<String, Vec<PinnedData>>,
     horizons: HashMap<String, Vec<Horizon>>,
     /// `readReceiptsEnabled` of the account, once known.
@@ -146,6 +162,8 @@ pub(super) struct State {
 struct CardFacts {
     name: String,
     subtitle: String,
+    job_title: String,
+    department: String,
     email: String,
     work: String,
     location: String,
@@ -163,6 +181,8 @@ fn fill_facts(card: &mut CardData, f: CardFacts) {
         card.person.name = f.name;
     }
     card.person.subtitle = f.subtitle;
+    card.job_title = f.job_title;
+    card.department = f.department;
     if !f.email.is_empty() {
         card.email = f.email;
     }
@@ -195,6 +215,8 @@ fn card_facts(
     let dept = pick(c.department, d.department);
     CardFacts {
         name: c.display_name,
+        job_title: job.clone(),
+        department: dept.clone(),
         subtitle: [job, dept]
             .into_iter()
             .filter(|s| !s.is_empty())
@@ -411,6 +433,12 @@ impl Engine {
                 Ok(())
             }
             PeopleCmd::ProfileMessage(text) => self.quick_message(text).await,
+            PeopleCmd::ProfileModal(mri) => self.profile_in(mri, true).await,
+            PeopleCmd::OrgOpen(mri) => self.org_open(mri).await,
+            PeopleCmd::OrgFocus(mri) => self.org_focus(mri).await,
+            PeopleCmd::OrgBack => self.org_step(-1).await,
+            PeopleCmd::OrgForward => self.org_step(1).await,
+            PeopleCmd::OrgHome => self.org_step(0).await,
             PeopleCmd::PinJump(id) => self.jump_to(&id).await,
             PeopleCmd::PinUnpin(id) => self.unpin(&id).await,
             PeopleCmd::Receipts(on) => {
@@ -1326,6 +1354,16 @@ impl Engine {
     /// photo, the last presence, the details an earlier card read), then fills in the rest. The
     /// details and the presence are read together.
     async fn profile(self: &Arc<Self>, mri: String) -> anyhow::Result<()> {
+        self.profile_in(mri, false).await
+    }
+
+    /// [`Self::profile`] for the hover or click card (`modal` false), or for the full profile
+    /// window (`modal` true: the card data is filled without opening the card).
+    pub(super) async fn profile_in(
+        self: &Arc<Self>,
+        mri: String,
+        modal: bool,
+    ) -> anyhow::Result<()> {
         let known = self.store.lock().unwrap().user(&mri)?;
         let name = if mri == self.me {
             self.my_name.clone()
@@ -1334,6 +1372,7 @@ impl Engine {
                 .as_ref()
                 .map(|u| u.display_name.clone())
                 .filter(|n| !n.is_empty())
+                .or_else(|| self.org_known_name(&mri))
                 .unwrap_or_else(|| "Someone".into())
         };
         let cached = self.people.lock().unwrap().profiles.get(&mri).cloned();
@@ -1362,7 +1401,14 @@ impl Engine {
             p.card_email = (!card.email.is_empty()).then(|| card.email.clone());
             p.card_mri = Some(mri.clone());
         }
-        self.ui.card(true, card.clone());
+        // What an earlier card read about their schedule, manager and reports shows at once.
+        let (avail, org) = self.cached_card_extras(&mri);
+        self.fill_card_extras(&mut card, avail.as_ref(), org.as_ref());
+        if modal {
+            self.ui.card_fill(card.clone());
+        } else {
+            self.ui.card(true, card.clone());
+        }
         if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
             card.loading = false;
             self.ui.card_details(card);
@@ -1384,10 +1430,20 @@ impl Engine {
                 None
             }
         };
-        let (fetched, dir, presence) = tokio::join!(
+        let email0 = card.email.clone();
+        let schedule = async {
+            if email0.is_empty() {
+                None
+            } else {
+                self.avail_of(&mri, &email0).await
+            }
+        };
+        let (fetched, dir, presence, org, mut avail) = tokio::join!(
             details,
             directory,
-            self.client.get_presence(std::slice::from_ref(&mri))
+            self.client.get_presence(std::slice::from_ref(&mri)),
+            self.org_of(&mri),
+            schedule
         );
         card.loading = false;
         let fetched = match fetched {
@@ -1417,6 +1473,11 @@ impl Engine {
             card.badge = card_badge(&mri, &card.email);
             card.person.avatar = self.card_photo(&mri);
         }
+        if avail.is_none() && email0.is_empty() && !card.email.is_empty() {
+            // The email only came with the details: read the schedule now.
+            avail = self.avail_of(&mri, &card.email).await;
+        }
+        self.fill_card_extras(&mut card, avail.as_ref(), org.as_ref());
         match presence {
             Ok(found) => {
                 if let Some(p) = found.into_iter().next() {
@@ -1426,6 +1487,9 @@ impl Engine {
                     card.work_location =
                         super::people_presence::work_location_label(p.work_location.as_deref())
                             .into();
+                    let kind = super::people_card::location_kind(p.work_location.as_deref());
+                    card.work_location_kind = kind.into();
+                    self.people.lock().unwrap().org.set_kind(&mri, kind);
                     card.note = p.note.map(|n| n.text).unwrap_or_default();
                     card.ooo = if p.ooo {
                         "Out of office".into()
@@ -1801,8 +1865,11 @@ impl Engine {
     /// Remembers a person's card details as if a card had read them.
     #[cfg(test)]
     pub(crate) fn test_cache_profile(&self, mri: &str, subtitle: &str, work: &str, phone: &str) {
+        let (job, dept) = subtitle.split_once(" · ").unwrap_or((subtitle, ""));
         let facts = CardFacts {
             subtitle: subtitle.into(),
+            job_title: job.into(),
+            department: dept.into(),
             work: work.into(),
             phone: phone.into(),
             ..CardFacts::default()

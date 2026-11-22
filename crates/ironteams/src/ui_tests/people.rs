@@ -716,15 +716,9 @@ fn harness_with_sara_email() -> Harness {
 }
 
 #[test]
-fn clicking_a_senders_name_opens_a_card_with_name_email_and_the_chat_and_email_buttons() {
+fn clicking_a_senders_name_opens_a_card_with_name_email_and_the_action_icons() {
     let h = harness_with_sara_email();
     let log = wire_skipping(&h, &["profile-copy-email"]);
-    let opened = Log::default();
-    {
-        let o = opened.clone();
-        h.app
-            .on_open_url(move |u| o.borrow_mut().push(u.to_string()));
-    }
     h.select(BACKEND);
     let sara = h
         .app
@@ -756,16 +750,13 @@ fn clicking_a_senders_name_opens_a_card_with_name_email_and_the_chat_and_email_b
             .unwrap(),
         "Sara Hassan"
     );
-    assert!(!ids(&h.app, "ProfileCard::card-email").is_empty());
+    assert!(!ids(&h.app, "ProfileBody::card-email").is_empty());
 
     // Click the email to copy it.
-    click(&touch(&h.app, "ProfileCard::email-touch"));
+    click(&touch(&h.app, "ProfileBody::email-touch"));
     assert_eq!(log.borrow().last().unwrap(), "profile-copy-email ");
-    // The Email button opens a mailto link.
-    click(&touch(&h.app, "ProfileCard::mail-touch"));
-    assert_eq!(*opened.borrow(), vec!["mailto:sara@example.com"]);
-    // Chat opens the 1:1 with her.
-    click(&touch(&h.app, "ProfileCard::chat-touch"));
+    // The chat icon opens the 1:1 with her.
+    click(&ids(&h.app, "ProfileActions::chat-icon")[0]);
     assert!(!ps(&h.app).get_card_open(), "the card closes");
     assert_eq!(
         h.app.get_current_id(),
@@ -787,8 +778,7 @@ fn clicking_the_avatar_also_opens_the_card_and_a_card_without_an_email_has_no_em
     assert!(log.borrow().last().unwrap().starts_with("profile 8:orgid:"));
     assert!(ps(&h.app).get_card_open());
     assert_eq!(ps(&h.app).get_card_email(), "");
-    assert!(ids(&h.app, "ProfileCard::card-email").is_empty());
-    assert!(ids(&h.app, "ProfileCard::mail-touch").is_empty());
+    assert!(ids(&h.app, "ProfileBody::card-email").is_empty());
 }
 
 #[test]
@@ -834,9 +824,9 @@ fn resting_on_a_photo_opens_a_hover_card_whose_quick_message_goes_to_their_chat(
     assert_eq!(ps(&h.app).get_card().name, "Sara Hassan");
 
     // A quick message goes to the 1:1 with her; the open chat stays.
-    let quick = touch(&h.app, "ProfileCard::quick");
+    let quick = touch(&h.app, "ProfileBody::quick");
     quick.set_accessible_value("on my way");
-    click(&touch(&h.app, "ProfileCard::quick-send"));
+    click(&touch(&h.app, "ProfileBody::quick-send"));
     assert!(!ps(&h.app).get_card_open(), "sending closes the card");
     let direct = "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-000000000003@unq.gbl.spaces";
     let queued = h.engine.test_store(|s| s.outbox_for(direct).unwrap());
@@ -1165,6 +1155,301 @@ fn the_card_hides_what_is_not_known_and_shows_what_is() {
     assert!(find_label(&h.app, "Mobile").is_empty());
 }
 
+// ---- the Teams-style card and the full profile ---------------------------------------------
+
+/// Opens Sara's card by clicking her photo in the message list.
+fn open_sara_card(h: &Harness) {
+    h.select(BACKEND);
+    settle();
+    click(&lowest_photo_of_sara(&h.app));
+    assert!(ps(&h.app).get_card_open(), "the card is open");
+}
+
+/// The value of the first element labelled `text` that has one (rows are labelled twice: the
+/// row and its caption).
+fn value_of(app: &AppWindow, text: &str) -> Option<String> {
+    find_label(app, text)
+        .into_iter()
+        .filter_map(|e| e.accessible_value())
+        .map(|v| v.to_string())
+        .find(|v| !v.is_empty())
+}
+
+fn cache_org_of_sara(h: &Harness) {
+    h.engine.test_cache_org(
+        &mri(3),
+        Some((mri(5).as_str(), "Omar Boss")),
+        Some(vec![
+            (mri(6).as_str(), "Report A"),
+            (mri(7).as_str(), "Report B"),
+        ]),
+    );
+}
+
+fn report_card(app: &AppWindow, name: &str) -> ElementHandle {
+    ids(app, "OrgPersonCard::touch")
+        .into_iter()
+        .find(|e| label(e) == name)
+        .unwrap_or_else(|| panic!("a chart card for {name}"))
+}
+
+fn org_focus_name(app: &AppWindow) -> String {
+    ps(app).get_org_focus().name.to_string()
+}
+
+#[test]
+fn the_status_box_shows_the_label_free_at_work_hours_and_the_time_zone() {
+    use appearance::formats;
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    h.engine.test_set_presence(&mri(3), "Busy");
+    let now = teams_proto::time::now_ms();
+    let free_ms = now + 30 * 60_000;
+    let mine = (formats::offset_ms(now) / 60_000) as i32;
+    h.engine.test_cache_avail(
+        &mri(3),
+        vec![(now - 30 * 60_000, free_ms)],
+        Some((8 * 60, 17 * 60)),
+        Some(mine),
+    );
+    open_sara_card(&h);
+
+    let free = formats::local(free_ms)
+        .map(|t| formats::time_of(&t))
+        .expect("a local time");
+    assert_eq!(ps(&h.app).get_card_free_at(), free);
+    assert_eq!(
+        value_of(&h.app, "Availability").as_deref(),
+        Some(format!("Busy • Free at {free}").as_str()),
+        "the label, a bullet and when they are free"
+    );
+    let hours = format!("{} - {}", formats::clock(8 * 60), formats::clock(17 * 60));
+    assert_eq!(ps(&h.app).get_card_work_hours(), hours);
+    assert_eq!(find_label(&h.app, &format!("Work hours: {hours}")).len(), 1);
+    assert!(
+        value_of(&h.app, "Local time")
+            .expect("the time zone row")
+            .ends_with(" - Same time zone as you")
+    );
+}
+
+#[test]
+fn the_card_has_four_equal_action_icons_and_no_linkedin() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    open_sara_card(&h);
+    let icons: Vec<_> = ["chat", "org", "video", "phone"]
+        .iter()
+        .map(|n| touch(&h.app, &format!("ProfileActions::{n}-icon")))
+        .collect();
+    let widths: Vec<f32> = icons.iter().map(|e| e.size().width).collect();
+    assert!(
+        widths
+            .iter()
+            .all(|w| (w - widths[0]).abs() < 0.5 && *w > 40.),
+        "equal widths: {widths:?}"
+    );
+    assert!(find_label(&h.app, "LinkedIn").is_empty());
+}
+
+#[test]
+fn show_more_reveals_the_other_fields() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    h.engine
+        .test_cache_profile(&mri(3), "Engineer · Platform", "Example Org", "+1 555 0100");
+    open_sara_card(&h);
+    assert_eq!(value_of(&h.app, "Job title"), None, "folded away");
+    assert_eq!(
+        value_of(&h.app, "Work phone").as_deref(),
+        Some("+1 555 0100")
+    );
+
+    click(&touch(&h.app, "ProfileBody::more-touch"));
+    assert_eq!(value_of(&h.app, "Job title").as_deref(), Some("Engineer"));
+    assert_eq!(value_of(&h.app, "Department").as_deref(), Some("Platform"));
+    assert_eq!(value_of(&h.app, "Company").as_deref(), Some("Example Org"));
+
+    click(&touch(&h.app, "ProfileBody::more-touch"));
+    assert_eq!(
+        value_of(&h.app, "Job title"),
+        None,
+        "Show less folds it again"
+    );
+}
+
+#[test]
+fn the_direct_reports_header_shows_the_count_and_the_manager() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    cache_org_of_sara(&h);
+    open_sara_card(&h);
+    assert_eq!(ps(&h.app).get_card_reports_count(), 2);
+    assert_eq!(ps(&h.app).get_card_reports().row_count(), 2);
+    assert!(
+        !find_label(&h.app, "Direct reports (2)").is_empty(),
+        "the header carries the count"
+    );
+    assert_eq!(value_of(&h.app, "Reports to").as_deref(), Some("Omar Boss"));
+    assert!(!find_label(&h.app, "Show organization").is_empty());
+}
+
+#[test]
+fn a_person_without_reports_has_no_direct_reports_header() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    h.engine
+        .test_cache_org(&mri(3), None, Some(Vec::<(&str, &str)>::new()));
+    open_sara_card(&h);
+    assert_eq!(ps(&h.app).get_card_reports_count(), 0);
+    assert!(find_label(&h.app, "Show organization").is_empty());
+}
+
+#[test]
+fn enter_in_the_quick_message_box_sends_it_to_their_chat() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    open_sara_card(&h);
+    let quick = touch(&h.app, "ProfileBody::quick");
+    click(&quick);
+    quick.set_accessible_value("on my way");
+    enter(&h.app);
+    assert!(!ps(&h.app).get_card_open(), "sending closes the card");
+    let direct = "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-000000000003@unq.gbl.spaces";
+    let queued = h.engine.test_store(|s| s.outbox_for(direct).unwrap());
+    assert_eq!(queued.len(), 1, "one message queued for Sara");
+}
+
+#[test]
+fn the_org_icon_opens_the_full_profile_on_the_organization_tab() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    cache_org_of_sara(&h);
+    open_sara_card(&h);
+    click(&touch(&h.app, "ProfileActions::org-icon"));
+    let s = ps(&h.app);
+    assert!(s.get_profile_open(), "the full profile is open");
+    assert_eq!(s.get_profile_tab(), 2, "on the Organization tab");
+    assert!(!s.get_card_open(), "the small card gave way to it");
+    assert!(
+        ElementHandle::find_by_element_type_name(&h.app, "ProfileModal")
+            .next()
+            .is_some()
+    );
+    assert_eq!(org_focus_name(&h.app), "Sara Hassan");
+    assert_eq!(s.get_org_reports_count(), 2);
+    assert!(
+        !find_label(&h.app, "2 direct reports").is_empty(),
+        "the report count text"
+    );
+    assert!(
+        !find_label(&h.app, "Omar Boss").is_empty(),
+        "the manager above"
+    );
+    assert!(!find_label(&h.app, "Report A").is_empty());
+    assert!(!find_label(&h.app, "Report B").is_empty());
+    // At the start of the history: nowhere to go back to.
+    assert!(!s.get_org_can_back());
+}
+
+#[test]
+fn clicking_a_report_moves_the_chart_to_them_and_back_returns() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    cache_org_of_sara(&h);
+    open_sara_card(&h);
+    click(&touch(&h.app, "ProfileActions::org-icon"));
+    assert_eq!(org_focus_name(&h.app), "Sara Hassan");
+
+    click(&report_card(&h.app, "Report A"));
+    assert_eq!(org_focus_name(&h.app), "Report A");
+    assert!(ps(&h.app).get_org_can_back());
+    assert!(!ps(&h.app).get_org_can_forward());
+    // Nothing is known about her reports: the chart shows her card alone.
+    assert_eq!(ps(&h.app).get_org_reports_count(), -1);
+
+    click(&find_label(&h.app, "Organization back")[0]);
+    assert_eq!(org_focus_name(&h.app), "Sara Hassan", "back returns");
+    assert!(ps(&h.app).get_org_can_forward());
+    assert_eq!(ps(&h.app).get_org_reports_count(), 2);
+
+    click(&find_label(&h.app, "Organization forward")[0]);
+    assert_eq!(org_focus_name(&h.app), "Report A", "forward goes on");
+
+    // Home returns to the person the window opened for, as a step.
+    click(&find_label(&h.app, "Organization home")[0]);
+    assert_eq!(org_focus_name(&h.app), "Sara Hassan");
+    click(&find_label(&h.app, "Organization back")[0]);
+    assert_eq!(org_focus_name(&h.app), "Report A");
+
+    // The manager is one click away too.
+    click(&report_card(&h.app, "Omar Boss"));
+    assert_eq!(org_focus_name(&h.app), "Omar Boss");
+}
+
+#[test]
+fn view_profile_shows_the_overview_of_the_person_in_focus() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    cache_org_of_sara(&h);
+    open_sara_card(&h);
+    click(&touch(&h.app, "ProfileActions::org-icon"));
+    click(&report_card(&h.app, "Report A"));
+    click(&touch(&h.app, "ProfileModal::view-touch"));
+    let s = ps(&h.app);
+    assert_eq!(s.get_profile_tab(), 0, "the Overview tab");
+    assert_eq!(s.get_card().name, "Report A");
+    assert_eq!(s.get_card().id, mri(6));
+    assert!(s.get_profile_open());
+}
+
+#[test]
+fn the_full_profile_has_three_tabs_and_closes_with_esc_or_a_click_outside() {
+    let h = harness_with_sara_email();
+    let _log = wire(&h);
+    open_sara_card(&h);
+    click(&touch(&h.app, "ProfileActions::org-icon"));
+    assert_eq!(ps(&h.app).get_profile_tab(), 2);
+
+    click(&touch(&h.app, "ProfileModal::profile-tab"));
+    assert_eq!(ps(&h.app).get_profile_tab(), 1);
+    assert_eq!(
+        value_of(&h.app, "Email").as_deref(),
+        Some("sara@example.com"),
+        "the Profile tab lists the fields"
+    );
+    click(&touch(&h.app, "ProfileModal::overview-tab"));
+    assert_eq!(ps(&h.app).get_profile_tab(), 0);
+    assert!(
+        !ids(&h.app, "ProfileBody::quick").is_empty(),
+        "the Overview is the card body"
+    );
+    click(&touch(&h.app, "ProfileModal::organization-tab"));
+    assert_eq!(ps(&h.app).get_profile_tab(), 2);
+
+    key(&h.app, Key::Escape, true);
+    key(&h.app, Key::Escape, false);
+    assert!(!ps(&h.app).get_profile_open(), "Esc closes it");
+
+    ps(&h.app).invoke_open_profile(0);
+    assert!(ps(&h.app).get_profile_open());
+    let at = LogicalPosition::new(3., 3.);
+    h.app
+        .window()
+        .dispatch_event(WindowEvent::PointerMoved { position: at });
+    h.app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: at,
+        button: PointerEventButton::Left,
+    });
+    h.app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: at,
+        button: PointerEventButton::Left,
+    });
+    assert!(
+        !ps(&h.app).get_profile_open(),
+        "a click on the scrim closes it"
+    );
+}
 // ---- 6.6 pinned messages banner ----------------------------------------------
 
 fn pins() -> Vec<PinnedData> {
