@@ -43,6 +43,11 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
+      # Unused dependencies: a static scan of the manifests, so it needs no build.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+      - run: cargo machete
       # clippy checks the GUI crate's binary and test targets at once; that outgrows the runner's
       # memory and GitHub kills the runner (exit 143, "shutdown signal"). Extra swap absorbs it.
       - name: More swap
