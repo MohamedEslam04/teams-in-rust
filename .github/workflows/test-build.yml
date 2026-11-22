@@ -23,6 +23,7 @@ jobs:
   # Named like the CI job so Swatinem/rust-cache restores that job's cache.
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold

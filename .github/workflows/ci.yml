@@ -34,6 +34,8 @@ jobs:
   # Formatting and clippy on Linux, in parallel with the tests below.
   clippy:
     runs-on: ubuntu-latest
+    # A hung runner stops here instead of holding the queue for hours.
+    timeout-minutes: 30
     env:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
@@ -70,6 +72,7 @@ jobs:
   # The Linux tests. The job is named `check` so test-build.yml restores this job's cache.
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
@@ -99,6 +102,7 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     steps:
       # Fixtures and include_str! files must keep LF line endings on Windows.
       - run: git config --global core.autocrlf false
