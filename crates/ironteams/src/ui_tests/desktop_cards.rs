@@ -386,6 +386,36 @@ fn the_window_grows_for_a_new_card_before_it_is_drawn_and_shrinks_when_one_goes(
     assert!(again > left + 100.0, "{again} vs {left}");
 }
 
+/// The live repro from Settings › "Test notification": the first test card closes by itself
+/// after eight seconds, so the stack is empty and the surface gone; the next test card was drawn
+/// in a surface only as tall as the shadow, its top at the bottom edge of the screen.
+#[test]
+fn a_card_after_the_stack_went_empty_gets_its_whole_height() {
+    let (h, core, sent) = host();
+    let test_card = |id| Card {
+        id,
+        title: "IronTeams".into(),
+        text: "This is a test notification.".into(),
+        initials: "IT".into(),
+        color: 0x5b5fc7,
+        ..Card::default()
+    };
+    assert!(!host::apply(&core, ToHost::Show(test_card(1))));
+    let first = assert_sized_for(&h, &["New message: IronTeams"]);
+    assert!(
+        first > 100.0,
+        "the whole card, not just the shadow: {first}"
+    );
+    testing::mock_elapsed_time(Duration::from_secs(9));
+    settle();
+    assert_eq!(actions(&sent), [(1, Action::Closed)], "closed by itself");
+    assert_eq!(host::wanted_size(&h).1, 0.0, "empty: no surface");
+
+    assert!(!host::apply(&core, ToHost::Show(test_card(2))));
+    let second = assert_sized_for(&h, &["New message: IronTeams"]);
+    near(second, first, "the same card, the same height");
+}
+
 #[test]
 fn quit_ends_the_host() {
     let (_h, core, _) = host();
