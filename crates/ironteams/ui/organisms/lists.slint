@@ -1,0 +1,394 @@
+// The chat list beyond the plain Favorites / Chats / Teams split (plan 8.1 to 8.3, 8.5): custom
+// sections, the chat item menu, list options and the channel menu. Rust fills `ListStore`; the
+// UI sends `command(name, argument)` (two arguments are joined with a tab).
+import { Theme } from "../tokens/theme.slint";
+import { ChatRow } from "../tokens/types.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { RemindStore } from "remind.slint";
+import { TeamsStore } from "../stores/teams_store.slint";
+import { MediaStore } from "media.slint";
+import { FlowsStore } from "../stores/apps_store.slint";
+import { Motion } from "../tokens/motion.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+
+// A section of the list: sections made in Teams (read from the account) and local ones.
+export struct SectionRow {
+    id: string,
+    name: string,
+    expanded: bool,
+    unread: int,
+    // A section made in IronTeams (it can be renamed and deleted here).
+    local: bool,
+    items: [ChatRow],
+}
+export struct SectionChoice { id: string, name: string }
+
+export global ListStore {
+    in property <[SectionRow]> sections;
+    // Where "Move to section" can put an item (Favorites and every section).
+    in property <[SectionChoice]> choices;
+    // List options ("…" menu).
+    in property <bool> show-previews: true;
+    in property <bool> show-times: true;
+    in property <bool> combined: false;
+    // Collapsed state of the fixed sections, shared so "Collapse all sections" (Alt+Q) reaches them.
+    in-out property <bool> favorites-open: true;
+    in-out property <bool> chats-open: true;
+    in-out property <bool> channels-open: true;
+    // Meeting chats sit in their own section, collapsed until opened. Their rows end
+    // `chats-main` (`section` "meetings"); the section shows the newest five until "See all".
+    in-out property <bool> meetings-open: false;
+    in-out property <bool> meetings-all: false;
+    in property <int> meetings-count;
+    in property <int> meetings-unread;
+    // The name dialog: "" | new-section | rename-section. `dialog-target` is the chat to move into
+    // the new section, or the section being renamed.
+    in-out property <string> dialog;
+    in-out property <string> dialog-target;
+    in-out property <string> dialog-text;
+    // About the channel whose menu is open.
+    in property <string> channel-level: "feed"; // all | feed | off
+    in property <bool> channel-private: false;
+    in property <bool> channel-hidden: false;
+    // Pinned to the top of its team (pinned channels list).
+    in property <bool> channel-pinned: false;
+    // Names: new-section, rename-section, delete-section, section-toggle, collapse-all, move,
+    // remove-section, mute, unmute, copy-link, hide, option, channel-menu, channel-show,
+    // channel-hide, channel-notify, channel-link, channel-team, channel-leave.
+    callback command(string, string);
+}
+
+// The notification choices of a channel, shared by both channel menus.
+component NotifyChoices inherits VerticalLayout {
+    in property <string> channel;
+    callback done();
+    MenuItem { variant: MenuItemVariant.list; label: @tr("All activity"); checked: ListStore.channel-level == "all"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}all"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Only show in the feed"); checked: ListStore.channel-level == "feed"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}feed"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Off"); checked: ListStore.channel-level == "off"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}off"); root.done(); } }
+}
+
+// Contents of the right-click menu of a chat or channel in the list (plan 8.2 and 8.5).
+export component ItemMenu inherits Rectangle {
+    in property <ChatRow> data;
+    // The item sits in a section made by the user, so it can be removed from it.
+    in property <bool> in-section;
+    out property <length> menu-height: (root.view == "main" ? root.main-rows : (root.view == "sections" ? ListStore.choices.length + 2 : 4)) * 32px + 8px;
+    callback mark-unread();
+    callback leave();
+    callback toggle-favorite();
+    // "Remove chat history" (the window asks first).
+    callback remove-history();
+    callback done();
+
+    property <string> view: "main";
+    // Every item: the base five, Favorite and Snooze; chats add Pop out chat, Manage apps, Set
+    // workflows and Remove chat history, channels Pin and Go to team.
+    property <int> main-rows: 7 + (root.in-section ? 1 : 0) + (root.data.channel ? 2 + (ListStore.channel-private ? 1 : 0) : 4) + (root.data.group ? 1 : 0);
+
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    // The menu fades in and grows from 0.97 (150 ms) each time it opens.
+    property <bool> shown: Theme.reduced-motion;
+    opacity: root.shown ? 1.0 : 0.0;
+    transform-scale: root.shown ? 1.0 : Motion.pop-from;
+    animate opacity { duration: Motion.fast; easing: ease-out; }
+    animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    Timer {
+        interval: 16ms;
+        running: !root.shown;
+        triggered => { root.shown = true; }
+    }
+
+    VerticalLayout {
+        padding: 4px;
+        if root.view == "main": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Mark as unread"); clicked => { root.mark-unread(); root.done(); } }
+            // New Teams keeps pinned chats in Favorites (`migratedPinnedToFavorites`): one list.
+            MenuItem { variant: MenuItemVariant.list; label: root.data.favorite ? @tr("Unfavorite") : @tr("Favorite"); clicked => { root.toggle-favorite(); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list;
+                label: ListStore.channel-pinned ? @tr("Unpin") : @tr("Pin");
+                clicked => { TeamsStore.command("chan-pin", root.data.id + "\u{1f}" + (ListStore.channel-pinned ? "0" : "1")); root.done(); }
+            }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Pop out chat"); clicked => { MediaStore.command("popout", root.data.id); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Move to section"); chevron: true; clicked => { root.view = "sections"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Snooze"); chevron: true; clicked => { root.view = "snooze"; } }
+            if root.in-section: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove from section"); clicked => { ListStore.command("remove-section", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list;
+                label: root.data.muted ? @tr("Unmute") : @tr("Mute");
+                clicked => { ListStore.command(root.data.muted ? "unmute" : "mute", root.data.id); root.done(); }
+            }
+            // A chat's apps (no read of them is known, so the engine says so) and its Workflows.
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Manage apps"); clicked => { ListStore.command("manage-apps", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Set workflows"); clicked => { FlowsStore.command("flows-enter", ""); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command(root.data.channel ? "channel-link" : "copy-link", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove chat history"); danger: true; clicked => { root.remove-history(); root.done(); } }
+            if root.data.group: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave"); clicked => { root.leave(); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.data.id); root.done(); } }
+            if root.data.channel && ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.data.id; ListStore.dialog = "leave-channel"; root.done(); } }
+            MenuItem { variant: MenuItemVariant.list;
+                label: root.data.channel ? @tr("Hide channel") : @tr("Hide");
+                clicked => { ListStore.command(root.data.channel ? "channel-hide" : "hide", root.data.id); root.done(); }
+            }
+        }
+        if root.view == "sections": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Move to section"); dim: true; clicked => { root.view = "main"; } }
+            for c in ListStore.choices: MenuItem { variant: MenuItemVariant.list;
+                label: c.name;
+                clicked => { ListStore.command("move", root.data.id + "\u{9}" + c.id); root.done(); }
+            }
+            MenuItem { variant: MenuItemVariant.list;
+                label: @tr("New section");
+                clicked => {
+                    ListStore.dialog-target = root.data.id;
+                    ListStore.dialog-text = "";
+                    ListStore.dialog = "new-section";
+                    root.done();
+                }
+            }
+        }
+        if root.view == "snooze": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Snooze"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}1h"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until tomorrow 9:00"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}tomorrow"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until next week (Monday 9:00)"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}week"); root.done(); } }
+        }
+        if root.view == "notify": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
+            NotifyChoices { channel: root.data.id; done => { root.done(); } }
+        }
+    }
+}
+
+// Right-click menu of a channel in the Teams view.
+export component ChannelMenu inherits Rectangle {
+    in property <string> channel;
+    callback done();
+    out property <length> menu-height: (root.view == "main" ? 5 + (ListStore.channel-private ? 1 : 0) : 4) * 32px + 8px;
+    property <string> view: "main";
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 4px;
+        if root.view == "main": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
+            MenuItem { variant: MenuItemVariant.list;
+                label: ListStore.channel-hidden ? @tr("Show channel") : @tr("Hide channel");
+                clicked => { ListStore.command(ListStore.channel-hidden ? "channel-show" : "channel-hide", root.channel); root.done(); }
+            }
+            // The same pin as the channel menu of "Your teams and channels".
+            MenuItem { variant: MenuItemVariant.list;
+                label: ListStore.channel-pinned ? @tr("Unpin") : @tr("Pin");
+                clicked => { TeamsStore.command("chan-pin", root.channel + "\u{1f}" + (ListStore.channel-pinned ? "0" : "1")); root.done(); }
+            }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.channel); root.done(); } }
+            if ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.channel; ListStore.dialog = "leave-channel"; root.done(); } }
+        }
+        if root.view == "notify": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
+            NotifyChoices { channel: root.channel; done => { root.done(); } }
+        }
+    }
+}
+
+// A section header: chevron, name, an unread dot while collapsed, and a "…" for sections made
+// here (rename, delete).
+export component SectionHead inherits Rectangle {
+    in property <SectionRow> section;
+    callback toggle();
+    height: 30px;
+    background: head-touch.has-hover ? Theme.surface-hover : transparent;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.section.name + (root.section.expanded ? @tr(", expanded") : @tr(", collapsed"));
+    accessible-expandable: true;
+    accessible-expanded: root.section.expanded;
+    accessible-action-default => { root.toggle(); }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 4px;
+        Icon {
+            source: @image-url("../icons/chevron-right.svg");
+            width: 14px;
+            height: 14px;
+            y: 8px;
+            transform-rotation: root.section.expanded ? 90deg : 0deg;
+            animate transform-rotation { duration: Motion.normal; easing: ease-out; }
+        }
+        Text { text: root.section.name; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+        if !root.section.expanded && root.section.unread > 0: Rectangle {
+            width: 8px;
+            height: 8px;
+            y: 11px;
+            border-radius: 4px;
+            background: Theme.accent;
+            accessible-role: text;
+            accessible-label: @tr("{} unread", root.section.unread);
+        }
+    }
+    head-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggle(); }
+        pointer-event(e) => {
+            if root.section.local && e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                head-menu.show();
+            }
+        }
+    }
+    head-menu := PopupWindow {
+        x: 30px;
+        y: parent.height;
+        width: 160px;
+        height: 72px;
+        Rectangle {
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            VerticalLayout {
+                padding: 4px;
+                MenuItem { variant: MenuItemVariant.list;
+                    label: @tr("Rename section");
+                    clicked => {
+                        ListStore.dialog-target = root.section.id;
+                        ListStore.dialog-text = root.section.name;
+                        ListStore.dialog = "rename-section";
+                    }
+                }
+                MenuItem { variant: MenuItemVariant.list; label: @tr("Delete section"); danger: true; clicked => { ListStore.command("delete-section", root.section.id); } }
+            }
+        }
+    }
+}
+
+// The name dialog of "New section" and "Rename section".
+export component SectionDialog inherits Rectangle {
+    callback confirm(string);
+    callback cancel();
+    width: 360px;
+    height: 168px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000a0;
+    accessible-role: groupbox;
+    accessible-label: ListStore.dialog == "rename-section" ? @tr("Rename section") : @tr("New section");
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text { text: ListStore.dialog == "rename-section" ? @tr("Rename section") : @tr("New section"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; }
+        Rectangle {
+            height: 34px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: name-input.has-focus ? Theme.accent : Theme.border;
+            FocusScope {
+                capture-key-pressed(event) => {
+                    if event.text == Key.Escape { root.cancel(); return accept; }
+                    if event.text == Key.Return && ListStore.dialog-text != "" { root.confirm(ListStore.dialog-text); return accept; }
+                    reject
+                }
+                name-input := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    text <=> ListStore.dialog-text;
+                    color: Theme.fg;
+                    font-size: 14px * Theme.font-scale;
+                    single-line: true;
+                    vertical-alignment: center;
+                    accessible-role: text-input;
+                    accessible-label: @tr("Section name");
+                    init => { self.focus(); self.select-all(); }
+                }
+            }
+            if ListStore.dialog-text == "": Text { x: 10px; text: @tr("Section name"); color: Theme.fg-subtle; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Rectangle {
+                width: 84px;
+                height: 32px;
+                border-radius: 4px;
+                background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+                border-width: 1px;
+                border-color: Theme.border;
+                accessible-role: button;
+                accessible-label: @tr("Cancel");
+                Text { text: @tr("Cancel"); color: Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                cancel-touch := TouchArea { mouse-cursor: pointer; clicked => { root.cancel(); } }
+            }
+            Rectangle {
+                width: 84px;
+                height: 32px;
+                border-radius: 4px;
+                background: ListStore.dialog-text == "" ? #3b3d6b : (ok-touch.has-hover ? Theme.accent : Theme.accent-strong);
+                accessible-role: button;
+                accessible-label: ListStore.dialog == "rename-section" ? @tr("Rename") : @tr("Create");
+                accessible-enabled: ListStore.dialog-text != "";
+                Text { text: ListStore.dialog == "rename-section" ? @tr("Rename") : @tr("Create"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                ok-touch := TouchArea { enabled: ListStore.dialog-text != ""; mouse-cursor: pointer; clicked => { root.confirm(ListStore.dialog-text); } }
+            }
+        }
+    }
+}
+
+// "Leave this channel?" for a private channel.
+export component LeaveChannelDialog inherits Rectangle {
+    callback confirm();
+    callback cancel();
+    width: 380px;
+    height: 150px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000a0;
+    accessible-role: groupbox;
+    accessible-label: @tr("Leave this channel?");
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        Text { text: @tr("Leave this channel?"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; }
+        Text { text: @tr("You will lose access to its posts and files until someone adds you again."); color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Rectangle {
+                width: 84px;
+                height: 32px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: no-touch.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Cancel");
+                Text { text: @tr("Cancel"); color: Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                no-touch := TouchArea { mouse-cursor: pointer; clicked => { root.cancel(); } }
+            }
+            Rectangle {
+                width: 84px;
+                height: 32px;
+                border-radius: 4px;
+                background: yes-touch.has-hover ? #e0545a : Theme.danger;
+                accessible-role: button;
+                accessible-label: @tr("Leave");
+                Text { text: @tr("Leave"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                yes-touch := TouchArea { mouse-cursor: pointer; clicked => { root.confirm(); } }
+            }
+        }
+    }
+}
+
+// One entry of the "…" list menu: a label with a check when the option is on.
+export component OptionRow inherits MenuItem { variant: MenuItemVariant.list; }

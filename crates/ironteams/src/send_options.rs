@@ -1,4 +1,4 @@
-//! The send button's options (`ui/composer_send.slint`): the day and time words of the "Schedule
+//! The send button's options (`ui/organisms/composer_send.slint`): the day and time words of the "Schedule
 //! message" picker, the chosen time as milliseconds, and the "Sending on …" label of a scheduled
 //! message. Local time, like Teams.
 

@@ -1,0 +1,50 @@
+// Multi-select mode footer: how many messages are ticked, Forward and Cancel.
+import { Theme } from "../tokens/theme.slint";
+
+export component SelectBar inherits Rectangle {
+    in property <int> count;
+    in property <int> max: 5;
+    callback forward();
+    callback cancel();
+
+    height: 48px;
+    background: Theme.sidebar;
+
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 10px;
+        Text {
+            text: @tr("{} of {} selected", root.count, root.max);
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Rectangle {
+            width: 80px;
+            height: 32px;
+            y: 8px;
+            border-radius: 4px;
+            background: cancel-touch.has-hover ? Theme.surface-hover : transparent;
+            Text { text: @tr("Cancel"); color: Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+            cancel-touch := TouchArea { mouse-cursor: pointer; clicked => { root.cancel(); } }
+        }
+        Rectangle {
+            width: 90px;
+            height: 32px;
+            y: 8px;
+            border-radius: 4px;
+            background: Theme.accent-strong;
+            opacity: root.count > 0 ? 1.0 : 0.5;
+            accessible-role: button;
+            accessible-label: @tr("Forward selected");
+            Text { text: @tr("Forward"); color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            forward-touch := TouchArea {
+                enabled: root.count > 0;
+                mouse-cursor: pointer;
+                clicked => { root.forward(); }
+            }
+        }
+    }
+}

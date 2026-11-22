@@ -1,0 +1,210 @@
+// Recording a voice message in the composer, the way WhatsApp Desktop does it.
+//
+// The mic button next to Send starts recording, and this bar takes the text box's place:
+// - recording: delete, a red dot with the time, the live waveform, pause, send;
+// - paused: delete, play / pause to listen back with the whole waveform to seek in,
+//   position / length, resume recording, send.
+// Esc deletes. The state lives in `VoiceRecStore`, filled by `src/ui/voice.rs`.
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { PlayButton, VoiceStore, Waveform } from "../molecules/voice_player.slint";
+
+export global VoiceRecStore {
+    // "idle" | "starting" | "recording" | "paused" | "sending"
+    in property <string> state: "idle";
+    in property <int> elapsed-ms;
+    // Live: the last bars, newest at the end. Paused: the whole recording.
+    in property <[float]> levels;
+    // Listening back while paused.
+    in property <bool> preview-playing;
+    in property <int> preview-ms;
+    // Why recording cannot start or the message cannot be sent ("" when fine).
+    in property <string> problem;
+    callback start();
+    callback pause();
+    callback resume();
+    callback discard();
+    callback send();
+    callback preview-toggle();
+    callback preview-seek(float);
+}
+
+export component VoiceRecorderBar inherits Rectangle {
+    property <bool> paused: VoiceRecStore.state == "paused";
+    property <bool> sending: VoiceRecStore.state == "sending";
+    // The microphone is still opening: nothing to pause or send yet.
+    property <bool> starting: VoiceRecStore.state == "starting";
+    // Neither the clock nor the waveform means anything yet (opening) or any more (sending).
+    property <bool> busy: root.starting || root.sending;
+    height: 48px;
+    border-radius: Theme.radius;
+    background: Theme.surface;
+    forward-focus: keys;
+    accessible-role: groupbox;
+    accessible-label: @tr("Recording a voice message");
+    keys := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape && !root.sending {
+                VoiceRecStore.discard();
+                return accept;
+            }
+            if e.text == Key.Return && !root.busy {
+                VoiceRecStore.send();
+                return accept;
+            }
+            if e.text == " " && !root.busy {
+                if root.paused { VoiceRecStore.preview-toggle(); } else { VoiceRecStore.pause(); }
+                return accept;
+            }
+            reject
+        }
+    }
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 8px;
+        alignment: stretch;
+        VerticalLayout {
+            alignment: center;
+            // Dimmed and click-proof while the message is on its way (`sending`).
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                opacity: root.sending ? 0.4 : 1;
+                IconButton {
+                    icon: @image-url("../icons/trash.svg");
+                    tooltip: @tr("Delete recording");
+                    size: 34px;
+                    tint: Theme.danger;
+                    clicked => { VoiceRecStore.discard(); }
+                }
+                if root.sending: TouchArea { }
+            }
+        }
+        if root.busy: HorizontalLayout {
+            spacing: 8px;
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.fg-subtle;
+                    // Pulses while it works (still with reduced motion).
+                    opacity: Theme.reduced-motion ? 1 : (mod(animation-tick() / 1ms, 1000) < 500 ? 1 : 0.3);
+                }
+            }
+            Text {
+                text: root.sending ? @tr("Sending…") : @tr("Starting microphone…");
+                color: Theme.fg-muted;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+        }
+        if !root.paused && !root.busy: HorizontalLayout {
+            spacing: 6px;
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: center;
+                dot := Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.danger;
+                    // Blinks while recording (still with reduced motion).
+                    opacity: Theme.reduced-motion ? 1 : (mod(animation-tick() / 1ms, 1000) < 600 ? 1 : 0.25);
+                }
+            }
+            Text {
+                text: VoiceStore.clock(VoiceRecStore.elapsed-ms);
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                min-width: 38px;
+                accessible-role: text;
+                accessible-label: @tr("Recording, {}", self.text);
+            }
+            Waveform {
+                horizontal-stretch: 1;
+                y: (parent.height - self.height) / 2;
+                peaks: VoiceRecStore.levels;
+                progress: 1;
+                played: Theme.fg-muted;
+            }
+        }
+        if root.paused: HorizontalLayout {
+            spacing: 8px;
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: center;
+                PlayButton {
+                    width: 32px;
+                    height: 32px;
+                    playing: VoiceRecStore.preview-playing;
+                    label: VoiceRecStore.preview-playing ? @tr("Pause") : @tr("Listen to the recording");
+                    clicked => { VoiceRecStore.preview-toggle(); }
+                }
+            }
+            Waveform {
+                horizontal-stretch: 1;
+                y: (parent.height - self.height) / 2;
+                peaks: VoiceRecStore.levels;
+                progress: VoiceRecStore.elapsed-ms > 0 ? VoiceRecStore.preview-ms / VoiceRecStore.elapsed-ms : 0;
+                scrub(f) => { VoiceRecStore.preview-seek(f); }
+            }
+            Text {
+                text: VoiceStore.clock(VoiceRecStore.preview-ms) + " / " + VoiceStore.clock(VoiceRecStore.elapsed-ms);
+                color: Theme.fg-subtle;
+                font-size: 12px * Theme.font-scale;
+                vertical-alignment: center;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                opacity: root.busy ? 0.4 : 1;
+                IconButton {
+                    icon: root.paused ? @image-url("../icons/mic.svg") : @image-url("../icons/pause.svg");
+                    tooltip: root.paused ? @tr("Resume recording") : @tr("Pause recording");
+                    size: 34px;
+                    tint: root.paused ? Theme.danger : Theme.fg-muted;
+                    clicked => {
+                        if root.paused { VoiceRecStore.resume(); } else { VoiceRecStore.pause(); }
+                    }
+                }
+                if root.busy: TouchArea { }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            send := Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: root.busy ? Theme.surface-hover : send-touch.has-hover ? Theme.accent : Theme.accent-strong;
+                accessible-role: button;
+                accessible-label: @tr("Send voice message");
+                accessible-action-default => {
+                    if !root.busy { VoiceRecStore.send(); }
+                }
+                Image {
+                    source: @image-url("../icons/send.svg");
+                    colorize: white;
+                    width: 18px;
+                    height: 18px;
+                }
+                send-touch := TouchArea {
+                    enabled: !root.busy;
+                    mouse-cursor: pointer;
+                    clicked => { VoiceRecStore.send(); }
+                }
+            }
+        }
+    }
+}

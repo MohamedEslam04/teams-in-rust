@@ -1,0 +1,83 @@
+// The pre-join screen: the meeting, who joins, camera and mic, the audio devices, Join now.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
+import { VideoPreview } from "video_preview.slint";
+import { VideoEffectsPanel } from "video_effects.slint";
+import { VideoFxStore } from "../stores/video_fx_store.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
+
+export component PreJoin inherits Rectangle {
+    background: Theme.main;
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: min(560px, root.width - 32px);
+                spacing: 14px;
+                Text {
+                    text: "Choose your video and audio options";
+                    color: Theme.fg-muted;
+                    font-size: 13px * Theme.font-scale;
+                }
+                Text {
+                    text: CallStore.title;
+                    color: Theme.fg;
+                    font-size: 20px * Theme.font-scale;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                VideoPreview { }
+                Text {
+                    text: "Join as " + CallStore.my-name;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Button { variant: ButtonVariant.call;
+                        icon: CallStore.prejoin-camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
+                        label: "Camera";
+                        checkable: true;
+                        active: CallStore.prejoin-camera;
+                        enabled: CallStore.camera-available;
+                        tip: CallStore.camera-available ? "" : "Video isn't available yet";
+                        clicked => { CallStore.command("prejoin-camera", CallStore.prejoin-camera ? "off" : "on"); }
+                    }
+                    Switch { variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
+                }
+                DeviceSettings { prefix: "prejoin"; }
+                if CallStore.error != "": Text {
+                    text: CallStore.error;
+                    color: Theme.danger;
+                    font-size: 13px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button { variant: ButtonVariant.action;
+                        label: "Cancel";
+                        clicked => { CallStore.command("cancel", ""); }
+                    }
+                    Button { variant: ButtonVariant.action;
+                        label: "Join now";
+                        primary: true;
+                        clicked => { CallStore.command("join-now", ""); }
+                    }
+                }
+            }
+        }
+    }
+    // The effects panel, at the right (over the column when the window is narrow).
+    if VideoFxStore.open: VideoEffectsPanel {
+        width: min(340px, root.width);
+        x: root.width - self.width;
+        height: root.height;
+    }
+}

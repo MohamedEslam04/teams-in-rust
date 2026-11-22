@@ -1,0 +1,23 @@
+// The composer emoji picker's grid of emoji.
+import { Theme } from "../tokens/theme.slint";
+import { ComposerEmoji } from "../tokens/types.slint";
+
+export component EmojiGrid inherits Rectangle {
+    in property <[ComposerEmoji]> items;
+    callback picked(string);
+    width: 324px; // nine columns
+    height: ceil(root.items.length / 9) * 36px;
+    for e[i] in root.items: Rectangle {
+        x: mod(i, 9) * 36px;
+        y: floor(i / 9) * 36px;
+        width: 36px;
+        height: 36px;
+        border-radius: 4px;
+        background: cell.has-hover ? Theme.surface-hover : transparent;
+        Text { text: e.ch; font-size: 20px * Theme.font-scale; }
+        cell := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.picked(e.ch); }
+        }
+    }
+}

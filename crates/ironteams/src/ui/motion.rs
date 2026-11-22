@@ -1,4 +1,4 @@
-//! The window side of the motion polish: who is typing (`ui/motion.slint`).
+//! The window side of the motion polish: who is typing (`ui/tokens/motion.slint`).
 
 use crate::{AppWindow, TypingStore};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};

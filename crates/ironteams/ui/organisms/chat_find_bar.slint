@@ -1,0 +1,74 @@
+// The Find in chat bar (plan chat 7.4).
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { FindStore } from "../stores/find_store.slint";
+
+// The bar above the conversation: Find in chat, Find in channel.
+export component ChatFindBar inherits Rectangle {
+    in property <bool> channel;
+    height: 44px;
+    background: Theme.sidebar;
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 16px;
+            spacing: 8px;
+            Rectangle {
+                y: 6px;
+                height: 32px;
+                max-width: 420px;
+                border-radius: 4px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: find-input.has-focus ? Theme.accent : Theme.border;
+                FocusScope {
+                    capture-key-pressed(event) => {
+                        if event.text == Key.Escape {
+                            FindStore.command("find-close", "");
+                            return accept;
+                        }
+                        if event.text == Key.Return {
+                            FindStore.command(event.modifiers.shift ? "find-next" : "find-prev", "");
+                            return accept;
+                        }
+                        reject
+                    }
+                    find-input := TextInput {
+                        x: 10px;
+                        width: parent.width - 20px;
+                        text <=> FindStore.chat-find-query;
+                        color: Theme.fg;
+                        font-size: 13px * Theme.font-scale;
+                        single-line: true;
+                        vertical-alignment: center;
+                        accessible-role: text-input;
+                        accessible-label: root.channel ? "Find in channel" : "Find in chat";
+                        edited => { FindStore.command("find-query", self.text); }
+                        init => { self.focus(); }
+                    }
+                }
+                if find-input.text == "": Text { x: 10px; text: root.channel ? "Find in channel" : "Find in chat"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+            }
+            Text {
+                horizontal-stretch: 0;
+                vertical-alignment: center;
+                color: Theme.fg-muted;
+                font-size: 12px * Theme.font-scale;
+                text: FindStore.chat-find-query == "" ? "" : (FindStore.chat-find-count == 0 ? "No results" : FindStore.chat-find-index + " of " + FindStore.chat-find-count);
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            IconButton { icon: @image-url("../icons/chevron-down.svg"); tooltip: "Previous match"; y: 6px; size: 32px; clicked => { FindStore.command("find-prev", ""); } }
+            IconButton { icon: @image-url("../icons/chevron-down.svg"); tooltip: "Next match"; y: 6px; size: 32px; clicked => { FindStore.command("find-next", ""); } }
+            IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close find"; y: 6px; size: 32px; clicked => { FindStore.command("find-close", ""); } }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+    }
+    // Refocus the box when the header button is pressed again.
+    changed-tick := Rectangle {
+        width: 0px;
+        height: 0px;
+        property <int> tick: FindStore.chat-find-tick;
+        changed tick => { find-input.focus(); }
+    }
+}

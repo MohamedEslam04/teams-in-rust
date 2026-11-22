@@ -1,0 +1,94 @@
+// The chat details pane (plan chat 7.6).
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { ComposerApps } from "composer_apps.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { SharedLine } from "shared_view.slint";
+import { FindStore } from "../stores/find_store.slint";
+
+// The right panel "In this chat": the recent shared items and "See all".
+export component DetailsPane inherits Rectangle {
+    in property <string> title;
+    width: 320px;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: groupbox;
+    accessible-label: "In this chat";
+    VerticalLayout {
+        Rectangle {
+            height: 52px;
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 8px;
+                Text { text: "In this chat"; color: Theme.fg; font-size: 15px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close details"; y: 10px; clicked => { FindStore.details-open = false; FindStore.command("details", "close"); } }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            height: 20px;
+            Text { text: root.title; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; overflow: elide; }
+        }
+        // Teams' "In this chat" entries: find, the pinned messages (or how to pin), and the
+        // composer's Loop components and apps.
+        VerticalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            MenuItem { variant: MenuItemVariant.file;
+                label: @tr("Find in chat");
+                clicked => {
+                    FindStore.chat-find-open = true;
+                    FindStore.chat-find-tick += 1;
+                    FindStore.command("find-open", "");
+                }
+            }
+            Text { height: 24px; text: @tr("Pinned messages"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
+            if PeopleStore.pinned.length == 0: Text {
+                text: @tr("Nothing is pinned. To pin a message, open its … menu and choose Pin for everyone.");
+                color: Theme.fg-subtle;
+                font-size: 12px * Theme.font-scale;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+            for p in PeopleStore.pinned: MenuItem { variant: MenuItemVariant.file; label: p.sender + ": " + p.preview; clicked => { PeopleStore.command("pin-jump", p.id); } }
+            MenuItem { variant: MenuItemVariant.file;
+                label: @tr("Create and share content");
+                clicked => {
+                    ComposerApps.open = true;
+                    ComposerApps.command("list", "");
+                }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            height: 40px;
+            Text { text: "Shared"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Rectangle {
+                width: see-text.preferred-width + 8px;
+                horizontal-stretch: 0;
+                accessible-role: button;
+                accessible-label: "See all";
+                see-text := Text { text: "See all"; color: Theme.accent; font-size: 12px * Theme.font-scale; vertical-alignment: center; horizontal-alignment: center; }
+                TouchArea { mouse-cursor: pointer; clicked => { FindStore.chat-tab = "shared"; FindStore.command("tab", "shared"); } }
+            }
+        }
+        for s in FindStore.recent: SharedLine {
+            data: s;
+            compact: true;
+            open => { FindStore.command("shared-open", s.url); }
+        }
+        if FindStore.recent.length == 0: HorizontalLayout {
+            padding-left: 16px;
+            height: 32px;
+            Text { text: FindStore.shared-loading ? "Loading…" : "Nothing has been shared here yet"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}

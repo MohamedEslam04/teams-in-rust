@@ -1,102 +1,112 @@
 // IronTeams main window: Teams-like dark layout (rail, chat list, conversation, composer).
 // The pieces live in sibling modules; this file keeps the AppWindow state, callbacks and wiring.
 import { ListView } from "std-widgets.slint";
-import { Theme } from "theme.slint";
-import { ActivityRow, ChatRow, ComposerEmoji, EmojiItem, Msg, PendingAttachment, Recipient, TeamRow } from "types.slint";
-import { Avatar, GlyphAvatar, Icon, IconButton, Pill } from "widgets.slint";
-import { Sidebar } from "sidebar.slint";
-import { MessageRow } from "message_row.slint";
-export { MessagePointer } from "message_row.slint";
-import { Composer, EmojiApi } from "composer.slint";
-import { MessageMenu } from "message_menu.slint";
-import { SeenByList } from "seen_by.slint";
-import { ReactionPicker } from "reaction_picker.slint";
-import { ForwardDialog } from "forward_dialog.slint";
-import { SelectBar } from "select_bar.slint";
-import { LoginView } from "login.slint";
-import { CalendarView, JoinBanner, CalStore } from "calendar.slint";
-import { CallsPage, CallsPageStore } from "calls_page.slint";
-import { ActivityView } from "activity.slint";
-import { PeopleStore, PersonHover } from "people.slint";
-import { NewChatPane } from "new_chat.slint";
-import { ParticipantsPanel, LeaveConfirm } from "participants.slint";
-import { PinnedBanner } from "pinned_banner.slint";
-import { ImmersiveReader } from "reader.slint";
-import { ProfileCard } from "profile_card.slint";
-import { ReactionCard } from "reaction_card.slint";
-import { ReactionHover } from "reaction_hover.slint";
-import { ProfileModal } from "profile_modal.slint";
-import { TeamsStore } from "teams_store.slint";
-import { TeamsPage } from "teams_page.slint";
-import { TeamsDialogs } from "teams_dialogs.slint";
-export { ChatWindow } from "chat_window.slint";
-import { OneDriveView, DriveStore, DriveFilePicker } from "onedrive.slint";
-import { ListStore, SectionDialog, LeaveChannelDialog } from "lists.slint";
-import { RemindStore, RemindPanel } from "remind.slint";
-import { ChannelPosts, ChannelStore, AnnouncementBar } from "channel_posts.slint";
-import { AddTabDialog, ChannelTabButton, ChannelTabOverlays, FindStore, SearchView, QuickView, ChatFindBar, SharedView, DetailsPane } from "find.slint";
-import { ShortcutApi, ShortcutsDialog } from "shortcuts.slint";
-import { CommandPalette, PaletteApi, PaletteStore, PaletteItem } from "palette.slint";
-import { MediaStore, ImageViewer } from "media.slint";
-import { AppsStore, TasksStore } from "apps_store.slint";
-import { RailApps, AppsOverlays } from "apps_rail.slint";
-import { AppsHost } from "apps_host.slint";
-import { RecapTab, RecapsChatPane } from "apps_recaps.slint";
-import { SettingsPage, ProfileMenu, SettingsStore } from "settings.slint";
-import { EngageView, EngageStore } from "engage.slint";
-import { CallWindow, CallMini, CallStore } from "call_window.slint";
-import { DirectCallStore, CallIncoming } from "call_incoming.slint";
-import { CallOutgoing, CallHeaderButtons } from "call_outgoing.slint";
-import { ComposerAppsOverlay } from "composer_apps.slint";
-import { SendStore, ScheduledList } from "composer_send.slint";
-import { ChatHeaderStore, HeaderMoreButton, RemoveHistoryConfirm } from "chat_header.slint";
-import { StorylineView } from "storyline.slint";
-import { TopBarStore, TopSearch, SearchDropdown, NavButtons, MoreButton, MoreMenu } from "topbar.slint";
-import { Motion, PopIn, SkeletonMessages, Spinner, TypingIndicator } from "motion.slint";
-import { MessageToasts, MessageToastStore } from "message_toast.slint";
-export { MessageToastStore, ToastCard } from "message_toast.slint";
+import { Theme } from "tokens/theme.slint";
+import { ActivityRow, ChatRow, ComposerEmoji, EmojiItem, Msg, PendingAttachment, Recipient, TeamRow } from "tokens/types.slint";
+import { Icon, IconButton } from "atoms/widgets.slint";
+import { Pill } from "atoms/chip.slint";
+import { Avatar, GlyphAvatar } from "atoms/avatar.slint";
+import { Sidebar } from "organisms/sidebar.slint";
+import { MessageRow } from "organisms/message_row.slint";
+export { MessagePointer } from "organisms/message_row.slint";
+import { Composer, EmojiApi } from "organisms/composer.slint";
+import { MessageMenu } from "molecules/message_menu.slint";
+import { SeenByList } from "molecules/seen_by.slint";
+import { ReactionPicker } from "molecules/reaction_picker.slint";
+import { ForwardDialog } from "organisms/forward_dialog.slint";
+import { SelectBar } from "molecules/select_bar.slint";
+import { LoginView } from "pages/login.slint";
+import { CalendarView, JoinBanner, CalStore } from "pages/calendar.slint";
+import { CallsPage, CallsPageStore } from "pages/calls_page.slint";
+import { ActivityView } from "pages/activity.slint";
+import { PeopleStore, PersonHover } from "molecules/people.slint";
+import { NewChatPane } from "organisms/new_chat.slint";
+import { ParticipantsPanel, LeaveConfirm } from "organisms/participants.slint";
+import { PinnedBanner } from "molecules/pinned_banner.slint";
+import { ImmersiveReader } from "organisms/reader.slint";
+import { ProfileCard } from "organisms/profile_card.slint";
+import { ReactionCard } from "organisms/reaction_card.slint";
+import { ReactionHover } from "atoms/reaction_hover.slint";
+import { ProfileModal } from "organisms/profile_modal.slint";
+import { TeamsStore } from "stores/teams_store.slint";
+import { TeamsPage } from "pages/teams_page.slint";
+import { TeamsDialogs } from "organisms/teams_dialogs.slint";
+export { ChatWindow } from "organisms/chat_window.slint";
+import { OneDriveView } from "pages/onedrive.slint";
+import { DriveStore } from "stores/drive_store.slint";
+import { DriveFilePicker } from "organisms/drive_file_picker.slint";
+import { ListStore, SectionDialog, LeaveChannelDialog } from "organisms/lists.slint";
+import { RemindStore, RemindPanel } from "organisms/remind.slint";
+import { ChannelPosts, ChannelStore, AnnouncementBar } from "organisms/channel_posts.slint";
+import { AddTabDialog, ChannelTabButton, ChannelTabOverlays } from "organisms/channel_tabs.slint";
+import { FindStore } from "stores/find_store.slint";
+import { SearchView, QuickView } from "pages/find.slint";
+import { ChatFindBar } from "organisms/chat_find_bar.slint";
+import { SharedView } from "organisms/shared_view.slint";
+import { DetailsPane } from "organisms/details_pane.slint";
+import { ShortcutApi, ShortcutsDialog } from "organisms/shortcuts.slint";
+import { CommandPalette, PaletteApi, PaletteStore, PaletteItem } from "pages/palette.slint";
+import { MediaStore, ImageViewer } from "organisms/media.slint";
+import { AppsStore, TasksStore } from "stores/apps_store.slint";
+import { RailApps, AppsOverlays } from "organisms/apps_rail.slint";
+import { AppsHost } from "pages/apps_host.slint";
+import { RecapTab, RecapsChatPane } from "pages/apps_recaps.slint";
+import { SettingsPage, ProfileMenu, SettingsStore } from "pages/settings.slint";
+import { EngageView, EngageStore } from "pages/engage.slint";
+import { CallWindow, CallStore } from "pages/call_window.slint";
+import { CallMini } from "organisms/call_mini.slint";
+import { DirectCallStore, CallIncoming } from "organisms/call_incoming.slint";
+import { CallOutgoing, CallHeaderButtons } from "organisms/call_outgoing.slint";
+import { ComposerAppsOverlay } from "organisms/composer_apps.slint";
+import { SendStore, ScheduledList } from "organisms/composer_send.slint";
+import { ChatHeaderStore, HeaderMoreButton, RemoveHistoryConfirm } from "organisms/chat_header.slint";
+import { StorylineView } from "pages/storyline.slint";
+import { TopBarStore, TopSearch, SearchDropdown, NavButtons, MoreButton, MoreMenu } from "organisms/topbar.slint";
+import { Motion, PopIn, SkeletonMessages, Spinner, TypingIndicator } from "tokens/motion.slint";
+import { MessageToasts, MessageToastStore } from "organisms/message_toast.slint";
+export { MessageToastStore, ToastCard, CardHost } from "organisms/message_toast.slint";
 
-export { Theme } from "theme.slint";
-export { Motion, TypingStore } from "motion.slint";
-export { ReaderItem, Reactor } from "types.slint";
-export { PersonItem, PinnedItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "types.slint";
-export { EmojiApi } from "composer.slint";
-export { SpellApi, SpellWord } from "spelling.slint";
-export { FormatApi, FormatEdit } from "composer_format.slint";
-export { ShortcutApi } from "shortcuts.slint";
-export { PaletteApi, PaletteStore, PaletteAction, PaletteItem } from "palette.slint";
-export { MentionApi } from "mention_picker.slint";
-export { SnippetApi, SnippetStore, SnippetItem } from "snippet_picker.slint";
-export { VoiceStore } from "voice_player.slint";
-export { VoiceRecStore } from "voice_recorder.slint";
-export { ClipStore } from "video_clip.slint";
-export { LoopStore, LoopRow } from "loop_editor.slint";
-export { PeopleStore } from "people.slint";
-export { ListStore, SectionRow, SectionChoice } from "lists.slint";
-export { RemindStore, ReminderRow, SnoozedRow } from "remind.slint";
-export { ChannelStore, PostItem, Replier } from "channel_posts.slint";
-export { FindStore, HitRow, PickRow, SharedRow } from "find.slint";
-export { MediaStore } from "media.slint";
-export { EngageStore, EPost } from "engage.slint";
-export { GifStore, GifItem } from "gif_picker.slint";
-export { CallStore, CallPerson, CallCaption, CallFound, CallVideo } from "call_window.slint";
-export { DirectCallStore } from "call_incoming.slint";
-export { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "calls_page.slint";
-export { VideoFxStore, FxChoice } from "video_fx_store.slint";
-export { TeamsStore, TeamsActions, TChannel, TTeam, TDiscover, TPerson, TTag, TDeleted, TSetting, TStat, TCommunity, TPost } from "teams_store.slint";
-export { CalStore, CalForm, CalDay, CalBlock, CalAllDay, CalMonthItem, CalMonthCell, CalMiniCell, CalFilterOpt, CalCalendarRow, CalSavedView, CalSettingsData, CalPerm, CalPeek, CalAttendeeRow, CalAttachmentRow, CalProposalRow, CalZone, CalDetail, CalSchedRow, CalSuggest, CalRoomList, CalRoom } from "calendar.slint";
-export { DriveStore, DriveRow, DriveCard, DriveNav, SharePerson, SharePerm, DriveVersion } from "onedrive.slint";
-export { ComposerApps, CaCommand, CaResult, CaCard } from "composer_apps.slint";
-export { SendStore, ScheduledItem, QuickChoice, PickCell } from "composer_send.slint";
-export { ChatHeaderStore } from "chat_header.slint";
-export { QuickViewsStore, ChatTipStore } from "chat_list_extras.slint";
-export { StorylineStore } from "storyline.slint";
-export { CallReaction } from "call_store.slint";
-import { ChannelMeetButton, MeetingJoinButton, ParityNotice, WebParityStore } from "web_parity.slint";
-export { WebParityStore } from "web_parity.slint";
-export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "apps_store.slint";
-export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "settings.slint";
-export { TopBarStore, TopRow } from "topbar.slint";
+export { Theme } from "tokens/theme.slint";
+export { Motion, TypingStore } from "tokens/motion.slint";
+export { ReaderItem, Reactor } from "tokens/types.slint";
+export { PersonItem, PinnedItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "tokens/types.slint";
+export { EmojiApi } from "organisms/composer.slint";
+export { SpellApi, SpellWord } from "molecules/spelling.slint";
+export { FormatApi, FormatEdit } from "organisms/composer_format.slint";
+export { ShortcutApi } from "organisms/shortcuts.slint";
+export { PaletteApi, PaletteStore, PaletteAction, PaletteItem } from "pages/palette.slint";
+export { MentionApi } from "molecules/mention_picker.slint";
+export { SnippetApi, SnippetStore, SnippetItem } from "molecules/snippet_picker.slint";
+export { VoiceStore } from "molecules/voice_player.slint";
+export { VoiceRecStore } from "organisms/voice_recorder.slint";
+export { ClipStore } from "organisms/video_clip.slint";
+export { LoopStore, LoopRow } from "molecules/loop_editor.slint";
+export { PeopleStore } from "molecules/people.slint";
+export { ListStore, SectionRow, SectionChoice } from "organisms/lists.slint";
+export { RemindStore, ReminderRow, SnoozedRow } from "organisms/remind.slint";
+export { ChannelStore, PostItem, Replier } from "organisms/channel_posts.slint";
+export { FindStore, HitRow, PickRow, SharedRow } from "stores/find_store.slint";
+export { MediaStore } from "organisms/media.slint";
+export { EngageStore, EPost } from "pages/engage.slint";
+export { GifStore, GifItem } from "molecules/gif_picker.slint";
+export { CallStore, CallPerson, CallCaption, CallFound, CallVideo } from "pages/call_window.slint";
+export { DirectCallStore } from "organisms/call_incoming.slint";
+export { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "pages/calls_page.slint";
+export { VideoFxStore, FxChoice } from "stores/video_fx_store.slint";
+export { TeamsStore, TeamsActions, TChannel, TTeam, TDiscover, TPerson, TTag, TDeleted, TSetting, TStat, TCommunity, TPost } from "stores/teams_store.slint";
+export { CalStore, CalForm, CalDay, CalBlock, CalAllDay, CalMonthItem, CalMonthCell, CalMiniCell, CalFilterOpt, CalCalendarRow, CalSavedView, CalSettingsData, CalPerm, CalPeek, CalAttendeeRow, CalAttachmentRow, CalProposalRow, CalZone, CalDetail, CalSchedRow, CalSuggest, CalRoomList, CalRoom } from "pages/calendar.slint";
+export { DriveStore, DriveRow, DriveCard, DriveNav, SharePerson, SharePerm, DriveVersion } from "stores/drive_store.slint";
+export { ComposerApps, CaCommand, CaResult, CaCard } from "organisms/composer_apps.slint";
+export { SendStore, ScheduledItem, QuickChoice, PickCell } from "organisms/composer_send.slint";
+export { ChatHeaderStore } from "organisms/chat_header.slint";
+export { QuickViewsStore, ChatTipStore } from "organisms/chat_list_extras.slint";
+export { StorylineStore } from "pages/storyline.slint";
+export { CallReaction } from "stores/call_store.slint";
+import { ChannelMeetButton, MeetingJoinButton, ParityNotice, WebParityStore } from "organisms/web_parity.slint";
+export { WebParityStore } from "organisms/web_parity.slint";
+export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
+export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
+export { TopBarStore, TopRow } from "organisms/topbar.slint";
 
 export component AppWindow inherits Window {
     title: root.window-title;
@@ -1709,7 +1719,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && root.forward-open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         ForwardDialog {
             x: (root.width - self.width) / 2;
@@ -1764,7 +1774,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && PeopleStore.leave-confirm != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         LeaveConfirm {
             x: (root.width - self.width) / 2;
@@ -1780,7 +1790,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && ChatHeaderStore.remove-history != "": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         RemoveHistoryConfirm {
             x: (root.width - self.width) / 2;
@@ -1801,7 +1811,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && FindStore.tab-add-open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { FindStore.tab-add-open = false; } }
         AddTabDialog {
             x: (root.width - self.width) / 2;
@@ -1931,7 +1941,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && ListStore.dialog == "leave-channel": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         LeaveChannelDialog {
             x: (root.width - self.width) / 2;
@@ -1947,7 +1957,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && RemindStore.open: Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { clicked => { RemindStore.open = false; } }
         RemindPanel {
             x: (root.width - self.width) / 2;
@@ -1959,7 +1969,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         SectionDialog {
             x: (root.width - self.width) / 2;
@@ -1977,7 +1987,7 @@ export component AppWindow inherits Window {
     if root.login-state == "ready" && root.view != "onedrive" && DriveStore.dialog == "picker": Rectangle {
         width: root.width;
         height: root.height;
-        background: #00000080;
+        background: Theme.scrim;
         TouchArea { }
         DriveFilePicker {
             x: (root.width - self.width) / 2;

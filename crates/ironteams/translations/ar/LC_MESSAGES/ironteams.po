@@ -9,7 +9,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
 
-# Reading direction: "rtl" turns on Theme.rtl (ui/theme.slint).
+# Reading direction: "rtl" turns on Theme.rtl (ui/tokens/theme.slint).
 msgctxt "text direction"
 msgid "ltr"
 msgstr "rtl"
@@ -1023,14 +1023,14 @@ msgstr "تمت المشاهدة"
 msgid "Sent"
 msgstr "تم الإرسال"
 
-# The list of everyone who saw my message (ui/seen_by.slint): its header reuses "Seen by {}".
+# The list of everyone who saw my message (ui/molecules/seen_by.slint): its header reuses "Seen by {}".
 msgid "Read by"
 msgstr "قُرئت بواسطة"
 
 msgid "Show who saw this"
 msgstr "عرض من شاهد الرسالة"
 
-# Typing, loading and sending states (ui/motion.slint).
+# Typing, loading and sending states (ui/tokens/motion.slint).
 msgid "{} is typing…"
 msgstr "{} يكتب…"
 
@@ -2156,7 +2156,7 @@ msgstr "انضمام"
 msgid "Join meeting"
 msgstr "الانضمام إلى الاجتماع"
 
-# The message card in the window (ui/message_toast.slint).
+# The message card in the window (ui/organisms/message_toast.slint).
 
 msgid "Send a quick reply"
 msgstr "أرسل رداً سريعاً"
@@ -2207,3 +2207,45 @@ msgstr "تشغيل صوت الرسائل"
 
 msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
 msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."
+
+msgid "Accept"
+msgstr "قبول"
+
+msgid "Decline"
+msgstr "رفض"
+
+msgid "Reminder"
+msgstr "تذكير"
+
+msgid "Incoming call"
+msgstr "مكالمة واردة"
+
+msgid "Snooze for 5 minutes"
+msgstr "تأجيل 5 دقائق"
+
+msgid "Snooze for 10 minutes"
+msgstr "تأجيل 10 دقائق"
+
+msgid "Snooze for 15 minutes"
+msgstr "تأجيل 15 دقيقة"
+
+msgid "5 min"
+msgstr "5 د"
+
+msgid "10 min"
+msgstr "10 د"
+
+msgid "15 min"
+msgstr "15 د"
+
+msgid "Notification style"
+msgstr "شكل الإشعارات"
+
+msgid "Teams cards"
+msgstr "بطاقات Teams"
+
+msgid "System notifications"
+msgstr "إشعارات النظام"
+
+msgid "Teams cards show in the corner of the screen, above other windows."
+msgstr "تظهر بطاقات Teams في زاوية الشاشة فوق النوافذ الأخرى."

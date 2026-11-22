@@ -1164,6 +1164,8 @@ fn sound_switches_and_meeting_chats_build_the_teams_write() {
     let ui = window(Home::new("sounds"));
     let app = &ui.app;
     open_page(app, "notifications");
+    // The page's sound and preview rows sit below the notification style and the banner rows.
+    tall_window(app);
     let mut d = server(PrivacySettings::default());
     d.notifications = Some(NotificationSettings::from_properties(&serde_json::json!({
         "userPersonalSettings": serde_json::json!({
@@ -1307,6 +1309,28 @@ fn notification_look_switches_start_on_and_save() {
     press(app, "Show Reply and Like buttons");
     let g = Local::load(&dir).general;
     assert!(!g.banner_photo && !g.banner_actions);
+}
+
+#[test]
+fn notification_style_starts_on_teams_cards_and_saves_the_choice() {
+    let home = Home::new("notification-style");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    assert_eq!(store(app).get_notification_style(), "cards");
+    press(app, "Notification style: System notifications");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::System
+    );
+    assert_eq!(store(app).get_notification_style(), "system");
+    press(app, "Notification style: Teams cards");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::Cards
+    );
 }
 
 #[test]
@@ -1725,7 +1749,7 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         for _ in 0..3 {
             testing::mock_elapsed_time(std::time::Duration::from_millis(16));
         }
-        for kind in ["SChoice", "SSwitch", "SButton", "SPersonRow", "SField"] {
+        for kind in ["SChoice", "Switch", "Button", "SPersonRow", "Field"] {
             for row in ElementHandle::find_by_element_type_name(app, kind)
                 .filter(|r| !super::overflow::texts(r).is_empty())
             {
@@ -1872,7 +1896,7 @@ fn an_update_downloaded_by_an_earlier_run_is_ready_at_the_start() {
     open_page(app, "about");
     assert!(store(app).get_update_ready());
     // The About page's button (the banner has one with the same label).
-    let button = ElementHandle::find_by_element_type_name(app, "SButton")
+    let button = ElementHandle::find_by_element_type_name(app, "Button")
         .find(|b| {
             b.accessible_label()
                 .is_some_and(|l| l == "Restart to update")
@@ -1926,7 +1950,7 @@ fn the_update_rows_stay_inside_a_narrow_window() {
     for _ in 0..3 {
         testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     }
-    for kind in ["SSwitch", "SButton"] {
+    for kind in ["Switch", "Button"] {
         for row in ElementHandle::find_by_element_type_name(app, kind)
             .filter(|r| !super::overflow::texts(r).is_empty())
         {

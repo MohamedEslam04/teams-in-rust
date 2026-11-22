@@ -1,0 +1,553 @@
+// The message card shown inside the window, like Teams' notification: while the IronTeams window
+// is the active one, a new message is a purple card in the bottom-right corner instead of a
+// desktop notification. The app name and the card's buttons on top, the sender's photo (a calendar
+// for a meeting chat), the chat in bold, "Sender:" and the text, and a box to answer without
+// opening the chat. Hovering the message shows four quick reactions. It closes by itself after
+// eight seconds, not while the pointer is on it or something is being typed.
+//
+// Rust (`src/ui/message_toast.rs`) fills `toasts` (newest last, three at most) and takes the
+// callbacks; `app.slint` places `MessageToasts` above the call window and opens a chat.
+//
+// The same card is drawn on the desktop, outside the window, by the card host
+// (`src/desktop_cards/`): `CardHost` below is its whole window. There a card can also be a
+// meeting or calendar reminder (calendar, time and place; Join, Snooze, Dismiss; sixty seconds)
+// or an incoming call (Accept, Decline; it stays until the call stops ringing). The host puts
+// the card's number in `conversation`, `target` and `message`, so its callbacks name the card.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+
+export struct ToastCard {
+    id: int,
+    // "message" (or ""), "meeting" (a Teams meeting), "reminder" (another calendar event), "call".
+    kind: string,
+    // The chat to open on a click.
+    conversation: string,
+    // Where a reply goes: the chat, or a channel message's thread.
+    target: string,
+    // The message, for the reactions.
+    message: string,
+    title: string,
+    // "Name:" in a group, "" in a 1:1 chat.
+    sender: string,
+    text: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    // A meeting chat shows a calendar instead of a person.
+    meeting: bool,
+    // Settings › Notifications allows the buttons (the reply box and the reactions).
+    can-reply: bool,
+    can-mute: bool,
+    // A meeting with a Teams link: the Join button.
+    can-join: bool,
+    rtl-title: bool,
+    rtl-text: bool,
+}
+
+export global MessageToastStore {
+    in-out property <[ToastCard]> toasts;
+    // Square cards without the shadow: the card host's opaque window (X11, Windows, macOS).
+    in-out property <bool> square: false;
+    // The text typed in the reply box, for the card's `target`.
+    callback reply(string, string);
+    // The chat of a card was clicked.
+    callback open(string);
+    // A card is done (closed, replied, reacted, timed out), by its id.
+    callback dismiss(int);
+    // A reaction (`like`, `heart`, `laugh`, `surprised`) on a message.
+    callback react(string, string);
+    // "Turn off notifications for this chat".
+    callback mute(string);
+    // A button of a meeting, reminder or call card, by the card's id: "join", "snooze:5",
+    // "snooze:10", "snooze:15", "dismiss", "accept", "decline", "open", or "settings" (the
+    // header's settings button, on every card).
+    callback act(int, string);
+}
+
+// A button of a meeting, reminder or call card.
+component CardButton inherits Rectangle {
+    in property <string> label;
+    // Shown instead of the label when set ("5 min" for "Snooze for 5 minutes").
+    in property <string> text: "";
+    in property <color> tone: #ffffff2e;
+    in property <color> fg: #ffffff;
+    callback clicked();
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: MessageToastStore.square ? 0px : 4px;
+    background: touch.has-hover ? root.tone.brighter(0.25) : root.tone;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Text {
+        text: root.text != "" ? root.text : root.label;
+        color: root.fg;
+        font-size: 13px * Theme.font-scale;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A round button of the header, white on the card.
+component HeaderButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    callback clicked();
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: touch.has-hover ? #ffffff33 : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Icon {
+        source: root.icon;
+        tint: #ffffff;
+        width: 14px;
+        height: 14px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One of the quick reactions; the one under the pointer gets a white outline.
+component QuickReaction inherits Rectangle {
+    in property <string> emoji;
+    in property <string> label;
+    out property <bool> hover: touch.has-hover;
+    callback picked();
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border-width: touch.has-hover ? 1px : 0px;
+    border-color: #ffffff;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.picked(); }
+    Text {
+        text: root.emoji;
+        font-size: 16px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}
+
+export component MessageToast inherits Rectangle {
+    in property <ToastCard> card;
+    // Something is being typed in the reply box: the card stays.
+    property <bool> busy: false;
+    property <bool> menu-open: false;
+    property <bool> pill-hover: r-like.hover || r-heart.hover || r-laugh.hover || r-surprised.hover || pill-touch.has-hover;
+    property <bool> hovered: card-touch.has-hover || msg-touch.has-hover || root.pill-hover;
+    property <bool> is-call: root.card.kind == "call";
+    property <bool> is-calendar: root.card.kind == "meeting" || root.card.kind == "reminder";
+    property <bool> is-message: !root.is-call && !root.is-calendar;
+    // The Snooze button shows the minutes to pick.
+    property <bool> snooze-open: false;
+
+    width: 340px;
+    height: col.preferred-height;
+    border-radius: MessageToastStore.square ? 0px : 8px;
+    background: Theme.accent-strong;
+    drop-shadow-blur: MessageToastStore.square ? 0px : 24px;
+    drop-shadow-color: #000000b0;
+    accessible-role: groupbox;
+    accessible-label: (root.is-call ? @tr("Incoming call") : root.is-calendar ? @tr("Reminder") : @tr("New message")) + ": " + root.card.title;
+
+    // A message goes after eight seconds, a reminder after a minute, unless the pointer is on it
+    // or a reply is being written. A call stays until it stops ringing.
+    Timer {
+        interval: root.is-calendar ? 60s : 8s;
+        running: !root.is-call && !root.hovered && !root.busy && !root.menu-open && !root.snooze-open;
+        triggered => { MessageToastStore.dismiss(root.card.id); }
+    }
+
+    // Clicks on the card stay on it; also tells that the pointer is over it.
+    card-touch := TouchArea { }
+
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                MessageToastStore.dismiss(root.card.id);
+                return accept;
+            }
+            reject
+        }
+
+        col := VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+
+            // The app and the card's buttons.
+            HorizontalLayout {
+                spacing: 4px;
+                height: 26px;
+                Rectangle {
+                    width: 16px;
+                    Icon {
+                        source: @image-url("../icons/logo.svg");
+                        tint: #ffffff;
+                        width: 16px;
+                        height: 16px;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+                Text {
+                    text: "IronTeams";
+                    color: #ffffff;
+                    font-size: 12px * Theme.font-scale;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    accessible-role: none;
+                }
+                if root.is-message && root.card.can-mute: HeaderButton {
+                    icon: @image-url("../icons/more.svg");
+                    label: @tr("More notification options");
+                    clicked => { root.menu-open = !root.menu-open; }
+                }
+                if !root.is-call: HeaderButton {
+                    icon: @image-url("../icons/notification-settings.svg");
+                    label: @tr("Notification settings");
+                    clicked => {
+                        SettingsStore.show("notifications");
+                        MessageToastStore.act(root.card.id, "settings");
+                        MessageToastStore.dismiss(root.card.id);
+                    }
+                }
+                HeaderButton {
+                    icon: @image-url("../icons/close.svg");
+                    label: @tr("Close notification");
+                    clicked => { MessageToastStore.dismiss(root.card.id); }
+                }
+            }
+
+            // The message: a click opens the chat; the pointer on it shows the reactions.
+            msg := Rectangle {
+                height: row.preferred-height;
+                msg-touch := TouchArea {
+                    mouse-cursor: root.is-call ? MouseCursor.default : MouseCursor.pointer;
+                    clicked => {
+                        if root.is-message {
+                            MessageToastStore.open(root.card.conversation);
+                            MessageToastStore.dismiss(root.card.id);
+                        } else if root.is-calendar {
+                            MessageToastStore.act(root.card.id, "open");
+                            MessageToastStore.dismiss(root.card.id);
+                        }
+                    }
+                }
+                row := HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: start;
+                        if !root.card.meeting && !root.is-calendar: Avatar {
+                            initials: root.card.initials;
+                            tone: root.card.color;
+                            img: root.card.avatar;
+                            has-img: root.card.has-avatar;
+                            size: 40px;
+                        }
+                        if root.card.meeting || root.is-calendar: Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 20px;
+                            background: #e8e9fa;
+                            accessible-role: none;
+                            Icon {
+                                source: @image-url("../icons/calendar.svg");
+                                tint: Theme.accent-strong;
+                                width: 20px;
+                                height: 20px;
+                                x: 10px;
+                                y: 10px;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: start;
+                        spacing: 2px;
+                        Text {
+                            text: root.card.title;
+                            color: #ffffff;
+                            font-size: 14px * Theme.font-scale;
+                            font-weight: 700;
+                            overflow: elide;
+                            horizontal-alignment: root.card.rtl-title ? right : left;
+                            accessible-role: text;
+                            accessible-label: self.text;
+                        }
+                        if root.card.sender != "": Text {
+                            text: root.card.sender;
+                            color: #ffffff;
+                            font-size: 13px * Theme.font-scale;
+                            overflow: elide;
+                            horizontal-alignment: root.card.rtl-text ? right : left;
+                            accessible-role: text;
+                            accessible-label: self.text;
+                        }
+                        Text {
+                            text: root.card.text;
+                            color: #ffffff;
+                            font-size: 13px * Theme.font-scale;
+                            wrap: word-wrap;
+                            overflow: elide;
+                            max-height: 36px * Theme.font-scale;
+                            horizontal-alignment: root.card.rtl-text ? right : left;
+                            accessible-role: text;
+                            accessible-label: self.text;
+                        }
+                    }
+                }
+                pill := Rectangle {
+                    visible: root.is-message && root.card.can-reply && (msg-touch.has-hover || root.pill-hover);
+                    x: parent.width - self.width + 4px;
+                    y: -4px;
+                    width: pill-row.preferred-width + 8px;
+                    height: 34px;
+                    border-radius: 8px;
+                    background: #2b2b2b;
+                    drop-shadow-blur: 8px;
+                    drop-shadow-color: #00000080;
+                    pill-touch := TouchArea { }
+                    pill-row := HorizontalLayout {
+                        padding: 3px;
+                        spacing: 2px;
+                        r-like := QuickReaction {
+                            emoji: "\u{1f44d}";
+                            label: @tr("Like");
+                            picked => { root.react("like"); }
+                        }
+                        r-heart := QuickReaction {
+                            emoji: "\u{2764}\u{fe0f}";
+                            label: @tr("Heart");
+                            picked => { root.react("heart"); }
+                        }
+                        r-laugh := QuickReaction {
+                            emoji: "\u{1f606}";
+                            label: @tr("Laugh");
+                            picked => { root.react("laugh"); }
+                        }
+                        r-surprised := QuickReaction {
+                            emoji: "\u{1f62e}";
+                            label: @tr("Surprised");
+                            picked => { root.react("surprised"); }
+                        }
+                    }
+                }
+            }
+
+            // A reminder: Join (a Teams meeting), Snooze and Dismiss; Snooze offers the minutes.
+            if root.is-calendar && !root.snooze-open: HorizontalLayout {
+                spacing: 8px;
+                if root.card.can-join: CardButton {
+                    label: @tr("Join");
+                    tone: #ffffff;
+                    fg: Theme.accent-strong;
+                    clicked => { root.act("join"); }
+                }
+                CardButton {
+                    label: @tr("Snooze");
+                    text: @tr("Snooze") + " ▾";
+                    clicked => { root.snooze-open = true; }
+                }
+                CardButton {
+                    label: @tr("Dismiss");
+                    clicked => { root.act("dismiss"); }
+                }
+            }
+            if root.is-calendar && root.snooze-open: HorizontalLayout {
+                spacing: 8px;
+                CardButton {
+                    label: @tr("Snooze for 5 minutes");
+                    text: @tr("5 min");
+                    clicked => { root.act("snooze:5"); }
+                }
+                CardButton {
+                    label: @tr("Snooze for 10 minutes");
+                    text: @tr("10 min");
+                    clicked => { root.act("snooze:10"); }
+                }
+                CardButton {
+                    label: @tr("Snooze for 15 minutes");
+                    text: @tr("15 min");
+                    clicked => { root.act("snooze:15"); }
+                }
+            }
+
+            // A call: Accept and Decline.
+            if root.is-call: HorizontalLayout {
+                spacing: 8px;
+                CardButton {
+                    label: @tr("Accept");
+                    tone: #237b4b;
+                    clicked => { root.act("accept"); }
+                }
+                CardButton {
+                    label: @tr("Decline");
+                    tone: #a4262c;
+                    clicked => { root.act("decline"); }
+                }
+            }
+
+            // Answer without opening the chat.
+            if root.is-message && root.card.can-reply: reply-box := Rectangle {
+                height: 36px;
+                border-radius: 6px;
+                background: #ffffff2e;
+                border-width: reply-input.has-focus ? 1px : 0px;
+                border-color: #ffffff;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 4px;
+                    spacing: 6px;
+                    reply-input := TextInput {
+                        horizontal-stretch: 1;
+                        color: #ffffff;
+                        font-size: 13px * Theme.font-scale;
+                        single-line: true;
+                        vertical-alignment: center;
+                        accessible-role: text-input;
+                        accessible-label: @tr("Send a quick reply");
+                        accessible-placeholder-text: @tr("Send a quick reply");
+                        accepted => { reply-box.submit(); }
+                        edited => { root.busy = self.text != ""; }
+                        changed has-focus => { root.busy = self.has-focus || self.text != ""; }
+                    }
+                    Rectangle {
+                        width: 32px;
+                        border-radius: 6px;
+                        background: send-touch.has-hover ? #ffffff33 : transparent;
+                        accessible-role: button;
+                        accessible-label: @tr("Send reply");
+                        accessible-action-default => { reply-box.submit(); }
+                        Icon {
+                            source: @image-url("../icons/send.svg");
+                            tint: reply-input.text != "" ? #ffffff : #ffffffa0;
+                            width: 16px;
+                            height: 16px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                        }
+                        send-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { reply-box.submit(); }
+                        }
+                    }
+                }
+                if reply-input.text == "": Text {
+                    x: 12px;
+                    width: parent.width - 52px;
+                    height: parent.height;
+                    text: @tr("Send a quick reply");
+                    color: #ffffffb3;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                function submit() {
+                    if reply-input.text != "" {
+                        MessageToastStore.reply(root.card.target, reply-input.text);
+                        MessageToastStore.dismiss(root.card.id);
+                    }
+                }
+            }
+        }
+    }
+
+    // The "…" menu.
+    if root.menu-open: Rectangle {
+        x: parent.width - self.width - 12px;
+        y: 42px;
+        width: 250px;
+        height: 34px;
+        border-radius: 6px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000090;
+        accessible-role: button;
+        accessible-label: @tr("Turn off notifications for this chat");
+        accessible-action-default => { root.mute(); }
+        Text {
+            x: 12px;
+            width: parent.width - 24px;
+            text: @tr("Turn off notifications for this chat");
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        mute-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.mute(); }
+        }
+    }
+
+    function react(key: string) {
+        MessageToastStore.react(root.card.message, key);
+        MessageToastStore.dismiss(root.card.id);
+    }
+    function mute() {
+        MessageToastStore.mute(root.card.conversation);
+        MessageToastStore.dismiss(root.card.id);
+    }
+    function act(action: string) {
+        MessageToastStore.act(root.card.id, action);
+        MessageToastStore.dismiss(root.card.id);
+    }
+}
+
+// The stack in the bottom-right corner: the oldest on top, the newest at the bottom.
+export component MessageToasts inherits Rectangle {
+    width: 340px;
+    height: stack.preferred-height;
+    stack := VerticalLayout {
+        spacing: MessageToastStore.square ? 1px : 8px;
+        for card in MessageToastStore.toasts: MessageToast {
+            card: card;
+        }
+    }
+}
+
+// The card host's window on the desktop (`src/desktop_cards/host.rs`): the stack and, with a
+// transparent background, room around it for the cards' shadow. The host sizes the window to
+// `wanted-height` and places it in the bottom-right corner of the screen.
+export component CardHost inherits Window {
+    // Around the stack, for the shadow; none for square cards in an opaque window.
+    out property <length> pad: MessageToastStore.square ? 0px : 16px;
+    out property <length> wanted-width: 340px + 2 * root.pad;
+    out property <length> wanted-height: MessageToastStore.toasts.length == 0 ? 0px : cards.height + 2 * root.pad;
+    title: "IronTeams notifications";
+    no-frame: true;
+    always-on-top: true;
+    background: MessageToastStore.square ? #1f1f1f : transparent;
+    default-font-size: 14px * Theme.font-scale;
+    cards := MessageToasts {
+        x: root.pad;
+        y: root.pad;
+    }
+}

@@ -1,0 +1,420 @@
+// Meeting Recaps, as in Teams. The home lists your online meetings of the last 30 days from the
+// calendar, grouped by week, each with a Recap button. A meeting's recap shows its recording
+// parts (Watch plays the recording in IronTeams's player window, More options keeps Open in
+// browser; Share copies the link), the files shared in its chat, and its Notes and Transcript.
+// The AI summary and Speakers are Copilot features and are left out. The recap page is also a
+// meeting chat's Recap tab (`RecapsChatPane`).
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { RecapsStore, RecapRow, AppRow } from "../stores/apps_store.slint";
+import { KitNote } from "../molecules/apps_kit.slint";
+import { RecordingMenu } from "../organisms/meeting_card.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
+import { SearchBox } from "../atoms/search_box.slint";
+
+component Heading inherits Text {
+    color: Theme.fg;
+    font-size: 14px * Theme.font-scale;
+    font-weight: 700;
+    overflow: elide;
+}
+
+// A button whose screen-reader label names what it acts on ("Recap: Weekly sync").
+component RecapButton inherits Rectangle {
+    in property <string> label;
+    in property <string> a11y;
+    callback clicked();
+    height: 30px;
+    width: lbl.preferred-width + 24px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.main;
+    accessible-role: button;
+    accessible-label: root.a11y;
+    accessible-action-default => { root.clicked(); }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    lbl := Text { text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+}
+
+// A week's heading in the home list.
+component WeekHeading inherits Rectangle {
+    in property <string> text;
+    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.text; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 700; vertical-alignment: bottom; overflow: elide; }
+}
+
+// One meeting of the home: the date tile, the title, the date and time, the organizer and the
+// Recap button.
+component MeetingRow inherits Rectangle {
+    in property <RecapRow> m;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.m.title;
+    accessible-description: root.m.when + (root.m.organizer != "" ? ", " + root.m.organizer : "");
+    accessible-action-default => { RecapsStore.command("recaps-open", root.m.id); }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { RecapsStore.command("recaps-open", root.m.id); } }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.surface;
+                VerticalLayout {
+                    alignment: center;
+                    Text { text: root.m.month; color: root.m.canceled ? Theme.fg-subtle : Theme.accent; font-size: 10px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; accessible-role: none; }
+                    Text { text: root.m.day; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; accessible-role: none; }
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.m.title; color: root.m.canceled ? Theme.fg-muted : Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; accessible-role: none; }
+            Text { text: root.m.when; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+            if root.m.organizer != "": Text { text: root.m.organizer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+        }
+        VerticalLayout {
+            alignment: center;
+            RecapButton { label: "Recap"; a11y: "Recap: " + root.m.title; clicked => { RecapsStore.command("recaps-open", root.m.id); } }
+        }
+    }
+}
+
+// The list of meetings.
+component RecapsHome inherits Rectangle {
+    VerticalLayout {
+        Rectangle {
+            height: 56px;
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 12px;
+                spacing: 8px;
+                Text { text: "Meeting Recaps"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton { icon: @image-url("../icons/sync.svg"); tooltip: "Refresh meetings"; clicked => { RecapsStore.command("recaps-refresh", ""); } }
+                }
+            }
+        }
+        Rectangle {
+            height: 44px;
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 8px;
+                // "Followed" needs a list of followed meetings IronTeams has no source for: All only.
+                VerticalLayout {
+                    alignment: center;
+                    Pill { variant: PillVariant.toggle; width: self.natural-width; label: "All"; active: true; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    SearchBox {
+                        width: min(280px, max(120px, root.width - 140px));
+                        placeholder: "Search for meetings";
+                        label: "Search for meetings";
+                        text <=> RecapsStore.query;
+                        edited(q) => { RecapsStore.command("recaps-query", q); }
+                    }
+                }
+            }
+        }
+        if RecapsStore.loading: KitNote { text: "Loading your meetings…"; busy: true; }
+        if RecapsStore.note != "": KitNote { text: RecapsStore.note; }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                width: parent.width - 12px;
+                padding-left: 12px;
+                padding-right: 12px;
+                padding-bottom: 16px;
+                spacing: 2px;
+                alignment: start;
+                for m in RecapsStore.meetings: Rectangle {
+                    height: m.header ? 34px : 64px;
+                    if m.header: WeekHeading { width: parent.width; height: parent.height; text: m.title; }
+                    if !m.header: MeetingRow { width: parent.width; height: parent.height; m: m; }
+                }
+                if RecapsStore.footer != "": Text {
+                    text: RecapsStore.footer;
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                    accessible-label: RecapsStore.footer;
+                }
+            }
+        }
+    }
+}
+
+// The recording area: a card that plays the recording in IronTeams's player window.
+component PlayCard inherits Rectangle {
+    height: 220px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    // With no recording it is only a notice ("No recording was found…"): no play button, so it
+    // does not look like something to click. (A role must be constant, so it stays a disabled
+    // button that reads the notice.)
+    accessible-role: button;
+    accessible-label: RecapsStore.has-recording ? "Play the recording" : RecapsStore.part-label;
+    accessible-enabled: RecapsStore.has-recording;
+    accessible-action-default => { RecapsStore.command("recaps-watch", ""); }
+    TouchArea { enabled: RecapsStore.has-recording; mouse-cursor: RecapsStore.has-recording ? pointer : default; clicked => { RecapsStore.command("recaps-watch", ""); } }
+    VerticalLayout {
+        alignment: center;
+        padding: 16px;
+        spacing: 10px;
+        if RecapsStore.has-recording: HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                border-radius: 28px;
+                background: Theme.accent-strong;
+                Icon { x: 18px; y: 16px; width: 24px; height: 24px; source: @image-url("../icons/play.svg"); tint: #ffffff; }
+            }
+        }
+        Text { text: RecapsStore.part-label; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; accessible-role: none; }
+        if RecapsStore.has-recording: Text { text: "Plays in an IronTeams window, with the transcript beside the video."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; horizontal-alignment: center; wrap: word-wrap; accessible-role: none; }
+    }
+}
+
+// A file shared in the meeting chat.
+component FileRow inherits Rectangle {
+    in property <AppRow> f;
+    height: 44px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.f.title;
+    accessible-description: root.f.subtitle;
+    accessible-action-default => { RecapsStore.command("recaps-file", root.f.id); }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { RecapsStore.command("recaps-file", root.f.id); } }
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Badge { variant: BadgeVariant.status; text: root.f.meta; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.f.title; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; accessible-role: none; }
+            if root.f.subtitle != "": Text { text: root.f.subtitle; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+        }
+    }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <string> key;
+    property <bool> active: RecapsStore.tab == root.key;
+    width: lbl.preferred-width + 20px;
+    height: 34px;
+    accessible-role: AccessibleRole.tab;
+    accessible-label: root.label;
+    accessible-checked: root.active;
+    accessible-action-default => { RecapsStore.command("recaps-tab", root.key); }
+    TouchArea { mouse-cursor: pointer; clicked => { RecapsStore.command("recaps-tab", root.key); } }
+    lbl := Text { x: 10px; height: parent.height - 3px; text: root.label; color: root.active ? Theme.fg : Theme.fg-muted; font-size: 13px * Theme.font-scale; font-weight: root.active ? 600 : 400; vertical-alignment: center; accessible-role: none; }
+    Rectangle { y: parent.height - 3px; height: 3px; border-radius: 1px; background: root.active ? Theme.accent : transparent; }
+}
+
+// Shared files, then the Notes and Transcript tabs.
+component RecapSide inherits Rectangle {
+    VerticalLayout {
+        spacing: 10px;
+        alignment: start;
+        Heading { text: "Shared files"; }
+        if RecapsStore.files-note != "": Text { text: RecapsStore.files-note; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
+        for f in RecapsStore.files: FileRow { f: f; }
+        Rectangle { height: 1px; background: Theme.border; }
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            TabButton { label: "Notes"; key: "notes"; }
+            TabButton { label: "Transcript"; key: "transcript"; }
+        }
+        if RecapsStore.tab == "notes": VerticalLayout {
+            spacing: 8px;
+            Text { text: RecapsStore.notes-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            if RecapsStore.has-notes: HorizontalLayout {
+                alignment: start;
+                Button { variant: ButtonVariant.kit; label: "Open meeting notes"; clicked => { RecapsStore.command("recaps-notes", ""); } }
+            }
+        }
+        if RecapsStore.tab == "transcript": VerticalLayout {
+            spacing: 8px;
+            if RecapsStore.transcript-note != "": Text { text: RecapsStore.transcript-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            if RecapsStore.has-transcript-link: HorizontalLayout {
+                alignment: start;
+                Button { variant: ButtonVariant.kit; label: "Open transcript"; clicked => { RecapsStore.command("recaps-transcript", ""); } }
+            }
+            if RecapsStore.transcript != "": Text { text: RecapsStore.transcript; color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Transcript text"; }
+        }
+    }
+}
+
+// One meeting's recap: the header (back, title, date), the parts, Share, Watch and More options,
+// then the recording card beside (wide) or above (narrow) the shared files, notes and transcript.
+component RecapDetailPage inherits Rectangle {
+    property <bool> wide: root.width >= 900px;
+    VerticalLayout {
+        Rectangle {
+            height: 64px;
+            HorizontalLayout {
+                padding-left: RecapsStore.in-chat ? 20px : 8px;
+                padding-right: 16px;
+                spacing: 8px;
+                if !RecapsStore.in-chat: VerticalLayout {
+                    alignment: center;
+                    IconButton { icon: @image-url("../icons/back.svg"); tooltip: "Back to Meeting Recaps"; clicked => { RecapsStore.command("recaps-home", ""); } }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: RecapsStore.detail-title; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; overflow: elide; accessible-role: text; accessible-label: "Meeting " + RecapsStore.detail-title; }
+                    Text {
+                        text: RecapsStore.detail-when + (RecapsStore.detail-when != "" && RecapsStore.detail-organizer != "" ? " · " : "") + RecapsStore.detail-organizer;
+                        color: Theme.fg-muted;
+                        font-size: 12px * Theme.font-scale;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        Rectangle {
+            height: 44px;
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 16px;
+                spacing: 8px;
+                // The parts scroll sideways when there are more than fit next to the buttons.
+                Flickable {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    content-width: max(self.width, parts.preferred-width);
+                    parts := HorizontalLayout {
+                        alignment: start;
+                        spacing: 8px;
+                        for p[i] in RecapsStore.parts: VerticalLayout {
+                            alignment: center;
+                            Pill { variant: PillVariant.toggle; width: self.natural-width; label: p.label; active: i == RecapsStore.part; clicked => { RecapsStore.command("recaps-part", "\{i}"); } }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button { variant: ButtonVariant.kit; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-share", ""); } }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button { variant: ButtonVariant.kit; label: "Watch"; primary: true; enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-watch", ""); } }
+                }
+                if RecapsStore.has-recording: VerticalLayout {
+                    alignment: center;
+                    RecordingMenu {
+                        size: 32px;
+                        open-in-browser => { RecapsStore.command("recaps-watch-web", ""); }
+                    }
+                }
+            }
+        }
+        if RecapsStore.detail-loading: KitNote { text: "Reading the meeting chat…"; busy: true; }
+        if RecapsStore.detail-note != "": KitNote { text: RecapsStore.detail-note; }
+        if root.wide: HorizontalLayout {
+            vertical-stretch: 1;
+            padding-left: 20px;
+            padding-right: 8px;
+            padding-top: 8px;
+            spacing: 16px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: start;
+                PlayCard { }
+            }
+            ScrollView {
+                width: 340px;
+                VerticalLayout {
+                    width: parent.width - 12px;
+                    padding-bottom: 16px;
+                    alignment: start;
+                    RecapSide { }
+                }
+            }
+        }
+        if !root.wide: ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                width: parent.width - 12px;
+                padding-left: 20px;
+                padding-right: 8px;
+                padding-top: 8px;
+                padding-bottom: 16px;
+                spacing: 16px;
+                alignment: start;
+                PlayCard { }
+                RecapSide { }
+            }
+        }
+    }
+}
+
+export component RecapsView inherits Rectangle {
+    background: Theme.main;
+    init => { RecapsStore.command("recaps-enter", ""); }
+    if RecapsStore.page != "detail": RecapsHome { width: parent.width; height: parent.height; }
+    if RecapsStore.page == "detail": RecapDetailPage { width: parent.width; height: parent.height; }
+}
+
+// The "Recap" entry of a meeting chat's header tabs (next to Chat and Shared). `tab` is bound to
+// the header's `FindStore.chat-tab`, which is `recap` while it shows.
+export component RecapTab inherits Rectangle {
+    in property <string> chat-id;
+    in-out property <string> tab;
+    property <bool> active: root.tab == "recap";
+    width: min(tab-label.preferred-width, 200px);
+    accessible-role: AccessibleRole.tab;
+    accessible-label: "Recap";
+    accessible-checked: root.active;
+    accessible-action-default => { root.open(); }
+    function open() {
+        root.tab = "recap";
+        RecapsStore.command("recaps-chat", root.chat-id);
+    }
+    VerticalLayout {
+        alignment: center;
+        tab-label := Text { text: "Recap"; color: root.active ? Theme.fg : Theme.fg-muted; font-size: 14px * Theme.font-scale; font-weight: root.active ? 600 : 400; overflow: elide; accessible-role: none; }
+        Rectangle { height: 3px; border-radius: 1px; background: root.active ? Theme.accent : transparent; }
+    }
+    TouchArea { mouse-cursor: pointer; clicked => { root.open(); } }
+}
+
+// A meeting chat's Recap tab: the same recap page, without the way back to the home.
+export component RecapsChatPane inherits Rectangle {
+    background: Theme.main;
+    accessible-role: groupbox;
+    accessible-label: "Meeting recap";
+    if RecapsStore.detail-open: RecapDetailPage { width: parent.width; height: parent.height; }
+    if !RecapsStore.detail-open: Text { text: "Loading the recap…"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+}

@@ -1,0 +1,47 @@
+// The search box: a magnifier, a one-line text input and a placeholder.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "widgets.slint";
+
+export component SearchBox inherits Rectangle {
+    in property <string> placeholder;
+    // A binding is the starting text; typing replaces it.
+    in-out property <string> text <=> input.text;
+    // The input's accessible name.
+    in property <string> label;
+    // The placeholder stops (eliding) before the right edge instead of running past it.
+    in property <bool> clip-placeholder: false;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    public function focus-input() { input.focus(); }
+    height: 32px;
+    border-radius: 4px;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
+        input := TextInput {
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            single-line: true;
+            vertical-alignment: center;
+            accessible-role: text-input;
+            accessible-label: root.label;
+            edited => { root.edited(self.text); }
+            accepted => { root.accepted(self.text); }
+        }
+    }
+    if input.text == "": Text {
+        x: 36px;
+        width: root.clip-placeholder ? root.width - 44px : self.preferred-width;
+        text: root.placeholder;
+        color: Theme.fg-subtle;
+        font-size: 13px * Theme.font-scale;
+        vertical-alignment: center;
+        overflow: root.clip-placeholder ? TextOverflow.elide : TextOverflow.clip;
+    }
+}

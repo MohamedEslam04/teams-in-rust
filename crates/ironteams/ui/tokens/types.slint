@@ -1,0 +1,184 @@
+export struct ChatRow {
+    id: string,
+    title: string,
+    preview: string,
+    time: string,
+    unread: bool,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    section: string, // "favorites" | "chats" | "meetings" | "channels"
+    rtl-title: bool,
+    rtl-preview: bool,
+    favorite: bool,
+    draft: bool, // preview is an unsent draft
+    mention: bool, // an unread message mentions me
+    group: bool,   // a group chat (the item menu offers Leave)
+    muted: bool,   // notifications are off (the item menu offers Unmute)
+    channel: bool, // a channel (the item menu offers the channel items)
+    presence: string, // the other person's availability in a 1:1 chat ("" draws no dot)
+    person: string,   // the other person in a 1:1 chat ("" otherwise), for the hover card
+    private: bool,    // a private channel (a lock follows the name)
+    kind: string,     // "chat" (1:1) | "notes" | "group" | "meeting" | "channel": picks the avatar
+}
+
+// Adaptive Card rows (plan 8.8). `kind`: text | fact | columns | image | actions | banner.
+// `band`: "" | emphasis | good | attention | warning | accent. `tone`: default | dark | light |
+// accent | good | warning | attention.
+export struct CardCell { text: styled-text, plain: string, stretch: float, size: length, bold: bool, tone: string, img: image, has-img: bool }
+export struct CardButton { title: string, url: string }
+export struct CardRow {
+    kind: string,
+    text: styled-text,
+    plain: string,
+    label: string,
+    size: length,
+    bold: bool,
+    subtle: bool,
+    tone: string,
+    band: string,
+    cells: [CardCell],
+    buttons: [CardButton],
+    img: image,
+    has-img: bool,
+    img-w: length,
+    img-h: length,
+}
+
+// One person on a reaction's hover card: a photo (`img`) or else their initials on `color`.
+export struct Reactor { name: string, initials: string, color: color, img: image, has-img: bool }
+// A reaction chip: `name` heads the hover card ("Laugh"), `people` fill it, `names` is the joined
+// list for the chip's accessible label.
+export struct ReactionItem { key: string, emoji: string, name: string, count: int, mine: bool, names: string, people: [Reactor] }
+export struct EmojiItem { key: string, emoji: string, name: string }
+export struct Recipient { id: string, title: string, initials: string, color: color, picked: bool }
+// One emoji of the composer's emoji panel and `:xx` autocomplete.
+export struct ComposerEmoji { ch: string, name: string }
+// Result of inserting text into the composer: the new text and where the cursor goes (byte offset).
+export struct Edited { text: string, cursor: int }
+
+// An attachment waiting in the composer (pasted image, dropped or picked file).
+export struct PendingAttachment { name: string, detail: string, is-image: bool, preview: image, has-preview: bool }
+// `place`: "OneDrive" | "SharePoint" | "" (elsewhere). `detail`: the card's second line.
+export struct FileItem { name: string, url: string, ext: string, place: string, detail: string }
+// A Loop component link drawn as a card.
+export struct LoopCard { url: string, title: string }
+// One cell of a message's image grid (x, y, w, h place it; `overflow` is the "+K more" of the last cell).
+export struct ImageItem { url: string, img: image, loaded: bool, x: length, y: length, w: length, h: length, overflow: int }
+// A link preview card under a message (plan chat 9.7).
+export struct LinkCard { url: string, title: string, description: string, domain: string, thumb: image, has-thumb: bool }
+
+// A voice message in a chat row. `key` identifies it for the player (the media object id);
+// `peaks` is its waveform (placeholder bars until the recording has been fetched).
+export struct VoiceItem { key: string, url: string, duration-ms: int, peaks: [float], unplayed: bool, failed: bool }
+
+// A video clip in a chat row (ui/organisms/video_clip.slint): `url` is its AMS video view, `thumb` its first
+// picture when known.
+export struct VideoClipItem { key: string, url: string, duration-ms: int, thumb: image, has-thumb: bool }
+
+// Someone on a meeting card.
+export struct MeetingPerson { name: string, initials: string, color: color }
+
+// A meeting event drawn as a card (ui/organisms/meeting_card.slint). `kind`: "call" | "recording" |
+// "transcript". `state`: a call "started" | "ended", else "ready" | "progress" | "failed".
+// `url`: where Play opens the recording ("" offers none). `recap-chat`: the meeting chat whose
+// Recap tab the card opens ("" offers none). `join-chat`: the meeting chat whose Join the card
+// offers ("" offers none). `more`: people beyond the ones in `people`.
+export struct MeetingCard { kind: string, title: string, detail: string, people: [MeetingPerson], more: int, state: string, url: string, recap-chat: string, join-chat: string }
+
+// One person who has seen my message: their initials in a small coloured circle, and their name.
+export struct ReaderItem { initials: string, color: color, name: string }
+
+export struct Msg {
+    id: string,
+    sender: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    mine: bool,
+    time: string,
+    day: string,           // non-empty: draw a date separator above
+    show-header: bool,     // first message of a run from the same sender
+    edited: bool,
+    deleted: bool,
+    system: bool,          // member added, call ended, ...
+    subject: string,
+    quote-author: string,
+    quote-text: string,
+    body: styled-text,
+    plain: string,
+    rtl: bool,
+    images: [ImageItem],
+    files: [FileItem],
+    reactions: [ReactionItem],
+    reply-count: int,
+    pending: bool,
+    saved: bool,           // in the local saved list
+    selected: bool,        // ticked in multi-select mode
+    failed: bool,          // could not be sent: show Retry and Delete
+    new-above: bool,       // draw the "New messages" divider above this row
+    sender-id: string,     // MRI of the sender, for the profile card
+    presence: string,      // the sender's availability for the dot on their photo ("" draws none)
+    mentions-me: bool,     // the message @mentions me (or everyone)
+    receipt: string,       // on my newest message: "" | "sent" | "seen"
+    receipt-names: string, // who has seen it
+    flash: bool,           // the row a jump (pinned banner) landed on
+    fresh: bool,           // arrived live a moment ago: the row fades in
+    readers: [ReaderItem], // who has seen my newest message (first three), for the little photos
+    reader-list: [ReaderItem], // everyone who has seen it, for the "Seen by" list
+    card: [CardRow],       // an Adaptive Card drawn like Teams does (empty: show the text body)
+    headline: string,      // headline of an announcement post
+    importance: string,    // "" | "high" | "urgent": a red IMPORTANT! or URGENT! label
+    grid-w: length,        // size of the image grid
+    grid-h: length,
+    translate: string,     // "" | "can" (menu only) | "offer" (link too) | "busy" | "shown" | "failed"
+    translate-from: string, // language name shown with "See original"
+    links: [LinkCard],     // preview cards of the links in the message
+    pinned: bool,          // pinned for everyone: the menu offers Unpin
+    urls: [string],        // the links in the text (menu: Open link, Copy link)
+    loops: [LoopCard],     // Loop components, drawn as cards
+    joins: [string],       // Teams meeting links, drawn as cards with a Join button
+    voices: [VoiceItem],   // voice messages, drawn as players
+    videos: [VideoClipItem], // video clips, drawn as cards
+    meeting: [MeetingCard], // a call, recording or transcript event drawn as a card (at most one)
+}
+
+// A person (or, for the @mention picker, a team, channel or "Everyone" entry) in a people list.
+export struct PersonItem {
+    id: string,
+    name: string,
+    subtitle: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    kind: string, // "person" | "team" | "channel" | "everyone"
+    presence: string, // a person's availability ("" draws no dot)
+}
+
+// One pinned message of the open chat, for the banner.
+export struct PinnedItem { id: string, sender: string, preview: string }
+
+export struct ChannelRow { id: string, name: string, unread: bool, hidden: bool, private: bool }
+export struct TeamRow { id: string, name: string, initials: string, color: color, avatar: image, has-avatar: bool, expanded: bool, channels: [ChannelRow] }
+
+export struct ActivityRow {
+    id: string,
+    title: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    badge: string,      // "@", an emoji, a reply arrow, ...
+    unread: bool,
+    preview: string,
+    time: string,
+    location: string,   // "Team › channel" or "In chat with …"
+    rtl-preview: bool,
+    // A missed call from a person: the row offers Call and Chat (Teams' inline buttons).
+    call-mri: string,
+    // Who did it: the photo opens their hover card.
+    person: string,
+}

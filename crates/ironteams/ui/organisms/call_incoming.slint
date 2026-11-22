@@ -1,0 +1,183 @@
+// 1:1 calls (plans/calls.md K1.5, K2.1): the shared store and the incoming-call toast. The toast
+// sits in the bottom-right corner of the window, like Teams' call notification: the caller's
+// avatar and name, "Incoming call" or "Incoming video call", and Accept with video, Accept with
+// audio and Decline. Accept with video answers with audio and turns the camera on once the call
+// runs (unless camera video is switched off with IRONTEAMS_CAMERA=0; then it answers with audio).
+// A call that rings while another runs (call waiting) offers Hold and accept, End and accept and
+// Decline.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
+import { CallStore } from "../stores/call_store.slint";
+
+export global DirectCallStore {
+    // Incoming call (the toast).
+    in property <bool> incoming-open: false;
+    in property <string> incoming-name;
+    in property <string> incoming-initials;
+    in property <color> incoming-color: #5b5fc7;
+    in property <image> incoming-avatar;
+    in property <bool> incoming-has-avatar: false;
+    in property <bool> incoming-video: false;
+    // "" while ringing; "Connecting…" after Accept, or why it failed.
+    in property <string> incoming-status;
+    // It rings while another call runs (call waiting).
+    in property <bool> incoming-waiting: false;
+
+    // Outgoing call (the ringing screen).
+    in property <bool> outgoing-open: false;
+    in property <string> outgoing-name;
+    in property <string> outgoing-initials;
+    in property <color> outgoing-color: #5b5fc7;
+    in property <image> outgoing-avatar;
+    in property <bool> outgoing-has-avatar: false;
+    // "Calling…", "Ringing…", then "Declined", "No answer", "Call ended" or a failure.
+    in property <string> outgoing-status;
+    // The call is over: Cancel becomes Close.
+    in property <bool> outgoing-over: false;
+
+    // Set from Rust when this build can place calls.
+    in property <bool> available: false;
+
+    // accept-video | accept-audio | hold-accept | end-accept | decline | dial <chat id> | dial-person <mri> | cancel | close
+    callback command(string, string);
+    // True for a 1:1 chat id (the chat header shows Call and Video for it).
+    pure callback is-direct(string) -> bool;
+}
+
+// A round call button with its label underneath.
+export component CallRoundButton inherits VerticalLayout {
+    in property <image> icon;
+    in property <string> label;
+    in property <color> tone;
+    in property <string> note;
+    callback clicked();
+    spacing: 6px;
+    alignment: start;
+    btn := Rectangle {
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        background: touch.has-hover ? root.tone.brighter(0.15) : root.tone;
+        accessible-role: button;
+        accessible-label: root.label;
+        accessible-description: root.note;
+        accessible-action-default => { root.clicked(); }
+        Icon { source: root.icon; tint: #ffffff; width: 22px; height: 22px; }
+        touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    }
+    Text {
+        text: root.label;
+        color: Theme.fg-muted;
+        font-size: 11px * Theme.font-scale;
+        horizontal-alignment: center;
+        width: 72px;
+        wrap: word-wrap;
+    }
+}
+
+export component CallIncoming inherits Rectangle {
+    width: 340px;
+    height: card.preferred-height;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #000000b0;
+    accessible-role: groupbox;
+    accessible-label: "Incoming call from " + DirectCallStore.incoming-name;
+
+    // Clicks on the toast stay on it.
+    TouchArea { }
+
+    card := VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        HorizontalLayout {
+            spacing: 14px;
+            Avatar {
+                initials: DirectCallStore.incoming-initials;
+                tone: DirectCallStore.incoming-color;
+                img: DirectCallStore.incoming-avatar;
+                has-img: DirectCallStore.incoming-has-avatar;
+                size: 56px;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: DirectCallStore.incoming-name;
+                    color: Theme.fg;
+                    font-size: 16px * Theme.font-scale;
+                    font-weight: 700;
+                    overflow: elide;
+                    accessible-role: text;
+                    accessible-label: DirectCallStore.incoming-name;
+                }
+                Text {
+                    text: DirectCallStore.incoming-status != "" ? DirectCallStore.incoming-status
+                        : DirectCallStore.incoming-waiting ? "Incoming call · You're in a call"
+                        : DirectCallStore.incoming-video ? "Incoming video call" : "Incoming call";
+                    color: Theme.fg-muted;
+                    font-size: 13px * Theme.font-scale;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                    accessible-label: self.text;
+                }
+            }
+        }
+        if DirectCallStore.incoming-status == "" && DirectCallStore.incoming-waiting: HorizontalLayout {
+            alignment: space-around;
+            CallRoundButton {
+                icon: @image-url("../icons/call-direct.svg");
+                label: "Hold and accept";
+                note: "Puts your current call on hold";
+                tone: #237b4b;
+                clicked => { DirectCallStore.command("hold-accept", ""); }
+            }
+            CallRoundButton {
+                icon: @image-url("../icons/call-direct.svg");
+                label: "End and accept";
+                note: "Ends your current call";
+                tone: #a4262c;
+                clicked => { DirectCallStore.command("end-accept", ""); }
+            }
+            CallRoundButton {
+                icon: @image-url("../icons/call-direct-end.svg");
+                label: "Decline";
+                tone: Theme.danger;
+                clicked => { DirectCallStore.command("decline", ""); }
+            }
+        }
+        if DirectCallStore.incoming-status == "" && !DirectCallStore.incoming-waiting: HorizontalLayout {
+            alignment: space-around;
+            CallRoundButton {
+                icon: @image-url("../icons/video.svg");
+                label: "Accept with video";
+                note: CallStore.camera-available ? "" : "Video isn't available yet: answers with audio";
+                tone: #237b4b;
+                clicked => { DirectCallStore.command("accept-video", ""); }
+            }
+            CallRoundButton {
+                icon: @image-url("../icons/call-direct.svg");
+                label: "Accept with audio";
+                tone: #237b4b;
+                clicked => { DirectCallStore.command("accept-audio", ""); }
+            }
+            CallRoundButton {
+                icon: @image-url("../icons/call-direct-end.svg");
+                label: "Decline";
+                tone: Theme.danger;
+                clicked => { DirectCallStore.command("decline", ""); }
+            }
+        }
+        if DirectCallStore.incoming-status == "" && !DirectCallStore.incoming-waiting && !CallStore.camera-available: Text {
+            text: "Video isn't available yet: Accept with video answers with audio.";
+            color: Theme.fg-subtle;
+            font-size: 11px * Theme.font-scale;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+    }
+}

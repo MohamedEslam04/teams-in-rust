@@ -1,0 +1,182 @@
+// Meeting events in a chat, drawn as Teams draws them: a centred card per call ("Meeting ended ·
+// 1h 3m 12s" with who took part), per recording (Play opens it in IronTeams's player window,
+// `backend/appstore/player.rs`; More options keeps Open in browser) and a small transcript row.
+// "View recap" opens the meeting chat's Recap tab; a started call's card has a Join. The cards are built by
+// `backend/meeting_cards.rs`.
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
+import { MeetingCard } from "../tokens/types.slint";
+import { FindStore } from "../stores/find_store.slint";
+import { RecapsStore } from "../stores/apps_store.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+
+// A recording's More options: Open in browser, the fallback when the player cannot be used.
+// Also on the Meeting Recaps page.
+export component RecordingMenu inherits Rectangle {
+    in property <string> title;
+    in property <length> size: 28px;
+    callback open-in-browser();
+    width: root.size;
+    height: root.size;
+    IconButton {
+        size: root.size;
+        icon: @image-url("../icons/more.svg");
+        tooltip: root.title == "" ? @tr("More options") : @tr("More options for {}", root.title);
+        clicked => { popup.show(); }
+    }
+    popup := PopupWindow {
+        x: root.width - 180px;
+        y: root.height + 4px;
+        width: 180px;
+        height: 36px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.surface;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 6px;
+            drop-shadow-color: #00000080;
+            Rectangle {
+                y: 1px;
+                height: 34px;
+                background: entry.has-hover ? Theme.surface-hover : transparent;
+                accessible-role: button;
+                accessible-label: @tr("Open in browser");
+                accessible-action-default => { root.open-in-browser(); popup.close(); }
+                Text {
+                    x: 12px;
+                    text: @tr("Open in browser");
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                entry := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open-in-browser(); popup.close(); }
+                }
+            }
+        }
+    }
+}
+
+export component MeetingCardView inherits Rectangle {
+    in property <MeetingCard> card;
+    callback open-url(string);
+    property <bool> slim: root.card.kind == "transcript";
+    property <bool> recording: root.card.kind == "recording";
+    height: row.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: root.card.title;
+    accessible-description: root.card.detail;
+
+    function open-recap() {
+        FindStore.chat-tab = "recap";
+        RecapsStore.command("recaps-chat", root.card.recap-chat);
+    }
+
+    // Centred, at most 460px (360px for a transcript): the spacers take what the card leaves.
+    row := HorizontalLayout {
+        Rectangle { horizontal-stretch: 1; }
+        Rectangle {
+            max-width: root.slim ? 360px : 460px;
+            horizontal-stretch: 1000;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding: root.slim ? 6px : 10px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: root.slim ? 24px : 40px;
+                            height: self.width;
+                            border-radius: 6px;
+                            background: root.recording && root.card.state == "ready" ? Theme.accent-strong : Theme.surface-hover;
+                            Icon {
+                                source: root.recording ? @image-url("../icons/play.svg") : root.card.kind == "call" ? @image-url("../icons/video.svg") : @image-url("../icons/file.svg");
+                                width: root.slim ? 14px : 20px;
+                                height: self.width;
+                                tint: root.recording && root.card.state == "ready" ? #ffffff : Theme.fg-muted;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: root.card.title;
+                            color: Theme.fg;
+                            font-size: (root.slim ? 12px : 13px) * Theme.font-scale;
+                            font-weight: 600;
+                            overflow: elide;
+                        }
+                        if root.card.detail != "": Text {
+                            text: root.card.detail;
+                            color: root.card.state == "failed" ? Theme.danger : Theme.fg-muted;
+                            font-size: 12px * Theme.font-scale;
+                            overflow: elide;
+                        }
+                    }
+                    if root.card.url != "": VerticalLayout {
+                        alignment: center;
+                        Button { variant: ButtonVariant.card;
+                            label: @tr("Play");
+                            accessible-label: @tr("Play {}", root.card.title);
+                            primary: true;
+                            clicked => { RecapsStore.command("recaps-play", root.card.url); }
+                        }
+                    }
+                    if root.card.url != "": VerticalLayout {
+                        alignment: center;
+                        RecordingMenu {
+                            title: root.card.title;
+                            open-in-browser => { root.open-url(root.card.url); }
+                        }
+                    }
+                    if root.card.join-chat != "": VerticalLayout {
+                        alignment: center;
+                        Button { variant: ButtonVariant.card;
+                            label: @tr("Join");
+                            accessible-label: @tr("Join meeting");
+                            primary: true;
+                            clicked => { CallStore.command("join-chat", root.card.join-chat); }
+                        }
+                    }
+                    if root.card.recap-chat != "": VerticalLayout {
+                        alignment: center;
+                        Button { variant: ButtonVariant.card;
+                            label: root.slim ? @tr("Open") : @tr("View recap");
+                            accessible-label: @tr("View recap");
+                            clicked => { root.open-recap(); }
+                        }
+                    }
+                }
+                if root.card.people.length > 0: HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
+                    for p in root.card.people: Avatar {
+                        initials: p.initials;
+                        tone: p.color;
+                        size: 24px;
+                    }
+                    if root.card.more > 0: Text {
+                        text: "+" + root.card.more;
+                        color: Theme.fg-muted;
+                        font-size: 12px * Theme.font-scale;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+}

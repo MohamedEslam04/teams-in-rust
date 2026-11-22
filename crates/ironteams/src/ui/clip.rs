@@ -2,23 +2,11 @@
 //! callbacks, and the clip cards' play button, to `Cmd::Clip`.
 
 use super::UiHandle;
-use crate::backend::{ClipCmd, Cmd, Picture};
+use crate::backend::{ClipCmd, Cmd};
+use crate::ui_api::{ClipView, Picture};
 use crate::{AppWindow, ClipStore};
 use slint::{ComponentHandle, Image, Rgb8Pixel, SharedPixelBuffer};
 use tokio::sync::mpsc::UnboundedSender;
-
-/// What the recorder shows.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct ClipView {
-    /// "idle" | "opening" | "ready" | "recording" | "stopping" | "recorded"
-    pub state: &'static str,
-    pub elapsed_ms: i32,
-    pub limit_ms: i32,
-    /// The live camera picture, or the take's first picture.
-    pub picture: Option<Picture>,
-    pub can_record: bool,
-    pub problem: String,
-}
 
 fn image(p: &Picture) -> Option<Image> {
     if p.rgb.len() != (p.width * p.height * 3) as usize || p.width == 0 {

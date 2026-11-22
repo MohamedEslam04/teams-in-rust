@@ -1,4 +1,4 @@
-//! The composer's Loop paragraph (`ui/loop_editor.slint`): the templates it inserts, its edits,
+//! The composer's Loop paragraph (`ui/molecules/loop_editor.slint`): the templates it inserts, its edits,
 //! and the formatted message it is sent as.
 //!
 //! A real Loop component is a `.loop` file in a SharePoint Embedded container kept live through

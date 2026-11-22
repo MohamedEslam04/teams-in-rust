@@ -80,7 +80,7 @@ impl DriveHarness {
     /// A row of the open menu. A column header text can carry the same label ("Size").
     fn click_menu_item(&self, label: &str) {
         ElementHandle::find_by_accessible_label(&self.h.app, label)
-            .find(|e| e.type_name().as_deref() == Some("MenuRow"))
+            .find(|e| e.type_name().as_deref() == Some("MenuItem"))
             .unwrap_or_else(|| panic!("no menu row {label:?}"))
             .mock_single_click(PointerEventButton::Left);
     }

@@ -13,7 +13,7 @@
 use super::Engine;
 use super::voice_messages::object_key;
 use crate::data::{Pixels, VideoClipData};
-use crate::ui::ClipView;
+use crate::ui_api::ClipView;
 use futures_util::future::BoxFuture;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -49,13 +49,8 @@ pub enum ClipCmd {
     Play(String),
 }
 
-/// One picture: packed 8-bit RGB, `width * height * 3` bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Picture {
-    pub width: u32,
-    pub height: u32,
-    pub rgb: Vec<u8>,
-}
+/// One picture: packed 8-bit RGB (`ui_api`, the recorder shows it).
+pub use crate::ui_api::Picture;
 
 /// A finished take.
 #[derive(Debug, Clone)]

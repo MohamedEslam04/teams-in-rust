@@ -1,0 +1,101 @@
+// Profile card: opened by hovering or clicking a photo or a name, laid out like the Teams web
+// card. A header with the big photo and the name, a row of action icons, then a scrolling body
+// (quick message, status, contact, organization; see profile_parts.slint). The data is the
+// card's person in `PeopleStore`.
+import { Theme } from "../tokens/theme.slint";
+import { Avatar } from "../atoms/avatar.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { ProfileActions, ProfileBody } from "profile_parts.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component ProfileCard inherits Rectangle {
+    // Opened by hovering a name or photo: it closes once the pointer is on neither it nor that
+    // photo (`anchor-hovered`).
+    in property <bool> hover-mode;
+    in property <bool> anchor-hovered;
+    callback quick-message(string);
+    callback copy-email();
+    callback chat(string);
+    callback video(string);
+    callback call-number(string);
+    callback open-photo(string);
+    callback close();
+
+    // The tallest the window lets it be: a taller card is cut at the bottom, not spilled out.
+    in property <length> limit: 100000px;
+    width: 340px;
+    height: min(content.preferred-height, root.limit);
+    clip: true;
+    border-radius: 4px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000a0;
+    accessible-role: groupbox;
+    accessible-label: "Profile card";
+
+    hover-area := TouchArea {
+    content := VerticalLayout {
+        HorizontalLayout {
+            padding: 16px;
+            spacing: 14px;
+            Avatar {
+                initials: PeopleStore.card.initials;
+                tone: PeopleStore.card.color;
+                img: PeopleStore.card.avatar;
+                has-img: PeopleStore.card.has-avatar;
+                presence: PeopleStore.card-presence;
+                size: 72px;
+                // A click on the photo shows it large (the picture viewer).
+                if PeopleStore.card.has-avatar: photo-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    accessible-role: button;
+                    accessible-label: "View photo of " + PeopleStore.card.name;
+                    accessible-action-default => { root.open-photo(PeopleStore.card.id); }
+                    clicked => { root.open-photo(PeopleStore.card.id); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                card-name := Text { text: PeopleStore.card.name; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; wrap: word-wrap; accessible-role: text; accessible-label: PeopleStore.card.name; }
+                if PeopleStore.card-badge != "": card-badge := Text { text: "(" + PeopleStore.card-badge + ")"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; accessible-role: text; accessible-label: PeopleStore.card-badge; }
+            }
+        }
+        // The action icons sit above the body, so their tooltips are not cut by it.
+        actions := ProfileActions {
+            height: 44px;
+            z: 5;
+            chat => { root.chat(PeopleStore.card.id); }
+            org => { PeopleStore.open-profile(2); }
+            video => { root.video(PeopleStore.card.id); }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        scroll-box := Rectangle {
+            preferred-height: min(body.height, 470px);
+            min-height: 0px;
+            vertical-stretch: 1;
+            ScrollView {
+                width: parent.width;
+                height: parent.height;
+                viewport-width: self.visible-width;
+                viewport-height: body.height;
+                body := ProfileBody {
+                    width: parent.width - 12px;
+                    quick-message(t) => { root.quick-message(t); }
+                    copy-email => { root.copy-email(); }
+                    open-profile => { PeopleStore.open-profile(1); }
+                    open-org => { PeopleStore.open-profile(2); }
+                    call-number(n) => { root.call-number(n); }
+                }
+            }
+        }
+    }
+    }
+    Timer {
+        interval: 400ms;
+        running: root.hover-mode && !hover-area.has-hover && !root.anchor-hovered;
+        triggered => { root.close(); }
+    }
+}

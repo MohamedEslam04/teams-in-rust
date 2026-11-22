@@ -1,0 +1,283 @@
+// A Loop paragraph in the composer, laid out like Teams': a "Loop paragraph" header with a delete
+// button, "Add a title", the text, and template chips (Table, Bulleted list, Checklist, Task list,
+// Voting table) that insert an editable structure.
+//
+// A live, collaborative Loop component cannot be made from IronTeams (it needs Microsoft Loop), so the
+// paragraph is sent as a formatted message and the card says so. The rows live in `LoopStore`,
+// edited through `src/loop_compose.rs`, which also builds the message.
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
+import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
+
+// One row of the structure. `cells` are a table row's cells; `checked` is a ticked checklist item
+// or task, or my vote on a voting row.
+export struct LoopRow { text: string, checked: bool, cells: [string], assignee: string, due: string, votes: int }
+
+export global LoopStore {
+    in-out property <bool> open;
+    in-out property <string> title;
+    in-out property <string> body;
+    // "" | "table" | "bullets" | "checklist" | "tasks" | "voting"
+    in-out property <string> kind;
+    in-out property <[string]> header;
+    in-out property <[LoopRow]> rows;
+    callback insert(/* kind */ string);
+    callback set-text(/* row */ int, string);
+    callback set-cell(/* row */ int, /* column */ int, string);
+    callback set-header(/* column */ int, string);
+    callback set-assignee(int, string);
+    callback set-due(int, string);
+    callback toggle(int);
+    callback vote(int);
+    callback add-row();
+    // The trash button: the paragraph goes away.
+    callback clear();
+    // The composer's Send while the paragraph is open.
+    callback send();
+}
+
+// A one-line field with a placeholder.
+component LoopInput inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> bold;
+    in property <length> size: 13px;
+    callback edited(string);
+    min-height: 26px;
+    min-width: 40px;
+    horizontal-stretch: 1;
+    accessible-role: text-input;
+    accessible-label: root.placeholder;
+    accessible-value: root.text;
+    forward-focus: input;
+    input := TextInput {
+        x: 4px;
+        width: parent.width - 8px;
+        y: (parent.height - self.height) / 2;
+        text <=> root.text;
+        color: Theme.fg;
+        font-size: root.size * Theme.font-scale;
+        font-weight: root.bold ? 700 : 400;
+        single-line: true;
+        horizontal-alignment: Theme.start-align;
+        // The field above speaks for it.
+        accessible-role: none;
+        edited => { root.edited(self.text); }
+    }
+    if root.text == "": Text {
+        x: 4px;
+        width: parent.width - 8px;
+        text: root.placeholder;
+        color: Theme.fg-subtle;
+        font-size: root.size * Theme.font-scale;
+        font-weight: root.bold ? 700 : 400;
+        vertical-alignment: center;
+        horizontal-alignment: Theme.start-align;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+export component LoopEditor inherits Rectangle {
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.sidebar;
+    accessible-role: groupbox;
+    accessible-label: @tr("Loop paragraph");
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                y: 4px;
+                border-radius: 4px;
+                background: @linear-gradient(135deg, #6b4ce6 0%, #2f8be6 100%);
+                Icon { source: @image-url("../icons/loop.svg"); width: 14px; height: 14px; tint: #ffffff; }
+            }
+            Text {
+                text: @tr("Loop paragraph");
+                color: Theme.fg-muted;
+                font-size: 12px * Theme.font-scale;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IconButton {
+                icon: @image-url("../icons/trash.svg");
+                tooltip: @tr("Delete Loop paragraph");
+                size: 28px;
+                clicked => { LoopStore.clear(); }
+            }
+        }
+        LoopInput {
+            text <=> LoopStore.title;
+            placeholder: @tr("Add a title");
+            bold: true;
+            size: 16px;
+            min-height: 30px;
+        }
+        LoopInput {
+            text <=> LoopStore.body;
+            placeholder: @tr("Add some text");
+        }
+
+        // Table: a header row and a grid of cells.
+        if LoopStore.kind == "table": VerticalLayout {
+            spacing: 0px;
+            Rectangle {
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.surface;
+                HorizontalLayout {
+                    for h[c] in LoopStore.header: LoopInput {
+                        text: h;
+                        placeholder: @tr("Column {}", c + 1);
+                        bold: true;
+                        edited(t) => { LoopStore.set-header(c, t); }
+                    }
+                }
+            }
+            for row[r] in LoopStore.rows: Rectangle {
+                border-width: 1px;
+                border-color: Theme.border;
+                HorizontalLayout {
+                    for cell[c] in row.cells: LoopInput {
+                        text: cell;
+                        placeholder: "";
+                        edited(t) => { LoopStore.set-cell(r, c, t); }
+                    }
+                }
+            }
+        }
+
+        if LoopStore.kind == "bullets": VerticalLayout {
+            for row[r] in LoopStore.rows: HorizontalLayout {
+                spacing: 6px;
+                Text { text: "•"; color: Theme.fg; font-size: 14px * Theme.font-scale; vertical-alignment: center; width: 10px; }
+                LoopInput {
+                    text: row.text;
+                    placeholder: @tr("List item");
+                    edited(t) => { LoopStore.set-text(r, t); }
+                }
+            }
+        }
+
+        if LoopStore.kind == "checklist": VerticalLayout {
+            for row[r] in LoopStore.rows: HorizontalLayout {
+                spacing: 6px;
+                CheckBox { variant: CheckBoxVariant.square; y: 4px;
+                    checked: row.checked;
+                    label: row.text != "" ? row.text : @tr("Checklist item");
+                    toggled => { LoopStore.toggle(r); }
+                }
+                LoopInput {
+                    text: row.text;
+                    placeholder: @tr("Checklist item");
+                    edited(t) => { LoopStore.set-text(r, t); }
+                }
+            }
+        }
+
+        if LoopStore.kind == "tasks": VerticalLayout {
+            for row[r] in LoopStore.rows: HorizontalLayout {
+                spacing: 6px;
+                CheckBox { variant: CheckBoxVariant.square; y: 4px;
+                    checked: row.checked;
+                    label: row.text != "" ? row.text : @tr("Task");
+                    toggled => { LoopStore.toggle(r); }
+                }
+                LoopInput {
+                    text: row.text;
+                    placeholder: @tr("Task");
+                    horizontal-stretch: 2;
+                    edited(t) => { LoopStore.set-text(r, t); }
+                }
+                LoopInput {
+                    text: row.assignee;
+                    placeholder: @tr("Assigned to");
+                    edited(t) => { LoopStore.set-assignee(r, t); }
+                }
+                LoopInput {
+                    text: row.due;
+                    placeholder: @tr("Due date");
+                    edited(t) => { LoopStore.set-due(r, t); }
+                }
+            }
+        }
+
+        if LoopStore.kind == "voting": VerticalLayout {
+            for row[r] in LoopStore.rows: HorizontalLayout {
+                spacing: 6px;
+                LoopInput {
+                    text: row.text;
+                    placeholder: @tr("Option");
+                    edited(t) => { LoopStore.set-text(r, t); }
+                }
+                Pill {
+                    label: "👍 " + row.votes;
+                    active: row.checked;
+                    accessible-label: @tr("Vote for option {}", r + 1);
+                    clicked => { LoopStore.vote(r); }
+                }
+            }
+        }
+
+        if LoopStore.kind != "": HorizontalLayout {
+            alignment: start;
+            add := Rectangle {
+                height: 24px;
+                width: add-text.preferred-width + 8px;
+                accessible-role: button;
+                accessible-label: @tr("Add row");
+                accessible-action-default => { LoopStore.add-row(); }
+                add-text := Text { x: 4px; text: @tr("+ Add row"); color: add-touch.has-hover ? Theme.accent : Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                add-touch := TouchArea { mouse-cursor: pointer; clicked => { LoopStore.add-row(); } }
+            }
+        }
+
+        // Templates, while the paragraph has no structure yet: compact chips of their natural
+        // width on two lines (3 + 2), so they fit a narrow composer. The split does not depend on
+        // the width: the composer sizes itself from this layout.
+        if LoopStore.kind == "": chips := VerticalLayout {
+            property <[{kind: string, label: string}]> items: [
+                { kind: "table", label: @tr("Table") },
+                { kind: "bullets", label: @tr("Bulleted list") },
+                { kind: "checklist", label: @tr("Checklist") },
+                { kind: "tasks", label: @tr("Task list") },
+                { kind: "voting", label: @tr("Voting table") },
+            ];
+            property <int> per-row: 3;
+            spacing: 6px;
+            for line in ceil(self.items.length / self.per-row): HorizontalLayout {
+                alignment: start;
+                // Every chip is in every line's layout; the ones of other lines take no room.
+                for t[i] in chips.items: Rectangle {
+                    property <bool> here: floor(i / chips.per-row) == line;
+                    width: here ? pill.preferred-width + 6px : 0px;
+                    height: here ? 26px : 0px;
+                    pill := Pill {
+                        visible: parent.here;
+                        x: 0px;
+                        width: parent.width - 6px;
+                        label: t.label;
+                        clicked => { LoopStore.insert(t.kind); }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: @tr("Sent as a formatted message: live Loop components need Microsoft Loop.");
+            color: Theme.fg-subtle;
+            font-size: 11px * Theme.font-scale;
+            wrap: word-wrap;
+            horizontal-alignment: Theme.start-align;
+        }
+    }
+}

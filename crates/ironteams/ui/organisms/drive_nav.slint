@@ -1,0 +1,62 @@
+// OneDrive's navigation entries and the breadcrumbs of the open folder.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { DriveStore } from "../stores/drive_store.slint";
+
+export component NavEntry inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> active;
+    // Icon only (a narrow window).
+    in property <bool> compact;
+    callback clicked();
+    height: 34px;
+    border-radius: 4px;
+    background: root.active ? Theme.selected : (touch.has-hover ? Theme.surface-hover : transparent);
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.active ? "Current section" : "";
+    Rectangle { x: 0; y: 7px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 10px;
+        Icon { source: root.icon; width: 16px; height: 16px; y: 9px; tint: root.active ? Theme.accent : Theme.fg-muted; }
+        if !root.compact: Text { text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: root.active ? 600 : 400; vertical-alignment: center; overflow: elide; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Breadcrumbs inherits HorizontalLayout {
+    spacing: 4px;
+    alignment: start;
+    for c[i] in DriveStore.crumbs: HorizontalLayout {
+        spacing: 4px;
+        if i > 0: Text { text: "›"; color: Theme.fg-subtle; font-size: 16px * Theme.font-scale; vertical-alignment: center; }
+        Rectangle {
+            height: 30px;
+            width: ct.preferred-width + 16px;
+            border-radius: 4px;
+            background: crumb-touch.has-hover && i < DriveStore.crumbs.length - 1 ? Theme.surface-hover : transparent;
+            accessible-role: button;
+            accessible-label: "Breadcrumb " + c;
+            accessible-description: i == DriveStore.crumbs.length - 1 ? "Current folder" : "";
+            ct := Text {
+                x: 8px;
+                text: c;
+                color: i == DriveStore.crumbs.length - 1 ? Theme.fg : Theme.fg-muted;
+                font-size: (i == DriveStore.crumbs.length - 1 ? 18px : 15px) * Theme.font-scale;
+                font-weight: i == DriveStore.crumbs.length - 1 ? 700 : 400;
+                vertical-alignment: center;
+            }
+            crumb-touch := TouchArea {
+                enabled: i < DriveStore.crumbs.length - 1;
+                mouse-cursor: pointer;
+                clicked => { DriveStore.command("crumb", "" + i); }
+            }
+        }
+    }
+}

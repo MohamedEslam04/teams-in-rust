@@ -1,0 +1,217 @@
+// The event peek (a click on an event) and the full event view. Both show the same actions;
+// the full view adds who answered what, the body, attachments and dial-in details.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { CalStore, CalFmt } from "../stores/calendar_store.slint";
+import { FlexButton, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
+
+// Colors of the answers in the attendee list and the response buttons.
+
+
+// Join, Chat, the answer buttons, Show as, category and the … menu of the open event.
+component EventActions inherits VerticalLayout {
+    in property <bool> full: false;
+    property <bool> send: true;
+    property <string> comment;
+    spacing: 8px;
+
+    if CalStore.peek.has-join: HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        FlexButton { variant: ButtonVariant.toolbar; label: "Join"; primary: true; clicked => { CalStore.command("join-event", ""); } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "▾"; active: CalStore.peek-menu == "join"; preferred-width: 34px; min-width: 34px; clicked => { CalStore.peek-menu = CalStore.peek-menu == "join" ? "" : "join"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "Chat"; clicked => { CalStore.command("chat", ""); } }
+    }
+    if CalStore.peek-menu == "join": MenuFrame { variant: MenuFrameVariant.card;
+        height: 66px;
+        VerticalLayout {
+            padding: 4px;
+            MenuItem { variant: MenuItemVariant.calendar; label: "Join Teams meeting"; clicked => { CalStore.peek-menu = ""; CalStore.command("join-event", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Copy join link"; clicked => { CalStore.peek-menu = ""; CalStore.command("copy-link", ""); } }
+        }
+    }
+
+    if CalStore.peek.can-respond: VerticalLayout {
+        spacing: 6px;
+        Check { variant: CheckVariant.toolbar; label: "Email organizer"; checked <=> root.send; }
+        Field { variant: FieldVariant.bare; placeholder: "Add a message (optional)"; text <=> root.comment; }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            FlexButton { variant: ButtonVariant.toolbar; label: "Accept"; primary: CalStore.peek.response == "accepted"; active: CalStore.peek.response == "accepted"; clicked => { CalStore.command("rsvp", "accept|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Tentative"; active: CalStore.peek.response == "tentative"; clicked => { CalStore.command("rsvp", "tentative|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Decline"; danger: true; active: CalStore.peek.response == "declined"; clicked => { CalStore.command("rsvp", "decline|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Propose new time"; clicked => { CalStore.ask("propose", "Propose a new time", "Suggest another time to " + CalStore.peek.organizer + ".", "New start, like 2026-12-18 14:00", "New end time, like 15:00", "Decline the meeting instead of tentative", "Send proposal"); } }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        FlexButton { variant: ButtonVariant.toolbar; label: "Show as: " + CalFmt.show-as-label(CalStore.peek.show-as) + " ▾"; active: CalStore.peek-menu == "showas"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "showas" ? "" : "showas"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: CalStore.peek.category == "" ? "Category ▾" : CalStore.peek.category + " ▾"; active: CalStore.peek-menu == "category"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "category" ? "" : "category"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "…"; preferred-width: 40px; min-width: 40px; active: CalStore.peek-menu == "more"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "more" ? "" : "more"; } }
+        if !root.full: FlexButton { variant: ButtonVariant.toolbar; label: "Open"; clicked => { CalStore.command("full", ""); } }
+    }
+    if CalStore.peek-menu == "showas": MenuFrame { variant: MenuFrameVariant.card;
+        height: 5 * 30px + 8px;
+        VerticalLayout {
+            padding: 4px;
+            for s in [{key: "busy", label: "Busy"}, {key: "tentative", label: "Tentative"}, {key: "free", label: "Free"}, {key: "oof", label: "Out of office"}, {key: "elsewhere", label: "Working elsewhere"}]: MenuItem { variant: MenuItemVariant.calendar;
+                label: s.label;
+                checked: CalStore.peek.show-as == s.key;
+                clicked => { CalStore.peek-menu = ""; CalStore.command("show-as", s.key); }
+            }
+        }
+    }
+    if CalStore.peek-menu == "category": MenuFrame { variant: MenuFrameVariant.card;
+        height: min(CalStore.categories.length, 6) * 30px + 38px;
+        VerticalLayout {
+            padding: 4px;
+            MenuItem { variant: MenuItemVariant.calendar; label: "No category"; checked: CalStore.peek.category == ""; clicked => { CalStore.peek-menu = ""; CalStore.command("category", ""); } }
+            for c in CalStore.categories: MenuItem { variant: MenuItemVariant.calendar; label: c; checked: CalStore.peek.category == c; clicked => { CalStore.peek-menu = ""; CalStore.command("category", c); } }
+        }
+    }
+    if CalStore.peek-menu == "more": MenuFrame { variant: MenuFrameVariant.card;
+        VerticalLayout {
+            padding: 4px;
+            if CalStore.peek.can-edit: MenuItem { variant: MenuItemVariant.calendar; label: CalStore.peek.recurring ? "Edit this occurrence" : "Edit"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit", ""); } }
+            if CalStore.peek.can-edit && CalStore.peek.recurring: MenuItem { variant: MenuItemVariant.calendar; label: "Edit series"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit-series", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Duplicate"; clicked => { CalStore.peek-menu = ""; CalStore.command("duplicate", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Forward"; clicked => { CalStore.ask("forward", "Forward", "Send this event to people who are not invited yet. Separate addresses with commas.", "To", "Message (optional)", "", "Forward"); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Export as .ics"; clicked => { CalStore.peek-menu = ""; CalStore.command("export-event", ""); } }
+            if CalStore.peek.notes-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting notes"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "notes"); } }
+            if CalStore.peek.recap-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Recap"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "recap"); } }
+            if CalStore.peek.options-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting options"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "options"); } }
+            if CalStore.peek.can-cancel: MenuItem { variant: MenuItemVariant.calendar; label: "Cancel meeting"; tone: #ff8a8d; clicked => { CalStore.ask("cancel", "Cancel meeting", "Everyone invited gets a cancellation.", "Message to attendees (optional)", "", CalStore.peek.recurring ? "Cancel the whole series" : "", "Cancel meeting"); } }
+            if CalStore.peek.can-delete: MenuItem { variant: MenuItemVariant.calendar; label: "Delete"; tone: #ff8a8d; clicked => { CalStore.ask("delete", "Delete event", "Delete \"" + CalStore.peek.title + "\"? This can't be undone.", "", "", "", "Delete"); } }
+        }
+    }
+}
+
+// The title, time, place and who invited you, shared by the peek and the full view.
+component EventSummary inherits VerticalLayout {
+    spacing: 6px;
+    HorizontalLayout {
+        spacing: 8px;
+        Icon { source: @image-url("../icons/calendar.svg"); width: 16px; height: 16px; y: 2px; }
+        Text { text: CalStore.peek.when; color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; horizontal-stretch: 1; }
+        if CalStore.peek.recurring: Icon { source: @image-url("../icons/repeat.svg"); width: 16px; height: 16px; y: 2px; tint: Theme.fg-muted; }
+        if CalStore.peek.private: Icon { source: @image-url("../icons/lock.svg"); width: 16px; height: 16px; y: 2px; tint: Theme.fg-muted; }
+    }
+    if CalStore.peek.location != "": Text { text: "Location: " + CalStore.peek.location; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+    if CalStore.peek.organizer != "": Text { text: CalStore.peek.organizer; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+    if CalStore.peek.counts != "": Text { text: CalStore.peek.counts; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+    if CalStore.peek.cancelled: Text { text: "This event was cancelled."; color: #ff8a8d; font-size: 13px * Theme.font-scale; }
+}
+
+export component EventPeek inherits MenuFrame { variant: MenuFrameVariant.card;
+    width: 380px;
+    height: body.preferred-height + 32px;
+    accessible-role: groupbox;
+    accessible-label: "Event " + CalStore.peek.title;
+    body := VerticalLayout {
+        x: 16px;
+        y: 14px;
+        width: parent.width - 32px;
+        spacing: 10px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 4px;
+            Text { text: CalStore.peek.title; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; wrap: word-wrap; horizontal-stretch: 1; accessible-role: text; }
+            IconButton { icon: @image-url("../icons/close.svg"); size: 26px; tooltip: "Close"; clicked => { CalStore.close-all(); } }
+        }
+        EventSummary { }
+        EventActions { }
+    }
+}
+
+export component EventFull inherits MenuFrame { variant: MenuFrameVariant.card;
+    accessible-role: groupbox;
+    accessible-label: "Event details " + CalStore.peek.title;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 4px;
+            height: 30px;
+            Text { text: CalStore.peek.title; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; accessible-role: text; }
+            IconButton { icon: @image-url("../icons/close.svg"); size: 28px; tooltip: "Close"; clicked => { CalStore.close-all(); } }
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 12px;
+                width: parent.width - 14px;
+                EventSummary { }
+                EventActions { full: true; }
+                if CalStore.detail.loading: Text { text: "Loading details…"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; }
+                if CalStore.detail.error != "": Text { text: CalStore.detail.error; color: #ffb900; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                if CalStore.detail.dial-in != "": VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Dial in"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }
+                    Text { text: CalStore.detail.dial-in; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                }
+                if CalStore.detail.attendees.length > 0 || CalStore.detail.hide-attendees: VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Attendees"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }
+                    if CalStore.detail.hide-attendees: Text { text: "The organizer hid the attendee list."; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; }
+                    for a in CalStore.detail.attendees: Rectangle {
+                        height: 26px;
+                        accessible-role: text;
+                        accessible-label: a.name + ", " + CalFmt.response-text(a.response);
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Rectangle { width: 8px; height: 8px; y: 9px; border-radius: 4px; background: CalFmt.response-color(a.response); }
+                            Text { text: a.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                            Text { text: a.kind == "optional" ? "Optional" : (a.kind == "resource" ? "Room" : ""); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                            Text { text: CalFmt.response-text(a.response); color: CalFmt.response-color(a.response); font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        }
+                    }
+                }
+                if CalStore.detail.proposals.length > 0: VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Proposed new times"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }
+                    for p[i] in CalStore.detail.proposals: HorizontalLayout {
+                        height: 30px;
+                        spacing: 10px;
+                        accessible-role: text;
+                        accessible-label: p.name + " proposed " + p.when;
+                        Text { text: p.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                        Text { text: p.when; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        Text { text: p.response == "declined" ? "Declined" : "Tentative"; color: CalFmt.response-color(p.response); font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        FlexButton { variant: ButtonVariant.toolbar; label: "Accept"; accessible-label: "Accept " + p.name + "'s proposed time"; clicked => { CalStore.command("accept-proposal", "" + i); } }
+                    }
+                }
+                if CalStore.detail.attachments.length > 0: VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Attachments"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }
+                    for f[i] in CalStore.detail.attachments: Rectangle {
+                        height: 28px;
+                        border-radius: 4px;
+                        background: fa.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Attachment " + f.name;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            spacing: 8px;
+                            Icon { source: @image-url("../icons/file.svg"); width: 16px; height: 16px; y: 6px; }
+                            Text { text: f.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                            Text { text: f.size; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        }
+                        fa := TouchArea { mouse-cursor: pointer; clicked => { CalStore.command("open-attachment", "" + i); } }
+                    }
+                }
+                if CalStore.detail.body != "": VerticalLayout {
+                    spacing: 4px;
+                    Text { text: "Details"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }
+                    Text { text: CalStore.detail.body; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                }
+            }
+        }
+    }
+}

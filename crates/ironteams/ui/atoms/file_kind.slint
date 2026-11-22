@@ -1,0 +1,67 @@
+// A file's kind as a small coloured tag (W, X, P, PDF…) or a folder, as OneDrive draws it.
+import { Icon } from "widgets.slint";
+
+export global DriveLook {
+    pure public function color(kind: string) -> color {
+        kind == "word" ? #2b579a
+        : kind == "excel" ? #217346
+        : kind == "powerpoint" ? #c43e1c
+        : kind == "pdf" ? #b30b00
+        : kind == "image" ? #8764b8
+        : kind == "video" ? #038387
+        : kind == "audio" ? #038387
+        : kind == "markdown" ? #4a5568
+        : kind == "text" ? #4a5568
+        : kind == "code" ? #4a5568
+        : kind == "archive" ? #8a6d3b
+        : #5a5a5a
+    }
+    pure public function tag(kind: string) -> string {
+        kind == "word" ? "W"
+        : kind == "excel" ? "X"
+        : kind == "powerpoint" ? "P"
+        : kind == "pdf" ? "PDF"
+        : kind == "image" ? "IMG"
+        : kind == "video" ? "▶"
+        : kind == "audio" ? "♪"
+        : kind == "markdown" ? "MD"
+        : kind == "text" ? "TXT"
+        : kind == "code" ? "</>"
+        : kind == "archive" ? "ZIP"
+        : ""
+    }
+    out property <length> col-modified: 110px;
+    out property <length> col-modified-by: 130px;
+    out property <length> col-size: 84px;
+    out property <length> col-location: 170px;
+    out property <length> col-activity: 200px;
+}
+
+export component KindBadge inherits Rectangle {
+    in property <string> kind;
+    in property <length> size: 24px;
+    width: root.size;
+    height: root.size;
+    if root.kind == "folder": Icon {
+        source: @image-url("../icons/folder.svg");
+        tint: #f2c94c;
+        width: root.size;
+        height: root.size;
+    }
+    if root.kind != "folder": Rectangle {
+        width: root.size * 0.82;
+        height: root.size * 0.82;
+        x: (root.size - self.width) / 2;
+        y: (root.size - self.height) / 2;
+        border-radius: 3px;
+        background: DriveLook.color(root.kind);
+        Text {
+            text: DriveLook.tag(root.kind);
+            color: #ffffff;
+            font-size: root.size * 0.34;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

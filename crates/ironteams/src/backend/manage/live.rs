@@ -31,7 +31,7 @@ async fn engine() -> Arc<Engine> {
     let me = cfg.self_mri.clone().expect("self mri in config");
     i_slint_backend_testing::init_no_event_loop();
     let window = Box::leak(Box::new(crate::AppWindow::new().unwrap()));
-    let ui = crate::ui::UiHandle::new(slint::ComponentHandle::as_weak(window));
+    let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(window));
     Engine::new(
         client,
         store::Store::open_in_memory().unwrap(),

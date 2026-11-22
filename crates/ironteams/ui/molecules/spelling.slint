@@ -1,0 +1,175 @@
+// Spell check in the composer. The words come from Rust (src/spell.rs). Slint's TextInput has no
+// spell-check hook and does not say where a character is drawn, so each misspelled word gets a
+// hidden, disabled copy of the text input: putting its cursor at the word's two ends reports their
+// positions (`cursor-position-changed`), and the red line is drawn there. A right click on a
+// word (the real input ignores the right button) opens the suggestions.
+import { Theme } from "../tokens/theme.slint";
+import { Edited } from "../tokens/types.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+
+export struct SpellWord {
+    start: int,
+    end: int,
+    word: string,
+}
+
+export global SpellApi {
+    // Bumped by Rust when the dictionaries load or a word is added, so the composer checks again.
+    in-out property <int> generation;
+    // text, picked mention names (one per line), cursor byte offset, generation -> misspelled words
+    pure callback check(string, string, int, int) -> [SpellWord];
+    pure callback suggest(string) -> [string];
+    // old text, new text -> bytes at the start they share
+    pure callback stable(string, string) -> int;
+    // text, start, end, replacement -> the text with the word replaced
+    pure callback replace(string, int, int, string) -> Edited;
+    callback add-word(string);
+}
+
+// Sits under the composer's text input, with the same geometry and font.
+export component SpellOverlay inherits Rectangle {
+    // The text the words were found in (the draft when typing paused).
+    in property <string> text;
+    in property <[SpellWord]> words;
+    // Bytes at the start of `text` the draft still has: words past it are hidden until the next check.
+    in property <int> stable;
+    in property <length> font-size;
+    in property <TextHorizontalAlignment> align;
+    callback replace(int, int, string);
+
+    property <length> line-height: probe-line.preferred-height;
+    property <SpellWord> menu-word;
+    property <[string]> menu-suggestions;
+    property <length> menu-x;
+    property <length> menu-y;
+
+    probe-line := Text { text: "Ag"; font-size: root.font-size; visible: false; }
+
+    for w in root.words: mark := Rectangle {
+        property <int> start: w.start;
+        property <int> end: w.end;
+        property <string> source: root.text;
+        property <length> span: root.width;
+        property <bool> at-end;
+        property <length> sx;
+        property <length> sy;
+        property <length> ex;
+        property <length> ey: -1px;
+        property <length> left: min(self.sx, self.ex);
+        property <length> wide: abs(self.ex - self.sx);
+        property <bool> placed: self.sy == self.ey && self.wide > 0px && self.end <= root.stable;
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+
+        function measure() {
+            self.at-end = true;
+            probe.set-selection-offsets(self.end, self.end);
+            self.at-end = false;
+            probe.set-selection-offsets(self.start, self.start);
+        }
+        init => { self.measure(); }
+        changed start => { self.measure(); }
+        changed end => { self.measure(); }
+        changed source => { self.measure(); }
+        changed span => { self.measure(); }
+
+        probe := TextInput {
+            x: 0;
+            y: 0;
+            width: root.width;
+            text: root.text;
+            font-size: root.font-size;
+            single-line: false;
+            wrap: word-wrap;
+            horizontal-alignment: root.align;
+            color: transparent;
+            read-only: true;
+            enabled: false;
+            accessible-role: none;
+            cursor-position-changed(p) => {
+                if mark.at-end {
+                    mark.ex = p.x;
+                    mark.ey = p.y;
+                } else {
+                    mark.sx = p.x;
+                    mark.sy = p.y;
+                }
+            }
+        }
+        if mark.placed: Rectangle {
+            x: mark.left;
+            y: mark.sy + root.line-height - 2px;
+            width: mark.wide;
+            height: 2px;
+            background: Theme.danger;
+        }
+        if mark.placed: hit := TouchArea {
+            x: mark.left;
+            y: mark.sy;
+            width: mark.wide;
+            height: root.line-height;
+            accessible-role: button;
+            accessible-label: @tr("Misspelled: {}", w.word);
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.right {
+                    root.menu-word = w;
+                    root.menu-suggestions = SpellApi.suggest(w.word);
+                    root.menu-x = mark.left;
+                    root.menu-y = mark.sy;
+                    menu.show();
+                }
+            }
+        }
+    }
+
+    menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y - self.height - 4px;
+        width: 220px;
+        height: (max(root.menu-suggestions.length, 1) + 1) * 30px + 9px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000060;
+            accessible-role: list;
+            accessible-label: @tr("Spelling");
+            VerticalLayout {
+                padding: 4px;
+                spacing: 0px;
+                if root.menu-suggestions.length == 0: Rectangle {
+                    height: 30px;
+                    Text {
+                        x: 10px;
+                        text: @tr("No suggestions");
+                        color: Theme.fg-subtle;
+                        font-size: 13px * Theme.font-scale;
+                        vertical-alignment: center;
+                    }
+                }
+                for s in root.menu-suggestions: MenuItem { variant: MenuItemVariant.spell;
+                    label: s;
+                    strong: true;
+                    clicked => {
+                        // Before closing: closing drops this row and its `s`.
+                        root.replace(root.menu-word.start, root.menu-word.end, s);
+                        menu.close();
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+                MenuItem { variant: MenuItemVariant.spell;
+                    label: @tr("Add to dictionary");
+                    clicked => {
+                        SpellApi.add-word(root.menu-word.word);
+                        menu.close();
+                    }
+                }
+            }
+        }
+    }
+}

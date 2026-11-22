@@ -1,0 +1,217 @@
+// The Video effects panel, as Teams has it: the background (none, blur, a picture, your own),
+// filters, brightness, soft focus and whether our self-view is mirrored. Every choice applies at
+// once, to the preview and to what the others see (the mirror only to our own view).
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
+
+component Heading inherits Text {
+    color: Theme.fg-muted;
+    font-size: 12px * Theme.font-scale;
+    font-weight: 600;
+}
+
+// A background tile: its picture, or its name for None and the blurs.
+component BackgroundTile inherits Rectangle {
+    in property <FxChoice> choice;
+    in property <bool> selected;
+    callback picked();
+    width: 88px;
+    height: 54px;
+    border-radius: 6px;
+    clip: true;
+    background: Theme.surface;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent : touch.has-hover ? Theme.fg-subtle : Theme.border;
+    accessible-role: button;
+    accessible-label: root.choice.name;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.picked(); }
+    if root.choice.has-thumb: Image {
+        width: root.width;
+        height: root.height;
+        source: root.choice.thumb;
+        image-fit: cover;
+    }
+    if !root.choice.has-thumb: Text {
+        text: root.choice.name;
+        color: Theme.fg;
+        font-size: 12px * Theme.font-scale;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}
+
+// "Add new": a picture of your own.
+component AddTile inherits Rectangle {
+    width: 88px;
+    height: 54px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.fg-subtle : Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    accessible-role: button;
+    accessible-label: "Add new background";
+    accessible-action-default => { CallStore.command("fx-add-background", ""); }
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        HorizontalLayout {
+            alignment: center;
+            Icon { source: @image-url("../icons/plus.svg"); tint: Theme.fg; width: 16px; height: 16px; }
+        }
+        Text {
+            text: "Add new";
+            color: Theme.fg;
+            font-size: 11px * Theme.font-scale;
+            horizontal-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { CallStore.command("fx-add-background", ""); }
+    }
+}
+
+// The tiles in rows of three, "Add new" last.
+component BackgroundGrid inherits Rectangle {
+    property <int> cols: 3;
+    property <int> count: VideoFxStore.backgrounds.length + 1;
+    width: root.cols * 88px + (root.cols - 1) * 8px;
+    height: ceil(root.count / root.cols) * 62px - 8px;
+    for c[i] in VideoFxStore.backgrounds: BackgroundTile {
+        x: mod(i, root.cols) * 96px;
+        y: floor(i / root.cols) * 62px;
+        choice: c;
+        selected: VideoFxStore.background == c.id;
+        picked => { CallStore.command("fx-background", c.id); }
+    }
+    AddTile {
+        x: mod(VideoFxStore.backgrounds.length, root.cols) * 96px;
+        y: floor(VideoFxStore.backgrounds.length / root.cols) * 62px;
+    }
+}
+
+// A filter: a chip, checked when in use.
+component FilterChip inherits Rectangle {
+    in property <string> key;
+    in property <string> label;
+    in property <string> description: root.label;
+    property <bool> selected: VideoFxStore.filter == root.key;
+    width: txt.preferred-width + 20px;
+    height: 28px;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.border;
+    background: root.selected ? Theme.selected : touch.has-hover ? Theme.surface-hover : Theme.surface;
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { CallStore.command("fx-filter", root.key); }
+    txt := Text {
+        text: root.label;
+        color: root.selected ? Theme.accent : Theme.fg;
+        font-size: 12px * Theme.font-scale;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { CallStore.command("fx-filter", root.key); }
+    }
+}
+
+export component VideoEffectsPanel inherits Rectangle {
+    background: Theme.sidebar;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+        HorizontalLayout {
+            height: 32px;
+            Text {
+                text: "Video effects";
+                color: Theme.fg;
+                font-size: 15px * Theme.font-scale;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IconButton {
+                icon: @image-url("../icons/close.svg");
+                tooltip: "Close video effects";
+                size: 28px;
+                clicked => { VideoFxStore.open = false; }
+            }
+        }
+        ScrollView {
+            VerticalLayout {
+                alignment: start;
+                spacing: 10px;
+                Heading { text: "Background"; }
+                BackgroundGrid { }
+                if VideoFxStore.background.starts-with("custom:"): HorizontalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: rm.preferred-width + 16px;
+                        height: 26px;
+                        border-radius: 4px;
+                        background: rmt.has-hover ? Theme.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: "Remove this background";
+                        accessible-action-default => { CallStore.command("fx-remove-background", VideoFxStore.background); }
+                        rm := Text {
+                            text: "Remove this background";
+                            color: Theme.accent;
+                            font-size: 12px * Theme.font-scale;
+                        }
+                        rmt := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { CallStore.command("fx-remove-background", VideoFxStore.background); }
+                        }
+                    }
+                }
+                Heading { text: "Filters"; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    FilterChip { key: "none"; label: "Original"; description: "No filter"; }
+                    FilterChip { key: "warm"; label: "Warm"; }
+                    FilterChip { key: "cool"; label: "Cool"; }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    FilterChip { key: "mono"; label: "B&W"; description: "Black and white"; }
+                    FilterChip { key: "vivid"; label: "Vivid"; }
+                }
+                Switch { variant: SwitchVariant.panel;
+                    label: "Adjust brightness";
+                    hint: "Brightens your video in low light";
+                    checked: VideoFxStore.brighten;
+                    toggled => { CallStore.command("fx-brighten", VideoFxStore.brighten ? "off" : "on"); }
+                }
+                Switch { variant: SwitchVariant.panel;
+                    label: "Soft focus";
+                    hint: "Smooths your appearance a little";
+                    checked: VideoFxStore.soft-focus;
+                    toggled => { CallStore.command("fx-soft-focus", VideoFxStore.soft-focus ? "off" : "on"); }
+                }
+                Switch { variant: SwitchVariant.panel;
+                    label: "Mirror my video";
+                    hint: "Only you see your video mirrored";
+                    checked: VideoFxStore.mirror;
+                    toggled => { CallStore.command("fx-mirror", VideoFxStore.mirror ? "off" : "on"); }
+                }
+            }
+        }
+    }
+}

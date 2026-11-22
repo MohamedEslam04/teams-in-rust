@@ -275,7 +275,7 @@ mod tests {
         i_slint_backend_testing::init_no_event_loop();
         let window = crate::AppWindow::new().unwrap();
         let fresh = |client: teams_proto::Client, cfg: session::Config| {
-            let ui = crate::ui::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+            let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
             Engine::new(
                 client,
                 store::Store::open_in_memory().unwrap(),
