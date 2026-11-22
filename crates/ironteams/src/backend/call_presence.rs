@@ -50,6 +50,8 @@ pub fn update(connected: bool, meeting: bool) {
     if !changed(&PUBLISHED, want) {
         return;
     }
+    // A short cue as the call connects and as it ends.
+    super::sounds::call_cue(want.is_some());
     let (Some(client), Ok(rt)) = (CLIENT.get(), tokio::runtime::Handle::try_current()) else {
         return;
     };

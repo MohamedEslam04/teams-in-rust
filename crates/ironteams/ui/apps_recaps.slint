@@ -165,8 +165,11 @@ component PlayCard inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     background: Theme.surface;
+    // With no recording it is only a notice ("No recording was found…"): no play button, so it
+    // does not look like something to click. (A role must be constant, so it stays a disabled
+    // button that reads the notice.)
     accessible-role: button;
-    accessible-label: "Play the recording";
+    accessible-label: RecapsStore.has-recording ? "Play the recording" : RecapsStore.part-label;
     accessible-enabled: RecapsStore.has-recording;
     accessible-action-default => { RecapsStore.command("recaps-watch", ""); }
     TouchArea { enabled: RecapsStore.has-recording; mouse-cursor: RecapsStore.has-recording ? pointer : default; clicked => { RecapsStore.command("recaps-watch", ""); } }
@@ -174,13 +177,13 @@ component PlayCard inherits Rectangle {
         alignment: center;
         padding: 16px;
         spacing: 10px;
-        HorizontalLayout {
+        if RecapsStore.has-recording: HorizontalLayout {
             alignment: center;
             Rectangle {
                 width: 56px;
                 height: 56px;
                 border-radius: 28px;
-                background: RecapsStore.has-recording ? Theme.accent-strong : Theme.surface-hover;
+                background: Theme.accent-strong;
                 Icon { x: 18px; y: 16px; width: 24px; height: 24px; source: @image-url("icons/play.svg"); tint: #ffffff; }
             }
         }

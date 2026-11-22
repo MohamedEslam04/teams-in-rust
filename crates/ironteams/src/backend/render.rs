@@ -17,6 +17,63 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use store::{ConvFilter, ConvKind, MessageRow, OutboxState, UserRow};
 
+/// The biggest inline image that is downloaded.
+const INLINE_MAX_BYTES: usize = 10 * 1024 * 1024;
+/// Tries at one inline image, the first included, before the message keeps its fallback.
+const INLINE_ATTEMPTS: u32 = 3;
+
+/// Whether a download failed because the answer is over the size cap.
+fn is_too_large(err: &teams_proto::Error) -> bool {
+    matches!(err, teams_proto::Error::Protocol(m) if m.starts_with(teams_proto::client::DOWNLOAD_TOO_LARGE))
+}
+
+/// Whether a failed download would fail the same way again: the URL is bad or gone, or the
+/// answer is over the cap. Timeouts, server errors and sign-in problems may pass.
+fn is_permanent(err: &teams_proto::Error) -> bool {
+    match err {
+        teams_proto::Error::Status { status, .. } => matches!(status, 400 | 404 | 410 | 413),
+        teams_proto::Error::Protocol(m) => is_too_large(err) || m.starts_with("bad url"),
+        _ => false,
+    }
+}
+
+/// How long to wait before the next try, after the `failures`-th failure (30 s, then 60 s), or
+/// `None` once the tries are used up.
+fn retry_delay(failures: u32) -> Option<Duration> {
+    (failures < INLINE_ATTEMPTS).then(|| Duration::from_secs(30 * 2u64.pow(failures - 1)))
+}
+
+/// A smaller rendition of a Giphy GIF, for one that is over the cap. Giphy serves the variants
+/// beside the original (`giphy.gif`, `giphy-downsized.gif`, `200.gif`): `giphy-downsized.gif` is
+/// held to a couple of MB, and `200.gif` (200 px high) is the step below it. `None` for any
+/// other URL, and for a GIF that is already the smallest.
+fn smaller_giphy_rendition(url: &str) -> Option<String> {
+    let (path, query) = match url.split_once('?') {
+        Some((p, q)) => (p, Some(q)),
+        None => (url, None),
+    };
+    let (dir, file) = path.rsplit_once('/')?;
+    let host = dir
+        .split_once("://")?
+        .1
+        .split('/')
+        .next()?
+        .to_ascii_lowercase();
+    if !(host.starts_with("media") && host.ends_with(".giphy.com")) {
+        return None;
+    }
+    let smaller = match file.to_ascii_lowercase().as_str() {
+        "giphy-downsized.gif" => "200.gif",
+        "200.gif" | "giphy-preview.gif" => return None,
+        f if f.ends_with(".gif") => "giphy-downsized.gif",
+        _ => return None,
+    };
+    Some(match query {
+        Some(q) => format!("{dir}/{smaller}?{q}"),
+        None => format!("{dir}/{smaller}"),
+    })
+}
+
 /// Per-row marks `build_msgs` needs from the chat view (the Activity preview passes none).
 #[derive(Default)]
 pub(super) struct MsgMarks<'a> {
@@ -186,36 +243,62 @@ impl Engine {
         let e = self.clone();
         let url = url.to_string();
         tokio::spawn(async move {
-            let bytes = if teams_proto::ams::is_ams_url(&url) {
-                e.client.download_image(&url).await
-            } else {
-                e.client.bytes(&url, &[], 10 * 1024 * 1024).await
-            };
-            match bytes {
-                Ok(bytes) => {
-                    match tokio::task::spawn_blocking(move || {
-                        decode_image(&bytes, INLINE_W, INLINE_H)
-                    })
-                    .await
-                    .ok()
-                    .flatten()
-                    {
-                        Some(px) => {
-                            e.images.lock().unwrap().insert(url, Some(px));
-                            e.mark(|d| d.messages = true);
+            let mut failures = 0;
+            let bytes = loop {
+                let err = match e.fetch_inline_image(&url).await {
+                    Ok(bytes) => break Some(bytes),
+                    Err(err) => err,
+                };
+                if is_too_large(&err) {
+                    // Over the cap: asking again gets the same answer. A Giphy GIF has smaller
+                    // renditions beside it, one of which may fit.
+                    tracing::warn!(%url, %err, "image too large, not retried");
+                    let Some(small) = smaller_giphy_rendition(&url) else {
+                        break None;
+                    };
+                    break match e.fetch_inline_image(&small).await {
+                        Ok(bytes) => Some(bytes),
+                        Err(err) => {
+                            tracing::warn!(url = %small, %err, "smaller image failed too");
+                            None
                         }
-                        None => tracing::warn!(%url, "image could not be decoded"),
-                    }
+                    };
                 }
-                Err(err) => {
-                    tracing::warn!(%url, %err, "image download failed, retrying in 30s");
-                    tokio::time::sleep(Duration::from_secs(30)).await;
-                    e.images.lock().unwrap().remove(&url);
+                if is_permanent(&err) {
+                    tracing::warn!(%url, %err, "image download failed, not retried");
+                    break None;
+                }
+                failures += 1;
+                let Some(wait) = retry_delay(failures) else {
+                    tracing::warn!(%url, %err, "image download failed, giving up");
+                    break None;
+                };
+                tracing::warn!(%url, %err, ?wait, "image download failed, retrying");
+                tokio::time::sleep(wait).await;
+            };
+            // After a give-up the cache entry stays `None`: the message keeps its fallback.
+            let Some(bytes) = bytes else { return };
+            match tokio::task::spawn_blocking(move || decode_image(&bytes, INLINE_W, INLINE_H))
+                .await
+                .ok()
+                .flatten()
+            {
+                Some(px) => {
+                    e.images.lock().unwrap().insert(url, Some(px));
                     e.mark(|d| d.messages = true);
                 }
+                None => tracing::warn!(%url, "image could not be decoded"),
             }
         });
         None
+    }
+
+    async fn fetch_inline_image(&self, url: &str) -> teams_proto::Result<Vec<u8>> {
+        if teams_proto::ams::is_ams_url(url) {
+            self.client.download_image(url).await
+        } else {
+            self.client.bytes(url, &[], INLINE_MAX_BYTES).await
+        }
     }
 
     /// The names of a chat's other members, as far as they are known.
@@ -997,4 +1080,107 @@ fn second_line(head: &str, last: &str) -> String {
 fn is_generic_meeting(title: &str) -> bool {
     let t = title.trim();
     t.is_empty() || t.eq_ignore_ascii_case("meet now")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use teams_proto::Error;
+    use teams_proto::client::DOWNLOAD_TOO_LARGE;
+
+    fn too_large() -> Error {
+        Error::Protocol(format!("{DOWNLOAD_TOO_LARGE} 10485760 bytes"))
+    }
+
+    #[test]
+    fn an_answer_over_the_cap_is_permanent() {
+        assert!(is_too_large(&too_large()));
+        assert!(is_permanent(&too_large()));
+        assert!(!is_too_large(&Error::Protocol("bad url: nope".into())));
+    }
+
+    #[test]
+    fn gone_or_malformed_urls_are_permanent_but_server_trouble_is_not() {
+        for status in [400, 404, 410, 413] {
+            assert!(
+                is_permanent(&Error::status("download", status, "")),
+                "{status}"
+            );
+        }
+        for status in [401, 403, 408, 429, 500, 503] {
+            assert!(
+                !is_permanent(&Error::status("download", status, "")),
+                "{status}"
+            );
+        }
+        assert!(is_permanent(&Error::Protocol(
+            "bad url: relative URL".into()
+        )));
+        assert!(!is_permanent(&Error::NotSignedIn));
+        assert!(!is_permanent(&Error::Protocol("something else".into())));
+    }
+
+    #[test]
+    fn retries_back_off_and_stop_after_a_few_tries() {
+        assert_eq!(retry_delay(1), Some(Duration::from_secs(30)));
+        assert_eq!(retry_delay(2), Some(Duration::from_secs(60)));
+        assert_eq!(retry_delay(3), None);
+        assert_eq!(retry_delay(10), None);
+    }
+
+    #[test]
+    fn a_giphy_gif_has_a_smaller_rendition() {
+        assert_eq!(
+            smaller_giphy_rendition("https://media2.giphy.com/media/abc123/giphy.gif").as_deref(),
+            Some("https://media2.giphy.com/media/abc123/giphy-downsized.gif")
+        );
+        assert_eq!(
+            smaller_giphy_rendition(
+                "https://media.giphy.com/media/v1.Y2lk/abc/giphy.gif?cid=x&rid=giphy.gif"
+            )
+            .as_deref(),
+            Some(
+                "https://media.giphy.com/media/v1.Y2lk/abc/giphy-downsized.gif?cid=x&rid=giphy.gif"
+            ),
+            "the query stays"
+        );
+    }
+
+    #[test]
+    fn the_smaller_rendition_steps_down_once_and_ends() {
+        assert_eq!(
+            smaller_giphy_rendition("https://media0.giphy.com/media/abc/giphy-downsized.gif")
+                .as_deref(),
+            Some("https://media0.giphy.com/media/abc/200.gif")
+        );
+        assert_eq!(
+            smaller_giphy_rendition("https://media0.giphy.com/media/abc/200.gif"),
+            None
+        );
+        assert_eq!(
+            smaller_giphy_rendition("https://media0.giphy.com/media/abc/giphy-preview.gif"),
+            None
+        );
+    }
+
+    #[test]
+    fn other_urls_have_no_rendition() {
+        assert_eq!(
+            smaller_giphy_rendition("https://example.com/media/abc/giphy.gif"),
+            None
+        );
+        assert_eq!(
+            smaller_giphy_rendition("https://evilgiphy.com/media/abc/giphy.gif"),
+            None
+        );
+        assert_eq!(
+            smaller_giphy_rendition("https://i.giphy.com/abc123.gif"),
+            None
+        );
+        assert_eq!(
+            smaller_giphy_rendition("https://media.giphy.com/media/abc/giphy.mp4"),
+            None
+        );
+        assert_eq!(smaller_giphy_rendition("not a url"), None);
+    }
 }

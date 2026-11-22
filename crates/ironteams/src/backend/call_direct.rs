@@ -312,6 +312,8 @@ struct Inner {
     incoming: Option<IncomingCall>,
     outgoing: Option<OutgoingCall>,
     ringtone: Option<Ringtone>,
+    /// The soft tone pair our own call plays while it rings.
+    ringback: Option<super::sounds::Loop>,
     /// What the fake backend was asked to do, oldest first.
     log: Vec<String>,
 }
@@ -544,7 +546,8 @@ impl Engine {
         c.ringtone = if waiting {
             Ringtone::waiting()
         } else {
-            Ringtone::start(super::settings::calls_prefs().ringtone)
+            let prefs = super::settings::calls_prefs();
+            Ringtone::start(prefs.ringtone, prefs.ringtone_file.as_deref())
         };
         drop(c);
         let mut view = self.call_view(&mri, &name);
@@ -1087,10 +1090,15 @@ impl Engine {
                 let _ = cancel.send(());
             }
             c.outgoing = None;
+            c.ringback = None;
             drop(c);
             self.ui.call_outgoing(CallView::default());
             return Some(state);
         }
+        // Rings while the far end rings, and stops with any other state (answered, declined, over).
+        c.ringback = (state == OutgoingState::Ringing)
+            .then(super::sounds::start_ringback)
+            .flatten();
         drop(c);
         self.push_outgoing(id);
         if !state.is_live() {
@@ -1212,11 +1220,13 @@ pub fn waiting_sample(n: u64) -> i16 {
 }
 
 impl RingtoneChoice {
-    fn sample(self) -> fn(u64) -> i16 {
+    /// The generator of the older ringtones; the Default and a file are made in `sounds`.
+    fn sample(self) -> Option<fn(u64) -> i16> {
         match self {
-            RingtoneChoice::Chime => ring_sample,
-            RingtoneChoice::Soft => soft_sample,
-            RingtoneChoice::Pulse => pulse_sample,
+            RingtoneChoice::Chime => Some(ring_sample),
+            RingtoneChoice::Soft => Some(soft_sample),
+            RingtoneChoice::Pulse => Some(pulse_sample),
+            RingtoneChoice::Teams | RingtoneChoice::Custom => None,
         }
     }
 }
@@ -1256,7 +1266,7 @@ pub fn pulse_sample(n: u64) -> i16 {
 
 /// Plays a ringtone for three seconds, for the Settings preview. Silent in tests and demo mode.
 pub(crate) fn preview_ringtone(choice: RingtoneChoice) {
-    if let Some(tone) = Ringtone::start(choice) {
+    if let Some(tone) = Ringtone::start(choice, None) {
         let _ = std::thread::Builder::new()
             .name("ironteams-ringtone-preview".into())
             .spawn(move || {
@@ -1269,11 +1279,19 @@ pub(crate) fn preview_ringtone(choice: RingtoneChoice) {
 /// Plays while it lives. Never plays in tests or demo mode.
 pub(crate) struct Ringtone {
     stop: Arc<AtomicBool>,
+    /// The Default or a chosen file, played by `sounds`; it stops when this is dropped.
+    _tone: Option<super::sounds::Loop>,
 }
 
 impl Ringtone {
-    fn start(choice: RingtoneChoice) -> Option<Ringtone> {
-        Self::play(choice.sample())
+    fn start(choice: RingtoneChoice, file: Option<&str>) -> Option<Ringtone> {
+        match choice.sample() {
+            Some(sample) => Self::play(sample),
+            None => super::sounds::start_ringtone(choice, file).map(|tone| Ringtone {
+                stop: Arc::new(AtomicBool::new(false)),
+                _tone: Some(tone),
+            }),
+        }
     }
 
     /// The call-waiting beep instead of the ringtone.
@@ -1291,7 +1309,7 @@ impl Ringtone {
             .name("ironteams-ringtone".into())
             .spawn(move || play_ring(&flag, sample));
         match spawned {
-            Ok(_) => Some(Ringtone { stop }),
+            Ok(_) => Some(Ringtone { stop, _tone: None }),
             Err(err) => {
                 tracing::warn!(%err, "ringtone not started");
                 None
@@ -1570,7 +1588,8 @@ mod tests {
     #[test]
     fn every_ringtone_choice_sounds_repeats_and_stays_quiet() {
         for choice in RingtoneChoice::ALL {
-            let f = choice.sample();
+            // The Default and a file are played by `sounds`, which tests its own.
+            let Some(f) = choice.sample() else { continue };
             let peak = (0..RING_CYCLE).map(|n| f(n).unsigned_abs()).max().unwrap();
             assert!(peak > 1000, "{choice:?} is audible: {peak}");
             assert!(peak < 8000, "{choice:?} is quiet enough: {peak}");
@@ -1590,13 +1609,13 @@ mod tests {
             "third beep"
         );
         assert_eq!(pulse_sample(PULSE_GAP * 3 + PULSE_BEEP / 2), 0, "no fourth");
-        assert_eq!(RingtoneChoice::from_slug("siren"), None);
-        assert_eq!(RingtoneChoice::default(), RingtoneChoice::Chime);
     }
 
     #[test]
     fn tests_never_ring() {
-        assert!(Ringtone::start(RingtoneChoice::default()).is_none());
+        assert!(Ringtone::start(RingtoneChoice::default(), None).is_none());
+        assert!(Ringtone::start(RingtoneChoice::Chime, None).is_none());
+        assert!(Ringtone::start(RingtoneChoice::Custom, Some("/x.wav")).is_none());
         assert!(Ringtone::waiting().is_none());
     }
 

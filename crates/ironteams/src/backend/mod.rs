@@ -65,6 +65,7 @@ mod scheduled;
 mod send;
 pub(crate) mod settings;
 mod shared;
+pub(crate) mod sounds;
 mod stickers;
 pub(crate) mod storyline;
 mod sync;

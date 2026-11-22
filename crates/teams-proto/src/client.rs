@@ -706,12 +706,16 @@ impl Client {
         let data = resp.bytes().await?;
         if data.len() > max_bytes {
             return Err(Error::Protocol(format!(
-                "download larger than {max_bytes} bytes"
+                "{DOWNLOAD_TOO_LARGE} {max_bytes} bytes"
             )));
         }
         Ok(data.to_vec())
     }
 }
+
+/// The start of the [`Error::Protocol`] text `Client::bytes` gives for a download over its cap.
+/// A larger answer stays larger: callers use this to tell it from a failure worth a retry.
+pub const DOWNLOAD_TOO_LARGE: &str = "download larger than";
 
 #[cfg(test)]
 mod tests {

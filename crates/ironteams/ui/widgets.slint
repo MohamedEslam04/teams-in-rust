@@ -141,24 +141,44 @@ export component Pill inherits Rectangle {
     t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
+// A collapsible section of the chat list (Quick views, Favorites, Groups…), drawn as Teams does:
+// a chevron that points down while the section is open and right while it is folded, a quieter
+// semibold label, and a hover highlight. The chevron swaps its picture rather than rotating:
+// a rotation on the Icon wrapper was not drawn, so an open section kept pointing right.
 export component SectionHeader inherits Rectangle {
     in property <string> label;
     in-out property <bool> expanded: true;
-    height: 30px;
+    height: 32px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    animate background { duration: Motion.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-expandable: true;
+    accessible-expanded: root.expanded;
+    accessible-action-default => { Motion.toggled = true; root.expanded = !root.expanded; }
     HorizontalLayout {
-        padding-left: 12px;
-        spacing: 4px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 6px;
         Icon {
-            source: @image-url("icons/chevron-right.svg");
-            width: 14px;
-            height: 14px;
-            y: (parent.height - 14px) / 2;
-            transform-rotation: root.expanded ? 90deg : 0deg;
-            animate transform-rotation { duration: Motion.normal; easing: ease-out; }
+            source: root.expanded ? @image-url("icons/chevron-down.svg") : @image-url("icons/chevron-right.svg");
+            tint: touch.has-hover ? Theme.fg : Theme.fg-muted;
+            width: 12px;
+            height: 12px;
+            y: (parent.height - 12px) / 2;
         }
-        Text { text: root.label; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+        Text {
+            text: root.label;
+            color: touch.has-hover ? Theme.fg : Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
     }
-    TouchArea { clicked => { Motion.toggled = true; root.expanded = !root.expanded; } }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { Motion.toggled = true; root.expanded = !root.expanded; } }
 }
 
 export component ReactionChip inherits Rectangle {
