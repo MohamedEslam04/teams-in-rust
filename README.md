@@ -232,7 +232,7 @@ The ADRs in [`docs/adr/`](docs/adr/) explain the toolkit, the web host and the c
 
 Parallel builds on a small machine: run cargo through `flock /tmp/ironteams-build.lock cargo …` so only one
 build compiles the large `ironteams` crate at a time. GitHub CI runs fmt, clippy and the whole test
-suite on every push to `main` and `feat/**` and on pull requests.
+suite on every push to `dev` and `feat/**` and on pull requests.
 
 Translations: interface strings are wrapped in `@tr()` and compiled in from
 `crates/ironteams/translations/<lang>/LC_MESSAGES/ironteams.po`.

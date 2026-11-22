@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     # Feature branches too: local builds are memory-bound, so CI does the full check.
-    branches: [main, dev, 'feat/**']
+    branches: [dev, 'feat/**']
     # Docs-only pushes need no build.
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
   pull_request:
@@ -94,8 +94,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           # A cold build of the workspace takes long here; keep what compiled even when a check
-          # fails. Only dev and main save, so these large caches don't evict the Linux ones.
+          # fails. Only dev saves, so these large caches don't evict the Linux ones.
           cache-on-failure: true
-          save-if: ${{ github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' }}
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - run: cargo clippy --workspace --all-targets --keep-going -- -D warnings
       - run: cargo test --workspace --no-fail-fast
