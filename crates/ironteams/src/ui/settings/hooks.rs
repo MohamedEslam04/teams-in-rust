@@ -11,7 +11,8 @@ pub struct Autostart {
 
 impl Autostart {
     /// The desktop autostart entry (`tray::autostart`), in `$XDG_CONFIG_HOME/autostart`, or under
-    /// `config_home` when given (tests). IronTeams starts with `--hidden` from it.
+    /// `config_home` when given (tests). IronTeams starts with `--hidden` from it, which
+    /// keeps the window in the tray when "Open in the background" is on.
     pub fn desktop(config_home: Option<std::path::PathBuf>) -> Autostart {
         let home = config_home.clone();
         Autostart {
