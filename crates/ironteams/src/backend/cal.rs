@@ -834,7 +834,7 @@ impl Inner {
 /// Whether a calendar start notice may pop now: the Teams "Meeting started" switch, the pause
 /// and mute, quiet hours and Focus mode, decided like a chat banner.
 fn meeting_started_allowed() -> bool {
-    use super::quiet::{self, Decision, Incoming};
+    use crate::support::quiet::{self, Decision, Incoming};
     let now = chrono::Utc::now();
     let prefs = quiet::load_prefs();
     let inc = Incoming {
