@@ -74,6 +74,10 @@ organisms/channel_posts.slint #4f6bed
 organisms/channel_posts.slint #8a8a8a
 organisms/channel_posts.slint #d9a21b
 organisms/channel_posts.slint #ffffff
+organisms/channel_tabs.slint #00000090
+organisms/channel_tabs.slint #000000a0
+organisms/channel_tabs.slint #3b3d6b
+organisms/channel_tabs.slint #ffffff
 organisms/chat_header.slint #000000a0
 organisms/chat_header.slint #e04a4f
 organisms/chat_header.slint #ffffff
@@ -106,12 +110,6 @@ organisms/composer_send.slint #ffffff
 organisms/composer.slint #4d2024
 organisms/composer.slint #6b2f33
 organisms/composer.slint #ff7e83
-organisms/find.slint #00000090
-organisms/find.slint #000000a0
-organisms/find.slint #2d3a5f
-organisms/find.slint #3b3d6b
-organisms/find.slint #5a5a5a
-organisms/find.slint #ffffff
 organisms/forward_dialog.slint #000000a0
 organisms/forward_dialog.slint #34365c
 organisms/forward_dialog.slint #ffffff
@@ -169,6 +167,11 @@ organisms/profile_parts.slint #b4009e40
 organisms/reaction_card.slint #000000a0
 organisms/reaction_card.slint #ffffff
 organisms/remind.slint #000000a0
+organisms/shared_view.slint #00000090
+organisms/shared_view.slint #000000a0
+organisms/shared_view.slint #2d3a5f
+organisms/shared_view.slint #5a5a5a
+organisms/shared_view.slint #ffffff
 organisms/shortcuts.slint #000000b0
 organisms/sidebar.slint #e97a5f
 organisms/sidebar.slint #ffd335
@@ -238,6 +241,7 @@ pages/call_window.slint #4b4f8a
 pages/call_window.slint #8a5a00
 pages/call_window.slint #8b2a2d
 pages/call_window.slint #ffffff
+pages/find.slint #3b3d6b
 pages/login.slint #3b42a859
 pages/login.slint #4b53bc
 pages/login.slint #7b83eb
