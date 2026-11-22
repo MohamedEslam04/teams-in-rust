@@ -1,13 +1,14 @@
 // Meeting events in a chat, drawn as Teams draws them: a centred card per call ("Meeting ended ·
 // 1h 3m 12s" with who took part), per recording (Play opens it in IronTeams's player window,
 // `backend/appstore/player.rs`; More options keeps Open in browser) and a small transcript row.
-// "View recap" opens the meeting chat's Recap tab. The cards are built by
+// "View recap" opens the meeting chat's Recap tab; a started call's card has a Join. The cards are built by
 // `backend/meeting_cards.rs`.
 import { Theme } from "theme.slint";
 import { Avatar, Icon, IconButton } from "widgets.slint";
 import { MeetingCard } from "types.slint";
 import { FindStore } from "find.slint";
 import { RecapsStore } from "apps_store.slint";
+import { CallStore } from "call_store.slint";
 
 // A text button of a meeting card.
 component CardButton inherits Rectangle {
@@ -167,6 +168,15 @@ export component MeetingCardView inherits Rectangle {
                         RecordingMenu {
                             title: root.card.title;
                             open-in-browser => { root.open-url(root.card.url); }
+                        }
+                    }
+                    if root.card.join-chat != "": VerticalLayout {
+                        alignment: center;
+                        CardButton {
+                            label: @tr("Join");
+                            a11y: @tr("Join meeting");
+                            primary: true;
+                            clicked => { CallStore.command("join-chat", root.card.join-chat); }
                         }
                     }
                     if root.card.recap-chat != "": VerticalLayout {

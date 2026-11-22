@@ -3,12 +3,16 @@
 //! a small row, and the chat list reads "Meeting ended · 1h 3m" instead of "Play".
 
 use super::*;
-use crate::RecapsStore;
 use crate::backend::meeting_cards::tests::{CHAT, ended, meeting, recording};
+use crate::{CallStore, RecapsStore};
 use serde_json::json;
-use store::{ConvKind, ConversationRow};
+use store::{ConvKind, ConversationRow, MessageRow};
 
 fn harness() -> Harness {
+    harness_with(meeting())
+}
+
+fn harness_with(rows: Vec<MessageRow>) -> Harness {
     let h = Harness::new();
     h.engine.test_store(|st| {
         st.upsert_conversation(&ConversationRow {
@@ -24,10 +28,12 @@ fn harness() -> Harness {
             read_horizon_ms: 0,
         })
         .unwrap();
-        for r in meeting() {
+        for r in rows {
             st.upsert_message(&r).unwrap();
         }
     });
+    // The header's Join shows once the window knows which chats are meeting chats.
+    crate::ui::call::wire(&h.app);
     h.select(CHAT);
     h
 }
@@ -163,4 +169,46 @@ fn the_chat_list_reads_what_happened() {
         )),
         "Recording…"
     );
+}
+
+/// The window's Join buttons ("Join meeting" to a screen reader), the header's first, then the
+/// card's; the commands they send are recorded.
+fn join_buttons(h: &Harness) -> (Vec<ElementHandle>, Log) {
+    let log = Log::default();
+    let l = log.clone();
+    h.app
+        .global::<CallStore>()
+        .on_command(move |name, arg| l.borrow_mut().push(format!("{name} {arg}")));
+    let mut buttons: Vec<_> = find_label(&h.app, "Join meeting")
+        .into_iter()
+        .filter(|e| e.accessible_role() == Some(testing::AccessibleRole::Button))
+        .collect();
+    buttons.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
+    (buttons, log)
+}
+
+#[test]
+fn a_live_meeting_has_a_join_in_the_header_and_on_its_started_card() {
+    let h = harness_with(meeting().into_iter().take(5).collect());
+    assert!(h.app.get_current_meeting_live());
+    let cards = cards(&h.app);
+    assert_eq!(cards[0].0, "c1");
+    assert_eq!(cards[0].1.join_chat, CHAT);
+
+    let (buttons, log) = join_buttons(&h);
+    assert_eq!(buttons.len(), 2, "the header's Join and the card's");
+    for (i, b) in buttons.iter().enumerate() {
+        log.borrow_mut().clear();
+        b.invoke_accessible_default_action();
+        assert_eq!(*log.borrow(), [format!("join-chat {CHAT}")], "button {i}");
+    }
+}
+
+#[test]
+fn an_ended_meeting_keeps_the_header_join_but_its_card_has_none() {
+    let h = harness();
+    assert!(!h.app.get_current_meeting_live());
+    assert!(cards(&h.app).iter().all(|(_, c)| c.join_chat.is_empty()));
+    let (buttons, _) = join_buttons(&h);
+    assert_eq!(buttons.len(), 1, "only the header's Join");
 }

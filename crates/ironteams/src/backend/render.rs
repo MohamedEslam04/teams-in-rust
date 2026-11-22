@@ -625,7 +625,11 @@ impl Engine {
             (rows, is_channel, counts, marker, failed, saved)
         };
         // Meeting events another row says again are left out (backend/meeting_cards.rs).
-        let (visible, _) = super::meeting_cards::visible_rows(&rows);
+        let (visible, plan) = super::meeting_cards::visible_rows(&rows);
+        if thread.is_none() {
+            self.ui
+                .meeting_live(super::meeting_cards::is_live(&visible, &plan));
+        }
         let info: Vec<(i64, bool)> = visible
             .iter()
             .map(|r| {

@@ -148,6 +148,31 @@ export component ChannelMeetButton inherits Rectangle {
     }
 }
 
+// The meeting chat header's Join: filled while the meeting is live, outlined otherwise.
+export component MeetingJoinButton inherits Rectangle {
+    in property <bool> live;
+    callback clicked();
+    width: join-label.preferred-width + 32px;
+    height: 32px;
+    border-radius: 4px;
+    border-width: root.live ? 0px : 1px;
+    border-color: Theme.border;
+    background: root.live ? (touch.has-hover ? Theme.accent : Theme.accent-strong) : (touch.has-hover ? Theme.surface-hover : transparent);
+    accessible-role: button;
+    accessible-label: @tr("Join meeting");
+    accessible-action-default => { root.clicked(); }
+    join-label := Text {
+        text: @tr("Join");
+        color: root.live ? #ffffff : Theme.fg;
+        font-size: 13px * Theme.font-scale;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
 // The channel items of the header's More menu. Edit channel, Get email address and Delete
 // channel need the channel's team, so they show once "Your teams and channels" knows it.
 export component ChannelHeaderItems inherits VerticalLayout {

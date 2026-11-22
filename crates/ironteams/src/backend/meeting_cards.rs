@@ -35,6 +35,18 @@ pub(crate) fn visible_rows(rows: &[MessageRow]) -> (Vec<&MessageRow>, Plan) {
     (shown, plan)
 }
 
+/// The chat's meeting is going on: its latest call card (`rows` as `visible_rows` returns them)
+/// is a started one, no ended one after it. The header's Join button is filled on it.
+pub(crate) fn is_live(rows: &[&MessageRow], plan: &Plan) -> bool {
+    rows.iter()
+        .rev()
+        .find_map(|r| match plan.get(&r.id) {
+            Some(Some(c)) if c.kind == "call" => Some(c.state == "started"),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
 fn is_meeting_chat(id: &str) -> bool {
     id.starts_with("19:meeting_")
 }
@@ -131,6 +143,11 @@ fn call_card(c: &CallEvent, started: &MessageRow) -> MeetingCardData {
         } else {
             String::new()
         },
+        join_chat: if !c.ended && is_meeting_chat(conv) {
+            conv.clone()
+        } else {
+            String::new()
+        },
     }
 }
 
@@ -170,6 +187,7 @@ fn recording_card(r: &RecordingEvent, names: &HashMap<String, String>) -> Meetin
             .filter(|_| r.state == RecordingState::Ready)
             .unwrap_or_default(),
         recap_chat: String::new(),
+        join_chat: String::new(),
     }
 }
 
@@ -281,6 +299,7 @@ pub(crate) fn plan(rows: &[&MessageRow]) -> Plan {
             } else {
                 String::new()
             },
+            join_chat: String::new(),
         };
         plan.insert(r.id.clone(), (!again).then_some(card));
     }
@@ -419,6 +438,64 @@ pub(crate) mod tests {
         assert_eq!(rec.detail, "Recording…");
         assert!(rec.url.is_empty());
         assert_eq!(plan["t1"].clone().unwrap().title, "Transcription started");
+    }
+
+    #[test]
+    fn a_started_call_card_in_a_meeting_chat_offers_join() {
+        let rows: Vec<MessageRow> = meeting().into_iter().take(1).collect();
+        let (_, plan) = visible_rows(&rows);
+        let call = plan["c1"].clone().unwrap();
+        assert_eq!(call.state, "started");
+        assert_eq!(call.join_chat, CHAT);
+    }
+
+    #[test]
+    fn an_ended_call_card_or_a_call_in_another_chat_offers_no_join() {
+        let rows = meeting();
+        let (_, plan) = visible_rows(&rows);
+        assert!(plan["c1"].clone().unwrap().join_chat.is_empty());
+        // Recordings and transcripts never offer it.
+        assert!(plan["r5"].clone().unwrap().join_chat.is_empty());
+        assert!(plan["t1"].clone().unwrap().join_chat.is_empty());
+
+        let mut group = row("g1", 0, "Event/Call", &started());
+        group.conversation_id = "19:made-up-group@thread.v2".into();
+        let call = super::plan(&[&group])["g1"].clone().unwrap();
+        assert_eq!(call.state, "started");
+        assert!(call.join_chat.is_empty());
+    }
+
+    /// `is_live` of `rows` as the chat draws them.
+    fn live(rows: &[MessageRow]) -> bool {
+        let (shown, plan) = visible_rows(rows);
+        is_live(&shown, &plan)
+    }
+
+    #[test]
+    fn a_meeting_is_live_from_its_start_until_its_end() {
+        assert!(!live(&[]));
+        assert!(!live(&[row("h1", 0, "RichText/Html", "<p>hello</p>")]));
+        let all = meeting();
+        assert!(live(&all[..1]), "started");
+        assert!(live(&all[..5]), "started, still talking");
+        assert!(!live(&all[..8]), "ended");
+        assert!(!live(&all), "ended, recording processed");
+    }
+
+    #[test]
+    fn only_the_latest_call_decides_if_the_meeting_is_live() {
+        let second = |id: &str, at: i64, body: String| {
+            row(id, at, "Event/Call", &body.replace("call-1", "call-2"))
+        };
+        let mut rows = meeting();
+        rows.push(second("c3", 90_000, started()));
+        assert!(live(&rows), "a later occurrence started");
+        rows.push(second("c4", 93_600, ended()));
+        assert!(!live(&rows), "and ended");
+        // A start that never got its end, followed by a later call that ended.
+        let mut lost = vec![row("c1", 0, "Event/Call", &started())];
+        lost.push(second("c3", 90_000, ended()));
+        assert!(!live(&lost));
     }
 
     #[test]

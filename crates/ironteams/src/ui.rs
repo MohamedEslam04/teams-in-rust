@@ -283,6 +283,7 @@ fn meeting_card(c: MeetingCardData) -> MeetingCard {
         state: c.state.into(),
         url: c.url.into(),
         recap_chat: c.recap_chat.into(),
+        join_chat: c.join_chat.into(),
     }
 }
 
@@ -620,6 +621,7 @@ impl UiHandle {
                 });
                 w.global::<crate::ChannelStore>()
                     .set_posts(ModelRc::default());
+                w.set_current_meeting_live(false);
             }
             w.set_current_id(h.id.into());
             w.set_current_title(h.title.into());
@@ -634,6 +636,11 @@ impl UiHandle {
             w.set_current_presence(h.presence.into());
             w.set_thread_root(h.thread_root.into());
         });
+    }
+
+    /// The open chat's meeting is going on (the header's Join is filled).
+    pub fn meeting_live(&self, live: bool) {
+        self.run(move |w| w.set_current_meeting_live(live));
     }
 
     /// Replaces the message list, updating rows in place when the ids are unchanged so the

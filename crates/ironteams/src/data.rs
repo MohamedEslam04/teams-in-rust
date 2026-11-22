@@ -139,6 +139,8 @@ pub struct MeetingCardData {
     pub url: String,
     /// The meeting chat whose Recap tab the card opens ("" offers none).
     pub recap_chat: String,
+    /// The meeting chat a live call's card joins ("" offers no Join).
+    pub join_chat: String,
 }
 
 #[derive(Clone)]
