@@ -6,10 +6,11 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
-import { SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
+import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -576,9 +577,9 @@ export component ProfileMenu inherits Rectangle {
                             checked: SettingsStore.note-clear-after == d.v;
                             picked => { SettingsStore.note-clear-after = d.v; }
                         }
-                        SSwitch {
+                        Switch { variant: SwitchVariant.settings;
                             label: @tr("Show when people message me");
-                            on: SettingsStore.note-show-when-messaged;
+                            checked: SettingsStore.note-show-when-messaged;
                             toggled(on) => { SettingsStore.note-show-when-messaged = on; }
                         }
                         HorizontalLayout {

@@ -4,11 +4,12 @@
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SChoice, SChoiceRow, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
+import { SChoice, SChoiceRow, SPersonRow, SRadio, SSection } from "../molecules/settings_widgets.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check, Switch, SwitchVariant } from "../atoms/check.slint";
 
 component Para inherits Text {
     color: Theme.fg-muted;
@@ -77,19 +78,19 @@ export component GeneralPage inherits VerticalLayout {
     }
     SSection {
         title: @tr("Writing");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Check spelling");
             hint: @tr("Underline misspelled words in the message box. Right-click a word for suggestions. Uses the English and Arabic Hunspell dictionaries installed on this computer.");
-            on: SettingsStore.check-spelling;
+            checked: SettingsStore.check-spelling;
             toggled(on) => { SettingsStore.check-spelling = on; SettingsStore.command("check-spelling", on ? "1" : "0"); }
         }
     }
     SSection {
         title: @tr("System");
-        for t in SettingsStore.startup: SSwitch {
+        for t in SettingsStore.startup: Switch { variant: SwitchVariant.settings;
             label: t.label;
             hint: t.hint;
-            on: t.on;
+            checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("startup", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
@@ -105,8 +106,8 @@ export component GeneralPage inherits VerticalLayout {
             enabled: false;
             picked(v) => { }
         }
-        SSwitch { label: @tr("Ask me before translating"); enabled: false; on: true; }
-        SSwitch { label: @tr("Never translate messages in these languages"); hint: @tr("Adding languages needs the same Teams setting."); enabled: false; on: false; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Ask me before translating"); enabled: false; checked: true; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Never translate messages in these languages"); hint: @tr("Adding languages needs the same Teams setting."); enabled: false; checked: false; }
     }
     SSection {
         title: @tr("Spell check languages");
@@ -114,8 +115,8 @@ export component GeneralPage inherits VerticalLayout {
     }
     SSection {
         title: @tr("Meetings");
-        SSwitch { label: @tr("New meeting controls"); hint: @tr("IronTeams's call window has one set of controls."); enabled: false; on: true; }
-        SSwitch { label: @tr("Ask me to confirm when I leave a meeting"); hint: @tr("Not available in IronTeams yet."); enabled: false; on: false; }
+        Switch { variant: SwitchVariant.settings; label: @tr("New meeting controls"); hint: @tr("IronTeams's call window has one set of controls."); enabled: false; checked: true; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Ask me to confirm when I leave a meeting"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
     }
     SSection {
         title: @tr("Out of office");
@@ -132,7 +133,7 @@ export component GeneralPage inherits VerticalLayout {
             enabled: false;
             picked(v) => { }
         }
-        SSwitch { label: @tr("Use Enter or Spacebar to show content"); hint: @tr("Not available in IronTeams yet."); enabled: false; on: false; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Use Enter or Spacebar to show content"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
     }
 }
 
@@ -153,25 +154,25 @@ export component ChatsPage inherits VerticalLayout {
     }
     SSection {
         title: @tr("Writing");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Press Enter to send");
             hint: @tr("Off: Enter starts a new line and Ctrl+Enter sends.");
-            on: root.enter-sends;
+            checked: root.enter-sends;
             toggled(on) => { root.set-enter-sends(on); }
         }
     }
     SSection {
         title: @tr("Privacy and previews");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Read receipts");
             hint: @tr("People see when you have read their message. This is the same setting as in Privacy.");
-            on: PeopleStore.receipts-on;
+            checked: PeopleStore.receipts-on;
             toggled(on) => { PeopleStore.command("receipts", on ? "on" : "off"); }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Link previews");
             hint: @tr("Show a card with the title and picture under messages that contain a link.");
-            on: SettingsStore.link-previews;
+            checked: SettingsStore.link-previews;
             toggled(on) => { SettingsStore.command("link-previews", on ? "1" : "0"); }
         }
     }
@@ -254,10 +255,10 @@ export component PrivacyPage inherits VerticalLayout {
     SSection {
         title: @tr("Privacy");
         hint: @tr("These are Teams settings.");
-        for t in SettingsStore.privacy: SSwitch {
+        for t in SettingsStore.privacy: Switch { variant: SwitchVariant.settings;
             label: t.label;
             hint: t.hint;
-            on: t.on;
+            checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("privacy", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
@@ -372,16 +373,16 @@ export component NotificationsPage inherits VerticalLayout {
                 clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
             }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Show the sender's photo");
             hint: @tr("Message notifications show who wrote, like Teams.");
-            on: SettingsStore.banner-photo;
+            checked: SettingsStore.banner-photo;
             toggled(on) => { SettingsStore.command("banner-photo", on ? "1" : "0"); }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Show Reply and Like buttons");
             hint: @tr("Reply opens the chat with the cursor in the message box. Clicking a notification always opens its chat.");
-            on: SettingsStore.banner-actions;
+            checked: SettingsStore.banner-actions;
             toggled(on) => { SettingsStore.command("banner-actions", on ? "1" : "0"); }
         }
         Button { variant: ButtonVariant.settings; label: @tr("Test notification"); clicked => { SettingsStore.command("test-notification", ""); } }
@@ -390,9 +391,9 @@ export component NotificationsPage inherits VerticalLayout {
     SSection {
         title: @tr("Quiet hours");
         hint: @tr("No banners and no notification sound during these hours. Messages still arrive and unread counts still update. This applies to this computer only.");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Turn on quiet hours");
-            on: SettingsStore.quiet-on;
+            checked: SettingsStore.quiet-on;
             toggled(on) => { SettingsStore.command("quiet-on", on ? "1" : "0"); }
         }
         if SettingsStore.quiet-on: VerticalLayout {
@@ -417,10 +418,10 @@ export component NotificationsPage inherits VerticalLayout {
     SSection {
         title: @tr("Focus mode");
         hint: @tr("Only @mentions of you, urgent messages, priority people, calls and your keywords still show a banner. Your Teams status does not change.");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Focus mode");
             hint: SettingsStore.focus-label();
-            on: SettingsStore.focus-on;
+            checked: SettingsStore.focus-on;
             toggled(on) => { SettingsStore.command("focus", on ? "1" : "0"); }
         }
         SChoiceRow {
@@ -443,10 +444,10 @@ export component NotificationsPage inherits VerticalLayout {
     }
     SSection {
         title: @tr("Sounds and previews");
-        for t in SettingsStore.notify-sounds: SSwitch {
+        for t in SettingsStore.notify-sounds: Switch { variant: SwitchVariant.settings;
             label: t.label;
             hint: t.hint;
-            on: t.on;
+            checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("notify-sound", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
@@ -501,17 +502,17 @@ export component AppearancePage inherits VerticalLayout {
             value: SettingsStore.theme;
             picked(v) => { SettingsStore.theme = v; SettingsStore.command("theme", v); }
         }
-        SSwitch { label: @tr("Always use dark theme for calls and meetings"); hint: @tr("IronTeams's call window follows the theme above. A separate call theme is not available yet."); enabled: false; on: false; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Always use dark theme for calls and meetings"); hint: @tr("IronTeams's call window follows the theme above. A separate call theme is not available yet."); enabled: false; checked: false; }
     }
     SSection {
         title: @tr("App bar");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Show app names");
             hint: @tr("The names under the app bar's icons (the bar's own Collapse does the same).");
-            on: !AppsStore.rail-collapsed;
+            checked: !AppsStore.rail-collapsed;
             toggled(on) => { if on == AppsStore.rail-collapsed { AppsStore.command("rail-collapse", ""); } }
         }
-        SSwitch { label: @tr("Auto collapse app bar"); hint: @tr("Not available in IronTeams yet."); enabled: false; on: false; }
+        Switch { variant: SwitchVariant.settings; label: @tr("Auto collapse app bar"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
     }
     SSection {
         title: @tr("Accent colour");
@@ -592,20 +593,20 @@ export component AccessibilityPage inherits VerticalLayout {
             value: SettingsStore.reduced-motion;
             picked(v) => { SettingsStore.reduced-motion = v; SettingsStore.command("reduced-motion", v); }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Larger text");
             hint: @tr("Makes text a quarter bigger than the font size in Appearance.");
-            on: SettingsStore.larger-text;
+            checked: SettingsStore.larger-text;
             toggled(on) => { SettingsStore.command("larger-text", on ? "1" : "0"); }
         }
     }
     SSection {
         title: @tr("Captions and meetings");
         hint: @tr("Saved now; meetings and calls use them when they come to IronTeams.");
-        for t in SettingsStore.a11y-flags: SSwitch {
+        for t in SettingsStore.a11y-flags: Switch { variant: SwitchVariant.settings;
             label: t.label;
             hint: t.hint;
-            on: t.on;
+            checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("a11y", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
@@ -651,16 +652,16 @@ export component DevicesPage inherits VerticalLayout {
     }
     SSection {
         title: @tr("Call audio");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Noise suppression");
             hint: @tr("Removes background noise, like typing or a fan, from your microphone in calls.");
-            on: SettingsStore.noise-suppression;
+            checked: SettingsStore.noise-suppression;
             toggled(on) => { SettingsStore.command("noise-suppression", on ? "1" : "0"); }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Echo cancellation");
             hint: @tr("Stops others from hearing themselves when you use speakers instead of a headset.");
-            on: SettingsStore.echo-cancellation;
+            checked: SettingsStore.echo-cancellation;
             toggled(on) => { SettingsStore.command("echo-cancellation", on ? "1" : "0"); }
         }
     }
@@ -679,10 +680,10 @@ export component DevicesPage inherits VerticalLayout {
             picked(v) => { SettingsStore.call-feedback = v; SettingsStore.command("call-feedback", v); }
         }
     }
-    SSwitch {
+    Switch { variant: SwitchVariant.settings;
         label: @tr("Show all devices");
         hint: @tr("Also list the raw sound card entries.");
-        on: SettingsStore.all-devices;
+        checked: SettingsStore.all-devices;
         toggled(on) => { SettingsStore.command("all-devices", on ? "1" : "0"); }
     }
     if SettingsStore.devices-status != "": Para { text: SettingsStore.devices-status; }
@@ -765,9 +766,9 @@ export component PermissionsPage inherits VerticalLayout {
     }
     for a in SettingsStore.app-perms: SSection {
         title: a.name;
-        for p in a.perms: SSwitch {
+        for p in a.perms: Switch { variant: SwitchVariant.settings;
             label: a.name + ": " + p.label;
-            on: p.on;
+            checked: p.on;
             toggled(on) => { SettingsStore.command("perm", SettingsStore.j3(a.app, p.key, on ? "1" : "0")); }
         }
     }
@@ -784,14 +785,14 @@ export component AboutPage inherits VerticalLayout {
     if SettingsStore.self-update: SSection {
         title: @tr("Updates");
         hint: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it.");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Automatic updates");
-            on: SettingsStore.auto-update;
+            checked: SettingsStore.auto-update;
             toggled(on) => { SettingsStore.command("auto-update", on ? "1" : "0"); }
         }
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Get beta updates");
-            on: SettingsStore.beta-updates;
+            checked: SettingsStore.beta-updates;
             toggled(on) => { SettingsStore.command("beta-updates", on ? "1" : "0"); }
         }
         Button { variant: ButtonVariant.settings;
@@ -808,9 +809,9 @@ export component AboutPage inherits VerticalLayout {
     if !SettingsStore.self-update: SSection {
         title: @tr("Updates");
         hint: @tr("Off by default. When on, IronTeams asks api.github.com for the latest release when it starts. The request has no cookies, no account and nothing about you. IronTeams never downloads or installs anything.");
-        SSwitch {
+        Switch { variant: SwitchVariant.settings;
             label: @tr("Check for updates");
-            on: SettingsStore.check-updates;
+            checked: SettingsStore.check-updates;
             toggled(on) => { SettingsStore.command("check-updates", on ? "1" : "0"); }
         }
         if SettingsStore.check-updates: Button { variant: ButtonVariant.settings;

@@ -9,6 +9,7 @@ import { PersonHover } from "../molecules/people.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { VideoEffectsPanel } from "video_effects.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 component PersonRow inherits Rectangle {
     in property <CallPerson> p;
@@ -216,54 +217,6 @@ component SectionTitle inherits Text {
     font-weight: 600;
 }
 
-// An on/off row of the More panel (Show live captions).
-component SwitchRow inherits Rectangle {
-    in property <string> label;
-    in property <bool> checked;
-    callback toggled();
-    height: 36px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: switch;
-    accessible-label: root.label;
-    accessible-checkable: true;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.toggled(); }
-    HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
-        spacing: 8px;
-        Text {
-            text: root.label;
-            color: Theme.fg;
-            font-size: 13px * Theme.font-scale;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
-        }
-        Rectangle {
-            width: 34px;
-            height: 18px;
-            y: 9px;
-            border-radius: 9px;
-            background: root.checked ? Theme.accent-strong : Theme.surface-hover;
-            border-width: 1px;
-            border-color: root.checked ? Theme.accent-strong : Theme.border;
-            Rectangle {
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                x: root.checked ? parent.width - 15px : 3px;
-                background: #ffffff;
-            }
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.toggled(); }
-    }
-}
-
 // More, as Teams' "..." menu: Record and transcribe, Language and speech, Video effects and the
 // devices. The
 // service decides who may record; a refusal shows as the call's error banner.
@@ -348,7 +301,7 @@ export component MorePanel inherits Rectangle {
             }
         }
         SectionTitle { text: "Language and speech"; }
-        SwitchRow {
+        Switch { variant: SwitchVariant.row;
             label: "Show live captions";
             checked: CallStore.captions;
             toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }

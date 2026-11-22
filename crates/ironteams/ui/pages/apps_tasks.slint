@@ -6,24 +6,7 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TasksStore, AppRow } from "../stores/apps_store.slint";
 import { KitNavRow, KitNavHeader, KitBadge, KitNote } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
-
-component TaskCheck inherits Rectangle {
-    in property <bool> done;
-    in property <string> label;
-    callback toggled();
-    width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    border-width: 1.5px;
-    border-color: root.done ? #6bd69b : Theme.fg-subtle;
-    background: root.done ? #1d3a2a : transparent;
-    accessible-role: checkbox;
-    accessible-label: root.label;
-    accessible-checked: root.done;
-    accessible-action-default => { root.toggled(); }
-    Text { text: root.done ? "✓" : ""; color: #6bd69b; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-    TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
-}
+import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
 
 component TaskRowView inherits Rectangle {
     in property <AppRow> t;
@@ -38,9 +21,9 @@ component TaskRowView inherits Rectangle {
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
-        TaskCheck {
+        CheckBox { variant: CheckBoxVariant.round;
             y: 17px;
-            done: root.t.done;
+            checked: root.t.done;
             label: root.t.done ? "Mark " + root.t.title + " as not completed" : "Complete " + root.t.title;
             toggled => { TasksStore.command("task-toggle", root.t.id); }
         }

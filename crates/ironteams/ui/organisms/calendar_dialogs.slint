@@ -4,9 +4,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalCheck, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check, CheckVariant } from "../atoms/check.slint";
 
 // The New ▾ menu. Types that need Graph VirtualEvent.* open in the web (marked ↗).
 export component NewMenu inherits CalCard {
@@ -92,7 +93,7 @@ export component FiltersPanel inherits CalCard {
                 for g in [{key: "kind", label: "Type"}, {key: "show", label: "Show as"}, {key: "rec", label: "Recurrence"}, {key: "place", label: "Place"}, {key: "cat", label: "Categories"}]: VerticalLayout {
                     if g.key != "cat" || CalStore.categories.length > 0: Text { text: g.label; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; height: 22px; vertical-alignment: bottom; }
                     for o in CalStore.filter-opts: VerticalLayout {
-                        if o.group == g.key: CalCheck {
+                        if o.group == g.key: Check { variant: CheckVariant.toolbar;
                             label: o.label;
                             checked: o.on;
                             accessible-label: g.label + ": " + o.label;
@@ -197,7 +198,7 @@ export component PromptDialog inherits Modal {
             if CalStore.prompt-message != "": Text { text: CalStore.prompt-message; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             if CalStore.prompt-label1 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label1; text <=> CalStore.prompt-text1; accepted => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); } }
             if CalStore.prompt-label2 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label2; text <=> CalStore.prompt-text2; }
-            if CalStore.prompt-check-label != "": CalCheck { label: CalStore.prompt-check-label; checked <=> CalStore.prompt-check; }
+            if CalStore.prompt-check-label != "": Check { variant: CheckVariant.toolbar; label: CalStore.prompt-check-label; checked <=> CalStore.prompt-check; }
             if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             HorizontalLayout {
                 spacing: 8px;
@@ -288,9 +289,9 @@ export component SettingsDialog inherits Modal {
                 Text { text: "to"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
                 Field { variant: FieldVariant.bare; width: 90px; placeholder: "17:00"; text <=> root.work-end; }
             }
-            CalCheck { label: "Show weekends in the week and month views"; checked <=> root.weekends; }
-            CalCheck { label: "Show week numbers"; checked <=> root.week-numbers; }
-            CalCheck { label: "Show a second time zone"; checked <=> root.tz-on; }
+            Check { variant: CheckVariant.toolbar; label: "Show weekends in the week and month views"; checked <=> root.weekends; }
+            Check { variant: CheckVariant.toolbar; label: "Show week numbers"; checked <=> root.week-numbers; }
+            Check { variant: CheckVariant.toolbar; label: "Show a second time zone"; checked <=> root.tz-on; }
             if root.tz-on: VerticalLayout {
                 spacing: 4px;
                 Text { text: root.tz-label != "" ? root.tz-label : "No time zone picked yet"; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }

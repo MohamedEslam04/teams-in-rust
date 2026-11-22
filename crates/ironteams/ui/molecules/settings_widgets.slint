@@ -55,64 +55,6 @@ export component SSection inherits VerticalLayout {
     @children
 }
 
-// An on/off switch with a label and an optional hint line.
-export component SSwitch inherits Rectangle {
-    in property <string> label;
-    in property <string> hint;
-    in-out property <bool> on;
-    in property <bool> enabled: true;
-    callback toggled(bool);
-    min-height: max(32px, col.preferred-height + 8px);
-    // Opened by a Find result: tells the page where this row is.
-    Timer {
-        running: root.label != "" && root.label == SettingsStore.target;
-        interval: 60ms;
-        triggered => {
-            SettingsStore.target-y = root.absolute-position.y;
-            SettingsStore.target = "";
-        }
-    }
-    accessible-role: switch;
-    accessible-label: root.label;
-    accessible-checked: root.on;
-    accessible-enabled: root.enabled;
-    accessible-action-default => { root.flip(); }
-    function flip() {
-        if root.enabled {
-            root.on = !root.on;
-            root.toggled(root.on);
-        }
-    }
-    HorizontalLayout {
-        spacing: 12px;
-        col := VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 1;
-            Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; }
-            if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
-        }
-        Rectangle {
-            width: 40px;
-            height: 20px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 10px;
-            border-width: root.on ? 0px : 1px;
-            border-color: Theme.fg-muted;
-            background: root.on ? (root.enabled ? Theme.accent-strong : Theme.fg-subtle) : transparent;
-            Rectangle {
-                x: root.on ? parent.width - self.width - 4px : 4px;
-                y: 4px;
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                background: root.on ? #ffffff : Theme.fg-muted;
-                animate x { duration: Theme.reduced-motion ? 0ms : 120ms; }
-            }
-        }
-    }
-    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.flip(); } }
-}
-
 // One choice out of a few, as a row of pills. Each pill is labelled "<group>: <option>" for
 // screen readers, so groups with the same options (Auto, On, Off) stay distinct.
 // One pill of a `SChoice`.

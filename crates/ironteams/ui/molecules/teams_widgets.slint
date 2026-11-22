@@ -2,45 +2,6 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 
-// A check box row.
-export component TCheck inherits Rectangle {
-    in property <string> label;
-    in property <string> hint;
-    in-out property <bool> checked;
-    in property <bool> enabled: true;
-    callback toggled(bool);
-    height: root.hint == "" ? 30px : 46px;
-    accessible-role: checkbox;
-    accessible-label: root.label;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.flip(); }
-    function flip() {
-        if root.enabled {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
-    }
-    HorizontalLayout {
-        spacing: 10px;
-        Rectangle {
-            width: 18px;
-            height: 18px;
-            y: 6px;
-            border-radius: 3px;
-            border-width: 1px;
-            border-color: root.checked ? Theme.accent : Theme.border;
-            background: root.checked ? Theme.accent-strong : transparent;
-            if root.checked: Icon { source: @image-url("../icons/check.svg"); tint: #ffffff; width: 14px; height: 14px; }
-        }
-        VerticalLayout {
-            alignment: center;
-            Text { text: root.label; color: root.enabled ? Theme.fg : Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
-            if root.hint != "": Text { text: root.hint; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
-        }
-    }
-    TouchArea { mouse-cursor: pointer; clicked => { root.flip(); } }
-}
-
 // One choice out of a few, as a row of pills.
 export component TChoice inherits Rectangle {
     in property <[{v: string, l: string}]> options;

@@ -3,9 +3,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalCheck, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check, CheckVariant } from "../atoms/check.slint";
 
 
 
@@ -246,8 +247,8 @@ export component EventForm inherits CalCard {
                 HorizontalLayout {
                     spacing: 16px;
                     alignment: start;
-                    CalCheck { label: "All day"; checked <=> CalForm.all-day; }
-                    CalCheck { label: "Microsoft Teams meeting"; checked <=> CalForm.teams-meeting; }
+                    Check { variant: CheckVariant.toolbar; label: "All day"; checked <=> CalForm.all-day; }
+                    Check { variant: CheckVariant.toolbar; label: "Microsoft Teams meeting"; checked <=> CalForm.teams-meeting; }
                     Text { text: "Times are in your local time zone."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                 }
                 RecurrencePicker { }
@@ -311,10 +312,10 @@ export component EventForm inherits CalCard {
                 HorizontalLayout {
                     spacing: 16px;
                     alignment: start;
-                    CalCheck { label: "Private"; checked <=> CalForm.private; }
-                    CalCheck { label: "Request responses"; checked <=> CalForm.response-requested; }
-                    CalCheck { label: "Allow new time proposals"; checked <=> CalForm.allow-proposals; }
-                    CalCheck { label: "Hide attendee list"; checked <=> CalForm.hide-attendees; }
+                    Check { variant: CheckVariant.toolbar; label: "Private"; checked <=> CalForm.private; }
+                    Check { variant: CheckVariant.toolbar; label: "Request responses"; checked <=> CalForm.response-requested; }
+                    Check { variant: CheckVariant.toolbar; label: "Allow new time proposals"; checked <=> CalForm.allow-proposals; }
+                    Check { variant: CheckVariant.toolbar; label: "Hide attendee list"; checked <=> CalForm.hide-attendees; }
                 }
                 Labeled {
                     label: "Details (supports **bold**, _italic_ and lists)";

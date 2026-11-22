@@ -1,43 +1,6 @@
 // Small controls shared by the calendar's panels: buttons, checkboxes, text fields, menu rows.
 import { Theme } from "../tokens/theme.slint";
 
-export component CalCheck inherits Rectangle {
-    in-out property <bool> checked;
-    in property <string> label;
-    in property <color> tone: Theme.accent-strong;
-    callback toggled(bool);
-    height: 26px;
-    preferred-width: lbl.preferred-width + 30px;
-    accessible-role: checkbox;
-    accessible-label: root.label;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.checked = !root.checked; root.toggled(root.checked); }
-    Rectangle {
-        x: 0px;
-        y: 5px;
-        width: 16px;
-        height: 16px;
-        border-radius: 3px;
-        border-width: 1px;
-        border-color: root.checked ? root.tone : Theme.border;
-        background: root.checked ? root.tone : transparent;
-        if root.checked: Text { text: "✓"; color: #ffffff; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-    }
-    lbl := Text {
-        x: 24px;
-        text: root.label;
-        color: Theme.fg;
-        font-size: 13px * Theme.font-scale;
-        vertical-alignment: center;
-        overflow: elide;
-        width: parent.width - 24px;
-    }
-    TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.checked = !root.checked; root.toggled(root.checked); }
-    }
-}
-
 // A card for popovers and dialogs.
 export component CalCard inherits Rectangle {
     border-radius: 8px;
