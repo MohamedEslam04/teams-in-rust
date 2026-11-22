@@ -359,7 +359,7 @@ mod tests {
     fn list_avatars_are_decoded_small_and_keyed_apart_from_the_big_ones() {
         let px = decode_image(&png_of(400), AVATAR_LIST_PX, AVATAR_LIST_PX).unwrap();
         assert_eq!((px.width(), px.height()), (AVATAR_LIST_PX, AVATAR_LIST_PX));
-        assert!(AVATAR_LIST_PX < AVATAR_PX);
+        const { assert!(AVATAR_LIST_PX < AVATAR_PX) };
         assert_eq!(avatar_key("8:orgid:a", AVATAR_LIST_PX), "8:orgid:a");
         assert_eq!(avatar_key("8:orgid:a", AVATAR_PX), "8:orgid:a@196");
         assert_ne!(

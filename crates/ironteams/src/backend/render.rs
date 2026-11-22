@@ -173,6 +173,16 @@ impl Engine {
         if let Some(p) = cache.get(&*key) {
             return p.clone();
         }
+        // Loading needs the runtime. A caller outside it (a test, or a UI callback) only reads
+        // the cache, the photo at the other size included.
+        if tokio::runtime::Handle::try_current().is_err() {
+            let other = if px == AVATAR_PX {
+                AVATAR_LIST_PX
+            } else {
+                AVATAR_PX
+            };
+            return cache.get(&*avatar_key(mri, other)).cloned().flatten();
+        }
         // The empty entry also keeps the next lookups from starting the same work.
         cache.insert_pixels(key.into_owned(), None);
         drop(cache);
@@ -300,10 +310,11 @@ impl Engine {
         false
     }
 
-    /// Whether the avatar cache has an entry for `mri` (at the list size).
+    /// Whether the avatar cache holds a decoded photo for `mri` (at the list size). A pending
+    /// lookup's empty entry does not count.
     #[cfg(test)]
     pub(crate) fn test_avatar_cached(&self, mri: &str) -> bool {
-        self.avatars.lock().unwrap().get(mri).is_some()
+        matches!(self.avatars.lock().unwrap().get(mri), Some(Some(_)))
     }
 
     /// Puts a decoded photo in the avatar cache, as a finished lookup would.
