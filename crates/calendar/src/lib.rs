@@ -31,8 +31,8 @@ pub use detail::{
     event_detail, instances, parse_attachments, parse_event_detail, response_counts,
 };
 pub use event::{
-    Attendee, AttendeeKind, DeltaPage, Event, EventChange, EventType, Response, ShowAs, delta_link,
-    next_link, parse_delta_page, parse_events,
+    Attendee, AttendeeKind, DeltaPage, Event, EventChange, Response, SeriesType, ShowAs,
+    delta_link, next_link, parse_delta_page, parse_events,
 };
 pub use filter::{EventFilter, EventKind, Recurrence as RecurrenceFilter, kind_of};
 pub use graph::GraphRequest;

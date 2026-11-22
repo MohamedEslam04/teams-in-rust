@@ -39,7 +39,7 @@ pub struct Attendee {
 
 /// Graph's `type` of an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EventType {
+pub enum SeriesType {
     Single,
     /// One instance of a series. A calendarView delta answer carries only its id, times and
     /// `seriesMasterId`; the details live on the master.
@@ -54,7 +54,7 @@ pub enum EventType {
 pub struct Event {
     pub id: String,
     pub ical_uid: String,
-    pub event_type: EventType,
+    pub event_type: SeriesType,
     pub series_master_id: Option<String>,
     pub subject: String,
     /// Unix milliseconds. All-day events start at midnight and end at the next midnight.
@@ -84,7 +84,7 @@ pub struct Event {
 impl Event {
     /// An occurrence that came without the details of its series: no subject and no organizer.
     pub fn is_bare_occurrence(&self) -> bool {
-        self.event_type == EventType::Occurrence
+        self.event_type == SeriesType::Occurrence
             && self.subject.is_empty()
             && self.organizer_name.is_empty()
             && self.organizer_email.is_empty()
@@ -118,13 +118,13 @@ impl Event {
 }
 
 /// An item without a `type` but with a `seriesMasterId` is an occurrence.
-fn event_type(v: &Value, series_master_id: Option<&str>) -> EventType {
+fn event_type(v: &Value, series_master_id: Option<&str>) -> SeriesType {
     match str_at(v, "type") {
-        "occurrence" => EventType::Occurrence,
-        "exception" => EventType::Exception,
-        "seriesMaster" => EventType::SeriesMaster,
-        "" if series_master_id.is_some() => EventType::Occurrence,
-        _ => EventType::Single,
+        "occurrence" => SeriesType::Occurrence,
+        "exception" => SeriesType::Exception,
+        "seriesMaster" => SeriesType::SeriesMaster,
+        "" if series_master_id.is_some() => SeriesType::Occurrence,
+        _ => SeriesType::Single,
     }
 }
 
@@ -262,7 +262,7 @@ pub(crate) fn parse_event(v: &Value) -> Option<Event> {
             .unwrap_or(false),
         join_url,
         web_link: str_at(v, "webLink").to_string(),
-        is_recurring: kind != EventType::Single,
+        is_recurring: kind != SeriesType::Single,
         body_preview: str_at(v, "bodyPreview").to_string(),
         attendees: v
             .get("attendees")
@@ -377,16 +377,16 @@ mod tests {
                 EventChange::Removed(_) => panic!("nothing was removed"),
             })
             .collect();
-        assert_eq!(events[0].event_type, EventType::SeriesMaster);
+        assert_eq!(events[0].event_type, SeriesType::SeriesMaster);
         assert!(!events[0].is_bare_occurrence());
         for o in &events[1..4] {
-            assert_eq!(o.event_type, EventType::Occurrence);
+            assert_eq!(o.event_type, SeriesType::Occurrence);
             assert_eq!(o.series_master_id.as_deref(), Some("m1"));
             assert!(o.is_recurring);
             assert!(o.is_bare_occurrence(), "{} has no details of its own", o.id);
             assert!(o.subject.is_empty() && o.organizer_email.is_empty());
         }
-        assert_eq!(events[4].event_type, EventType::Exception);
+        assert_eq!(events[4].event_type, SeriesType::Exception);
         assert!(!events[4].is_bare_occurrence());
         assert_eq!(events[4].subject, "All-Hands");
     }
@@ -394,9 +394,9 @@ mod tests {
     #[test]
     fn an_item_with_a_series_but_no_type_is_an_occurrence() {
         let e = parse_event(&json!({"id": "a", "seriesMasterId": "m"})).unwrap();
-        assert_eq!(e.event_type, EventType::Occurrence);
+        assert_eq!(e.event_type, SeriesType::Occurrence);
         let e = parse_event(&json!({"id": "a", "type": "singleInstance"})).unwrap();
-        assert_eq!(e.event_type, EventType::Single);
+        assert_eq!(e.event_type, SeriesType::Single);
         assert!(!e.is_recurring);
     }
 

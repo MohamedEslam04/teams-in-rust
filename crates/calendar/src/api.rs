@@ -8,7 +8,7 @@ use teams_proto::broker::Audience;
 use teams_proto::{Client, Error, Result};
 
 use crate::event::{
-    Event, EventChange, EventType, delta_link, next_link, parse_delta_page, parse_event,
+    Event, EventChange, SeriesType, delta_link, next_link, parse_delta_page, parse_event,
     parse_events,
 };
 use crate::graph::enc;
@@ -151,7 +151,7 @@ impl EventCache {
     pub fn apply(&mut self, changes: Vec<EventChange>) {
         for change in changes {
             match change {
-                EventChange::Upsert(e) if e.event_type == EventType::SeriesMaster => {
+                EventChange::Upsert(e) if e.event_type == SeriesType::SeriesMaster => {
                     self.upsert_master(e);
                 }
                 EventChange::Upsert(e) => self.upsert_event(e),
