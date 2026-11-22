@@ -9,6 +9,10 @@
 //!
 //! An entry we wrote carries [`MARKER`] and is rewritten when its content changes (a moved
 //! AppImage or binary). An entry without the marker is the user's or a packager's: never touched.
+//!
+//! A binary run from a temporary directory (a test build in `/tmp`) still gets the entry, since the
+//! portal needs it, but hidden from the menu (`NoDisplay=true`): the menu would otherwise keep a
+//! launcher that points at a file about to disappear.
 
 use std::ffi::OsString;
 use std::io;
@@ -49,7 +53,8 @@ pub fn ensure(app_id: &str) {
     let Some(exe) = exe else {
         return;
     };
-    match ensure_in(app_id, &dirs, &exe) {
+    let hidden = is_temporary(&exe, &temp_dirs());
+    match ensure_in(app_id, &dirs, &exe, hidden) {
         Ok(outcome) => tracing::info!(?outcome, "desktop entry for the portal"),
         Err(e) => tracing::info!(error = %e, "could not write the desktop entry"),
     }
@@ -61,6 +66,29 @@ fn exec_path(appimage: Option<OsString>, current: Option<PathBuf>) -> Option<Pat
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .or(current)
+}
+
+/// Directories whose files do not outlive a reboot or a cleanup.
+fn temp_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        std::env::temp_dir(),
+        PathBuf::from("/tmp"),
+        PathBuf::from("/var/tmp"),
+    ];
+    dirs.extend(env_path("XDG_RUNTIME_DIR"));
+    dirs
+}
+
+/// Whether `exe` lives under one of `temp` (also after resolving symlinks on either side).
+fn is_temporary(exe: &Path, temp: &[PathBuf]) -> bool {
+    let real = std::fs::canonicalize(exe).ok();
+    temp.iter().any(|t| {
+        let t_real = std::fs::canonicalize(t).ok();
+        [Some(exe), real.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|e| e.starts_with(t) || t_real.as_deref().is_some_and(|t| e.starts_with(t)))
+    })
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
@@ -82,14 +110,14 @@ fn data_dirs(var: Option<OsString>) -> Vec<PathBuf> {
     }
 }
 
-fn ensure_in(app_id: &str, dirs: &Dirs, exe: &Path) -> io::Result<Outcome> {
+fn ensure_in(app_id: &str, dirs: &Dirs, exe: &Path, hidden: bool) -> io::Result<Outcome> {
     if dirs.flatpak {
         return Ok(Outcome::Flatpak);
     }
     let file = format!("{app_id}.desktop");
     let apps = dirs.data_home.join("applications");
     let entry = apps.join(&file);
-    let content = render(exe);
+    let content = render(exe, hidden);
     let outcome = match std::fs::read_to_string(&entry) {
         Ok(existing) if !existing.lines().any(|l| l == MARKER) => return Ok(Outcome::UserEntry),
         Ok(existing) if existing == content => Outcome::UpToDate,
@@ -128,8 +156,9 @@ fn write_atomic(path: &Path, content: &str) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// The packaged desktop file with `Exec=` pointing at `exe` and the marker added.
-fn render(exe: &Path) -> String {
+/// The packaged desktop file with `Exec=` pointing at `exe` and the marker added; `hidden` keeps
+/// it out of the menu.
+fn render(exe: &Path, hidden: bool) -> String {
     let exe = quote_exec(&exe.to_string_lossy());
     let mut out = String::new();
     for line in DESKTOP.lines() {
@@ -142,6 +171,9 @@ fn render(exe: &Path) -> String {
         if line == "[Desktop Entry]" {
             out.push_str(MARKER);
             out.push('\n');
+            if hidden {
+                out.push_str("NoDisplay=true\n");
+            }
         }
     }
     out
@@ -193,7 +225,7 @@ mod tests {
     fn writes_the_entry_and_icon_when_missing() {
         let (home, system) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         let exe = Path::new("/opt/ironteams/ironteams");
-        let outcome = ensure_in(ID, &dirs(home.path(), system.path(), false), exe).unwrap();
+        let outcome = ensure_in(ID, &dirs(home.path(), system.path(), false), exe, false).unwrap();
         assert_eq!(outcome, Outcome::Written);
         let text = std::fs::read_to_string(user_entry(home.path())).unwrap();
         assert!(text.contains("\nX-IronTeams-Generated=true\n"));
@@ -219,6 +251,7 @@ mod tests {
             ID,
             &dirs(home.path(), system.path(), false),
             Path::new("/x"),
+            false,
         )
         .unwrap();
         assert_eq!(outcome, Outcome::Provided);
@@ -228,8 +261,13 @@ mod tests {
     #[test]
     fn skips_in_flatpak() {
         let (home, system) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let outcome =
-            ensure_in(ID, &dirs(home.path(), system.path(), true), Path::new("/x")).unwrap();
+        let outcome = ensure_in(
+            ID,
+            &dirs(home.path(), system.path(), true),
+            Path::new("/x"),
+            false,
+        )
+        .unwrap();
         assert_eq!(outcome, Outcome::Flatpak);
         assert!(!home.path().join("data").exists());
     }
@@ -238,13 +276,13 @@ mod tests {
     fn rewrites_a_generated_entry_with_a_stale_exec() {
         let (home, system) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         let d = dirs(home.path(), system.path(), false);
-        ensure_in(ID, &d, Path::new("/old/ironteams")).unwrap();
-        let outcome = ensure_in(ID, &d, Path::new("/new/ironteams")).unwrap();
+        ensure_in(ID, &d, Path::new("/old/ironteams"), false).unwrap();
+        let outcome = ensure_in(ID, &d, Path::new("/new/ironteams"), false).unwrap();
         assert_eq!(outcome, Outcome::Rewritten);
         let text = std::fs::read_to_string(user_entry(home.path())).unwrap();
         assert!(text.contains("\nExec=/new/ironteams\n"));
         assert!(!text.contains("/old/"));
-        let again = ensure_in(ID, &d, Path::new("/new/ironteams")).unwrap();
+        let again = ensure_in(ID, &d, Path::new("/new/ironteams"), false).unwrap();
         assert_eq!(again, Outcome::UpToDate);
     }
 
@@ -259,6 +297,7 @@ mod tests {
             ID,
             &dirs(home.path(), system.path(), false),
             Path::new("/x"),
+            false,
         )
         .unwrap();
         assert_eq!(outcome, Outcome::UserEntry);
@@ -275,7 +314,7 @@ mod tests {
         assert_eq!(quote_exec("/a b/$x"), "\"/a b/\\\\$x\"");
         assert_eq!(quote_exec("/a b\\c"), "\"/a b\\\\\\\\c\"");
         assert_eq!(quote_exec("/100%"), "/100%%");
-        let text = render(Path::new("/home/me/My Apps/ironteams"));
+        let text = render(Path::new("/home/me/My Apps/ironteams"), false);
         assert!(text.contains("\nExec=\"/home/me/My Apps/ironteams\"\n"));
         assert!(text.contains("\nExec=\"/home/me/My Apps/ironteams\" --report-problem\n"));
     }
@@ -289,6 +328,33 @@ mod tests {
         );
         assert_eq!(exec_path(Some("".into()), current.clone()), current);
         assert_eq!(exec_path(None, current.clone()), current);
+    }
+
+    #[test]
+    fn a_temporary_binary_gets_a_hidden_entry_that_shows_again_once_it_moves() {
+        let (home, system) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let d = dirs(home.path(), system.path(), false);
+        let tmp = [PathBuf::from("/tmp")];
+        let test_build = Path::new("/tmp/build/ironteams");
+        assert!(is_temporary(test_build, &tmp));
+        ensure_in(ID, &d, test_build, is_temporary(test_build, &tmp)).unwrap();
+        let text = std::fs::read_to_string(user_entry(home.path())).unwrap();
+        assert!(text.contains("\nNoDisplay=true\n"));
+        let installed = Path::new("/home/me/.local/bin/ironteams");
+        assert!(!is_temporary(installed, &tmp));
+        let outcome = ensure_in(ID, &d, installed, is_temporary(installed, &tmp)).unwrap();
+        assert_eq!(outcome, Outcome::Rewritten);
+        let text = std::fs::read_to_string(user_entry(home.path())).unwrap();
+        assert!(!text.contains("NoDisplay"));
+        assert!(text.contains("\nExec=/home/me/.local/bin/ironteams\n"));
+    }
+
+    #[test]
+    fn temporary_means_under_a_temp_dir_not_a_lookalike_name() {
+        let tmp = [PathBuf::from("/tmp"), PathBuf::from("/run/user/1000")];
+        assert!(is_temporary(Path::new("/run/user/1000/x/ironteams"), &tmp));
+        assert!(!is_temporary(Path::new("/tmpfoo/ironteams"), &tmp));
+        assert!(!is_temporary(Path::new("/opt/ironteams/ironteams"), &tmp));
     }
 
     #[test]
