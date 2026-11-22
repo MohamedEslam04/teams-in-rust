@@ -8,10 +8,10 @@
 //! cards.
 
 use super::banner::{self, Pending, Route, Source, Where};
-use crate::support::quiet::Decision;
 use super::{CalCmd, Cmd, Engine, ListsCmd};
 use crate::desktop_cards::client::{self, Handler};
 use crate::desktop_cards::protocol::{Action, Card, Kind};
+use crate::support::quiet::Decision;
 use appearance::NotificationStyle;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
