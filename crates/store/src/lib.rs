@@ -129,6 +129,10 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// The kv key of the time of the last `Store::maintain`.
+const MAINTAINED_KEY: &str = "maintained_ms";
+const WEEK_MS: i64 = 7 * 24 * 3600 * 1000;
+
 fn unread_mark_key(conversation_id: &str) -> String {
     format!("unread_mark:{conversation_id}")
 }
@@ -1000,6 +1004,73 @@ impl Store {
         self.conn
             .prepare_cached("DELETE FROM outbox WHERE client_message_id = ?1")?
             .execute([client_message_id])?;
+        Ok(())
+    }
+
+    // ---- clearing and maintenance --------------------------------------
+
+    /// Drops every stored profile picture (clearing the media cache); names and emails stay.
+    pub fn clear_avatars(&self) -> Result<()> {
+        self.conn.execute("UPDATE users SET avatar = NULL", [])?;
+        Ok(())
+    }
+
+    /// Drops everything that is only a copy of what the service has: the messages (and their
+    /// search index), users and teams, the `kv_keys` entries of the kv table and the
+    /// conversations' previews, then gives the space back (`VACUUM`).
+    ///
+    /// Kept, because they are the user's own or are not recoverable: the conversation rows
+    /// (favorites, local mark-unread and the order of the list; their previews are blanked
+    /// because they were copied from messages), drafts, the outbox, saved messages (they carry
+    /// their own copy of sender and preview, no join to `messages`) and every other kv entry.
+    pub fn clear_cache(&self, kv_keys: &[&str]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM messages", [])?;
+        // The delete trigger emptied the index already; this keeps it consistent whatever the
+        // triggers missed.
+        tx.execute(
+            "INSERT INTO messages_fts (messages_fts) VALUES ('rebuild')",
+            [],
+        )?;
+        // The gaps describe holes in message history that is now gone.
+        tx.execute("DELETE FROM history_gaps", [])?;
+        tx.execute("DELETE FROM users", [])?;
+        tx.execute("DELETE FROM teams", [])?;
+        tx.execute("UPDATE conversations SET last_preview = ''", [])?;
+        for key in kv_keys {
+            tx.execute("DELETE FROM kv WHERE key = ?1", [key])?;
+        }
+        tx.commit()?;
+        // Not in the transaction (`VACUUM` cannot run in one). The messages are gone, so the
+        // rowids the search index is tied to cannot be renumbered under it.
+        self.conn.execute_batch("VACUUM")?;
+        self.checkpoint()
+    }
+
+    /// Runs the weekly upkeep (`PRAGMA optimize`, then a WAL checkpoint that also truncates the
+    /// log) when a week has passed since the last time. True when it ran.
+    pub fn maintain(&self) -> Result<bool> {
+        self.maintain_at(now_ms(), WEEK_MS)
+    }
+
+    fn maintain_at(&self, now_ms: i64, interval_ms: i64) -> Result<bool> {
+        let last = self
+            .get_kv(MAINTAINED_KEY)?
+            .and_then(|v| v.parse::<i64>().ok());
+        if last.is_some_and(|t| now_ms - t < interval_ms) {
+            return Ok(false);
+        }
+        self.conn.execute_batch("PRAGMA optimize")?;
+        // The stamp first: written after the checkpoint it would fill the log again.
+        self.set_kv(MAINTAINED_KEY, &now_ms.to_string())?;
+        self.checkpoint()?;
+        Ok(true)
+    }
+
+    /// Moves the write-ahead log into the database file and empties it.
+    fn checkpoint(&self) -> Result<()> {
+        self.conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
         Ok(())
     }
 

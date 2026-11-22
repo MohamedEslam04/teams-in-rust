@@ -150,27 +150,41 @@ impl Engine {
         }
     }
 
+    /// A person's photo at the big size, for the profile card, the call window and the
+    /// toasts. The lists draw theirs at [`AVATAR_LIST_PX`] (`avatar_deferred`).
     pub(super) fn avatar(self: &Arc<Self>, mri: &str) -> Option<Pixels> {
-        self.avatar_lookup(mri, false)
+        self.avatar_lookup(mri, false, AVATAR_PX)
     }
 
     /// `avatar` for the chat list, the header and the messages, which are drawn again when a
     /// photo arrives: a stored photo is decoded on the blocking pool, not on an async worker in
     /// the middle of a render, and the views are marked once it is in the cache.
     fn avatar_deferred(self: &Arc<Self>, mri: &str) -> Option<Pixels> {
-        self.avatar_lookup(mri, true)
+        self.avatar_lookup(mri, true, AVATAR_LIST_PX)
     }
 
-    fn avatar_lookup(self: &Arc<Self>, mri: &str, defer: bool) -> Option<Pixels> {
+    /// The photo decoded to `px`; the cache keeps one picture per person and size (`avatar_key`).
+    fn avatar_lookup(self: &Arc<Self>, mri: &str, defer: bool, px: u32) -> Option<Pixels> {
         if mri.is_empty() || mri.starts_with("28:") {
             return None;
         }
+        let key = avatar_key(mri, px);
         let mut cache = self.avatars.lock().unwrap();
-        if let Some(p) = cache.get(mri) {
+        if let Some(p) = cache.get(&*key) {
             return p.clone();
         }
+        // Loading needs the runtime. A caller outside it (a test, or a UI callback) only reads
+        // the cache, the photo at the other size included.
+        if tokio::runtime::Handle::try_current().is_err() {
+            let other = if px == AVATAR_PX {
+                AVATAR_LIST_PX
+            } else {
+                AVATAR_PX
+            };
+            return cache.get(&*avatar_key(mri, other)).cloned().flatten();
+        }
         // The empty entry also keeps the next lookups from starting the same work.
-        cache.insert(mri.to_string(), None);
+        cache.insert_pixels(key.into_owned(), None);
         drop(cache);
         // Stored avatar first, network second. A stored picture of the old 64-pixel size is
         // shown at once and read again at the sharp size.
@@ -187,39 +201,41 @@ impl Engine {
         if defer {
             let e = self.clone();
             let mri = mri.to_string();
-            tokio::spawn(async move { e.load_avatar(mri, stored).await });
+            tokio::spawn(async move { e.load_avatar(mri, stored, px).await });
             return None;
         }
         let mut shown = None;
         if let Some(bytes) = stored {
-            let px = decode_image(&bytes, AVATAR_PX, AVATAR_PX);
+            let decoded = decode_image(&bytes, px, px);
             self.avatars
                 .lock()
                 .unwrap()
-                .insert(mri.to_string(), px.clone());
+                .insert_pixels(avatar_key(mri, px).into_owned(), decoded.clone());
             if !avatar_is_low_res(&bytes) {
-                return px;
+                return decoded;
             }
-            shown = px;
+            shown = decoded;
         }
         let e = self.clone();
         let mri = mri.to_string();
-        tokio::spawn(async move { e.fetch_avatar(mri).await });
+        tokio::spawn(async move { e.fetch_avatar(mri, px).await });
         shown
     }
 
     /// Decodes a stored photo on the blocking pool, then downloads the sharp one when none is
     /// stored or the stored one is of the old small size (in that order, so the sharp one wins).
-    async fn load_avatar(self: Arc<Self>, mri: String, stored: Option<Vec<u8>>) {
+    async fn load_avatar(self: Arc<Self>, mri: String, stored: Option<Vec<u8>>, size: u32) {
         if let Some(bytes) = stored {
             let low_res = avatar_is_low_res(&bytes);
-            let px =
-                tokio::task::spawn_blocking(move || decode_image(&bytes, AVATAR_PX, AVATAR_PX))
-                    .await
-                    .ok()
-                    .flatten();
+            let px = tokio::task::spawn_blocking(move || decode_image(&bytes, size, size))
+                .await
+                .ok()
+                .flatten();
             if px.is_some() {
-                self.avatars.lock().unwrap().insert(mri.clone(), px);
+                self.avatars
+                    .lock()
+                    .unwrap()
+                    .insert_pixels(avatar_key(&mri, size).into_owned(), px);
                 self.mark(|d| {
                     d.chats = true;
                     d.messages = true;
@@ -230,16 +246,19 @@ impl Engine {
                 return;
             }
         }
-        self.fetch_avatar(mri).await;
+        self.fetch_avatar(mri, size).await;
     }
 
     /// Downloads a person's photo into the cache and the store, and marks the views showing it.
-    async fn fetch_avatar(self: Arc<Self>, mri: String) {
+    async fn fetch_avatar(self: Arc<Self>, mri: String, size: u32) {
         if let Ok(bytes) = self.client.avatar(&self.me, &mri).await
             && self.is_photo(&mri, &bytes)
-            && let Some(px) = decode_image(&bytes, AVATAR_PX, AVATAR_PX)
+            && let Some(px) = decode_image(&bytes, size, size)
         {
-            self.avatars.lock().unwrap().insert(mri.clone(), Some(px));
+            self.avatars
+                .lock()
+                .unwrap()
+                .insert_pixels(avatar_key(&mri, size).into_owned(), Some(px));
             let st = self.store.lock().unwrap();
             let mut u = st.user(&mri).ok().flatten().unwrap_or(UserRow {
                 mri: mri.clone(),
@@ -269,7 +288,9 @@ impl Engine {
         };
         let mut cache = self.avatars.lock().unwrap();
         for m in &clear {
-            cache.insert(m.clone(), None);
+            for size in [AVATAR_LIST_PX, AVATAR_PX] {
+                cache.insert_pixels(avatar_key(m, size).into_owned(), None);
+            }
         }
         drop(cache);
         let st = self.store.lock().unwrap();
@@ -289,10 +310,20 @@ impl Engine {
         false
     }
 
+    /// Whether the avatar cache holds a decoded photo for `mri` (at the list size). A pending
+    /// lookup's empty entry does not count.
+    #[cfg(test)]
+    pub(crate) fn test_avatar_cached(&self, mri: &str) -> bool {
+        matches!(self.avatars.lock().unwrap().get(mri), Some(Some(_)))
+    }
+
     /// Puts a decoded photo in the avatar cache, as a finished lookup would.
     #[cfg(test)]
     pub(crate) fn test_set_avatar(&self, mri: &str, px: Pixels) {
-        self.avatars.lock().unwrap().insert(mri.into(), Some(px));
+        let mut cache = self.avatars.lock().unwrap();
+        for size in [AVATAR_LIST_PX, AVATAR_PX] {
+            cache.insert_pixels(avatar_key(mri, size).into_owned(), Some(px.clone()));
+        }
     }
 
     pub(super) fn inline_image(self: &Arc<Self>, url: &str) -> Option<Pixels> {
@@ -300,11 +331,20 @@ impl Engine {
         if let Some(p) = cache.get(url) {
             return p.clone();
         }
-        cache.insert(url.to_string(), None);
+        cache.insert_pixels(url.to_string(), None);
         drop(cache);
         let e = self.clone();
         let url = url.to_string();
         tokio::spawn(async move {
+            // The picture kept on disk (from an earlier run, or from before it left the memory
+            // cache) comes before the network.
+            if let Some(bytes) = e.kept_img(&url, INLINE_MAX_BYTES).await {
+                if e.show_inline_image(&url, bytes, false).await {
+                    return;
+                }
+                // It does not decode: the file is deleted and the picture fetched again.
+                e.forget_img(&url).await;
+            }
             let mut failures = 0;
             let bytes = loop {
                 let err = match e.fetch_inline_image(&url).await {
@@ -340,19 +380,34 @@ impl Engine {
             };
             // After a give-up the cache entry stays `None`: the message keeps its fallback.
             let Some(bytes) = bytes else { return };
-            match tokio::task::spawn_blocking(move || decode_image(&bytes, INLINE_W, INLINE_H))
-                .await
-                .ok()
-                .flatten()
-            {
-                Some(px) => {
-                    e.images.lock().unwrap().insert(url, Some(px));
-                    e.mark(|d| d.messages = true);
-                }
-                None => tracing::warn!(%url, "image could not be decoded"),
-            }
+            e.show_inline_image(&url, bytes, true).await;
         });
         None
+    }
+
+    /// Decodes a picture's bytes into the image cache and draws the messages again. A fetched
+    /// picture (`keep`) that decodes is also kept on disk for the next run. False when the bytes
+    /// do not decode.
+    async fn show_inline_image(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
+        let decoded = tokio::task::spawn_blocking(move || {
+            decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes))
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some((px, bytes)) = decoded else {
+            tracing::warn!(%url, "image could not be decoded");
+            return false;
+        };
+        self.images
+            .lock()
+            .unwrap()
+            .insert_pixels(url.to_string(), Some(px));
+        self.mark(|d| d.messages = true);
+        if keep {
+            self.keep_img(url, bytes).await;
+        }
+        true
     }
 
     async fn fetch_inline_image(&self, url: &str) -> teams_proto::Result<Vec<u8>> {

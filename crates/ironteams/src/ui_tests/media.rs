@@ -195,8 +195,14 @@ fn a_downloaded_picture_shows_and_an_answer_for_a_left_picture_is_dropped() {
     assert_eq!((size.width, size.height), (8, 6));
     assert!(find_label(&h.app, "Zoom in").len() == 1);
     tap(&h.app, "Zoom in");
+    assert!(h.engine.test_viewer_holds_bytes());
     tap(&h.app, "Close viewer");
     assert!(!ms(&h.app).get_viewer_open());
+    // The full-size picture is let go of with the viewer: the downloaded bytes in the engine
+    // and the decoded pixels in the window.
+    assert!(!h.engine.test_viewer_holds_bytes());
+    let size = ms(&h.app).get_viewer_image().size();
+    assert_eq!((size.width, size.height), (0, 0));
 }
 
 #[test]

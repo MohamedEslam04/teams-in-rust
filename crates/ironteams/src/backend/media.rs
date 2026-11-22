@@ -4,7 +4,8 @@
 //! grid cells, the translation state and the preview cards of a message.
 
 use super::Engine;
-use super::util::decode_image;
+use super::byte_lru::{ByteLru, THUMB_BUDGET, pixel_bytes, pixels_cost};
+use super::util::{AVATAR_PX, avatar_key, decode_image};
 use crate::data::{ImgData, LinkData, Pixels};
 use crate::media_data::ViewerData;
 use serde_json::{Value, json};
@@ -139,13 +140,48 @@ enum Thumb {
     Failed,
 }
 
-#[derive(Default)]
+impl Thumb {
+    /// The bytes the entry takes in `State::thumbs`.
+    fn cost(&self) -> usize {
+        match self {
+            Thumb::Ready(p) => pixel_bytes(p) + pixels_cost(&None),
+            Thumb::Loading | Thumb::Failed => pixels_cost(&None),
+        }
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State {
+            viewer: Viewer::default(),
+            translations: HashMap::new(),
+            settings: None,
+            settings_requested: false,
+            thumbs: ByteLru::new(THUMB_BUDGET),
+            gate: Arc::default(),
+            popout: None,
+        }
+    }
+}
+
+impl State {
+    pub(super) fn clear_thumbs(&mut self) {
+        self.thumbs.clear();
+    }
+
+    fn put_thumb(&mut self, url: String, thumb: Thumb) {
+        let bytes = thumb.cost();
+        self.thumbs.insert(url, thumb, bytes);
+    }
+}
+
 pub(super) struct State {
     viewer: Viewer,
     translations: HashMap<String, Tr>,
     settings: Option<Settings>,
     settings_requested: bool,
-    thumbs: HashMap<String, Thumb>,
+    /// Link preview pictures by URL, kept under a byte budget.
+    thumbs: ByteLru<String, Thumb>,
     /// Serializes preview image fetches.
     gate: Arc<tokio::sync::Mutex<()>>,
     /// The chat shown in the pop-out window, if one is open (see `extras`).
@@ -505,7 +541,11 @@ impl Engine {
                     Err(err) => {
                         // The small photo the lists use is better than none.
                         tracing::debug!(%err, "large photo not read");
-                        let small = e.avatars.lock().unwrap().get(&mri).cloned().flatten();
+                        let small = {
+                            let mut cache = e.avatars.lock().unwrap();
+                            let big = cache.get(&*avatar_key(&mri, AVATAR_PX)).cloned().flatten();
+                            big.or_else(|| cache.get(mri.as_str()).cloned().flatten())
+                        };
                         e.viewer_done(seq, None, small);
                     }
                 }
@@ -787,6 +827,12 @@ impl Engine {
             .map(|(mri, _)| mri.clone())
     }
 
+    /// The viewer still holds the downloaded bytes of a picture.
+    #[cfg(test)]
+    pub(crate) fn test_viewer_holds_bytes(&self) -> bool {
+        self.media.lock().unwrap().viewer.current.is_some()
+    }
+
     #[cfg(test)]
     pub(crate) fn test_viewer_seq(&self) -> u64 {
         self.media.lock().unwrap().viewer.seq
@@ -840,37 +886,62 @@ impl Engine {
             if self.offline.load(Ordering::Relaxed) || !urlpreview::is_service_url(url) {
                 return None;
             }
-            m.thumbs.insert(url.to_string(), Thumb::Loading);
+            m.put_thumb(url.to_string(), Thumb::Loading);
             m.gate.clone()
         };
         let e = self.clone();
         let url = url.to_string();
         tokio::spawn(async move {
+            // The picture kept on disk needs no turn at the preview service.
+            if let Some(bytes) = e.kept_img(&url, urlpreview::MAX_IMAGE_BYTES).await {
+                if e.show_thumb(&url, bytes, false).await {
+                    return;
+                }
+                e.forget_img(&url).await;
+            }
             let _turn = gate.lock().await;
             let mut fetched = urlpreview::fetch_image(&e.client, &url).await;
             if fetched.is_err() {
                 tokio::time::sleep(THUMB_RETRY).await;
                 fetched = urlpreview::fetch_image(&e.client, &url).await;
             }
-            let px = match fetched {
-                Ok(bytes) => tokio::task::spawn_blocking(move || decode_image(&bytes, 320, 320))
-                    .await
-                    .ok()
-                    .flatten(),
+            let shown = match fetched {
+                Ok(bytes) => e.show_thumb(&url, bytes, true).await,
                 Err(err) => {
                     tracing::warn!(%err, "link preview image failed");
-                    None
+                    false
                 }
             };
-            e.media
-                .lock()
-                .unwrap()
-                .thumbs
-                .insert(url, px.map_or(Thumb::Failed, Thumb::Ready));
-            e.mark(|d| d.messages = true);
+            if !shown {
+                e.media.lock().unwrap().put_thumb(url, Thumb::Failed);
+                e.mark(|d| d.messages = true);
+            }
             tokio::time::sleep(THUMB_PAUSE).await;
         });
         None
+    }
+
+    /// Decodes a link preview picture into the thumbnail cache and draws the messages again. A
+    /// fetched picture (`keep`) that decodes is also kept on disk. False when it does not decode.
+    async fn show_thumb(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
+        let decoded = tokio::task::spawn_blocking(move || {
+            decode_image(&bytes, 320, 320).map(|px| (px, bytes))
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some((px, bytes)) = decoded else {
+            return false;
+        };
+        self.media
+            .lock()
+            .unwrap()
+            .put_thumb(url.to_string(), Thumb::Ready(px));
+        self.mark(|d| d.messages = true);
+        if keep {
+            self.keep_img(url, bytes).await;
+        }
+        true
     }
 }
 

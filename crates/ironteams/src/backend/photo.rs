@@ -3,7 +3,7 @@
 //! account (`teams_proto::photo`, UNVERIFIED in docs/protocol.md), so a refusal is shown as it is.
 
 use super::Engine;
-use super::util::{AVATAR_PX, decode_image};
+use super::util::{AVATAR_LIST_PX, AVATAR_PX, avatar_key, decode_image};
 use crate::data::Pixels;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -45,10 +45,13 @@ impl Engine {
     fn keep_my_avatar(self: &Arc<Self>, bytes: Option<Vec<u8>>) {
         let small = bytes.as_deref().and_then(thumbnail_png);
         let px: Option<Pixels> = small.as_deref().and_then(|b| decode_image(b, SIZE, SIZE));
-        self.avatars
-            .lock()
-            .unwrap()
-            .insert(self.me.clone(), px.clone());
+        {
+            // The same picture for the lists and for the big places.
+            let mut cache = self.avatars.lock().unwrap();
+            for size in [AVATAR_LIST_PX, AVATAR_PX] {
+                cache.insert_pixels(avatar_key(&self.me, size).into_owned(), px.clone());
+            }
+        }
         {
             let st = self.store.lock().unwrap();
             let mut u = st.user(&self.me).ok().flatten().unwrap_or(UserRow {

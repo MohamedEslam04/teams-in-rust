@@ -240,6 +240,18 @@ pub struct Config {
     /// delete), as `owner` U+001F `call id`. The call stays in Teams.
     #[serde(default)]
     pub hidden_calls: Vec<String>,
+    /// How many megabytes the media cache on disk (pictures, voice messages, clips) may take;
+    /// the oldest files go first. `None` (`null` in the file) is no limit; a file without the
+    /// key gets [`DEFAULT_MEDIA_CACHE_MB`].
+    #[serde(default = "default_media_cache_mb")]
+    pub media_cache_mb: Option<u32>,
+}
+
+/// The media cache budget of a config file that does not have one.
+pub const DEFAULT_MEDIA_CACHE_MB: u32 = 500;
+
+fn default_media_cache_mb() -> Option<u32> {
+    Some(DEFAULT_MEDIA_CACHE_MB)
 }
 
 fn default_true() -> bool {
@@ -265,6 +277,7 @@ impl Default for Config {
             accounts: Vec::new(),
             speed_dial: Vec::new(),
             hidden_calls: Vec::new(),
+            media_cache_mb: default_media_cache_mb(),
         }
     }
 }
@@ -444,6 +457,7 @@ impl Config {
 }
 
 /// Standard directories for ironteams.
+#[derive(Debug, Clone)]
 pub struct Paths {
     pub config_dir: PathBuf,
     pub data_dir: PathBuf,
@@ -1316,6 +1330,25 @@ mod tests {
         assert_eq!(c.open_chat_at, OpenChatAt::Newest);
         let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn media_cache_budget_defaults_to_500_mb_and_null_means_no_limit() {
+        let old = r#"{"account":"default","tenant":"organizations","epid":"e"}"#;
+        let c: Config = serde_json::from_str(old).unwrap();
+        assert_eq!(c.media_cache_mb, Some(500), "a file from before the budget");
+        assert_eq!(Config::default().media_cache_mb, Some(500));
+
+        let c: Config =
+            serde_json::from_str(&old.replace('}', r#","media_cache_mb":128}"#)).unwrap();
+        assert_eq!(c.media_cache_mb, Some(128));
+
+        let unlimited: Config =
+            serde_json::from_str(&old.replace('}', r#","media_cache_mb":null}"#)).unwrap();
+        assert_eq!(unlimited.media_cache_mb, None);
+        let back: Config =
+            serde_json::from_str(&serde_json::to_string(&unlimited).unwrap()).unwrap();
+        assert_eq!(back.media_cache_mb, None, "no limit survives a save");
     }
 
     #[test]
