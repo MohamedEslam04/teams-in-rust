@@ -1543,3 +1543,149 @@ fn system_event_messages_are_not_search_hits() {
     }
     assert_eq!(find(&s, "IronTeams"), ["1"]);
 }
+
+// ---- clearing the cache and maintenance --------------------------------------------------
+
+/// A database file in the temp dir, removed with its WAL when dropped.
+struct TempDb(std::path::PathBuf);
+
+impl TempDb {
+    fn new(tag: &str) -> TempDb {
+        let dir =
+            std::env::temp_dir().join(format!("ironteams-store-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        TempDb(dir.join("cache.sqlite"))
+    }
+}
+
+impl Drop for TempDb {
+    fn drop(&mut self) {
+        if let Some(dir) = self.0.parent() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+fn kept_after_clear() -> Store {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_conversation(&ConversationRow {
+        last_preview: "old words".into(),
+        ..conv("c1", ConvKind::Group, "Friends", 100)
+    })
+    .unwrap();
+    s.set_favorite("c1", true).unwrap();
+    s.mark_unread("c1", 50).unwrap();
+    s.upsert_message(&html_msg("1", "c1", 10, "<p>quarterly plan</p>"))
+        .unwrap();
+    s.upsert_message(&html_msg("2", "c1", 20, "<p>lunch</p>"))
+        .unwrap();
+    s.upsert_user(&user("8:orgid:a", "Alice", Some(vec![1, 2, 3])))
+        .unwrap();
+    s.upsert_team(&TeamRow {
+        id: "t1".into(),
+        name: "Team".into(),
+    })
+    .unwrap();
+    s.set_draft("c1", "half a thought", None).unwrap();
+    s.enqueue(&item("m1", "c1", 5)).unwrap();
+    s.save_message(&saved("c1", "1", 30)).unwrap();
+    s.set_kv("avatar_placeholders", "[1]").unwrap();
+    s.set_kv("lists", "{}").unwrap();
+    s
+}
+
+#[test]
+fn clear_cache_drops_messages_users_teams_and_the_listed_kv_keys() {
+    let s = kept_after_clear();
+    s.clear_cache(&["avatar_placeholders"]).unwrap();
+    assert!(s.message("1").unwrap().is_none());
+    assert!(s.messages_before("c1", None, 10).unwrap().is_empty());
+    assert!(s.user("8:orgid:a").unwrap().is_none());
+    assert!(s.teams().unwrap().is_empty());
+    assert_eq!(s.get_kv("avatar_placeholders").unwrap(), None);
+    assert_eq!(s.get_kv("lists").unwrap().as_deref(), Some("{}"));
+}
+
+#[test]
+fn clear_cache_keeps_conversations_drafts_outbox_and_saved_messages() {
+    let s = kept_after_clear();
+    s.clear_cache(&[]).unwrap();
+    let c = s.conversation("c1").unwrap().expect("conversation kept");
+    assert!(c.favorite, "favorites are the user's choice");
+    assert_eq!(c.title, "Friends");
+    assert_eq!(c.last_activity_ms, 100);
+    assert_eq!(c.last_preview, "", "the preview came from a message");
+    assert_eq!(s.unread_mark("c1").unwrap(), Some(50));
+    assert_eq!(s.draft("c1").unwrap().unwrap().text, "half a thought");
+    assert_eq!(outbox_ids(&s.outbox_for("c1").unwrap()), ["m1"]);
+    assert_eq!(s.saved_messages().unwrap().len(), 1);
+    assert!(s.is_saved("c1", "1").unwrap());
+}
+
+#[test]
+fn search_stays_consistent_after_clear_cache() {
+    let s = kept_after_clear();
+    assert_eq!(find(&s, "quarterly"), ["1"]);
+    s.clear_cache(&[]).unwrap();
+    assert!(find(&s, "quarterly").is_empty(), "deleted text is gone");
+    assert!(find(&s, "lunch").is_empty());
+    s.upsert_message(&html_msg("3", "c1", 40, "<p>fresh quarterly news</p>"))
+        .unwrap();
+    s.upsert_message(&html_msg("4", "c1", 50, "<p>dinner</p>"))
+        .unwrap();
+    assert_eq!(find(&s, "quarterly"), ["3"]);
+    assert_eq!(find(&s, "dinner"), ["4"]);
+    // Deleting still reaches the index through the triggers.
+    s.delete_message_local("3").unwrap();
+    assert!(find(&s, "quarterly").is_empty());
+}
+
+#[test]
+fn clear_cache_on_a_file_database_gives_the_space_back() {
+    let db = TempDb::new("clear");
+    let s = Store::open(&db.0).unwrap();
+    for i in 0..300 {
+        let body = format!("<p>{}</p>", "text ".repeat(200));
+        s.upsert_message(&html_msg(&i.to_string(), "c1", i, &body))
+            .unwrap();
+    }
+    s.maintain_at(1, 1).unwrap();
+    let before = std::fs::metadata(&db.0).unwrap().len();
+    s.clear_cache(&[]).unwrap();
+    let after = std::fs::metadata(&db.0).unwrap().len();
+    assert!(
+        after < before,
+        "VACUUM shrinks the file: {before} -> {after}"
+    );
+}
+
+#[test]
+fn clear_avatars_keeps_the_names() {
+    let s = kept_after_clear();
+    s.clear_avatars().unwrap();
+    let u = s.user("8:orgid:a").unwrap().unwrap();
+    assert_eq!((u.display_name.as_str(), u.avatar), ("Alice", None));
+}
+
+#[test]
+fn maintenance_runs_once_a_week() {
+    let s = Store::open_in_memory().unwrap();
+    let week = 7 * 24 * 3600 * 1000;
+    assert!(s.maintain_at(1_000, week).unwrap(), "the first time");
+    assert!(!s.maintain_at(1_000 + week - 1, week).unwrap(), "too soon");
+    assert!(s.maintain_at(1_000 + week, week).unwrap(), "a week later");
+    assert!(!s.maintain_at(1_000 + week + 5, week).unwrap());
+}
+
+#[test]
+fn maintenance_empties_the_wal_of_a_file_database() {
+    let db = TempDb::new("maintain");
+    let s = Store::open(&db.0).unwrap();
+    s.upsert_message(&msg("1", "c1", 1)).unwrap();
+    assert!(s.maintain_at(5, 10).unwrap());
+    let mut wal = db.0.as_os_str().to_owned();
+    wal.push("-wal");
+    let len = std::fs::metadata(std::path::Path::new(&wal)).map_or(0, |m| m.len());
+    assert_eq!(len, 0, "the checkpoint empties the WAL");
+    assert_eq!(s.message("1").unwrap().unwrap().id, "1");
+}
