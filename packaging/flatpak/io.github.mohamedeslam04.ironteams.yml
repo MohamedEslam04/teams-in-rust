@@ -42,6 +42,10 @@ build-options:
     CARGO_NET_OFFLINE: 'true'
     # One compile job: the build host and CI runners are short on memory.
     CARGO_BUILD_JOBS: '1'
+    # The ironteams crate (Slint-generated code) with thin LTO and one codegen unit needs more
+    # than a 16 GB runner, and the build container cannot add swap. Same settings as the AUR check.
+    CARGO_PROFILE_RELEASE_LTO: 'off'
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
 
 modules:
   - name: ironteams

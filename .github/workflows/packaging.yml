@@ -53,19 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
-      options: --privileged -v /mnt:/mnt
+      options: --privileged
     steps:
-      - name: More swap
-        # rustc compiling the ironteams crate (Slint-generated code, thin LTO, one codegen unit) needs
-        # more than the runner's ~16 GB and gets SIGKILLed. The swap file lives on the host's /mnt
-        # (bind-mounted): swap cannot sit on the container's overlay filesystem.
-        run: |
-          command -v mkswap >/dev/null || dnf -y install util-linux >/dev/null 2>&1 || true
-          swapoff -a 2>/dev/null || true
-          fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
-          chmod 600 /mnt/swapfile
-          mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
-          cat /proc/swaps
       - uses: actions/checkout@v5
       - name: Generate cargo-sources.json
         run: |
