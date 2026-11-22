@@ -34,6 +34,9 @@ jobs:
         run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
       - uses: actions/checkout@v5
       - name: Build the RPM
+        env:
+          # As release.yml: compiles the large ironteams crate in parallel, with less memory.
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
         run: |
           git config --global --add safe.directory "$PWD"
           top=$PWD/rpmtop; v=0.1.0

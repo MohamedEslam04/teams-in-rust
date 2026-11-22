@@ -1,0 +1,76 @@
+# Keeps the build caches of the default branch warm, so a release (tags can only restore caches
+# saved on the default branch) and the Windows/macOS gate do not compile everything from scratch.
+# Nothing here is published. The release builds use the same cache keys (`shared-key`) and the same
+# cargo settings as release.yml; keep the two in step.
+name: Cache warm-up
+
+on:
+  schedule:
+    # Every night (UTC); a run with nothing new only restores and checks the caches.
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cache-warm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # As in release.yml.
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+
+jobs:
+  # The Windows and macOS clippy and test gate: run on the default branch, it saves their caches.
+  gate:
+    uses: ./.github/workflows/ci.yml
+    with:
+      all-platforms: true
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config squashfs-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-linux
+      - run: cargo build --release --locked -p ironteams --bin ironteams
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+      - run: cargo build --release --locked -p ironteams --bin ironteams
+
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-macos-${{ matrix.arch }}
+      - run: cargo build --release --locked -p ironteams --bin ironteams
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
