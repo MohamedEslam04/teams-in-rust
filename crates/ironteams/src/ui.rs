@@ -99,6 +99,18 @@ fn chat_row(c: ChatData) -> ChatRow {
     }
 }
 
+/// The row to keep in place when older messages land above it: the row that held the top of the
+/// view (`top`, tracked by the list as the user scrolls) and `true` to keep the user's offset in
+/// it, else the row that was first (`fallback`, `false`).
+fn anchor_row(top: &str, ids: &[String], fallback: usize) -> (usize, bool) {
+    if !top.is_empty()
+        && let Some(i) = ids.iter().position(|id| id == top)
+    {
+        return (i, true);
+    }
+    (fallback, false)
+}
+
 fn styled(markdown: &str) -> StyledText {
     StyledText::from_markdown(markdown).unwrap_or_else(|_| StyledText::from_plain_text(markdown))
 }
@@ -648,6 +660,14 @@ impl UiHandle {
     /// scroll position is kept.
     pub fn messages(&self, msgs: Vec<MsgData>, scroll: Scroll) {
         self.run(move |w| {
+            // Where the user is in the list now, before the rows change.
+            let top_id = w.get_msg_top_id().to_string();
+            let top_off = w.get_msg_top_off();
+            let ids: Vec<String> = if matches!(scroll, Scroll::Anchor(_)) {
+                msgs.iter().map(|m| m.id.clone()).collect()
+            } else {
+                Vec::new()
+            };
             MESSAGES.with(|cell| {
                 let mut cell = cell.borrow_mut();
                 let m = cell.get_or_insert_with(|| {
@@ -733,7 +753,12 @@ impl UiHandle {
                     w.set_divider_tick(w.get_divider_tick() + 1);
                 }
                 Scroll::Anchor(i) => {
-                    w.set_anchor_index(i as i32);
+                    // The row the user had at the top of the view stays there; when it is not
+                    // in the list, the row that was first does.
+                    let (row, keep_offset) = anchor_row(&top_id, &ids, i);
+                    let off = if keep_offset { top_off } else { 0.0 };
+                    w.set_anchor_index(row as i32);
+                    w.set_anchor_off(off);
                     w.set_anchor_tick(w.get_anchor_tick() + 1);
                 }
                 Scroll::Bottom => {
@@ -789,5 +814,27 @@ mod tests {
         let initials: Vec<String> = r.iter().map(|x| x.initials.to_string()).collect();
         assert_eq!(initials, ["RO", "RT", "RT", "RF", "RF"]);
         assert!(readers(&[]).is_empty(), "a 1:1 chat names nobody");
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::anchor_row;
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_row_at_the_top_of_the_view_is_kept_with_its_offset() {
+        let rows = ids(&["o1", "o2", "a", "b", "c"]);
+        assert_eq!(anchor_row("b", &rows, 2), (3, true));
+    }
+
+    #[test]
+    fn without_a_tracked_row_the_first_row_is_kept() {
+        let rows = ids(&["o1", "o2", "a", "b"]);
+        assert_eq!(anchor_row("", &rows, 2), (2, false));
+        assert_eq!(anchor_row("gone", &rows, 2), (2, false));
     }
 }

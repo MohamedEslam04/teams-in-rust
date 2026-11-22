@@ -188,3 +188,70 @@ fn another_conversations_header_clears_the_previous_messages() {
     assert_eq!(h.app.get_current_id(), "19:tech@thread.tacv2");
     assert_eq!(h.app.get_messages().row_count(), 0);
 }
+
+fn scroll_up(app: &AppWindow, by: f32) {
+    let l = list(app);
+    let (p, s) = (l.absolute_position(), l.size());
+    app.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: LogicalPosition::new(p.x + s.width / 2., p.y + s.height / 2.),
+        delta_x: 0.,
+        delta_y: by,
+    });
+}
+
+fn row_y(app: &AppWindow, text: &str) -> f32 {
+    find_label(app, text)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("the row {text:?} is not drawn"))
+        .absolute_position()
+        .y
+}
+
+/// Older rows land above the rows shown, as the engine inserts them, and the list is told which
+/// row to put back (`anchor-index`) and how far above the view's top it sat (`anchor-off`).
+fn land_older(app: &AppWindow, count: usize, anchor: usize, off: f32) {
+    let model = app.get_messages();
+    let rows = model
+        .as_any()
+        .downcast_ref::<VecModel<Msg>>()
+        .expect("the message model is a VecModel");
+    for i in (0..count).rev() {
+        rows.insert(0, msg(&format!("o{i}"), &format!("older {i}"), false));
+    }
+    app.set_anchor_index(anchor as i32);
+    app.set_anchor_off(off);
+    app.set_anchor_tick(app.get_anchor_tick() + 1);
+}
+
+/// The row the user was looking at stays where it was when an older page lands above it, flush
+/// with the view's top or part way scrolled.
+#[test]
+fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
+    let app = app_with_messages(many_short(60));
+    app.set_scroll_tick(app.get_scroll_tick() + 1);
+    settle(&app);
+    scroll_up(&app, 100_000.);
+    settle(&app);
+    assert_eq!(
+        app.get_msg_top_id(),
+        "m0",
+        "the list tracks the row at the view's top"
+    );
+    let before = row_y(&app, "message 0");
+    land_older(&app, 40, 40, 0.);
+    settle(&app);
+    let after = row_y(&app, "message 0");
+    assert!(
+        (after - before).abs() <= 2.,
+        "the first row moved from {before} to {after}"
+    );
+    // Part way into the row: its top sits 30px above the view's top.
+    land_older(&app, 20, 60, 30.);
+    settle(&app);
+    let shifted = row_y(&app, "message 0");
+    assert!(
+        (shifted - (before - 30.)).abs() <= 2.,
+        "the row should keep the user's 30px offset: {before} -> {shifted}"
+    );
+}

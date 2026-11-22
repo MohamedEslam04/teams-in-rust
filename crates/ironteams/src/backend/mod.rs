@@ -278,6 +278,9 @@ struct View {
     at_bottom: bool,
     /// The first message shown before an older page was added, for the list to keep in place.
     older_anchor: Option<String>,
+    /// The server had nothing older than the oldest message shown: scrolling near the top asks
+    /// for no more pages (reset when another conversation or thread opens).
+    older_done: bool,
     /// New messages that arrived while scrolled up; shown on the jump button.
     new_count: usize,
     /// The delivery option of the next message: "Mark as important" or "Set delivery options"
@@ -818,6 +821,7 @@ impl Engine {
                     let mut v = self.view.lock().unwrap();
                     v.thread_root = Some(root.clone());
                     v.limit = PAGE;
+                    v.older_done = false;
                     v.at_bottom = true;
                 }
                 self.mark(|d| {

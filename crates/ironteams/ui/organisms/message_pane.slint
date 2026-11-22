@@ -12,6 +12,7 @@ import { Theme } from "../tokens/theme.slint";
 
 export component MessagePane inherits Rectangle {
     in property <int> anchor-index;
+    in property <length> anchor-off;
     in property <int> anchor-tick;
     in-out property <bool> at-bottom;
     callback at-bottom-changed(bool);
@@ -54,6 +55,10 @@ export component MessagePane inherits Rectangle {
     in property <bool> select-mode;
     in property <string> thread-root;
     callback toggle-select(string);
+    // The row at the top of the view and how far above the view's top its own top is: older
+    // messages that land above are put back so this row stays where it was.
+    in-out property <string> top-id;
+    in-out property <length> top-off;
     in property <bool> unavailable;
     in property <string> unavailable-text;
     vertical-stretch: 1;
@@ -144,7 +149,8 @@ export component MessagePane inherits Rectangle {
             if self.content-height == self.seen-height {
                 self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
             }
-            if self.content-y > -40px && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
+            // From a screen and a half away, so the older page is in before the top is reached.
+            if self.content-y > -(self.visible-height * 1.5) && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
                 // Until the older page lands: one request per arrival at the top.
                 self.aligning = true;
                 root.load-older();
@@ -156,6 +162,22 @@ export component MessagePane inherits Rectangle {
                 pane-top: msg-list.absolute-position.y;
                 in-channel: root.current-is-channel && root.thread-root == "";
                 select-mode: root.select-mode;
+                // How far the view's top is below this row's top; the row that holds the view's
+                // top is the one older messages must not push away.
+                property <length> top-gap: -msg-list.content-y - self.y;
+                property <bool> holds-top: self.top-gap >= 0px && self.top-gap < self.height;
+                changed top-gap => {
+                    if self.holds-top {
+                        root.top-id = m.id;
+                        root.top-off = self.top-gap;
+                    }
+                }
+                changed holds-top => {
+                    if self.holds-top {
+                        root.top-id = m.id;
+                        root.top-off = self.top-gap;
+                    }
+                }
                 changed y => {
                     if msg-list.aligning && !msg-list.anchoring && (m.new-above || m.flash) {
                         msg-list.content-y = min(0px, 24px - self.y);
@@ -266,6 +288,10 @@ export component MessagePane inherits Rectangle {
             msg-list.anchoring = false;
             msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
             msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+            // The row's top is at the view's top: move down to where the user was inside it.
+            if root.anchor-off > 0px {
+                msg-list.content-y = min(0px, msg-list.content-y - root.anchor-off);
+            }
         }
     }
     // The user stopped scrolling.
