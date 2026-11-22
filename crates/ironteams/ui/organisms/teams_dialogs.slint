@@ -4,7 +4,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TPerson, TeamsStore, TeamsActions } from "../stores/teams_store.slint";
-import { TButton, TField, TCheck, TChoice, TFrame } from "../molecules/teams_widgets.slint";
+import { TField, TCheck, TChoice, TFrame } from "../molecules/teams_widgets.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component ButtonRow inherits HorizontalLayout {
     spacing: 8px;
@@ -58,8 +59,8 @@ component ConfirmDialog inherits TFrame {
         Text { text: TeamsStore.confirm-text; color: Theme.fg; font-size: 14px * Theme.font-scale; wrap: word-wrap; accessible-role: text; }
         Rectangle { vertical-stretch: 1; }
         ButtonRow {
-            TButton { label: "Cancel"; clicked => { TeamsStore.dialog = ""; } }
-            TButton {
+            Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsStore.dialog = ""; } }
+            Button { variant: ButtonVariant.dialog;
                 label: "Yes";
                 danger: true;
                 clicked => {
@@ -84,8 +85,8 @@ component JoinDialog inherits TFrame {
         if TeamsStore.join-info != "": Text { text: TeamsStore.join-info; color: #7fd49a; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: TeamsStore.join-info; }
         Rectangle { vertical-stretch: 1; }
         ButtonRow {
-            TButton { label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
-            TButton { label: "Join team"; primary: true; enabled: code.text != ""; clicked => { TeamsStore.command("join-code", code.text); } }
+            Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
+            Button { variant: ButtonVariant.dialog; label: "Join team"; primary: true; enabled: code.text != ""; clicked => { TeamsStore.command("join-code", code.text); } }
         }
     }
 }
@@ -143,8 +144,8 @@ component NewChannelDialog inherits TFrame {
         if root.kind == "standard": Rectangle { vertical-stretch: 1; }
         ButtonRow {
             if TeamsStore.busy: Text { text: "Creating…"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-            TButton { label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
-            TButton {
+            Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
+            Button { variant: ButtonVariant.dialog;
                 label: "Create";
                 primary: true;
                 enabled: cname.text != "" && !TeamsStore.busy;
@@ -169,8 +170,8 @@ component EditChannelDialog inherits TFrame {
         cdesc := TField { label: "Description"; placeholder: "Leave empty to keep the description"; }
         Rectangle { vertical-stretch: 1; }
         ButtonRow {
-            TButton { label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
-            TButton {
+            Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
+            Button { variant: ButtonVariant.dialog;
                 label: "Save";
                 primary: true;
                 enabled: cname.text != "";
@@ -212,7 +213,7 @@ component ModerationDialog inherits TFrame {
         TCheck { label: "Allow bots to post"; checked: TeamsStore.allow-bots; toggled(on) => { TeamsStore.command("mod-set", TeamsActions.j2("bots", on ? "1" : "0")); } }
         TCheck { label: "Allow connectors to post"; checked: TeamsStore.allow-connectors; toggled(on) => { TeamsStore.command("mod-set", TeamsActions.j2("connectors", on ? "1" : "0")); } }
         Rectangle { vertical-stretch: 1; }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -241,7 +242,7 @@ component MembersDialog inherits TFrame {
                     alignment: start;
                     for p in TeamsStore.candidates: PersonLine {
                         p: p;
-                        TButton { label: "Add"; y: 3px; clicked => { TeamsStore.command("member-add", TeamsActions.j2(p.mri, "member")); } }
+                        Button { variant: ButtonVariant.dialog; label: "Add"; y: 3px; clicked => { TeamsStore.command("member-add", TeamsActions.j2(p.mri, "member")); } }
                     }
                 }
             }
@@ -254,12 +255,12 @@ component MembersDialog inherits TFrame {
                 for p in TeamsStore.people: PersonLine {
                     p: p;
                     Text { text: p.role; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    if !p.me && TeamsStore.d-owner && p.role != "Guest": TButton { label: p.role == "Owner" ? "Make member" : "Make owner"; y: 3px; clicked => { TeamsStore.command("member-role", TeamsActions.j2(p.mri, p.role == "Owner" ? "member" : "owner")); } }
-                    if !p.me && (TeamsStore.d-owner || TeamsStore.d-channel != ""): TButton { label: "Remove"; y: 3px; clicked => { TeamsStore.command("member-remove", p.mri); } }
+                    if !p.me && TeamsStore.d-owner && p.role != "Guest": Button { variant: ButtonVariant.dialog; label: p.role == "Owner" ? "Make member" : "Make owner"; y: 3px; clicked => { TeamsStore.command("member-role", TeamsActions.j2(p.mri, p.role == "Owner" ? "member" : "owner")); } }
+                    if !p.me && (TeamsStore.d-owner || TeamsStore.d-channel != ""): Button { variant: ButtonVariant.dialog; label: "Remove"; y: 3px; clicked => { TeamsStore.command("member-remove", p.mri); } }
                 }
             }
         }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -276,7 +277,7 @@ component TagsDialog inherits TFrame {
             spacing: 8px;
             height: 58px;
             tname := TField { label: "New tag"; placeholder: "Tag name, for example Designers"; horizontal-stretch: 1; accepted(n) => { TeamsStore.command("tag-create", TeamsActions.j2(n, "")); } }
-            TButton { label: "Create tag"; primary: true; y: 22px; enabled: tname.text != ""; clicked => { TeamsStore.command("tag-create", TeamsActions.j2(tname.text, "")); } }
+            Button { variant: ButtonVariant.dialog; label: "Create tag"; primary: true; y: 22px; enabled: tname.text != ""; clicked => { TeamsStore.command("tag-create", TeamsActions.j2(tname.text, "")); } }
         }
         Text { text: TeamsStore.tags.length == 0 ? "No tags yet. Create one to @mention a group of people." : "Tags (select one to see and change its people)"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; accessible-role: text; }
         ScrollView {
@@ -299,7 +300,7 @@ component TagsDialog inherits TFrame {
                         spacing: 8px;
                         Text { text: "@" + t.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                         Text { text: t.count + (t.count == 1 ? " person" : " people"); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        TButton { label: "Delete"; y: 5px; clicked => { TeamsActions.confirm("Delete the tag @" + t.name + "?", "tag-delete", t.id); } }
+                        Button { variant: ButtonVariant.dialog; label: "Delete"; y: 5px; clicked => { TeamsActions.confirm("Delete the tag @" + t.name + "?", "tag-delete", t.id); } }
                     }
                 }
             }
@@ -313,7 +314,7 @@ component TagsDialog inherits TFrame {
                 ScrollView {
                     VerticalLayout {
                         alignment: start;
-                        for p in TeamsStore.candidates: PersonLine { p: p; TButton { label: "Add"; y: 3px; clicked => { TeamsStore.command("tag-add", p.mri); } } }
+                        for p in TeamsStore.candidates: PersonLine { p: p; Button { variant: ButtonVariant.dialog; label: "Add"; y: 3px; clicked => { TeamsStore.command("tag-add", p.mri); } } }
                     }
                 }
             }
@@ -321,11 +322,11 @@ component TagsDialog inherits TFrame {
                 vertical-stretch: 1;
                 VerticalLayout {
                     alignment: start;
-                    for p in TeamsStore.tag-people: PersonLine { p: p; TButton { label: "Remove"; y: 3px; clicked => { TeamsStore.command("tag-remove", p.mri); } } }
+                    for p in TeamsStore.tag-people: PersonLine { p: p; Button { variant: ButtonVariant.dialog; label: "Remove"; y: 3px; clicked => { TeamsStore.command("tag-remove", p.mri); } } }
                 }
             }
         }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -342,7 +343,7 @@ component EmailDialog inherits TFrame {
         if TeamsStore.email == "": VerticalLayout {
             spacing: 10px;
             Text { text: "This channel has no email address. People can email a channel to post in it."; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
-            TButton { label: "Get email address"; primary: true; clicked => { TeamsStore.command("email-create", ""); } }
+            Button { variant: ButtonVariant.dialog; label: "Get email address"; primary: true; clicked => { TeamsStore.command("email-create", ""); } }
         }
         if TeamsStore.email != "": VerticalLayout {
             spacing: 10px;
@@ -357,8 +358,8 @@ component EmailDialog inherits TFrame {
             HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                TButton { label: "Copy address"; clicked => { TeamsStore.command("email-copy", ""); } }
-                TButton { label: "Remove email address"; danger: true; clicked => { TeamsStore.command("email-remove", ""); } }
+                Button { variant: ButtonVariant.dialog; label: "Copy address"; clicked => { TeamsStore.command("email-copy", ""); } }
+                Button { variant: ButtonVariant.dialog; label: "Remove email address"; danger: true; clicked => { TeamsStore.command("email-remove", ""); } }
             }
             Text { text: "Who can send email to it"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
             TChoice {
@@ -372,11 +373,11 @@ component EmailDialog inherits TFrame {
             if root.domains || TeamsStore.email-senders == "Domains": HorizontalLayout {
                 spacing: 8px;
                 domains := TField { label: "Domains, separated by commas"; placeholder: "example.com, example.org"; horizontal-stretch: 1; }
-                TButton { label: "Save"; y: 22px; clicked => { TeamsStore.command("email-senders", TeamsActions.j2("Domains", domains.text)); } }
+                Button { variant: ButtonVariant.dialog; label: "Save"; y: 22px; clicked => { TeamsStore.command("email-senders", TeamsActions.j2("Domains", domains.text)); } }
             }
         }
         Rectangle { vertical-stretch: 1; }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -402,7 +403,7 @@ component NotifyDialog inherits TFrame {
             toggled(on) => { TeamsStore.command("notify-set", TeamsActions.j2(TeamsStore.notify-level, on ? "1" : "0")); }
         }
         Rectangle { vertical-stretch: 1; }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -433,8 +434,8 @@ component NewTeamDialog inherits TFrame {
         Rectangle { vertical-stretch: 1; }
         ButtonRow {
             if TeamsStore.busy: Text { text: "Creating…"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-            TButton { label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
-            TButton { label: "Create"; primary: true; enabled: tname.text != "" && !TeamsStore.busy; clicked => { TeamsStore.command("team-create", TeamsActions.j3(tname.text, tdesc.text, root.access)); } }
+            Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }
+            Button { variant: ButtonVariant.dialog; label: "Create"; primary: true; enabled: tname.text != "" && !TeamsStore.busy; clicked => { TeamsStore.command("team-create", TeamsActions.j3(tname.text, tdesc.text, root.access)); } }
         }
     }
 }
@@ -458,15 +459,15 @@ component ManageTeamDialog inherits TFrame {
                 tdesc := TField { label: "Description"; initial: TeamsStore.d-desc; }
                 HorizontalLayout {
                     alignment: start;
-                    TButton { label: "Save details"; primary: true; enabled: TeamsStore.d-owner && tname.text != ""; clicked => { TeamsStore.command("team-edit", TeamsActions.j2(tname.text, tdesc.text)); } }
+                    Button { variant: ButtonVariant.dialog; label: "Save details"; primary: true; enabled: TeamsStore.d-owner && tname.text != ""; clicked => { TeamsStore.command("team-edit", TeamsActions.j2(tname.text, tdesc.text)); } }
                 }
                 Text { text: "Team code"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; }
                 Text { text: TeamsStore.team-code == "" ? "No code is set. People can only join when an owner adds them." : "Code: " + TeamsStore.team-code; color: Theme.fg; font-size: 13px * Theme.font-scale; accessible-role: text; accessible-label: TeamsStore.team-code == "" ? "No team code" : "Team code " + TeamsStore.team-code; }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    TButton { label: TeamsStore.team-code == "" ? "Generate code" : "Reset code"; enabled: TeamsStore.d-owner; clicked => { TeamsStore.command("team-code", "reset"); } }
-                    if TeamsStore.team-code != "": TButton { label: "Remove code"; enabled: TeamsStore.d-owner; clicked => { TeamsStore.command("team-code", "remove"); } }
+                    Button { variant: ButtonVariant.dialog; label: TeamsStore.team-code == "" ? "Generate code" : "Reset code"; enabled: TeamsStore.d-owner; clicked => { TeamsStore.command("team-code", "reset"); } }
+                    if TeamsStore.team-code != "": Button { variant: ButtonVariant.dialog; label: "Remove code"; enabled: TeamsStore.d-owner; clicked => { TeamsStore.command("team-code", "remove"); } }
                 }
                 Text { text: "Member permissions"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; font-weight: 600; }
                 for s in TeamsStore.user-settings: TCheck {
@@ -486,14 +487,14 @@ component ManageTeamDialog inherits TFrame {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    TButton { label: "Members"; clicked => { TeamsActions.open-dialog("members", TeamsStore.d-team, ""); } }
-                    TButton { label: "Tags"; clicked => { TeamsActions.open-dialog("tags", TeamsStore.d-team, ""); } }
-                    TButton { label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", TeamsStore.d-team, ""); } }
-                    TButton { label: "Copy link to team"; clicked => { TeamsStore.command("team-link", TeamsStore.d-team); } }
+                    Button { variant: ButtonVariant.dialog; label: "Members"; clicked => { TeamsActions.open-dialog("members", TeamsStore.d-team, ""); } }
+                    Button { variant: ButtonVariant.dialog; label: "Tags"; clicked => { TeamsActions.open-dialog("tags", TeamsStore.d-team, ""); } }
+                    Button { variant: ButtonVariant.dialog; label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", TeamsStore.d-team, ""); } }
+                    Button { variant: ButtonVariant.dialog; label: "Copy link to team"; clicked => { TeamsStore.command("team-link", TeamsStore.d-team); } }
                 }
             }
         }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 
@@ -524,12 +525,12 @@ component DeletedDialog inherits TFrame {
                             Text { text: d.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
                             Text { text: d.when; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                         }
-                        TButton { label: "Restore"; y: 6px; clicked => { TeamsStore.command("channel-restore", TeamsActions.j2(TeamsStore.d-team, d.id)); } }
+                        Button { variant: ButtonVariant.dialog; label: "Restore"; y: 6px; clicked => { TeamsStore.command("channel-restore", TeamsActions.j2(TeamsStore.d-team, d.id)); } }
                     }
                 }
             }
         }
-        ButtonRow { TButton { label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
+        ButtonRow { Button { variant: ButtonVariant.dialog; label: "Done"; primary: true; clicked => { TeamsActions.close-dialog(); } } }
     }
 }
 

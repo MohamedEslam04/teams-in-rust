@@ -5,11 +5,12 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalButton, CalCard, CalCheck, CalMenuItem, CalScrim } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalCheck, CalMenuItem, CalScrim } from "../molecules/calendar_widgets.slint";
 import { EventPeek, EventFull } from "../organisms/calendar_event.slint";
 import { EventForm } from "../organisms/calendar_form.slint";
 import { Skeleton } from "../tokens/motion.slint";
 import { AddCalendarMenu, FiltersPanel, MeetLinkDialog, MoreMenu, NewMenu, PromptDialog, RangePicker, SettingsDialog, ShareDialog, ViewsPanel, WorkLocationMenu } from "../organisms/calendar_dialogs.slint";
+import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 
 export { CalStore, CalForm, CalDay, CalBlock, CalAllDay, CalMonthItem, CalMonthCell, CalMiniCell, CalFilterOpt, CalCalendarRow, CalSavedView, CalSettingsData, CalPerm, CalPeek, CalAttendeeRow, CalAttachmentRow, CalProposalRow, CalZone, CalDetail, CalSchedRow, CalSuggest, CalRoomList, CalRoom } from "../stores/calendar_store.slint";
 
@@ -556,7 +557,7 @@ component CalendarsList inherits VerticalLayout {
     HorizontalLayout {
         height: 26px;
         Text { text: "Calendars"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
-        CalButton { label: "Show all"; height: 22px; clicked => { CalStore.command("calendar-all", "1"); } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "Show all"; height: 22px; clicked => { CalStore.command("calendar-all", "1"); } }
     }
     for c in CalStore.calendars: Rectangle {
         height: c.header ? 22px : 26px;
@@ -569,7 +570,7 @@ component CalendarsList inherits VerticalLayout {
             toggled(on) => { CalStore.command("calendar-toggle", c.id); }
         }
     }
-    CalButton { label: "Add calendar ▾"; active: CalStore.popup == "add-calendar"; clicked => { CalStore.popup = CalStore.popup == "add-calendar" ? "" : "add-calendar"; } }
+    FlexButton { variant: ButtonVariant.toolbar; label: "Add calendar ▾"; active: CalStore.popup == "add-calendar"; clicked => { CalStore.popup = CalStore.popup == "add-calendar" ? "" : "add-calendar"; } }
 }
 
 export component CalendarView inherits Rectangle {
@@ -609,11 +610,11 @@ export component CalendarView inherits Rectangle {
                         padding-left: 12px;
                         padding-right: 12px;
                         spacing: 6px;
-                        CalButton { label: "New event ▾"; primary: true; height: 32px; active: CalStore.popup == "new"; clicked => { CalStore.popup = CalStore.popup == "new" ? "" : "new"; } }
+                        FlexButton { variant: ButtonVariant.toolbar; label: "New event ▾"; primary: true; height: 32px; active: CalStore.popup == "new"; clicked => { CalStore.popup = CalStore.popup == "new" ? "" : "new"; } }
                         HorizontalLayout {
                             spacing: 6px;
-                            CalButton { label: "Meet now"; horizontal-stretch: 1; clicked => { CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-                            CalButton { label: "Join with an ID"; horizontal-stretch: 1; clicked => { CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
+                            FlexButton { variant: ButtonVariant.toolbar; label: "Meet now"; horizontal-stretch: 1; clicked => { CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
+                            FlexButton { variant: ButtonVariant.toolbar; label: "Join with an ID"; horizontal-stretch: 1; clicked => { CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
                         }
                     }
                     MiniMonth { }
@@ -656,7 +657,7 @@ export component CalendarView inherits Rectangle {
                     padding-right: 16px;
                     spacing: 8px;
                     if root.wide: IconButton { icon: @image-url("../icons/columns.svg"); y: 8px; tooltip: root.pane-hidden ? "Show the calendar pane" : "Hide the calendar pane"; active: root.pane-hidden; clicked => { root.pane-hidden = !root.pane-hidden; } }
-                    if root.narrow || root.pane-off: CalButton { label: "New ▾"; primary: true; y: 10px; accessible-label: "New event"; active: CalStore.popup == "new"; clicked => { CalStore.popup = CalStore.popup == "new" ? "" : "new"; } }
+                    if root.narrow || root.pane-off: FlexButton { variant: ButtonVariant.toolbar; label: "New ▾"; primary: true; y: 10px; accessible-label: "New event"; active: CalStore.popup == "new"; clicked => { CalStore.popup = CalStore.popup == "new" ? "" : "new"; } }
                     Pill { label: "Today"; y: 11px; clicked => { CalStore.command("today", ""); } }
                     IconButton { icon: @image-url("../icons/chevron-left.svg"); y: 8px; tooltip: "Previous"; clicked => { CalStore.command("prev", ""); } }
                     IconButton { icon: @image-url("../icons/chevron-right.svg"); y: 8px; tooltip: "Next"; clicked => { CalStore.command("next", ""); } }
@@ -676,7 +677,7 @@ export component CalendarView inherits Rectangle {
                         TouchArea { mouse-cursor: pointer; clicked => { CalStore.range-start = ""; CalStore.popup = CalStore.popup == "range" ? "" : "range"; } }
                     }
                     if CalStore.status != "": Text { text: CalStore.status; color: #ffb900; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-                    CalButton { label: CalStore.filtered ? "Filter ●" : "Filter"; y: 10px; active: CalStore.popup == "filters" || CalStore.filtered; clicked => { CalStore.popup = CalStore.popup == "filters" ? "" : "filters"; } }
+                    FlexButton { variant: ButtonVariant.toolbar; label: CalStore.filtered ? "Filter ●" : "Filter"; y: 10px; active: CalStore.popup == "filters" || CalStore.filtered; clicked => { CalStore.popup = CalStore.popup == "filters" ? "" : "filters"; } }
                     if !toolbar.fold: HorizontalLayout {
                         spacing: 8px;
                         for v in root.views: Pill {
@@ -686,16 +687,16 @@ export component CalendarView inherits Rectangle {
                             clicked => { CalStore.command("view", v.key); }
                         }
                     }
-                    if !toolbar.fold: CalButton { label: "Views ▾"; y: 10px; active: CalStore.popup == "views"; clicked => { CalStore.popup = CalStore.popup == "views" ? "" : "views"; } }
-                    if toolbar.fold: CalButton {
+                    if !toolbar.fold: FlexButton { variant: ButtonVariant.toolbar; label: "Views ▾"; y: 10px; active: CalStore.popup == "views"; clicked => { CalStore.popup = CalStore.popup == "views" ? "" : "views"; } }
+                    if toolbar.fold: FlexButton { variant: ButtonVariant.toolbar;
                         label: root.view-label + " ▾";
                         accessible-label: "View: " + root.view-label;
                         y: 10px;
                         active: CalStore.popup == "view-pick";
                         clicked => { CalStore.popup = CalStore.popup == "view-pick" ? "" : "view-pick"; }
                     }
-                    if root.wide: CalButton { label: "Meet now ▾"; accessible-label: "Meet now menu"; y: 10px; active: CalStore.popup == "meet"; clicked => { CalStore.popup = CalStore.popup == "meet" ? "" : "meet"; } }
-                    CalButton { label: "⋯"; y: 10px; preferred-width: 36px; min-width: 36px; active: CalStore.popup == "more"; clicked => { CalStore.popup = CalStore.popup == "more" ? "" : "more"; } }
+                    if root.wide: FlexButton { variant: ButtonVariant.toolbar; label: "Meet now ▾"; accessible-label: "Meet now menu"; y: 10px; active: CalStore.popup == "meet"; clicked => { CalStore.popup = CalStore.popup == "meet" ? "" : "meet"; } }
+                    FlexButton { variant: ButtonVariant.toolbar; label: "⋯"; y: 10px; preferred-width: 36px; min-width: 36px; active: CalStore.popup == "more"; clicked => { CalStore.popup = CalStore.popup == "more" ? "" : "more"; } }
                 }
                 Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
             }

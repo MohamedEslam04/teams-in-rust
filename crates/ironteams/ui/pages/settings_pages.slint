@@ -4,9 +4,10 @@
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SButton, SChoice, SChoiceRow, SField, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
+import { SChoice, SChoiceRow, SField, SPersonRow, SRadio, SSection, SSwitch } from "../molecules/settings_widgets.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component Para inherits Text {
     color: Theme.fg-muted;
@@ -118,7 +119,7 @@ export component GeneralPage inherits VerticalLayout {
     SSection {
         title: @tr("Out of office");
         Para { text: @tr("Automatic replies with a start, an end and a message are an Outlook mailbox setting. IronTeams cannot read or schedule them yet: set them in Teams or Outlook."); }
-        SButton { label: @tr("Schedule"); enabled: false; clicked => { } }
+        Button { variant: ButtonVariant.settings; label: @tr("Schedule"); enabled: false; clicked => { } }
     }
     SSection {
         title: @tr("Keyboard");
@@ -183,7 +184,7 @@ export component AccountsPage inherits VerticalLayout {
     if SettingsStore.restart-needed: SSection {
         title: @tr("Restart needed");
         hint: @tr("The change is saved. IronTeams uses it after a restart.");
-        SButton { label: @tr("Restart IronTeams"); primary: true; clicked => { SettingsStore.command("restart", ""); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Restart IronTeams"); primary: true; clicked => { SettingsStore.command("restart", ""); } }
     }
     SSection {
         title: @tr("Accounts");
@@ -203,7 +204,7 @@ export component AccountsPage inherits VerticalLayout {
             label: @tr("Name for the new account");
             placeholder: "work";
         }
-        SButton {
+        Button { variant: ButtonVariant.settings;
             label: @tr("Add account");
             clicked => { SettingsStore.command("add-account", new-account.text); }
         }
@@ -222,8 +223,8 @@ export component AccountsPage inherits VerticalLayout {
             HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                SButton { label: @tr("Cancel removal"); clicked => { SettingsStore.confirm-remove = ""; } }
-                SButton { label: @tr("Yes, remove the account"); danger: true; clicked => { SettingsStore.command("remove-account", SettingsStore.confirm-remove); SettingsStore.confirm-remove = ""; } }
+                Button { variant: ButtonVariant.settings; label: @tr("Cancel removal"); clicked => { SettingsStore.confirm-remove = ""; } }
+                Button { variant: ButtonVariant.settings; label: @tr("Yes, remove the account"); danger: true; clicked => { SettingsStore.command("remove-account", SettingsStore.confirm-remove); SettingsStore.confirm-remove = ""; } }
             }
         }
     }
@@ -242,7 +243,7 @@ export component AccountsPage inherits VerticalLayout {
     SSection {
         title: @tr("License");
         hint: @tr("Asks Microsoft for your sign-in and license details again, then restarts IronTeams. Use it after an admin changed your license or your organization's settings.");
-        SButton { label: @tr("Refresh license and restart"); clicked => { SettingsStore.command("refresh-license", ""); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Refresh license and restart"); clicked => { SettingsStore.command("refresh-license", ""); } }
     }
     if SettingsStore.accounts-status != "": Para { text: SettingsStore.accounts-status; }
 }
@@ -341,7 +342,7 @@ component KeywordAdd inherits HorizontalLayout {
             horizontal-alignment: Theme.start-align;
         }
     }
-    SButton { label: @tr("Add"); clicked => { root.add(kw.text); kw.text = ""; } }
+    Button { variant: ButtonVariant.settings; label: @tr("Add"); clicked => { root.add(kw.text); kw.text = ""; } }
 }
 
 export component NotificationsPage inherits VerticalLayout {
@@ -365,7 +366,7 @@ export component NotificationsPage inherits VerticalLayout {
         if SettingsStore.pause-custom-open: VerticalLayout {
             spacing: 6px;
             pause-at := SField { label: @tr("Pause until"); placeholder: "2026-12-31 17:30"; }
-            SButton {
+            Button { variant: ButtonVariant.settings;
                 label: @tr("Pause notifications until then");
                 clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
             }
@@ -382,7 +383,7 @@ export component NotificationsPage inherits VerticalLayout {
             on: SettingsStore.banner-actions;
             toggled(on) => { SettingsStore.command("banner-actions", on ? "1" : "0"); }
         }
-        SButton { label: @tr("Test notification"); clicked => { SettingsStore.command("test-notification", ""); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Test notification"); clicked => { SettingsStore.command("test-notification", ""); } }
     }
     if SettingsStore.notify-status != "": Para { text: SettingsStore.notify-status; }
     SSection {
@@ -469,8 +470,8 @@ export component NotificationsPage inherits VerticalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            SButton { label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
-            SButton { label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
         }
     }
     for n in SettingsStore.notify: VerticalLayout {
@@ -548,7 +549,7 @@ export component AppearancePage inherits VerticalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            SButton { label: @tr("Smaller font"); clicked => { SettingsStore.command("font-step", "-1"); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Smaller font"); clicked => { SettingsStore.command("font-step", "-1"); } }
             Rectangle {
                 width: 70px;
                 accessible-role: text;
@@ -556,8 +557,8 @@ export component AppearancePage inherits VerticalLayout {
                 accessible-value: Math.round(SettingsStore.font-scale * 100) + "%";
                 Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
             }
-            SButton { label: @tr("Larger font"); clicked => { SettingsStore.command("font-step", "1"); } }
-            SButton { label: @tr("Reset font size"); clicked => { SettingsStore.command("font-scale", "1"); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Larger font"); clicked => { SettingsStore.command("font-step", "1"); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Reset font size"); clicked => { SettingsStore.command("font-scale", "1"); } }
         }
         Text { text: "Preview: the quick brown fox. نص تجريبي."; color: Theme.fg; font-size: Theme.font-body; }
     }
@@ -616,7 +617,7 @@ export component DevicesPage inherits VerticalLayout {
         title: @tr("Speaker");
         SRadio { group: @tr("Speaker"); label: @tr("System default"); checked: SettingsStore.speaker == ""; picked => { SettingsStore.command("speaker", ""); } }
         for d in SettingsStore.speakers: SRadio { group: @tr("Speaker"); label: d.name; detail: d.id; checked: SettingsStore.speaker == d.id; picked => { SettingsStore.command("speaker", d.id); } }
-        SButton { label: @tr("Play test sound"); clicked => { SettingsStore.command("test-sound", ""); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Play test sound"); clicked => { SettingsStore.command("test-sound", ""); } }
     }
     SSection {
         title: @tr("Microphone");
@@ -625,7 +626,7 @@ export component DevicesPage inherits VerticalLayout {
         HorizontalLayout {
             spacing: 12px;
             alignment: start;
-            SButton {
+            Button { variant: ButtonVariant.settings;
                 label: SettingsStore.mic-testing ? @tr("Stop microphone test") : @tr("Test microphone");
                 clicked => { SettingsStore.command("mic-test", SettingsStore.mic-testing ? "0" : "1"); }
             }
@@ -701,8 +702,8 @@ export component CallsSettingsPage inherits VerticalLayout {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            SButton { label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
-            SButton { label: @tr("Choose a file…"); clicked => { SettingsStore.command("ringtone-file", ""); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
+            Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("ringtone-file", ""); } }
         }
     }
     SSection {
@@ -733,7 +734,7 @@ export component CallsSettingsPage inherits VerticalLayout {
     SSection {
         title: @tr("Voicemail greeting");
         hint: @tr("Recording or choosing a greeting needs the same Teams service, so it stays in Teams for now.");
-        SButton { label: @tr("Record a greeting"); enabled: false; clicked => { } }
+        Button { variant: ButtonVariant.settings; label: @tr("Record a greeting"); enabled: false; clicked => { } }
     }
 }
 
@@ -792,13 +793,13 @@ export component AboutPage inherits VerticalLayout {
             on: SettingsStore.beta-updates;
             toggled(on) => { SettingsStore.command("beta-updates", on ? "1" : "0"); }
         }
-        SButton {
+        Button { variant: ButtonVariant.settings;
             label: @tr("Check now");
             enabled: !SettingsStore.update-checking && !SettingsStore.update-ready;
             clicked => { SettingsStore.command("check-now", ""); }
         }
         if SettingsStore.update-status != "": Para { text: SettingsStore.update-status; }
-        if SettingsStore.update-ready: SButton {
+        if SettingsStore.update-ready: Button { variant: ButtonVariant.settings;
             label: @tr("Restart to update");
             clicked => { SettingsStore.command("restart-update", ""); }
         }
@@ -811,13 +812,13 @@ export component AboutPage inherits VerticalLayout {
             on: SettingsStore.check-updates;
             toggled(on) => { SettingsStore.command("check-updates", on ? "1" : "0"); }
         }
-        if SettingsStore.check-updates: SButton {
+        if SettingsStore.check-updates: Button { variant: ButtonVariant.settings;
             label: @tr("Check now");
             enabled: !SettingsStore.update-checking;
             clicked => { SettingsStore.command("check-now", ""); }
         }
         if SettingsStore.update-status != "": Para { text: SettingsStore.update-status; }
-        if SettingsStore.update-available: SButton {
+        if SettingsStore.update-available: Button { variant: ButtonVariant.settings;
             label: @tr("View release notes");
             clicked => { SettingsStore.command("release-notes", ""); }
         }
@@ -825,6 +826,6 @@ export component AboutPage inherits VerticalLayout {
     SSection {
         title: @tr("Report a problem");
         Para { text: @tr("Writes a bundle of logs with tokens, ids and addresses removed to your Downloads folder. Nothing is uploaded."); }
-        SButton { label: @tr("Report a problem"); clicked => { SettingsStore.command("report-problem", ""); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Report a problem"); clicked => { SettingsStore.command("report-problem", ""); } }
     }
 }

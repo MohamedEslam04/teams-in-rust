@@ -4,7 +4,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { FlowsStore, AppRow } from "../stores/apps_store.slint";
-import { KitBadge, KitButton, KitNote } from "../molecules/apps_kit.slint";
+import { KitBadge, KitNote } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component FlowRowView inherits Rectangle {
     in property <AppRow> f;
@@ -89,8 +90,8 @@ export component FlowsView inherits Rectangle {
                         overflow: elide;
                         horizontal-stretch: 1;
                     }
-                    KitButton { y: 12px; label: "Run"; primary: true; enabled: FlowsStore.can-run; clicked => { FlowsStore.command("flow-run", FlowsStore.selected-id); } }
-                    KitButton { y: 12px; label: FlowsStore.selected-on ? "Turn off" : "Turn on"; enabled: FlowsStore.can-toggle; clicked => { FlowsStore.command("flow-toggle", FlowsStore.selected-id); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "Run"; primary: true; enabled: FlowsStore.can-run; clicked => { FlowsStore.command("flow-run", FlowsStore.selected-id); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: FlowsStore.selected-on ? "Turn off" : "Turn on"; enabled: FlowsStore.can-toggle; clicked => { FlowsStore.command("flow-toggle", FlowsStore.selected-id); } }
                 }
             }
             KitNote { text: "Run starts a flow with a button trigger once. Turn on or off changes whether a flow runs on its trigger. Building flows is done in Power Automate."; text-size: 12px; }

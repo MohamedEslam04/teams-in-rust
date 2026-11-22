@@ -9,13 +9,14 @@
 import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon } from "../atoms/widgets.slint";
 import { CallStore, CallPerson, CallCaption, CallFound, CallVideo } from "../stores/call_store.slint";
-import { CallButton, CallAction, DeviceSettings } from "../molecules/call_widgets.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { PreJoin } from "../organisms/call_prejoin.slint";
 import { PeoplePanel, MorePanel, PeopleSearch } from "../organisms/call_people.slint";
 import { CaptionStrip } from "../molecules/call_captions.slint";
 import { HeldBar } from "../molecules/call_held.slint";
 import { CallFeedback } from "../organisms/call_feedback.slint";
 import { ReactionMenu, ReactionsOverlay } from "../molecules/call_reactions.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export { CallStore, CallPerson, CallCaption, CallFound, CallVideo }
 
@@ -66,7 +67,7 @@ component TopBar inherits Rectangle {
             overflow: elide;
             horizontal-stretch: 1;
         }
-        CallButton {
+        Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/chat.svg");
             label: "Chat";
             enabled: CallStore.chat-id != "";
@@ -75,7 +76,7 @@ component TopBar inherits Rectangle {
                 : (CallStore.chat-id != "" ? "Open the meeting chat" : "This meeting's chat isn't available here");
             clicked => { root.open-chat(); }
         }
-        if !root.fold: CallButton {
+        if !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/people.svg");
             label: "People";
             checkable: true;
@@ -83,7 +84,7 @@ component TopBar inherits Rectangle {
             clicked => { CallStore.panel = CallStore.panel == "people" ? "" : "people"; }
         }
         // A 1:1 call's Hold and Transfer (Teams has them under "..." > More actions).
-        if CallStore.kind == "direct" && !root.fold: CallButton {
+        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/pause.svg");
             label: CallStore.held ? "Resume" : "Hold";
             checkable: true;
@@ -91,7 +92,7 @@ component TopBar inherits Rectangle {
             tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
             clicked => { CallStore.command("hold", ""); }
         }
-        if CallStore.kind == "direct" && !root.fold: CallButton {
+        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/forward.svg");
             label: "Transfer";
             active: CallStore.menu == "transfer";
@@ -105,14 +106,14 @@ component TopBar inherits Rectangle {
                 }
             }
         }
-        if !root.fold: CallButton {
+        if !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/hand.svg");
             label: CallStore.hand ? "Lower" : "Raise";
             checkable: true;
             active: CallStore.hand;
             clicked => { CallStore.command("hand", ""); }
         }
-        if !root.fold: CallButton {
+        if !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/emoji.svg");
             label: "React";
             enabled: CallStore.phase == "connected";
@@ -123,7 +124,7 @@ component TopBar inherits Rectangle {
                 CallStore.menu = CallStore.menu == "react" ? "" : "react";
             }
         }
-        if !root.fold: CallButton {
+        if !root.fold: Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/grid.svg");
             label: "View";
             tip: "Gallery, speaker or focus on content";
@@ -133,7 +134,7 @@ component TopBar inherits Rectangle {
                 CallStore.menu = CallStore.menu == "view" ? "" : "view";
             }
         }
-        CallButton {
+        Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/more.svg");
             label: "More";
             checkable: true;
@@ -145,7 +146,7 @@ component TopBar inherits Rectangle {
             width: 1px;
             background: Theme.border;
         }
-        CallButton {
+        Button { variant: ButtonVariant.call;
             icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
             label: "Camera";
             checkable: true;
@@ -156,14 +157,14 @@ component TopBar inherits Rectangle {
             clicked => { CallStore.command("camera", ""); }
         }
         HorizontalLayout {
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
                 label: CallStore.muted ? "Unmute" : "Mute";
                 checkable: true;
                 active: CallStore.muted;
                 clicked => { CallStore.command("mute", ""); }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 width: 22px;
                 icon: @image-url("../icons/chevron-down.svg");
                 label: "";
@@ -174,7 +175,7 @@ component TopBar inherits Rectangle {
             }
         }
         HorizontalLayout {
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/screen-share.svg");
                 label: CallStore.sharing ? "Stop sharing" : "Share";
                 checkable: true;
@@ -185,7 +186,7 @@ component TopBar inherits Rectangle {
                 clicked => { CallStore.command("share", ""); }
             }
             // Give control (remote control of our share).
-            if CallStore.remote-control && CallStore.sharing: CallButton {
+            if CallStore.remote-control && CallStore.sharing: Button { variant: ButtonVariant.call;
                 width: 22px;
                 icon: @image-url("../icons/chevron-down.svg");
                 label: "";
@@ -195,7 +196,7 @@ component TopBar inherits Rectangle {
                 clicked => { CallStore.menu = CallStore.menu == "share" ? "" : "share"; }
             }
         }
-        CallButton {
+        Button { variant: ButtonVariant.call;
             icon: @image-url("../icons/call-end.svg");
             label: "Leave";
             danger: true;
@@ -226,7 +227,7 @@ component Banner inherits Rectangle {
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.dismissable: CallAction {
+        if root.dismissable: Button { variant: ButtonVariant.action;
             label: "Dismiss";
             accessible-label: root.dismiss-label;
             y: 1px;
@@ -269,29 +270,29 @@ component ControlBanner inherits Rectangle {
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.mode == "controlled": CallAction {
+        if root.mode == "controlled": Button { variant: ButtonVariant.action;
             label: "Take back";
             primary: true;
             y: 3px;
             clicked => { CallStore.command("control-take-back", ""); }
         }
-        if root.mode == "controlling": CallAction {
+        if root.mode == "controlling": Button { variant: ButtonVariant.action;
             label: "Release";
             y: 3px;
             clicked => { CallStore.command("control-release", ""); }
         }
-        if root.mode == "requested": CallAction {
+        if root.mode == "requested": Button { variant: ButtonVariant.action;
             label: "Cancel request";
             y: 3px;
             clicked => { CallStore.command("control-release", ""); }
         }
-        if root.mode == "incoming": CallAction {
+        if root.mode == "incoming": Button { variant: ButtonVariant.action;
             label: "Allow";
             primary: true;
             y: 3px;
             clicked => { CallStore.command("control-allow", ""); }
         }
-        if root.mode == "incoming": CallAction {
+        if root.mode == "incoming": Button { variant: ButtonVariant.action;
             label: "Deny";
             y: 3px;
             clicked => { CallStore.command("control-deny", ""); }
@@ -600,15 +601,15 @@ component ContentStage inherits Rectangle {
                 horizontal-stretch: 1;
             }
             // Remote control (IRONTEAMS_REMOTE_CONTROL=1): ask the presenter, or give it back.
-            if CallStore.remote-control && CallStore.presenter != "" && CallStore.control-mode == "": CallAction {
+            if CallStore.remote-control && CallStore.presenter != "" && CallStore.control-mode == "": Button { variant: ButtonVariant.action;
                 label: "Request control";
                 clicked => { CallStore.command("control-request", ""); }
             }
-            if CallStore.control-mode == "requested": CallAction {
+            if CallStore.control-mode == "requested": Button { variant: ButtonVariant.action;
                 label: "Cancel request";
                 clicked => { CallStore.command("control-release", ""); }
             }
-            if root.controlling: CallAction {
+            if root.controlling: Button { variant: ButtonVariant.action;
                 label: "Release control";
                 clicked => { CallStore.command("control-release", ""); }
             }
@@ -645,7 +646,7 @@ component SharingBanner inherits Rectangle {
         height: root.height;
         width: max(0px, stop.x - self.x - 8px);
     }
-    stop := CallAction {
+    stop := Button { variant: ButtonVariant.action;
         x: root.width - self.width - 5px;
         y: (root.height - self.height) / 2;
         label: @tr("Stop presenting");
@@ -1104,7 +1105,7 @@ component TransferCard inherits Rectangle {
                 overflow: elide;
                 horizontal-stretch: 1;
             }
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: "Change";
                 clicked => { root.to-id = ""; }
             }
@@ -1112,11 +1113,11 @@ component TransferCard inherits Rectangle {
         HorizontalLayout {
             alignment: end;
             spacing: 8px;
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: "Cancel";
                 clicked => { CallStore.menu = ""; }
             }
-            if root.to-id != "": CallAction {
+            if root.to-id != "": Button { variant: ButtonVariant.action;
                 label: "Transfer now";
                 primary: true;
                 clicked => {
@@ -1265,12 +1266,12 @@ component Ended inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             spacing: 8px;
-            if CallStore.can-rejoin: CallAction {
+            if CallStore.can-rejoin: Button { variant: ButtonVariant.action;
                 label: "Rejoin";
                 primary: true;
                 clicked => { CallStore.command("rejoin", ""); }
             }
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: "Close";
                 clicked => { CallStore.command("close", ""); }
             }

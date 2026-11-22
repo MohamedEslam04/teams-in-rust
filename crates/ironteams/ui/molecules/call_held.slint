@@ -4,34 +4,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
-
-// A small text button of the bar.
-component HeldButton inherits Rectangle {
-    in property <string> label;
-    in property <string> name;
-    in property <bool> primary;
-    callback clicked();
-    height: 26px;
-    width: max(64px, txt.preferred-width + 20px);
-    border-radius: 4px;
-    border-width: root.primary ? 0px : 1px;
-    border-color: Theme.border;
-    background: root.primary ? (touch.has-hover ? Theme.accent : Theme.accent-strong)
-        : touch.has-hover ? Theme.surface-hover : Theme.surface;
-    accessible-role: button;
-    accessible-label: root.name;
-    accessible-action-default => { root.clicked(); }
-    txt := Text {
-        text: root.label;
-        color: root.primary ? #ffffff : Theme.fg;
-        font-size: 12px * Theme.font-scale;
-        font-weight: 600;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export component HeldBar inherits Rectangle {
     // The floating call's slimmer bar.
@@ -67,18 +40,18 @@ export component HeldBar inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            HeldButton {
+            Button { variant: ButtonVariant.solid; base-width: 64px;
                 label: "Resume";
-                name: "Resume the call on hold";
+                accessible-label: "Resume the call on hold";
                 primary: true;
                 clicked => { CallStore.command("resume", ""); }
             }
         }
         VerticalLayout {
             alignment: center;
-            HeldButton {
+            Button { variant: ButtonVariant.solid; base-width: 64px;
                 label: "End";
-                name: "End the call on hold";
+                accessible-label: "End the call on hold";
                 clicked => { CallStore.command("end-held", ""); }
             }
         }

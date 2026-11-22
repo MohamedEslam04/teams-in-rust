@@ -3,6 +3,7 @@
 // are joined with a tab).
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export struct ReminderRow {
     id: string,
@@ -24,22 +25,6 @@ export global RemindStore {
     in property <[SnoozedRow]> snoozed;
     // Names: remind (message id, when), cancel, snooze (chat id, when), unsnooze, refresh.
     callback command(string, string);
-}
-
-// The small buttons of a row of the panel.
-component RowButton inherits Rectangle {
-    in property <string> label;
-    callback clicked();
-    width: label-text.preferred-width + 20px;
-    height: 28px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    label-text := Text { text: root.label; color: Theme.fg; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
 // The Reminders panel: pending reminders with Cancel, and the snoozed chats with Unsnooze.
@@ -70,7 +55,7 @@ export component RemindPanel inherits Rectangle {
         HorizontalLayout {
             spacing: 8px;
             Text { text: @tr("Reminders"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-alignment: Theme.start-align; horizontal-stretch: 1; }
-            RowButton { label: @tr("Close"); clicked => { root.close(); } }
+            Button { variant: ButtonVariant.subtle; label: @tr("Close"); clicked => { root.close(); } }
         }
         ScrollView {
             vertical-stretch: 1;
@@ -96,7 +81,7 @@ export component RemindPanel inherits Rectangle {
                             Text { text: r.time + (r.chat != "" ? "  ·  " + r.chat : ""); color: Theme.accent; font-size: 12px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
                             Text { text: r.text; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
                         }
-                        VerticalLayout { alignment: center; RowButton { label: @tr("Cancel"); clicked => { RemindStore.command("cancel", r.id); } } }
+                        VerticalLayout { alignment: center; Button { variant: ButtonVariant.subtle; label: @tr("Cancel"); clicked => { RemindStore.command("cancel", r.id); } } }
                     }
                 }
                 if RemindStore.snoozed.length > 0: Text {
@@ -119,7 +104,7 @@ export component RemindPanel inherits Rectangle {
                             Text { text: c.title; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
                             Text { text: @tr("Returns {}", c.until); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
                         }
-                        VerticalLayout { alignment: center; RowButton { label: @tr("Unsnooze"); clicked => { RemindStore.command("unsnooze", c.id); } } }
+                        VerticalLayout { alignment: center; Button { variant: ButtonVariant.subtle; label: @tr("Unsnooze"); clicked => { RemindStore.command("unsnooze", c.id); } } }
                     }
                 }
             }

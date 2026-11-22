@@ -1,0 +1,216 @@
+// The one button of the app. Every screen used to draw its own; they are now variants of this
+// atom, each drawn exactly as the copy it replaces (ui/README.md maps the old names).
+// `primary`, `danger` and `active` mean the same on every variant.
+//
+// `Button` is as wide as its label (and icon); `FlexButton` is the same button sized by the
+// layout it sits in (its label width is only the preferred and minimum width), as the calendar's
+// toolbars and forms lay their buttons out.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "widgets.slint";
+
+export enum ButtonVariant {
+    // Dialog buttons of the Teams pages: filled, bold label.
+    dialog,
+    // Settings page: follows `Theme.font-body`, grows with the text.
+    settings,
+    // Calendar toolbars and forms: compact; `active` marks an open menu or the
+    // picked option; `danger` is a red outline.
+    toolbar,
+    // App screens: optional leading icon and trailing chevron, transparent.
+    kit,
+    // OneDrive command bar: like `kit` without the outline.
+    command,
+    // Adaptive card actions: accent outline.
+    accent-outline,
+    // Meeting card actions: small bold label, transparent when not primary.
+    card,
+    // OneDrive dialogs: flat, no outline, bold only when primary.
+    flat,
+    // Immersive Reader toolbar: `active` fills it.
+    toggle,
+    // Reminder rows: small outlined label.
+    subtle,
+    // Call bars: small bold label, filled.
+    solid,
+    // Call screens' text buttons: Join now, Cancel, Rejoin.
+    action,
+    // The call window's top bar: an icon over a label, with a hover tooltip
+    // that also shows on a disabled button to say why.
+    call,
+}
+
+component ButtonBody inherits Rectangle {
+    in property <ButtonVariant> variant: ButtonVariant.dialog;
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> active: false;
+    // `kit` and `command`: a chevron after the label (the button opens a menu).
+    in property <bool> chevron: false;
+    // `call`: the hover tooltip and accessible description.
+    in property <string> tip;
+    // `call`: a toggle (a raised hand, an open panel).
+    in property <bool> checkable: false;
+    // The narrowest the button gets, and the space on each side of the label.
+    in property <length> base-width: root.variant == ButtonVariant.dialog || root.variant == ButtonVariant.settings ? 64px
+        : root.variant == ButtonVariant.flat ? 80px
+        : root.variant == ButtonVariant.toggle ? 40px
+        : root.variant == ButtonVariant.action ? 88px
+        : root.variant == ButtonVariant.call ? 52px
+        : 0px;
+    in property <length> pad: root.variant == ButtonVariant.toolbar || root.variant == ButtonVariant.kit || root.variant == ButtonVariant.card ? 12px
+        : root.variant == ButtonVariant.command || root.variant == ButtonVariant.toggle || root.variant == ButtonVariant.subtle || root.variant == ButtonVariant.solid ? 10px
+        : root.variant == ButtonVariant.call ? 7px
+        : 14px;
+    in property <length> text-size: root.variant == ButtonVariant.settings ? Theme.font-body
+        : root.variant == ButtonVariant.card || root.variant == ButtonVariant.subtle || root.variant == ButtonVariant.solid ? 12px * Theme.font-scale
+        : root.variant == ButtonVariant.call ? 11px * Theme.font-scale
+        : 13px * Theme.font-scale;
+    out property <bool> has-hover: touch.has-hover;
+    callback clicked();
+
+    property <bool> inline-row: root.variant == ButtonVariant.kit || root.variant == ButtonVariant.command;
+    property <bool> stacked: root.variant == ButtonVariant.call;
+    property <bool> has-icon: root.icon.width > 0;
+    property <length> icon-part: root.inline-row && root.has-icon ? 16px + 6px : 0px;
+    property <length> chevron-part: root.inline-row && root.chevron ? 6px + 12px : 0px;
+    property <bool> hover: touch.has-hover;
+    property <bool> hot: touch.has-hover && root.enabled;
+    // The width the label (and icon) asks for.
+    out property <length> natural-width: max(root.base-width, root.pad * 2 + root.icon-part + lbl.preferred-width + root.chevron-part);
+
+    height: root.variant == ButtonVariant.settings ? max(30px, lbl.preferred-height + 14px)
+        : root.variant == ButtonVariant.toolbar || root.variant == ButtonVariant.card || root.variant == ButtonVariant.subtle ? 28px
+        : root.variant == ButtonVariant.accent-outline ? 30px
+        : root.variant == ButtonVariant.flat || root.variant == ButtonVariant.action ? 34px
+        : root.variant == ButtonVariant.solid ? 26px
+        : root.variant == ButtonVariant.call ? 50px
+        : 32px;
+    border-radius: root.stacked ? 6px : 4px;
+    opacity: root.enabled ? 1.0
+        : root.inline-row ? 0.4
+        : root.variant == ButtonVariant.accent-outline || root.variant == ButtonVariant.flat ? 0.5
+        : 1.0;
+    border-width: root.variant == ButtonVariant.dialog || root.variant == ButtonVariant.settings ? (root.primary || root.danger ? 0px : 1px)
+        : root.variant == ButtonVariant.toolbar || root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? 0px : 1px)
+        : root.variant == ButtonVariant.kit ? (root.primary || root.active ? 0px : 1px)
+        : root.variant == ButtonVariant.accent-outline || root.variant == ButtonVariant.toggle || root.variant == ButtonVariant.subtle ? 1px
+        : 0px;
+    border-color: root.variant == ButtonVariant.toolbar ? (root.active ? Theme.accent : (root.danger ? Theme.danger : Theme.border))
+        : root.variant == ButtonVariant.accent-outline ? (root.enabled ? Theme.accent : Theme.border)
+        : Theme.border;
+    background: root.variant == ButtonVariant.dialog ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? (root.hover ? #e0474b : Theme.danger) : (root.hover ? Theme.surface-hover : Theme.surface))
+        : root.variant == ButtonVariant.settings ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? Theme.danger : (root.hover ? Theme.surface-hover : Theme.surface))
+        : root.variant == ButtonVariant.toolbar ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.active ? #3b3d6b : (root.hover ? Theme.surface-hover : Theme.surface))
+        : root.variant == ButtonVariant.kit ? (root.primary ? (root.hot ? Theme.accent : Theme.accent-strong) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent))
+        : root.variant == ButtonVariant.command ? (root.primary ? (root.hot ? Theme.accent : Theme.accent-strong) : (root.hot ? Theme.surface-hover : transparent))
+        : root.variant == ButtonVariant.accent-outline ? (root.hot ? #34365c : transparent)
+        : root.variant == ButtonVariant.card ? (root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : (root.hover ? Theme.surface-hover : transparent))
+        : root.variant == ButtonVariant.flat ? (root.primary ? Theme.accent-strong : root.danger ? Theme.danger : (root.hot ? Theme.surface-hover : transparent))
+        : root.variant == ButtonVariant.toggle ? (root.active ? Theme.accent-strong : (root.hover ? Theme.surface-hover : Theme.surface))
+        : root.variant == ButtonVariant.subtle ? (root.hover ? Theme.surface-hover : transparent)
+        : root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : (root.hover ? Theme.surface-hover : Theme.surface))
+        : (root.danger ? (root.hover ? #a4262c : Theme.danger) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent));
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.tip;
+    // The calendar's buttons never said they were disabled; their clicks are ignored instead.
+    accessible-enabled: root.variant == ButtonVariant.toolbar ? true : root.enabled;
+    accessible-checkable: root.variant == ButtonVariant.toggle ? root.active : root.checkable;
+    accessible-checked: root.variant == ButtonVariant.toggle || root.stacked ? root.active : false;
+    accessible-action-default => {
+        if root.enabled || root.variant == ButtonVariant.toolbar {
+            root.clicked();
+        }
+    }
+
+    if root.inline-row && root.has-icon: Icon {
+        x: root.pad;
+        y: 8px;
+        source: root.icon;
+        width: 16px;
+        height: 16px;
+        tint: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg-muted);
+    }
+    if root.stacked: Icon {
+        x: (root.width - 20px) / 2;
+        y: (root.height - 23px - lbl.preferred-height) / 2;
+        opacity: root.enabled ? 1 : 0.4;
+        source: root.icon;
+        tint: root.danger ? #ffffff : root.active ? Theme.accent : Theme.fg;
+        width: 20px;
+        height: 20px;
+    }
+    lbl := Text {
+        x: root.inline-row ? root.pad + root.icon-part : 0px;
+        width: root.inline-row ? root.width - self.x - root.pad - root.chevron-part : root.width;
+        y: root.inline-row ? 0px : root.stacked ? (root.height - 23px - self.preferred-height) / 2 + 23px : (root.height - self.height) / 2;
+        height: root.inline-row ? root.height : self.preferred-height;
+        opacity: root.stacked && !root.enabled ? 0.4 : 1;
+        text: root.label;
+        color: root.variant == ButtonVariant.dialog ? (root.enabled ? #ffffff : Theme.fg-subtle)
+            : root.variant == ButtonVariant.settings ? (!root.enabled ? Theme.fg-subtle : (root.primary || root.danger ? #ffffff : Theme.fg))
+            : root.variant == ButtonVariant.toolbar ? (!root.enabled ? Theme.fg-subtle : (root.danger && !root.primary ? #ff8a8d : Theme.fg))
+            : root.inline-row ? (root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg))
+            : root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? #ffffff : Theme.fg)
+            : root.variant == ButtonVariant.flat ? (root.primary || root.danger ? #ffffff : Theme.fg)
+            : root.variant == ButtonVariant.toggle ? (root.active ? #ffffff : Theme.fg)
+            : root.stacked ? (root.danger ? #ffffff : Theme.fg-muted)
+            : Theme.fg;
+        font-size: root.text-size;
+        font-weight: root.variant == ButtonVariant.dialog || root.variant == ButtonVariant.settings || root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? 600
+            : root.variant == ButtonVariant.flat && root.primary ? 600
+            : 400;
+        horizontal-alignment: root.inline-row ? left : center;
+        vertical-alignment: root.stacked ? top : center;
+        // The meeting card's label is read through the button.
+        accessible-role: root.variant == ButtonVariant.card ? none : text;
+    }
+    if root.inline-row && root.chevron: Icon {
+        x: root.width - root.pad - 12px;
+        y: 10px;
+        source: @image-url("../icons/chevron-down.svg");
+        width: 12px;
+        height: 12px;
+        tint: root.primary ? #ffffff : Theme.fg-muted;
+    }
+    touch := TouchArea {
+        // The calendar's and the call bar's buttons keep their pointer: the call bar's tooltip
+        // also says why a button is disabled.
+        enabled: root.enabled || root.variant == ButtonVariant.toolbar || root.stacked;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
+    }
+    if root.stacked && touch.has-hover && root.tip != "": Rectangle {
+        y: root.height + 4px;
+        x: min(0px, root.width - self.width);
+        z: 100;
+        width: tip-text.preferred-width + 16px;
+        height: tip-text.preferred-height + 10px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        tip-text := Text {
+            text: root.tip;
+            color: Theme.fg;
+            font-size: 12px * Theme.font-scale;
+        }
+    }
+}
+
+export component Button inherits ButtonBody {
+    width: self.natural-width;
+}
+
+export component FlexButton inherits ButtonBody {
+    preferred-width: self.natural-width;
+    min-width: self.natural-width;
+}

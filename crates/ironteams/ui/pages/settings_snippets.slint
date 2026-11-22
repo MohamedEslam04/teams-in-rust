@@ -3,7 +3,8 @@
 // page holds the chat settings: one `SnippetsSection { }` line.
 import { Theme } from "../tokens/theme.slint";
 import { SnippetStore } from "../molecules/snippet_picker.slint";
-import { SButton, SSection } from "../molecules/settings_widgets.slint";
+import { SSection } from "../molecules/settings_widgets.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // The name and text boxes with Save (and Cancel while editing). `load` fills them.
 component SnippetForm inherits VerticalLayout {
@@ -71,8 +72,8 @@ component SnippetForm inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
         alignment: start;
-        SButton { label: @tr("Save snippet"); primary: true; clicked => { root.save(name-input.text, body-input.text); } }
-        if root.editing: SButton { label: @tr("Cancel"); clicked => { root.cancel(); } }
+        Button { variant: ButtonVariant.settings; label: @tr("Save snippet"); primary: true; clicked => { root.save(name-input.text, body-input.text); } }
+        if root.editing: Button { variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { root.cancel(); } }
     }
 }
 
@@ -113,7 +114,7 @@ export component SnippetsSection inherits SSection {
                 Text { horizontal-alignment: Theme.start-align; text: "/" + s.name; color: Theme.fg; font-size: Theme.font-body; font-weight: 600; overflow: elide; }
                 Text { horizontal-alignment: Theme.start-align; text: s.preview; color: Theme.fg-subtle; font-size: Theme.font-small; overflow: elide; }
             }
-            SButton {
+            Button { variant: ButtonVariant.settings;
                 label: @tr("Edit");
                 accessible-label: @tr("Edit snippet {}", s.name);
                 y: (parent.height - self.height) / 2;
@@ -123,7 +124,7 @@ export component SnippetsSection inherits SSection {
                     form.load(s.name, s.text);
                 }
             }
-            SButton {
+            Button { variant: ButtonVariant.settings;
                 label: @tr("Delete");
                 accessible-label: @tr("Delete snippet {}", s.name);
                 y: (parent.height - self.height) / 2;

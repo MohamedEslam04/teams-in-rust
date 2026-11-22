@@ -8,8 +8,9 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { RecapsStore, RecapRow, AppRow } from "../stores/apps_store.slint";
-import { KitBadge, KitButton, KitNote, KitPill, KitSearch } from "../molecules/apps_kit.slint";
+import { KitBadge, KitNote, KitPill, KitSearch } from "../molecules/apps_kit.slint";
 import { RecordingMenu } from "../organisms/meeting_card.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component Heading inherits Text {
     color: Theme.fg;
@@ -256,7 +257,7 @@ component RecapSide inherits Rectangle {
             Text { text: RecapsStore.notes-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             if RecapsStore.has-notes: HorizontalLayout {
                 alignment: start;
-                KitButton { label: "Open meeting notes"; clicked => { RecapsStore.command("recaps-notes", ""); } }
+                Button { variant: ButtonVariant.kit; label: "Open meeting notes"; clicked => { RecapsStore.command("recaps-notes", ""); } }
             }
         }
         if RecapsStore.tab == "transcript": VerticalLayout {
@@ -264,7 +265,7 @@ component RecapSide inherits Rectangle {
             if RecapsStore.transcript-note != "": Text { text: RecapsStore.transcript-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             if RecapsStore.has-transcript-link: HorizontalLayout {
                 alignment: start;
-                KitButton { label: "Open transcript"; clicked => { RecapsStore.command("recaps-transcript", ""); } }
+                Button { variant: ButtonVariant.kit; label: "Open transcript"; clicked => { RecapsStore.command("recaps-transcript", ""); } }
             }
             if RecapsStore.transcript != "": Text { text: RecapsStore.transcript; color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Transcript text"; }
         }
@@ -322,11 +323,11 @@ component RecapDetailPage inherits Rectangle {
                 }
                 VerticalLayout {
                     alignment: center;
-                    KitButton { label: "Share"; icon: @image-url("../icons/share.svg"); enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-share", ""); } }
+                    Button { variant: ButtonVariant.kit; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-share", ""); } }
                 }
                 VerticalLayout {
                     alignment: center;
-                    KitButton { label: "Watch"; primary: true; enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-watch", ""); } }
+                    Button { variant: ButtonVariant.kit; label: "Watch"; primary: true; enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-watch", ""); } }
                 }
                 if RecapsStore.has-recording: VerticalLayout {
                     alignment: center;

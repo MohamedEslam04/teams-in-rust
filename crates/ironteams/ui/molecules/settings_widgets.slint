@@ -3,37 +3,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { SOption, SettingsStore } from "../stores/settings_store.slint";
-
-export component SButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: max(30px, lbl.preferred-height + 14px);
-    width: max(64px, lbl.preferred-width + 28px);
-    border-radius: 4px;
-    border-width: root.primary || root.danger ? 0px : 1px;
-    border-color: Theme.border;
-    background: !root.enabled ? Theme.surface : (root.primary ? (t.has-hover ? Theme.accent : Theme.accent-strong) : (root.danger ? Theme.danger : (t.has-hover ? Theme.surface-hover : Theme.surface)));
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-enabled: root.enabled;
-    accessible-action-default => { if root.enabled { root.clicked(); } }
-    lbl := Text {
-        text: root.label;
-        color: !root.enabled ? Theme.fg-subtle : (root.primary || root.danger ? #ffffff : Theme.fg);
-        font-size: Theme.font-body;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    t := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // A round +/- button of the zoom row.
 component ZoomButton inherits Rectangle {
@@ -332,7 +302,7 @@ export component SPersonRow inherits Rectangle {
     HorizontalLayout {
         spacing: 10px;
         Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-        SButton { label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
+        Button { variant: ButtonVariant.settings; label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
     }
 }
 

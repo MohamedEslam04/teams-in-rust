@@ -5,6 +5,7 @@ import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
 import { SkeletonList } from "../tokens/motion.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export struct DriveRow {
     id: string,
@@ -162,44 +163,6 @@ export component KindBadge inherits Rectangle {
             horizontal-alignment: center;
             vertical-alignment: center;
         }
-    }
-}
-
-component CmdButton inherits Rectangle {
-    in property <string> label;
-    in property <image> icon;
-    in property <bool> enabled: true;
-    in property <bool> chevron: false;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    out property <bool> has-hover: touch.has-hover;
-    callback clicked();
-    height: 32px;
-    width: row.preferred-width;
-    border-radius: 4px;
-    opacity: root.enabled ? 1.0 : 0.4;
-    background: root.primary ? (touch.has-hover && root.enabled ? Theme.accent : Theme.accent-strong) : (touch.has-hover && root.enabled ? Theme.surface-hover : transparent);
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-enabled: root.enabled;
-    row := HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 6px;
-        if root.icon.width > 0: Icon {
-            source: root.icon;
-            width: 16px;
-            height: 16px;
-            y: 8px;
-            tint: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg-muted);
-        }
-        Text { text: root.label; color: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg); font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-        if root.chevron: Icon { source: @image-url("../icons/chevron-down.svg"); width: 12px; height: 12px; y: 10px; tint: root.primary ? #ffffff : Theme.fg-muted; }
-    }
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -533,24 +496,6 @@ component DialogFrame inherits Rectangle {
     }
 }
 
-component DialogButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 34px;
-    width: max(80px, t.preferred-width + 28px);
-    border-radius: 4px;
-    opacity: root.enabled ? 1.0 : 0.5;
-    background: root.primary ? Theme.accent-strong : (root.danger ? Theme.danger : (touch.has-hover && root.enabled ? Theme.surface-hover : transparent));
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-enabled: root.enabled;
-    t := Text { text: root.label; color: root.primary || root.danger ? #ffffff : Theme.fg; font-size: 13px * Theme.font-scale; font-weight: root.primary ? 600 : 400; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 component Breadcrumbs inherits HorizontalLayout {
     spacing: 4px;
     alignment: start;
@@ -656,8 +601,8 @@ export component DriveFilePicker inherits Rectangle {
             height: 34px;
             spacing: 8px;
             alignment: end;
-            DialogButton { label: "Cancel"; clicked => { root.cancel(); } }
-            DialogButton { label: root.choose-label; primary: true; enabled: root.can-choose; clicked => { root.choose(); } }
+            Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.cancel(); } }
+            Button { variant: ButtonVariant.flat; label: root.choose-label; primary: true; enabled: root.can-choose; clicked => { root.choose(); } }
         }
     }
 }
@@ -741,7 +686,7 @@ component ShareDialog inherits DialogFrame {
             }
             HorizontalLayout {
                 alignment: end;
-                DialogButton {
+                Button { variant: ButtonVariant.flat;
                     label: "Send";
                     primary: true;
                     enabled: DriveStore.share-picked.length > 0;
@@ -773,7 +718,7 @@ component ShareDialog inherits DialogFrame {
             }
             HorizontalLayout {
                 alignment: end;
-                DialogButton {
+                Button { variant: ButtonVariant.flat;
                     label: "Create link";
                     clicked => { DriveStore.command("share-link", root.link-scope + "," + root.link-type + "," + (root.link-block ? "1" : "0") + "," + root.link-days); }
                 }
@@ -960,7 +905,7 @@ export component OneDriveView inherits Rectangle {
                     padding-left: 12px;
                     padding-right: 12px;
                     spacing: 2px;
-                    if !root.some: new-btn := CmdButton {
+                    if !root.some: new-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "New";
                         icon: @image-url("../icons/plus.svg");
@@ -969,7 +914,7 @@ export component OneDriveView inherits Rectangle {
                         enabled: !root.bin;
                         clicked => { root.open-menu("new", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if !root.some: upload-btn := CmdButton {
+                    if !root.some: upload-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Upload";
                         icon: @image-url("../icons/upload.svg");
@@ -977,7 +922,7 @@ export component OneDriveView inherits Rectangle {
                         enabled: !root.bin;
                         clicked => { root.open-menu("upload", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if root.some && !root.bin: open-btn := CmdButton {
+                    if root.some && !root.bin: open-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Open";
                         icon: @image-url("../icons/open.svg");
@@ -985,27 +930,27 @@ export component OneDriveView inherits Rectangle {
                         enabled: root.one;
                         clicked => { root.open-menu("open", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: root.one; clicked => { root.run("share"); } }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Copy link"; icon: @image-url("../icons/link.svg"); enabled: root.one; clicked => { root.run("copy-link"); } }
-                    if root.some && !root.bin: CmdButton {
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: root.one; clicked => { root.run("share"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Copy link"; icon: @image-url("../icons/link.svg"); enabled: root.one; clicked => { root.run("copy-link"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: DriveStore.sel-all-favorite ? "Unfavorite" : "Favorite";
                         icon: @image-url("../icons/star.svg");
                         clicked => { DriveStore.command("favorite", ""); }
                     }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
-                    if root.some && !root.bin: CmdButton { y: 6px; label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
-                    if root.some && !root.bin: more-btn := CmdButton {
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
+                    if root.some && !root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
+                    if root.some && !root.bin: more-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "More";
                         icon: @image-url("../icons/more.svg");
                         clicked => { root.open-menu("more", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if root.some && root.bin: CmdButton { y: 6px; label: "Restore"; icon: @image-url("../icons/restore.svg"); clicked => { root.run("restore"); } }
-                    if root.some && root.bin: CmdButton {
+                    if root.some && root.bin: Button { variant: ButtonVariant.command; y: 6px; label: "Restore"; icon: @image-url("../icons/restore.svg"); clicked => { root.run("restore"); } }
+                    if root.some && root.bin: Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Delete forever";
                         icon: @image-url("../icons/trash.svg");
@@ -1022,21 +967,21 @@ export component OneDriveView inherits Rectangle {
                     }
                     if root.some: IconButton { y: 6px; icon: @image-url("../icons/close.svg"); tooltip: "Clear selection"; clicked => { root.run("clear-selection"); } }
                     Rectangle { horizontal-stretch: 1; }
-                    if !root.some: sort-btn := CmdButton {
+                    if !root.some: sort-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Sort";
                         icon: @image-url("../icons/sort.svg");
                         chevron: true;
                         clicked => { root.open-menu("sort", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if !root.some: group-btn := CmdButton {
+                    if !root.some: group-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Group by";
                         icon: @image-url("../icons/list.svg");
                         chevron: true;
                         clicked => { root.open-menu("group", self.absolute-position.x, self.absolute-position.y + self.height, false); }
                     }
-                    if !root.some && !DriveStore.grid: cols-btn := CmdButton {
+                    if !root.some && !DriveStore.grid: cols-btn := Button { variant: ButtonVariant.command;
                         y: 6px;
                         label: "Columns";
                         icon: @image-url("../icons/columns.svg");
@@ -1336,8 +1281,8 @@ export component OneDriveView inherits Rectangle {
                 height: 34px;
                 spacing: 8px;
                 alignment: end;
-                DialogButton { label: "Cancel"; clicked => { root.close-dialog(); } }
-                DialogButton {
+                Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.close-dialog(); } }
+                Button { variant: ButtonVariant.flat;
                     label: "OK";
                     primary: true;
                     enabled: DriveStore.prompt-text != "" && (DriveStore.prompt-kind != "new-link" || DriveStore.prompt-text2 != "");
@@ -1359,8 +1304,8 @@ export component OneDriveView inherits Rectangle {
                 height: 34px;
                 spacing: 8px;
                 alignment: end;
-                DialogButton { label: "Cancel"; clicked => { root.close-dialog(); } }
-                DialogButton {
+                Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.close-dialog(); } }
+                Button { variant: ButtonVariant.flat;
                     label: "Yes, delete forever";
                     danger: true;
                     clicked => {
@@ -1416,7 +1361,7 @@ export component OneDriveView inherits Rectangle {
                                 Text { text: v.when + (v.current ? " (current)" : ""); color: Theme.fg; font-size: 13px * Theme.font-scale; }
                                 Text { text: v.by + " · " + v.size; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                             }
-                            if !v.current: DialogButton { y: 5px; label: "Restore " + v.id; clicked => { DriveStore.command("version-restore", v.id); DriveStore.dialog = ""; } }
+                            if !v.current: Button { variant: ButtonVariant.flat; y: 5px; label: "Restore " + v.id; clicked => { DriveStore.command("version-restore", v.id); DriveStore.dialog = ""; } }
                         }
                     }
                     if DriveStore.versions.length == 0: Text { text: "No earlier versions."; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
@@ -1446,7 +1391,7 @@ export component OneDriveView inherits Rectangle {
             HorizontalLayout {
                 height: 34px;
                 alignment: end;
-                DialogButton { label: "Close"; clicked => { root.close-dialog(); } }
+                Button { variant: ButtonVariant.flat; label: "Close"; clicked => { root.close-dialog(); } }
             }
         }
         if DriveStore.dialog == "preview": DialogFrame {
@@ -1512,11 +1457,11 @@ export component OneDriveView inherits Rectangle {
                     accessible-role: text;
                     accessible-label: "Page " + DriveStore.preview-page + " of " + DriveStore.preview-pages;
                 }
-                if DriveStore.preview-kind == "pages": DialogButton { label: "Previous page"; enabled: DriveStore.preview-page > 1; clicked => { DriveStore.command("preview-page", "prev"); } }
-                if DriveStore.preview-kind == "pages": DialogButton { label: "Next page"; enabled: DriveStore.preview-page < DriveStore.preview-pages; clicked => { DriveStore.command("preview-page", "next"); } }
-                DialogButton { label: "Open in browser"; clicked => { DriveStore.command("open-browser", ""); } }
-                DialogButton { label: "Download"; clicked => { DriveStore.command("download", ""); } }
-                DialogButton { label: "Close"; primary: true; clicked => { root.close-dialog(); } }
+                if DriveStore.preview-kind == "pages": Button { variant: ButtonVariant.flat; label: "Previous page"; enabled: DriveStore.preview-page > 1; clicked => { DriveStore.command("preview-page", "prev"); } }
+                if DriveStore.preview-kind == "pages": Button { variant: ButtonVariant.flat; label: "Next page"; enabled: DriveStore.preview-page < DriveStore.preview-pages; clicked => { DriveStore.command("preview-page", "next"); } }
+                Button { variant: ButtonVariant.flat; label: "Open in browser"; clicked => { DriveStore.command("open-browser", ""); } }
+                Button { variant: ButtonVariant.flat; label: "Download"; clicked => { DriveStore.command("download", ""); } }
+                Button { variant: ButtonVariant.flat; label: "Close"; primary: true; clicked => { root.close-dialog(); } }
             }
         }
     }

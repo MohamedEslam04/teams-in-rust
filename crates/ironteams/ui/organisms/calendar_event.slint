@@ -4,7 +4,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalButton, CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 
 // Colors of the answers in the attendee list and the response buttons.
 
@@ -19,9 +20,9 @@ component EventActions inherits VerticalLayout {
     if CalStore.peek.has-join: HorizontalLayout {
         spacing: 6px;
         alignment: start;
-        CalButton { label: "Join"; primary: true; clicked => { CalStore.command("join-event", ""); } }
-        CalButton { label: "▾"; active: CalStore.peek-menu == "join"; preferred-width: 34px; min-width: 34px; clicked => { CalStore.peek-menu = CalStore.peek-menu == "join" ? "" : "join"; } }
-        CalButton { label: "Chat"; clicked => { CalStore.command("chat", ""); } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "Join"; primary: true; clicked => { CalStore.command("join-event", ""); } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "▾"; active: CalStore.peek-menu == "join"; preferred-width: 34px; min-width: 34px; clicked => { CalStore.peek-menu = CalStore.peek-menu == "join" ? "" : "join"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "Chat"; clicked => { CalStore.command("chat", ""); } }
     }
     if CalStore.peek-menu == "join": CalCard {
         height: 66px;
@@ -39,20 +40,20 @@ component EventActions inherits VerticalLayout {
         HorizontalLayout {
             spacing: 6px;
             alignment: start;
-            CalButton { label: "Accept"; primary: CalStore.peek.response == "accepted"; active: CalStore.peek.response == "accepted"; clicked => { CalStore.command("rsvp", "accept|" + (root.send ? "1" : "0") + "|" + root.comment); } }
-            CalButton { label: "Tentative"; active: CalStore.peek.response == "tentative"; clicked => { CalStore.command("rsvp", "tentative|" + (root.send ? "1" : "0") + "|" + root.comment); } }
-            CalButton { label: "Decline"; danger: true; active: CalStore.peek.response == "declined"; clicked => { CalStore.command("rsvp", "decline|" + (root.send ? "1" : "0") + "|" + root.comment); } }
-            CalButton { label: "Propose new time"; clicked => { CalStore.ask("propose", "Propose a new time", "Suggest another time to " + CalStore.peek.organizer + ".", "New start, like 2026-12-18 14:00", "New end time, like 15:00", "Decline the meeting instead of tentative", "Send proposal"); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Accept"; primary: CalStore.peek.response == "accepted"; active: CalStore.peek.response == "accepted"; clicked => { CalStore.command("rsvp", "accept|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Tentative"; active: CalStore.peek.response == "tentative"; clicked => { CalStore.command("rsvp", "tentative|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Decline"; danger: true; active: CalStore.peek.response == "declined"; clicked => { CalStore.command("rsvp", "decline|" + (root.send ? "1" : "0") + "|" + root.comment); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Propose new time"; clicked => { CalStore.ask("propose", "Propose a new time", "Suggest another time to " + CalStore.peek.organizer + ".", "New start, like 2026-12-18 14:00", "New end time, like 15:00", "Decline the meeting instead of tentative", "Send proposal"); } }
         }
     }
 
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
-        CalButton { label: "Show as: " + CalFmt.show-as-label(CalStore.peek.show-as) + " ▾"; active: CalStore.peek-menu == "showas"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "showas" ? "" : "showas"; } }
-        CalButton { label: CalStore.peek.category == "" ? "Category ▾" : CalStore.peek.category + " ▾"; active: CalStore.peek-menu == "category"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "category" ? "" : "category"; } }
-        CalButton { label: "…"; preferred-width: 40px; min-width: 40px; active: CalStore.peek-menu == "more"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "more" ? "" : "more"; } }
-        if !root.full: CalButton { label: "Open"; clicked => { CalStore.command("full", ""); } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "Show as: " + CalFmt.show-as-label(CalStore.peek.show-as) + " ▾"; active: CalStore.peek-menu == "showas"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "showas" ? "" : "showas"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: CalStore.peek.category == "" ? "Category ▾" : CalStore.peek.category + " ▾"; active: CalStore.peek-menu == "category"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "category" ? "" : "category"; } }
+        FlexButton { variant: ButtonVariant.toolbar; label: "…"; preferred-width: 40px; min-width: 40px; active: CalStore.peek-menu == "more"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "more" ? "" : "more"; } }
+        if !root.full: FlexButton { variant: ButtonVariant.toolbar; label: "Open"; clicked => { CalStore.command("full", ""); } }
     }
     if CalStore.peek-menu == "showas": CalCard {
         height: 5 * 30px + 8px;
@@ -181,7 +182,7 @@ export component EventFull inherits CalCard {
                         Text { text: p.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
                         Text { text: p.when; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                         Text { text: p.response == "declined" ? "Declined" : "Tentative"; color: CalFmt.response-color(p.response); font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        CalButton { label: "Accept"; accessible-label: "Accept " + p.name + "'s proposed time"; clicked => { CalStore.command("accept-proposal", "" + i); } }
+                        FlexButton { variant: ButtonVariant.toolbar; label: "Accept"; accessible-label: "Accept " + p.name + "'s proposed time"; clicked => { CalStore.command("accept-proposal", "" + i); } }
                     }
                 }
                 if CalStore.detail.attachments.length > 0: VerticalLayout {

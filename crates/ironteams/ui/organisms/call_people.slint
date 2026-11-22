@@ -4,39 +4,11 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
 import { CallStore, CallPerson, CallFound } from "../stores/call_store.slint";
-import { CallAction, CallButton, DeviceSettings } from "../molecules/call_widgets.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { VideoEffectsPanel } from "video_effects.slint";
-
-// A small text button of a People row (Admit, Admit all).
-component RowButton inherits Rectangle {
-    in property <string> label;
-    // What the button shows when it is not the label (a name would make it as wide as the name).
-    in property <string> shown: root.label;
-    callback clicked();
-    height: 26px;
-    width: txt.preferred-width + 20px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    txt := Text {
-        text: root.shown;
-        color: Theme.fg;
-        font-size: 12px * Theme.font-scale;
-        font-weight: 600;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component PersonRow inherits Rectangle {
     in property <CallPerson> p;
@@ -86,9 +58,9 @@ component PersonRow inherits Rectangle {
         }
         if root.p.lobby && CallStore.can-admit: VerticalLayout {
             alignment: center;
-            RowButton {
-                label: "Admit " + CallStore.tagged-name(root.p);
-                shown: "Admit";
+            Button { variant: ButtonVariant.solid;
+                accessible-label: "Admit " + CallStore.tagged-name(root.p);
+                label: "Admit";
                 clicked => { CallStore.command("admit", root.p.id); }
             }
         }
@@ -224,7 +196,7 @@ export component PeoplePanel inherits Rectangle {
                         }
                         if CallStore.can-admit: VerticalLayout {
                             alignment: end;
-                            RowButton {
+                            Button { variant: ButtonVariant.solid;
                                 label: "Admit all";
                                 clicked => { CallStore.command("admit-all", ""); }
                             }
@@ -307,27 +279,27 @@ export component MorePanel inherits Rectangle {
         if root.fold: HorizontalLayout {
             alignment: start;
             spacing: 4px;
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/people.svg");
                 label: "People";
                 checkable: true;
                 clicked => { CallStore.panel = "people"; }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/hand.svg");
                 label: CallStore.hand ? "Lower" : "Raise";
                 checkable: true;
                 active: CallStore.hand;
                 clicked => { CallStore.command("hand", ""); }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/grid.svg");
                 label: "View";
                 tip: "Gallery, speaker or focus on content";
                 active: CallStore.menu == "view";
                 clicked => { CallStore.menu = CallStore.menu == "view" ? "" : "view"; }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/emoji.svg");
                 label: "React";
                 enabled: CallStore.phase == "connected";
@@ -339,7 +311,7 @@ export component MorePanel inherits Rectangle {
         if root.fold && CallStore.kind == "direct": HorizontalLayout {
             alignment: start;
             spacing: 4px;
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/pause.svg");
                 label: CallStore.held ? "Resume" : "Hold";
                 checkable: true;
@@ -347,7 +319,7 @@ export component MorePanel inherits Rectangle {
                 tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
                 clicked => { CallStore.command("hold", ""); }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/forward.svg");
                 label: "Transfer";
                 active: CallStore.menu == "transfer";
@@ -366,11 +338,11 @@ export component MorePanel inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             spacing: 8px;
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: CallStore.recording ? "Stop recording" : "Start recording";
                 clicked => { CallStore.command("recording", CallStore.recording ? "stop" : "start"); }
             }
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: CallStore.transcribing ? "Stop transcription" : "Start transcription";
                 clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
             }
@@ -384,7 +356,7 @@ export component MorePanel inherits Rectangle {
         SectionTitle { text: "Video"; }
         HorizontalLayout {
             alignment: start;
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: "Video effects";
                 clicked => { VideoFxStore.open = true; }
             }

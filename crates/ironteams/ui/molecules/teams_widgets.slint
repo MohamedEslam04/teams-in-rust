@@ -2,37 +2,6 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 
-export component TButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 32px;
-    width: max(64px, lbl.preferred-width + 28px);
-    border-radius: 4px;
-    border-width: root.primary || root.danger ? 0px : 1px;
-    border-color: Theme.border;
-    background: !root.enabled ? Theme.surface : (root.primary ? (t.has-hover ? Theme.accent : Theme.accent-strong) : (root.danger ? (t.has-hover ? #e0474b : Theme.danger) : (t.has-hover ? Theme.surface-hover : Theme.surface)));
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-enabled: root.enabled;
-    accessible-action-default => { if root.enabled { root.clicked(); } }
-    lbl := Text {
-        text: root.label;
-        color: root.enabled ? #ffffff : Theme.fg-subtle;
-        font-size: 13px * Theme.font-scale;
-        font-weight: 600;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    t := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 // A labelled single-line text box. `text` follows what is typed; `initial` is the starting text.
 export component TField inherits Rectangle {
     in property <string> label;

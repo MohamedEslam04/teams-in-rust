@@ -6,7 +6,8 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, RailApp } from "../stores/apps_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ScrollView } from "std-widgets.slint";
-import { AppTile, KitButton, KitSearch, KitMenuRow, KitMenuFrame, KitField } from "../molecules/apps_kit.slint";
+import { AppTile, KitSearch, KitMenuRow, KitMenuFrame, KitField } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
 component RailEntry inherits Rectangle {
@@ -280,7 +281,7 @@ export component AppsOverlays inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     Text { text: "Apps"; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
-                    KitButton {
+                    Button { variant: ButtonVariant.kit;
                         label: AppsStore.rail-collapsed ? "Expand the bar" : "Collapse the bar";
                         clicked => { AppsStore.command("rail-collapse", ""); }
                     }
@@ -368,15 +369,15 @@ export component AppsOverlays inherits Rectangle {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: end;
-                    if AppsStore.form-link-label != "": KitButton {
+                    if AppsStore.form-link-label != "": Button { variant: ButtonVariant.kit;
                         label: AppsStore.form-link-label;
                         clicked => { AppsStore.command("form-link", ""); }
                     }
-                    KitButton {
+                    Button { variant: ButtonVariant.kit;
                         label: "Cancel";
                         clicked => { AppsStore.command("form-cancel", ""); }
                     }
-                    KitButton {
+                    Button { variant: ButtonVariant.kit;
                         label: AppsStore.form-confirm;
                         primary: !AppsStore.form-danger;
                         danger: AppsStore.form-danger;

@@ -4,7 +4,8 @@
 // `src/backend/composer_apps.rs` through the `ComposerApps` global.
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
-import { KitButton, KitSearch } from "../molecules/apps_kit.slint";
+import { KitSearch } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // One line of the command list: an app's name (header) or one of its commands.
 export struct CaCommand {
@@ -150,7 +151,7 @@ export component ComposerAppsOverlay inherits Rectangle {
                 HorizontalLayout {
                     height: 32px;
                     spacing: 8px;
-                    if ComposerApps.command-key != "": KitButton {
+                    if ComposerApps.command-key != "": Button { variant: ButtonVariant.kit;
                         label: "Back";
                         clicked => { ComposerApps.command("back", ""); }
                     }

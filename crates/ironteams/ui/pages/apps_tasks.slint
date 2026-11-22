@@ -4,7 +4,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TasksStore, AppRow } from "../stores/apps_store.slint";
-import { KitButton, KitNavRow, KitNavHeader, KitBadge, KitNote } from "../molecules/apps_kit.slint";
+import { KitNavRow, KitNavHeader, KitBadge, KitNote } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 component TaskCheck inherits Rectangle {
     in property <bool> done;
@@ -108,9 +109,9 @@ export component TasksView inherits Rectangle {
                     padding-right: 16px;
                     spacing: 8px;
                     Text { text: TasksStore.title; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    KitButton { y: 12px; label: "New task"; primary: true; enabled: TasksStore.can-add; clicked => { TasksStore.command("task-new", ""); } }
-                    KitButton { y: 12px; label: "List"; active: TasksStore.mode == "list"; clicked => { TasksStore.command("tasks-mode", "list"); } }
-                    KitButton { y: 12px; label: "Board"; active: TasksStore.mode == "board"; enabled: TasksStore.can-board; clicked => { TasksStore.command("tasks-mode", "board"); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "New task"; primary: true; enabled: TasksStore.can-add; clicked => { TasksStore.command("task-new", ""); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "List"; active: TasksStore.mode == "list"; clicked => { TasksStore.command("tasks-mode", "list"); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "Board"; active: TasksStore.mode == "board"; enabled: TasksStore.can-board; clicked => { TasksStore.command("tasks-mode", "board"); } }
                     IconButton { y: 12px; icon: @image-url("../icons/sync.svg"); tooltip: "Refresh tasks"; clicked => { TasksStore.command("tasks-refresh", ""); } }
                 }
             }

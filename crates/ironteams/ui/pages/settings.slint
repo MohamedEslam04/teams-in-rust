@@ -6,8 +6,9 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
-import { SButton, SField, SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
+import { SField, SNavItem, SRadio, SSwitch } from "../molecules/settings_widgets.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage } from "settings_pages.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -581,8 +582,8 @@ export component ProfileMenu inherits Rectangle {
                         }
                         HorizontalLayout {
                             spacing: 6px;
-                            SButton { label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
-                            SButton { label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Save message"); clicked => { SettingsStore.command("status-note", note.text); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
                         }
                     }
                     if SettingsStore.confirm-sign-out: VerticalLayout {
@@ -593,8 +594,8 @@ export component ProfileMenu inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
-                            SButton { label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
-                            SButton { label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.confirm-sign-out = false; } }
+                            Button { variant: ButtonVariant.settings; label: @tr("Yes, sign out"); danger: true; clicked => { SettingsStore.confirm-sign-out = false; SettingsStore.command("sign-out", ""); } }
                         }
                     }
                     // What the photo, the status or a refused change answered.

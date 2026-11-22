@@ -1,40 +1,6 @@
 // Small controls shared by the calendar's panels: buttons, checkboxes, text fields, menu rows.
 import { Theme } from "../tokens/theme.slint";
 
-export component CalButton inherits Rectangle {
-    in property <string> label;
-    in property <bool> primary: false;
-    in property <bool> danger: false;
-    in property <bool> active: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 28px;
-    preferred-width: lbl.preferred-width + 24px;
-    min-width: lbl.preferred-width + 24px;
-    border-radius: 4px;
-    background: !root.enabled ? Theme.surface : (root.primary ? (t.has-hover ? Theme.accent : Theme.accent-strong) : (root.active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : Theme.surface)));
-    border-width: root.primary ? 0px : 1px;
-    border-color: root.active ? Theme.accent : (root.danger ? Theme.danger : Theme.border);
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    lbl := Text {
-        text: root.label;
-        color: !root.enabled ? Theme.fg-subtle : (root.danger && !root.primary ? #ff8a8d : Theme.fg);
-        font-size: 13px * Theme.font-scale;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-    t := TouchArea {
-        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
-        clicked => {
-            if root.enabled {
-                root.clicked();
-            }
-        }
-    }
-}
-
 export component CalCheck inherits Rectangle {
     in-out property <bool> checked;
     in property <string> label;
