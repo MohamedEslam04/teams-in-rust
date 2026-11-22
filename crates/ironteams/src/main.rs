@@ -422,6 +422,9 @@ fn main() -> anyhow::Result<()> {
     velopack::VelopackApp::build()
         .set_auto_apply_on_startup(false)
         .run();
+    // reqwest is built without a TLS provider of its own (one provider, ring, for the whole
+    // app), so it is installed before anything can build an HTTP client.
+    teams_proto::client::install_crypto_provider();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--report-problem") {
         return report_problem(&args[1..]);
