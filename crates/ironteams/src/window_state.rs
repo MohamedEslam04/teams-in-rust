@@ -431,7 +431,8 @@ pub fn restore_command(w: &AppWindow, id: &str) -> Option<Cmd> {
 
 /// Loads the saved state, applies it to `window`, starts the save timer and the restore of the
 /// last chat. `persist` is false in demo mode: the state is neither restored nor written.
-/// Returns the timers; keep them alive for the life of the app.
+/// Returns the restore timer; keep it alive for the life of the app. The save timer lives in
+/// [`set_autosave`]'s hands.
 pub fn install(
     window: &AppWindow,
     persist: bool,
@@ -482,7 +483,7 @@ pub fn install(
             with_shared(|s| s.write(false));
         });
     }
-    timers.push(save);
+    SAVE_TIMER.with(|t| *t.borrow_mut() = Some(save));
 
     // IRONTEAMS_OPEN is a development aid that opens its own chat.
     if let Some(id) = last_chat.filter(|_| compat::var_os("IRONTEAMS_OPEN").is_none()) {
@@ -517,6 +518,28 @@ pub fn install(
         timers.push(restore);
     }
     timers
+}
+
+thread_local! {
+    /// The timer that saves the window state while the window is on screen.
+    static SAVE_TIMER: std::cell::RefCell<Option<Timer>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The window is in sight (`on`) or not (hidden to the tray, minimized): the save timer runs
+/// only while it is. Going out of sight saves once more, so nothing is lost meanwhile.
+pub fn set_autosave(w: &AppWindow, on: bool) {
+    SAVE_TIMER.with(|t| {
+        if let Some(t) = t.borrow().as_ref() {
+            if on {
+                t.restart();
+            } else {
+                t.stop();
+            }
+        }
+    });
+    if !on {
+        save_on_close(w);
+    }
 }
 
 /// The window is closing (to the tray or for good): take its geometry now, while it is still

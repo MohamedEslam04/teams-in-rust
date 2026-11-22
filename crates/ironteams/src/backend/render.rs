@@ -99,6 +99,13 @@ impl Engine {
         let mut last_typing = (Vec::new(), Vec::new());
         loop {
             tokio::time::sleep(RENDER_DEBOUNCE).await;
+            if super::visibility::render_paused(self.is_visible(), self.popout_is_open()) {
+                self.hold_render();
+                // `set_visible(true)` wakes the loop; marks wake it to count the badges again.
+                self.render_wake.notified().await;
+                continue;
+            }
+            self.release_held_render();
             self.render_dirty();
             let (typing, lapse) = {
                 let mut v = self.view.lock().unwrap();
@@ -124,6 +131,24 @@ impl Engine {
                 }
                 None => self.render_wake.notified().await,
             }
+        }
+    }
+
+    /// The window is out of sight: draws nothing but the unread badges (the tray and the
+    /// launcher show them) and keeps the other marks for when it is shown.
+    fn hold_render(self: &Arc<Self>) {
+        let d = std::mem::take(&mut *self.dirty.lock().unwrap());
+        if d.chats || d.activity {
+            self.render_badges();
+        }
+        self.held.lock().unwrap().merge(&d);
+    }
+
+    /// The window is in sight: the marks held back count again.
+    fn release_held_render(&self) {
+        let held = std::mem::take(&mut *self.held.lock().unwrap());
+        if held.mask() != 0 {
+            self.dirty.lock().unwrap().merge(&held);
         }
     }
 

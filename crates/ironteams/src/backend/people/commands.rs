@@ -146,7 +146,8 @@ impl Engine {
                 e.mark(|d| d.messages = true);
             }
             loop {
-                tokio::time::sleep(RECEIPT_POLL).await;
+                // Paused while the window is out of sight; shown again, it reads at once.
+                e.visible_tick(RECEIPT_POLL).await;
                 let cur = e.view.lock().unwrap().current.clone();
                 if let Some(c) = cur {
                     e.refresh_horizons(&c).await;

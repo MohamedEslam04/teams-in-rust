@@ -40,13 +40,14 @@ mod ui_tests;
 mod update_check;
 mod updater;
 mod window_state;
+mod window_watch;
 
 slint::include_modules!();
 
 use backend::{ActivityCmd, Cmd, Engine};
 use slint::ComponentHandle;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use teams_proto::Client;
 use ui_api::UiHandle;
 
@@ -54,7 +55,7 @@ use ui_api::UiHandle;
 async fn app_main(
     ui: UiHandle,
     mut cmds: tokio::sync::mpsc::UnboundedReceiver<Cmd>,
-    focus: Arc<AtomicBool>,
+    mut window: tokio::sync::watch::Receiver<window_watch::WindowStatus>,
 ) {
     if compat::var_os("IRONTEAMS_DEMO").is_some() {
         let engine = demo_engine(&ui).expect("demo setup");
@@ -81,11 +82,16 @@ async fn app_main(
             }
         }
     };
-    let shared_focus = engine.focused.clone();
+    // The window's focus and visibility, as they change (`window_watch`).
+    let e = engine.clone();
     tokio::spawn(async move {
         loop {
-            shared_focus.store(focus.load(Ordering::Relaxed), Ordering::Relaxed);
-            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let status = *window.borrow_and_update();
+            e.focused.store(status.focused, Ordering::Relaxed);
+            e.set_visible(status.visible);
+            if window.changed().await.is_err() {
+                break;
+            }
         }
     });
     if offline {
@@ -501,7 +507,7 @@ fn main() -> anyhow::Result<()> {
     }
     let ui = UiHandle::new(window.as_weak());
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Cmd>();
-    let focus = Arc::new(AtomicBool::new(true));
+    let window_status = window_watch::install();
 
     macro_rules! cmd {
         ($cb:ident, || $e:expr) => {{
@@ -787,6 +793,9 @@ fn main() -> anyhow::Result<()> {
                 w.global::<TopBarStore>()
                     .invoke_command(name.into(), "".into());
             }
+            if matches!(event, WindowEvent::Focused(_)) {
+                window_watch::focus_changed(weak.clone());
+            }
             if let WindowEvent::DroppedFile(path) = event {
                 // On the OneDrive view a drop uploads; elsewhere it attaches to the message.
                 let on_drive = weak.upgrade().is_some_and(|w| w.get_view() == "onedrive");
@@ -798,27 +807,6 @@ fn main() -> anyhow::Result<()> {
             }
             EventResult::Propagate
         });
-    }
-
-    // Track window focus for notifications and read markers.
-    let focus_timer = slint::Timer::default();
-    {
-        use slint::winit_030::WinitWindowAccessor;
-        let weak = window.as_weak();
-        let focus = focus.clone();
-        focus_timer.start(
-            slint::TimerMode::Repeated,
-            std::time::Duration::from_millis(400),
-            move || {
-                if let Some(w) = weak.upgrade() {
-                    let f = w
-                        .window()
-                        .with_winit_window(|ww| ww.has_focus())
-                        .unwrap_or(true);
-                    focus.store(f, Ordering::Relaxed);
-                }
-            },
-        );
     }
 
     // Saved size, position, last chat and collapsed teams; demo mode neither restores nor saves.
@@ -842,7 +830,7 @@ fn main() -> anyhow::Result<()> {
         .worker_threads(2)
         .enable_all()
         .build()?;
-    rt.spawn(app_main(ui, rx, focus));
+    rt.spawn(app_main(ui, rx, window_status));
     // Tray, close-to-tray and the event loop (stays up with the window hidden).
     tray_wiring::run(&window, hidden)?;
     window_state::finish(&window);

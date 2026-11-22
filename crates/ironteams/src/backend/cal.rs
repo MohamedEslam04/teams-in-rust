@@ -38,7 +38,6 @@ pub use model::{
     AttendeeRow, ProposalRow, SuggestRow, filter_opts, peek_data, room_rows, sched_rows,
 };
 
-const SYNC_EVERY: Duration = Duration::from_secs(120);
 const TICK_EVERY: Duration = Duration::from_secs(15);
 /// The delta window: this many days back and forward from today.
 const PAST_DAYS: i64 = 35;
@@ -955,7 +954,8 @@ impl Engine {
                 if let Err(err) = e.sync_calendar().await {
                     tracing::warn!(%err, "calendar sync failed");
                 }
-                tokio::time::sleep(SYNC_EVERY).await;
+                // Every 2 minutes in sight, every 10 out of it (`visibility`).
+                e.until_calendar_sync(std::time::Instant::now()).await;
             }
         });
         let e = self.clone();
@@ -1110,6 +1110,10 @@ impl Engine {
 
     /// Sends the current view to the UI when it changed.
     pub(super) fn push_calendar(&self) {
+        // Out of sight nothing is drawn; `set_visible(true)` pushes what changed meanwhile.
+        if !self.is_visible() {
+            return;
+        }
         let (data, panels) = {
             let mut s = self.cal.lock();
             let panels = s.panels();

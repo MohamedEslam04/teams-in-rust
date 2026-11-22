@@ -81,6 +81,7 @@ pub(crate) mod typing;
 mod unread;
 pub(crate) mod util;
 mod video_clips;
+mod visibility;
 mod voice_messages;
 
 pub use activity::ActivityCmd;
@@ -353,6 +354,10 @@ pub struct Engine {
     my_name: String,
     view: Mutex<View>,
     dirty: Mutex<Dirty>,
+    /// The marks taken while the window was out of sight, drawn when it is shown again.
+    held: Mutex<Dirty>,
+    /// The main window is on screen and not minimized (`set_visible`).
+    visible: tokio::sync::watch::Sender<bool>,
     /// The dirty marks of the last minute, by the line that made them (debug log only).
     mark_stats: Mutex<dirty_stats::MarkStats>,
     /// Signalled on every dirty mark and typing change: the render loop sleeps until then.
@@ -463,6 +468,8 @@ impl Engine {
                 teams: true,
                 ..Default::default()
             }),
+            held: Mutex::default(),
+            visible: tokio::sync::watch::channel(true).0,
             mark_stats: Mutex::new(dirty_stats::MarkStats::new(Instant::now())),
             render_wake: tokio::sync::Notify::new(),
             msg_memo: Mutex::default(),
