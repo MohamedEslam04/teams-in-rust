@@ -394,6 +394,16 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_accounts(w, &c);
         }
         // --- Updates (opt-in; local) ---
+        "notification-style" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.notification_style = match arg {
+                "system" => appearance::NotificationStyle::System,
+                _ => appearance::NotificationStyle::Cards,
+            };
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "banner-photo" | "banner-actions" => {
             let mut c = shared.borrow_mut();
             if name == "banner-photo" {

@@ -159,6 +159,10 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_auto_update(gp.auto_update);
     g.set_beta_updates(gp.beta_updates);
     g.set_banner_photo(gp.banner_photo);
+    g.set_notification_style(s(match gp.notification_style {
+        appearance::NotificationStyle::Cards => "cards",
+        appearance::NotificationStyle::System => "system",
+    }));
     g.set_banner_actions(gp.banner_actions);
     g.set_check_spelling(gp.check_spelling);
     if gp.check_spelling {

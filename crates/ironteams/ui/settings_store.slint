@@ -149,6 +149,8 @@ export global SettingsStore {
     // Opt-in update check (X3.5). `update-status` is the line under the switch.
     in-out property <bool> check-updates: false;
     in-out property <bool> banner-photo: true;
+    // How notifications look: "cards" (Teams cards drawn by IronTeams) or "system".
+    in-out property <string> notification-style: "cards";
     // Red underlines under misspelled words in the message box (General > Writing).
     in-out property <bool> check-spelling: true;
     // Teams' sound and preview switches, and which meeting chats notify (all | participated | none).

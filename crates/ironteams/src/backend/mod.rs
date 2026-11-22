@@ -31,6 +31,7 @@ pub(crate) mod call_feedback;
 pub(crate) mod call_presence;
 #[cfg(feature = "calls")]
 pub(crate) mod calls_page;
+mod cards;
 mod channel_tabs;
 mod channels;
 mod clip_capture;

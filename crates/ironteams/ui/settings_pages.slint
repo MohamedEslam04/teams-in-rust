@@ -370,6 +370,13 @@ export component NotificationsPage inherits VerticalLayout {
                 clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
             }
         }
+        SChoiceRow {
+            label: @tr("Notification style");
+            hint: @tr("Teams cards show in the corner of the screen, above other windows.");
+            options: [{v: "cards", l: @tr("Teams cards")}, {v: "system", l: @tr("System notifications")}];
+            value: SettingsStore.notification-style;
+            picked(v) => { SettingsStore.command("notification-style", v); }
+        }
         SSwitch {
             label: @tr("Show the sender's photo");
             hint: @tr("Message notifications show who wrote, like Teams.");

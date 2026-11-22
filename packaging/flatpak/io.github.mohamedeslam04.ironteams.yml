@@ -10,9 +10,12 @@ command: ironteams
 finish-args:
   # Teams chat, push channel, Graph and OneDrive.
   - --share=network
-  # Window system: Wayland first, X11 as the fallback. --share=ipc is needed by X11 (MIT-SHM).
+  # Window system: Wayland first. The notification cards are drawn on the Wayland socket where
+  # the compositor has the layer shell (KDE Plasma, Sway); elsewhere (GNOME) the card host is an
+  # X11 window through XWayland, so X11 is granted next to Wayland, not only as a fallback.
+  # --share=ipc is needed by X11 (MIT-SHM).
   - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --share=ipc
   # GPU renderer (IRONTEAMS_RENDERER=femtovg). The default software renderer works without it.
   - --device=dri

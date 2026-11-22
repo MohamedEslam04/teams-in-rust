@@ -14,7 +14,7 @@
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
 //! message-sound-file, open-files, perm, switch-account, switch-org, add-account, remove-account,
 //! refresh-license, restart, sign-out, view-account, report-problem, check-updates, check-now,
-//! release-notes, status, work-location, status-note, banner-photo, banner-actions, notify-sound,
+//! release-notes, status, work-location, status-note, notification-style, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
 //! focus-duration, keyword-add, keyword-remove, open-chat-at, link-previews, photo-change,
 //! photo-remove, check-updates-menu, auto-update, beta-updates, restart-update.

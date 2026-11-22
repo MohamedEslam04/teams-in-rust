@@ -98,11 +98,28 @@ impl SettingsEnv {
             hooks: Hooks {
                 autostart: Autostart::desktop(None),
                 test_notification: Box::new(|| {
-                    let _ = notify_rust::Notification::new()
-                        .appname("IronTeams")
-                        .summary("IronTeams")
-                        .body("This is a test notification.")
-                        .show();
+                    // A Teams card when the cards are on, like the notifications it stands for.
+                    std::thread::spawn(|| {
+                        use crate::desktop_cards::{client, protocol};
+                        let cards = crate::support::quiet::load_prefs().notification_style
+                            == appearance::NotificationStyle::Cards;
+                        let card = protocol::Card {
+                            id: client::next_id(),
+                            title: "IronTeams".into(),
+                            text: "This is a test notification.".into(),
+                            initials: "IT".into(),
+                            color: 0x5b5fc7,
+                            ..protocol::Card::default()
+                        };
+                        if cards && client::show(card, Box::new(|_| {})) {
+                            return;
+                        }
+                        let _ = notify_rust::Notification::new()
+                            .appname("IronTeams")
+                            .summary("IronTeams")
+                            .body("This is a test notification.")
+                            .show();
+                    });
                 }),
                 open_url: Box::new(|u| {
                     let _ = crate::external::open(u);

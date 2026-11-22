@@ -52,6 +52,10 @@ spellbook = "0.4.2"
 # reactor, so it works inside tokio).
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+# The host of the notification cards on Wayland (`desktop_cards/layer.rs`): a wlr-layer-shell
+# overlay surface, wl_shm buffers and the seat's pointer and keyboard (xkbcommon). The version
+# winit's clipboard already brings in.
+smithay-client-toolkit = "0.20.0"
 
 [features]
 default = ["calls"]

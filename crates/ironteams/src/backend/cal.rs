@@ -1232,19 +1232,37 @@ impl Engine {
     }
 
     /// Desktop notification for a reminder or a start notice, with Join (a Teams meeting) or
-    /// Open (any other event), Snooze and Dismiss. Always a system notification, also while the
-    /// window is focused: the in-app toast is for chat messages only.
+    /// Open (any other event), Snooze and Dismiss: a Teams card or the system notification, also
+    /// while the window is focused (the in-app toast is for chat messages only).
     fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64, started: bool) {
         self.play_reminder_sound();
+        let body = if started {
+            reminders::started_body(&r, now)
+        } else {
+            reminders::reminder_body(&r, now)
+        };
+        // A Teams card on the desktop when the cards are on (`cards.rs`); the system notification
+        // when they are off or cannot be shown.
+        let (e, system) = (self.clone(), (r.clone(), body.clone()));
+        let fallback = move || e.reminder_banner(system.0, system.1);
+        if !self.reminder_card(
+            &r.id,
+            r.start_ms,
+            &r.subject,
+            &body,
+            r.join_url.as_deref(),
+            fallback,
+        ) {
+            self.reminder_banner(r, body);
+        }
+    }
+
+    /// The system notification of a reminder or a start notice.
+    fn reminder_banner(self: &Arc<Self>, r: reminders::Reminder, body: String) {
         let engine = self.clone();
         let rt = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
             let mut n = notify_rust::Notification::new();
-            let body = if started {
-                reminders::started_body(&r, now)
-            } else {
-                reminders::reminder_body(&r, now)
-            };
             n.appname("IronTeams")
                 .summary(if r.subject.is_empty() {
                     "Meeting"
@@ -1329,6 +1347,22 @@ impl Engine {
             s.fired.insert((id.clone(), start_ms));
         }
         self.reminder_call(&id, "dismissReminder", None).await
+    }
+
+    /// Snooze for `minutes` (a desktop card's Snooze menu: 5, 10 or 15).
+    pub(super) async fn snooze_reminder_for(
+        &self,
+        id: String,
+        start_ms: i64,
+        minutes: i64,
+    ) -> anyhow::Result<()> {
+        let until = now_ms() + minutes.clamp(1, 24 * 60) * 60_000;
+        self.cal
+            .lock()
+            .snoozed
+            .insert((id.clone(), start_ms), until);
+        self.reminder_call(&id, "snoozeReminder", Some(&snooze_body(until)))
+            .await
     }
 }
 
