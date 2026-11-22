@@ -20,6 +20,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use store::{MessageRow, OutboxKind, OutboxState};
+use teams_proto::cards::bold_each_line;
 use teams_proto::chat_card::{BANNER_THEMES, Band, Kind, Row, Tone, rows_for_attachments};
 use teams_proto::delivery::{Announcement as Banner, Delivery};
 
@@ -210,11 +211,14 @@ impl Engine {
         CardRowData {
             kind: kind(r.kind),
             // Markdown has no font weight, so bold text is marked up.
-            text: if r.bold && r.kind == Kind::Text && !r.text.contains("**") {
-                format!("**{}**", r.text)
-            } else {
-                r.text
-            },
+            // A bold span over several lines is closed on each line (`bold_each_line`).
+            text: bold_each_line(
+                &if r.bold && r.kind == Kind::Text && !r.text.contains("**") {
+                    format!("**{}**", r.text)
+                } else {
+                    r.text
+                },
+            ),
             label: r.label,
             size: f32::from(r.size),
             bold: r.bold,
@@ -226,11 +230,11 @@ impl Engine {
                 .into_iter()
                 .map(|c| CardCellData {
                     pixels: c.image.as_deref().and_then(|u| self.inline_image(u)),
-                    text: if c.bold && !c.text.contains("**") {
+                    text: bold_each_line(&if c.bold && !c.text.contains("**") {
                         format!("**{}**", c.text)
                     } else {
                         c.text
-                    },
+                    }),
                     stretch: c.stretch,
                     size: f32::from(c.size),
                     bold: c.bold,
