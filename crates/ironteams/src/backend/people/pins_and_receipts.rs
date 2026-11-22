@@ -231,7 +231,7 @@ impl Engine {
         let Some((id, needed)) = self.first_row_from(conv, from_ms)? else {
             return Ok(false);
         };
-        self.land_on(&id, needed, true);
+        self.land_on_row(&id, needed, true);
         Ok(true)
     }
 
@@ -338,14 +338,14 @@ impl Engine {
         let Some(needed) = needed else {
             return Ok(false);
         };
-        self.land_on(id, needed, fade);
+        self.land_on_row(id, needed, fade);
         Ok(true)
     }
 
     /// Scrolls the open list to the stored message `id`, `needed` rows from the newest one, and
     /// highlights it; with `fade` the highlight goes after 3 s (else [`Self::clear_flash`] takes
     /// it away).
-    fn land_on(self: &Arc<Self>, id: &str, needed: usize, fade: bool) {
+    fn land_on_row(self: &Arc<Self>, id: &str, needed: usize, fade: bool) {
         {
             let mut v = self.view.lock().unwrap();
             v.thread_root = None;
