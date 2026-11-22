@@ -3,9 +3,9 @@
 // shows comes from the CalStore and CalForm globals, filled by the Rust backend.
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalScrim } from "../molecules/calendar_widgets.slint";
 import { EventPeek, EventFull } from "../organisms/calendar_event.slint";
 import { EventForm } from "../organisms/calendar_form.slint";
 import { Skeleton } from "../tokens/motion.slint";
@@ -13,6 +13,7 @@ import { AddCalendarMenu, FiltersPanel, MeetLinkDialog, MoreMenu, NewMenu, Promp
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
 import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../molecules/menu.slint";
+import { Scrim } from "../atoms/scrim.slint";
 
 export { CalStore, CalForm, CalDay, CalBlock, CalAllDay, CalMonthItem, CalMonthCell, CalMiniCell, CalFilterOpt, CalCalendarRow, CalSavedView, CalSettingsData, CalPerm, CalPeek, CalAttendeeRow, CalAttachmentRow, CalProposalRow, CalZone, CalDetail, CalSchedRow, CalSuggest, CalRoomList, CalRoom } from "../stores/calendar_store.slint";
 
@@ -714,7 +715,7 @@ export component CalendarView inherits Rectangle {
     }
 
     // The peek, closed by a click anywhere else
-    if CalStore.peek-open && CalStore.modal == "": CalScrim {
+    if CalStore.peek-open && CalStore.modal == "": Scrim {
         z: 30;
         dismissed => { CalStore.close-all(); }
     }
@@ -725,7 +726,7 @@ export component CalendarView inherits Rectangle {
     }
 
     // Popovers
-    if CalStore.popup != "": CalScrim {
+    if CalStore.popup != "": Scrim {
         z: 40;
         dismissed => { CalStore.popup = ""; }
     }

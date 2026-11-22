@@ -4,9 +4,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TasksStore, AppRow } from "../stores/apps_store.slint";
-import { KitNavRow, KitNavHeader, KitBadge, KitNote } from "../molecules/apps_kit.slint";
+import { KitNavRow, KitNavHeader, KitNote } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
+import { Badge, BadgeVariant } from "../atoms/chip.slint";
 
 component TaskRowView inherits Rectangle {
     in property <AppRow> t;
@@ -34,7 +35,7 @@ component TaskRowView inherits Rectangle {
             Text { text: root.t.title; color: root.t.done ? Theme.fg-subtle : Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
             Text { text: root.t.subtitle + (root.t.subtitle != "" && root.t.meta != "" ? " · " : "") + root.t.meta; color: root.t.subtitle.ends-with("(overdue)") ? #ff8a8f : Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
         }
-        KitBadge { y: 16px; text: root.t.badge; tone: root.t.tone; }
+        Badge { variant: BadgeVariant.status; y: 16px; text: root.t.badge; tone: root.t.tone; }
         IconButton { y: 12px; size: 28px; icon: @image-url("../icons/edit.svg"); tooltip: "Edit " + root.t.title; clicked => { TasksStore.command("task-edit", root.t.id); } }
         IconButton { y: 12px; size: 28px; icon: @image-url("../icons/trash.svg"); tooltip: "Delete " + root.t.title; clicked => { TasksStore.command("task-delete", root.t.id); } }
     }

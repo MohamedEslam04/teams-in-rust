@@ -1,10 +1,2 @@
 // Small controls shared by the calendar's panels: buttons, checkboxes, text fields, menu rows.
 import { Theme } from "../tokens/theme.slint";
-
-// Catches clicks outside an open popover and closes it.
-export component CalScrim inherits Rectangle {
-    in property <color> shade: transparent;
-    callback dismissed();
-    background: root.shade;
-    TouchArea { clicked => { root.dismissed(); } }
-}

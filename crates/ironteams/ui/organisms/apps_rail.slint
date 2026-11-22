@@ -6,10 +6,11 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, RailApp } from "../stores/apps_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ScrollView } from "std-widgets.slint";
-import { AppTile, KitSearch } from "../molecules/apps_kit.slint";
+import { AppTile } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { MenuItem, MenuItemVariant, MenuColumn } from "../molecules/menu.slint";
+import { SearchBox } from "../atoms/search_box.slint";
 
 // One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
 component RailEntry inherits Rectangle {
@@ -288,7 +289,7 @@ export component AppsOverlays inherits Rectangle {
                         clicked => { AppsStore.command("rail-collapse", ""); }
                     }
                 }
-                flyout-search := KitSearch {
+                flyout-search := SearchBox {
                     placeholder: "Search apps";
                     label: "Search apps";
                     text <=> AppsStore.flyout-query;

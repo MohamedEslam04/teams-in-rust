@@ -1,10 +1,11 @@
 // The Teams management dialogs. One host switches on `TeamsStore.dialog`; every dialog is a
-// TFrame with its own fields and sends its result as a `TeamsStore.command`.
+// ModalDialog with its own fields and sends its result as a `TeamsStore.command`.
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TPerson, TeamsStore, TeamsActions } from "../stores/teams_store.slint";
-import { TChoice, TFrame } from "../molecules/teams_widgets.slint";
+import { TChoice } from "../molecules/teams_widgets.slint";
+import { ModalDialog } from "../molecules/dialog_frame.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
@@ -50,7 +51,7 @@ component PersonLine inherits Rectangle {
     t := TouchArea { enabled: root.pick; mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
-component ConfirmDialog inherits TFrame {
+component ConfirmDialog inherits ModalDialog {
     title: "Are you sure?";
     panel-width: 440px;
     panel-height: 170px;
@@ -74,7 +75,7 @@ component ConfirmDialog inherits TFrame {
     }
 }
 
-component JoinDialog inherits TFrame {
+component JoinDialog inherits ModalDialog {
     title: "Join a team with a code";
     panel-width: 460px;
     panel-height: 250px;
@@ -93,7 +94,7 @@ component JoinDialog inherits TFrame {
     }
 }
 
-component NewChannelDialog inherits TFrame {
+component NewChannelDialog inherits ModalDialog {
     property <string> kind: "standard";
     property <bool> threaded: false;
     property <bool> everyone: false;
@@ -159,7 +160,7 @@ component NewChannelDialog inherits TFrame {
     }
 }
 
-component EditChannelDialog inherits TFrame {
+component EditChannelDialog inherits ModalDialog {
     title: "Edit channel";
     panel-width: 500px;
     panel-height: 310px;
@@ -199,7 +200,7 @@ component PermRow inherits Rectangle {
     }
 }
 
-component ModerationDialog inherits TFrame {
+component ModerationDialog inherits ModalDialog {
     title: "Manage channel: " + TeamsStore.d-channel-name;
     panel-width: 560px;
     panel-height: 400px;
@@ -219,7 +220,7 @@ component ModerationDialog inherits TFrame {
     }
 }
 
-component MembersDialog inherits TFrame {
+component MembersDialog inherits ModalDialog {
     in property <bool> channel-scope: TeamsStore.d-channel != "";
     title: (root.channel-scope ? "Members of " + TeamsStore.d-channel-name : "Members of " + TeamsStore.d-team-name);
     panel-width: 580px;
@@ -266,7 +267,7 @@ component MembersDialog inherits TFrame {
     }
 }
 
-component TagsDialog inherits TFrame {
+component TagsDialog inherits ModalDialog {
     title: "Tags in " + TeamsStore.d-team-name;
     panel-width: 640px;
     panel-height: 640px;
@@ -332,7 +333,7 @@ component TagsDialog inherits TFrame {
     }
 }
 
-component EmailDialog inherits TFrame {
+component EmailDialog inherits ModalDialog {
     property <bool> domains: false;
     title: "Email address of " + TeamsStore.d-channel-name;
     panel-width: 560px;
@@ -383,7 +384,7 @@ component EmailDialog inherits TFrame {
     }
 }
 
-component NotifyDialog inherits TFrame {
+component NotifyDialog inherits ModalDialog {
     title: "Notifications for " + TeamsStore.d-channel-name;
     panel-width: 520px;
     panel-height: 330px;
@@ -409,7 +410,7 @@ component NotifyDialog inherits TFrame {
     }
 }
 
-component NewTeamDialog inherits TFrame {
+component NewTeamDialog inherits ModalDialog {
     property <string> access: "private";
     title: "Create a team";
     panel-width: 520px;
@@ -442,7 +443,7 @@ component NewTeamDialog inherits TFrame {
     }
 }
 
-component ManageTeamDialog inherits TFrame {
+component ManageTeamDialog inherits ModalDialog {
     title: "Manage " + TeamsStore.d-team-name;
     panel-width: 640px;
     panel-height: 680px;
@@ -500,7 +501,7 @@ component ManageTeamDialog inherits TFrame {
     }
 }
 
-component DeletedDialog inherits TFrame {
+component DeletedDialog inherits ModalDialog {
     title: "Deleted channels in " + TeamsStore.d-team-name;
     panel-width: 540px;
     panel-height: 420px;

@@ -42,28 +42,6 @@ export component IconButton inherits Rectangle {
     }
 }
 
-export component Pill inherits Rectangle {
-    in property <string> label;
-    in property <bool> active;
-    callback clicked();
-    height: 26px;
-    border-radius: 13px;
-    border-width: 1px;
-    border-color: active ? Theme.accent : Theme.border;
-    background: active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : transparent);
-    animate background { duration: Motion.quick; }
-    animate border-color { duration: Motion.quick; }
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        Text { text: root.label; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-    }
-    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 // A collapsible section of the chat list (Quick views, Favorites, Groups…), drawn as Teams does:
 // a chevron that points down while the section is open and right while it is folded, a quieter
 // semibold label, and a hover highlight. The chevron swaps its picture rather than rotating:

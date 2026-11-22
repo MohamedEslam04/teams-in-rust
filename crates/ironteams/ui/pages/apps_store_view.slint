@@ -4,9 +4,11 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, AppCard } from "../stores/apps_store.slint";
-import { AppTile, KitSearch, KitBadge, KitPill, AppCardView } from "../molecules/apps_kit.slint";
+import { AppTile, AppCardView } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { MenuItem, MenuItemVariant, MenuColumn } from "../molecules/menu.slint";
+import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
+import { SearchBox } from "../atoms/search_box.slint";
 
 // Cards in as many columns as fit.
 component CardGrid inherits Rectangle {
@@ -164,7 +166,7 @@ component ManageView inherits ScrollView {
                     Text { text: a.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; overflow: elide; }
                     Text { text: a.developer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
                 }
-                if a.update: KitBadge { y: 18px; text: "Update available"; tone: "warn"; }
+                if a.update: Badge { variant: BadgeVariant.status; y: 18px; text: "Update available"; tone: "warn"; }
                 if a.update: Button { variant: ButtonVariant.kit; y: 12px; label: "Update"; clicked => { AppsStore.command("app-update", a.id); } }
                 Button { variant: ButtonVariant.kit; y: 12px; label: "Details"; clicked => { AppsStore.command("app-page", a.id); } }
                 Button { variant: ButtonVariant.kit; y: 12px; label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", a.id); } }
@@ -246,7 +248,7 @@ export component StoreView inherits Rectangle {
                 padding-right: 16px;
                 spacing: 10px;
                 Text { text: "Store"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
-                KitSearch {
+                SearchBox {
                     y: 14px;
                     width: store-head.narrow ? 180px : 340px;
                     placeholder: "Search for agents and apps";
@@ -278,7 +280,7 @@ export component StoreView inherits Rectangle {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Works in"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for s in [{k: "all", l: "All"}, {k: "personal", l: "Personal"}, {k: "chat", l: "Chat"}, {k: "team", l: "Team"}, {k: "meeting", l: "Meeting"}]: KitPill {
+                    for s in [{k: "all", l: "All"}, {k: "personal", l: "Personal"}, {k: "chat", l: "Chat"}, {k: "team", l: "Team"}, {k: "meeting", l: "Meeting"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                         y: 5px;
                         label: s.l;
                         active: AppsStore.scope-filter == s.k;
@@ -288,7 +290,7 @@ export component StoreView inherits Rectangle {
                         spacing: 6px;
                         padding-left: 10px;
                         Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                        for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                             y: 5px;
                             label: s.l;
                             active: AppsStore.kind-filter == s.k;
@@ -303,7 +305,7 @@ export component StoreView inherits Rectangle {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                    for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                         y: 5px;
                         label: s.l;
                         active: AppsStore.kind-filter == s.k;

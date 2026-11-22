@@ -3,10 +3,13 @@
 // backend; every action goes out through DriveStore.command(name, argument).
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Pill } from "../atoms/chip.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
+import { SearchBox } from "../atoms/search_box.slint";
+import { DialogFrame } from "../molecules/dialog_frame.slint";
 
 export struct DriveRow {
     id: string,
@@ -404,71 +407,6 @@ component ForYouCard inherits Rectangle {
     }
 }
 
-component SearchBox inherits Rectangle {
-    in property <string> placeholder;
-    in-out property <string> text;
-    in property <string> label;
-    callback edited(string);
-    callback accepted(string);
-    height: 32px;
-    border-radius: 4px;
-    background: Theme.sidebar;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.border;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 8px;
-        Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
-        input := TextInput {
-            text <=> root.text;
-            color: Theme.fg;
-            font-size: 13px * Theme.font-scale;
-            vertical-alignment: center;
-            single-line: true;
-            accessible-role: text-input;
-            accessible-label: root.label;
-            edited => { root.edited(self.text); }
-            accepted => { root.accepted(self.text); }
-        }
-    }
-    if input.text == "": Text {
-        x: 36px;
-        width: parent.width - 44px;
-        text: root.placeholder;
-        color: Theme.fg-subtle;
-        font-size: 13px * Theme.font-scale;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
-
-component DialogFrame inherits Rectangle {
-    in property <string> title;
-    in property <length> dialog-width: 480px;
-    callback close();
-    width: root.dialog-width;
-    border-radius: 8px;
-    background: Theme.surface;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
-    accessible-role: groupbox;
-    accessible-label: root.title;
-    TouchArea { }
-    VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
-        HorizontalLayout {
-            height: 28px;
-            Text { text: root.title; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-            IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close"; size: 28px; clicked => { root.close(); } }
-        }
-        @children
-    }
-}
-
 component Breadcrumbs inherits HorizontalLayout {
     spacing: 4px;
     alignment: start;
@@ -596,7 +534,7 @@ component ShareDialog inherits DialogFrame {
             spacing: 8px;
             Text { text: DriveStore.share-status; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Share status " + DriveStore.share-status; }
             Text { text: "Share with people"; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; }
-            SearchBox {
+            SearchBox { clip-placeholder: true;
                 placeholder: "Search for people";
                 label: "Search for people";
                 edited(t) => { DriveStore.command("share-search", t); }
@@ -858,7 +796,7 @@ export component OneDriveView inherits Rectangle {
                     IconButton { y: 10px; icon: @image-url("../icons/list.svg"); tooltip: "List view"; active: !DriveStore.grid; clicked => { DriveStore.command("view", "list"); } }
                     IconButton { y: 10px; icon: @image-url("../icons/grid.svg"); tooltip: "Grid view"; active: DriveStore.grid; clicked => { DriveStore.command("view", "grid"); } }
                     IconButton { y: 10px; icon: @image-url("../icons/sync.svg"); tooltip: "Refresh"; clicked => { DriveStore.command("refresh", ""); } }
-                    SearchBox {
+                    SearchBox { clip-placeholder: true;
                         width: root.narrow ? 200px : 260px;
                         y: 10px;
                         placeholder: "Search OneDrive and SharePoint";
@@ -982,7 +920,7 @@ export component OneDriveView inherits Rectangle {
                         }
                     }
                     Rectangle { horizontal-stretch: 1; }
-                    SearchBox {
+                    SearchBox { clip-placeholder: true;
                         width: root.narrow ? 160px : 260px;
                         y: 6px;
                         placeholder: "Filter by name or person";
