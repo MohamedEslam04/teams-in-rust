@@ -13,7 +13,7 @@
 //! to the chat by [`Engine::quick_reply`], the same path the cards use.
 
 use super::Engine;
-use super::quiet::Decision;
+use crate::support::quiet::Decision;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn muted_paused_and_focused_out_messages_show_nowhere() {
-        use super::super::quiet::Why;
+        use crate::support::quiet::Why;
         for why in [Why::Paused, Why::QuietHours, Why::Focus, Why::Routing] {
             for active in [true, false] {
                 assert_eq!(route(&Decision::Hidden(why), active), Route::Held);

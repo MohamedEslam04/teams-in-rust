@@ -26,6 +26,7 @@ mod shortcuts;
 mod snippets;
 mod spell;
 mod suggest;
+mod support;
 mod topbar;
 mod tray_wiring;
 mod ui;

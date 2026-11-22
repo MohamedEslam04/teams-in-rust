@@ -180,7 +180,7 @@ impl Local {
     pub fn save_general(&self) -> anyhow::Result<()> {
         // Focus mode can be switched from the tray; this copy of the preferences may be older.
         let mut general = self.general.clone();
-        if let Some(until) = super::quiet::focus_override() {
+        if let Some(until) = crate::support::quiet::focus_override() {
             general.focus_until_ms = until;
         }
         Ok(general.save_to(&self.dir.join(appearance::general::FILE_NAME))?)

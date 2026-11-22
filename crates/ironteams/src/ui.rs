@@ -376,7 +376,7 @@ impl UiHandle {
     }
 
     fn transient(&self, text: String, info: bool) {
-        let text = crate::backend::util::plain_banner(&text);
+        let text = crate::support::error_text::plain_banner(&text);
         self.run(move |w| {
             let shown: SharedString = text.into();
             w.set_banner_action(SharedString::new());

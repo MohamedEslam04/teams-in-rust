@@ -58,7 +58,6 @@ mod people_card;
 mod people_live;
 pub(crate) mod people_presence;
 mod photo;
-pub(crate) mod quiet;
 mod remind;
 mod render;
 pub(crate) mod ringtone;
@@ -567,7 +566,8 @@ impl Engine {
     fn command_failed(&self, err: anyhow::Error) {
         tracing::warn!(%err, "command failed");
         if !self.offline.load(Ordering::Relaxed) {
-            self.ui.banner(util::shown_error(&err));
+            self.ui
+                .banner(crate::support::error_text::shown_error(&err));
         }
     }
 
