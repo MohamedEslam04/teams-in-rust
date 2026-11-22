@@ -150,6 +150,17 @@ pub(crate) const MIGRATIONS: &[&str] = &[
              SELECT new.rowid, kelma_fts_body(new.content_html), kelma_fts_fold(new.sender_name)
              WHERE new.deleted = 0 AND new.message_type NOT LIKE 'Control/%';
      END;",
+    // v8: stretches of history the cache does not hold. A newest page stored above older cached
+    // messages after a long offline period leaves a hole; the paging code anchors on the oldest
+    // cached message, so without this record the hole would never be fetched. `newer_ms` is the
+    // compose time of the oldest message of the page stored above the hole, `older_ms` that of
+    // the newest message cached before it.
+    "CREATE TABLE history_gaps (
+         conversation_id TEXT NOT NULL,
+         newer_ms        INTEGER NOT NULL,
+         older_ms        INTEGER NOT NULL,
+         PRIMARY KEY (conversation_id, newer_ms)
+     );",
 ];
 
 pub(crate) fn run(conn: &mut Connection) -> Result<()> {

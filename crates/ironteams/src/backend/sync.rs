@@ -4,7 +4,7 @@ use super::util::*;
 use super::{Engine, PAGE};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use store::{ConvFilter, ConvKind, ConversationRow, TeamRow, UserRow};
+use store::{ConvFilter, ConvKind, ConversationRow, HistoryGap, TeamRow, UserRow};
 use teams_proto::model::Message;
 use teams_proto::time::now_ms;
 
@@ -18,6 +18,9 @@ const HISTORY_RETRY: [std::time::Duration; 3] = [
     std::time::Duration::from_secs(20),
     std::time::Duration::from_secs(60),
 ];
+
+/// How many pages [`Engine::fill_history_gaps`] reads per call.
+const GAP_PAGES: usize = 4;
 
 impl Engine {
     /// Fetches conversations, teams and names; writes them to the store.
@@ -200,11 +203,77 @@ impl Engine {
     pub(super) async fn fetch_latest(self: &Arc<Self>, conv: &str) {
         match self.client.messages(conv, None, PAGE as u32).await {
             Ok(page) => {
-                self.store_messages(&page.messages, None);
+                self.store_newest_page(conv, &page.messages);
                 self.mark(|d| d.messages = true);
             }
             Err(err) => tracing::warn!(%err, "history fetch failed"),
         }
+    }
+
+    /// Stores a conversation's newest page. When more than a page arrived since the cache was
+    /// last updated, the page lands above a hole: that is recorded first, so paging up reads it
+    /// (see [`Engine::fill_history_gaps`]) instead of treating the cache as contiguous.
+    pub(super) fn store_newest_page(&self, conv: &str, msgs: &[Message]) {
+        {
+            let st = self.store.lock().unwrap();
+            // Only a full page can leave a hole, so the cache is not read for a short one.
+            let newest = if msgs.len() >= PAGE {
+                st.latest_compose_ms(conv).ok().flatten()
+            } else {
+                None
+            };
+            let cached = |id: &str| st.message(id).ok().flatten().is_some();
+            if let Some((newer, older)) = gap_above_cache(newest, msgs, cached) {
+                tracing::info!(newer, older, "history gap above the cache recorded");
+                if let Err(err) = st.add_history_gap(conv, newer, older) {
+                    tracing::warn!(%err, "recording a history gap failed");
+                }
+            }
+        }
+        self.store_messages(msgs, None);
+    }
+
+    /// Reads the holes in the cache that a window of the newest `limit + PAGE` rows reaches into,
+    /// each from its newer edge down (a few pages at most per call). Returns false when the
+    /// network read failed: the window must not grow over a hole.
+    async fn fill_history_gaps(self: &Arc<Self>, conv: &str, limit: usize) -> bool {
+        for _ in 0..GAP_PAGES {
+            let gap = {
+                let st = self.store.lock().unwrap();
+                let gaps = st.history_gaps(conv).unwrap_or_default();
+                if gaps.is_empty() {
+                    return true;
+                }
+                let rows = st.messages_before(conv, None, limit + PAGE);
+                let oldest = rows.ok().and_then(|r| r.first().map(|m| m.compose_ms));
+                oldest.and_then(|oldest| gap_to_fill(&gaps, oldest))
+            };
+            let Some(gap) = gap else { return true };
+            self.ui.loading_older(true);
+            let page = self
+                .client
+                .messages(conv, Some(gap.newer_ms), PAGE as u32)
+                .await;
+            self.ui.loading_older(false);
+            let page = match page {
+                Ok(page) => page,
+                Err(err) => {
+                    tracing::warn!(%err, "reading a history gap failed");
+                    return false;
+                }
+            };
+            self.store_messages(&page.messages, None);
+            let st = self.store.lock().unwrap();
+            let done = match gap_step(&gap, &page.messages) {
+                GapStep::Close => st.remove_history_gap(conv, gap.newer_ms),
+                GapStep::Shrink(to) => st.shrink_history_gap(conv, gap.newer_ms, to),
+            };
+            if let Err(err) = done {
+                tracing::warn!(%err, "updating a history gap failed");
+                return false;
+            }
+        }
+        true
     }
 
     pub(super) fn store_messages(&self, msgs: &[Message], parent: Option<&str>) {
@@ -337,7 +406,7 @@ impl Engine {
             }
             Err(e) => return Err(e.into()),
         };
-        self.store_messages(&page.messages, None);
+        self.store_newest_page(&id, &page.messages);
         self.view.lock().unwrap().loaded = true;
         self.mark(|d| {
             d.messages = true;
@@ -394,7 +463,7 @@ impl Engine {
                 }
                 match e.client.messages(&id, None, PAGE as u32).await {
                     Ok(page) => {
-                        e.store_messages(&page.messages, None);
+                        e.store_newest_page(&id, &page.messages);
                         e.mark(|d| {
                             d.messages = true;
                             d.scroll = true;
@@ -414,6 +483,10 @@ impl Engine {
         };
         let Some(conv) = conv else { return Ok(()) };
         if thread.is_some() {
+            return Ok(());
+        }
+        // A window reaching a hole in the cache reads it first (chats and channels alike).
+        if !self.fill_history_gaps(&conv, limit).await {
             return Ok(());
         }
         let (cached, is_channel) = {
@@ -485,6 +558,149 @@ fn not_member_text(kind: Option<ConvKind>, id: &str) -> &'static str {
 /// The chat service's answer for a deleted channel or chat.
 fn is_soft_deleted(err: &str) -> bool {
     err.contains("SoftDeleted") || err.contains("soft-deleted")
+}
+
+/// The hole a freshly fetched newest page leaves above the cache, as `(newer_ms, older_ms)`: a
+/// full page that shares no message with the cache and starts after the newest cached message
+/// means more than a page arrived since the cache was last updated, so the messages in between
+/// are missing. `cached_newest` is the newest cached top-level compose time (read before the
+/// page is stored), `is_cached` tells whether a message id is already in the cache.
+fn gap_above_cache(
+    cached_newest: Option<i64>,
+    page: &[Message],
+    is_cached: impl Fn(&str) -> bool,
+) -> Option<(i64, i64)> {
+    let newest = cached_newest?;
+    let oldest = page.iter().map(|m| m.compose_ms).min()?;
+    (page.len() >= PAGE && oldest > newest && !page.iter().any(|m| is_cached(&m.id)))
+        .then_some((oldest, newest))
+}
+
+/// The gap a window of cached rows reaching down to `window_oldest` crosses: the newest gap
+/// whose newer edge is above it. Rows below that edge cannot be shown before the gap is read.
+fn gap_to_fill(gaps: &[HistoryGap], window_oldest: i64) -> Option<HistoryGap> {
+    gaps.iter()
+        .filter(|g| g.newer_ms > window_oldest)
+        .max_by_key(|g| g.newer_ms)
+        .copied()
+}
+
+/// What a page read from a gap's newer edge does to the gap.
+#[derive(Debug, PartialEq)]
+enum GapStep {
+    /// The page reached (or passed) the older edge, or the server has nothing more: it is closed.
+    Close,
+    /// Messages down to this compose time are cached now; the gap's newer edge moves there.
+    Shrink(i64),
+}
+
+fn gap_step(gap: &HistoryGap, page: &[Message]) -> GapStep {
+    match page.iter().map(|m| m.compose_ms).min() {
+        Some(oldest)
+            if page.len() >= PAGE && oldest < gap.newer_ms && oldest > gap.older_ms =>
+        {
+            GapStep::Shrink(oldest)
+        }
+        _ => GapStep::Close,
+    }
+}
+
+#[cfg(test)]
+mod gap_tests {
+    use super::*;
+
+    fn msg(id: &str, ms: i64) -> Message {
+        Message {
+            id: id.into(),
+            conversation_id: "c".into(),
+            parent_id: None,
+            sender_mri: "8:orgid:a".into(),
+            sender_name: "A".into(),
+            compose_ms: ms,
+            edited_ms: None,
+            deleted: false,
+            message_type: "RichText/Html".into(),
+            content: String::new(),
+            client_message_id: None,
+            reactions: vec![],
+            files: vec![],
+            subject: None,
+            mentions: vec![],
+            card: None,
+            importance: Default::default(),
+            announcement: None,
+            language_stamp: None,
+            links: vec![],
+        }
+    }
+
+    /// A full page of messages composed at `from..from + PAGE`.
+    fn full_page(from: i64) -> Vec<Message> {
+        (0..PAGE as i64)
+            .map(|i| msg(&format!("m{}", from + i), from + i))
+            .collect()
+    }
+
+    fn gap(newer_ms: i64, older_ms: i64) -> HistoryGap {
+        HistoryGap { newer_ms, older_ms }
+    }
+
+    #[test]
+    fn a_full_page_above_the_cache_that_shares_nothing_is_a_gap() {
+        let page = full_page(1000);
+        assert_eq!(
+            gap_above_cache(Some(500), &page, |_| false),
+            Some((1000, 500))
+        );
+    }
+
+    #[test]
+    fn no_gap_without_a_cache_a_short_page_or_an_overlap() {
+        let page = full_page(1000);
+        // Nothing cached: the page is the start of the cache.
+        assert_eq!(gap_above_cache(None, &page, |_| false), None);
+        // A short page is the whole history since the cache (or a young chat).
+        assert_eq!(gap_above_cache(Some(500), &page[..PAGE - 1], |_| false), None);
+        assert_eq!(gap_above_cache(Some(500), &[], |_| false), None);
+        // The page shares a message with the cache: the history is contiguous.
+        assert_eq!(gap_above_cache(Some(500), &page, |id| id == "m1030"), None);
+        // The page starts inside what is cached.
+        assert_eq!(gap_above_cache(Some(1010), &page, |_| false), None);
+    }
+
+    #[test]
+    fn the_window_picks_the_newest_gap_it_reaches_into() {
+        let gaps = [gap(900, 700), gap(300, 100)];
+        // Rows end above both gaps: nothing to read.
+        assert_eq!(gap_to_fill(&gaps, 950), None);
+        // Down to the newer edge exactly is not across it.
+        assert_eq!(gap_to_fill(&gaps, 900), None);
+        // Rows reach below the newest gap's newer edge, whatever lies beneath.
+        assert_eq!(gap_to_fill(&gaps, 800), Some(gap(900, 700)));
+        assert_eq!(gap_to_fill(&gaps, 50), Some(gap(900, 700)));
+        // With only the older gap left it is the one.
+        assert_eq!(gap_to_fill(&gaps[1..], 250), Some(gap(300, 100)));
+        assert_eq!(gap_to_fill(&[], 0), None);
+    }
+
+    #[test]
+    fn a_page_inside_the_gap_shrinks_it() {
+        let page = full_page(800);
+        assert_eq!(gap_step(&gap(900, 700), &page), GapStep::Shrink(800));
+        assert_eq!(gap_step(&gap(2000, 700), &page), GapStep::Shrink(800));
+    }
+
+    #[test]
+    fn a_page_that_reaches_the_older_edge_or_ends_the_history_closes_it() {
+        // The page's oldest message is at or below the older edge.
+        assert_eq!(gap_step(&gap(2000, 830), &full_page(800)), GapStep::Close);
+        assert_eq!(gap_step(&gap(2000, 800), &full_page(800)), GapStep::Close);
+        // A short or empty page: the server has nothing older.
+        assert_eq!(gap_step(&gap(2000, 10), &full_page(800)[..5]), GapStep::Close);
+        assert_eq!(gap_step(&gap(2000, 10), &[]), GapStep::Close);
+        // A page that does not go below the anchor cannot loop forever.
+        assert_eq!(gap_step(&gap(800, 10), &full_page(800)), GapStep::Close);
+    }
 }
 
 #[cfg(test)]

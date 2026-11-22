@@ -14,8 +14,8 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use fts::{MARK_END, MARK_START};
 pub use model::{
-    ConvFilter, ConvKind, ConversationRow, Draft, LocalFilters, LocalHit, MessageRow, OutboxItem,
-    OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
+    ConvFilter, ConvKind, ConversationRow, Draft, HistoryGap, LocalFilters, LocalHit, MessageRow,
+    OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -247,6 +247,7 @@ impl Store {
         for sql in [
             "DELETE FROM messages WHERE conversation_id = ?1",
             "DELETE FROM drafts WHERE conversation_id = ?1",
+            "DELETE FROM history_gaps WHERE conversation_id = ?1",
             "DELETE FROM conversations WHERE id = ?1",
         ] {
             self.conn.prepare_cached(sql)?.execute([id])?;
@@ -569,6 +570,83 @@ impl Store {
             )?
             .query_row(params![conversation_id, compose_ms], |r| r.get(0))
             .optional()?)
+    }
+
+    // ---- history gaps ----------------------------------------------------
+
+    /// Records that messages composed between `older_ms` and `newer_ms` may be missing from the
+    /// cache. Recording the same gap again changes nothing; an empty range is no gap.
+    pub fn add_history_gap(
+        &self,
+        conversation_id: &str,
+        newer_ms: i64,
+        older_ms: i64,
+    ) -> Result<()> {
+        if newer_ms <= older_ms {
+            return Ok(());
+        }
+        self.conn
+            .prepare_cached(
+                "INSERT OR REPLACE INTO history_gaps (conversation_id, newer_ms, older_ms) \
+                 VALUES (?1, ?2, ?3)",
+            )?
+            .execute(params![conversation_id, newer_ms, older_ms])?;
+        Ok(())
+    }
+
+    /// A conversation's gaps, newest first.
+    pub fn history_gaps(&self, conversation_id: &str) -> Result<Vec<HistoryGap>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT newer_ms, older_ms FROM history_gaps \
+             WHERE conversation_id = ?1 ORDER BY newer_ms DESC",
+        )?;
+        Ok(stmt
+            .query_map([conversation_id], |r| {
+                Ok(HistoryGap {
+                    newer_ms: r.get(0)?,
+                    older_ms: r.get(1)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Moves the newer edge of the gap that ends at `newer_ms` down to `to_ms` (messages down to
+    /// there were fetched), or removes the gap once `to_ms` reaches its older edge. A `to_ms`
+    /// that is not below the current edge changes nothing.
+    pub fn shrink_history_gap(
+        &self,
+        conversation_id: &str,
+        newer_ms: i64,
+        to_ms: i64,
+    ) -> Result<()> {
+        if to_ms >= newer_ms {
+            return Ok(());
+        }
+        let n = self
+            .conn
+            .prepare_cached(
+                "UPDATE OR REPLACE history_gaps SET newer_ms = ?3 \
+                 WHERE conversation_id = ?1 AND newer_ms = ?2 AND older_ms < ?3",
+            )?
+            .execute(params![conversation_id, newer_ms, to_ms])?;
+        if n == 0 {
+            // Closed (or no such gap): drop it when it exists and `to_ms` is past its older edge.
+            self.conn
+                .prepare_cached(
+                    "DELETE FROM history_gaps \
+                     WHERE conversation_id = ?1 AND newer_ms = ?2 AND older_ms >= ?3",
+                )?
+                .execute(params![conversation_id, newer_ms, to_ms])?;
+        }
+        Ok(())
+    }
+
+    /// Forgets the gap that ends at `newer_ms` (it was filled, or the server has nothing in it).
+    pub fn remove_history_gap(&self, conversation_id: &str, newer_ms: i64) -> Result<()> {
+        self.conn
+            .prepare_cached("DELETE FROM history_gaps WHERE conversation_id = ?1 AND newer_ms = ?2")?
+            .execute(params![conversation_id, newer_ms])?;
+        Ok(())
     }
 
     // ---- saved messages --------------------------------------------------
