@@ -5,6 +5,7 @@
 //! here, so nothing can reach the network.
 
 use super::*;
+use crate::backend::ringtone::RingtoneChoice;
 use crate::backend::settings::{DeviceLists, Local, ServerData};
 use crate::ui::settings::{Autostart, Hooks, MicPoll, SettingsEnv, install};
 use crate::{SettingsStore, Theme};
@@ -69,6 +70,7 @@ fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv
         move || l.borrow_mut().push(what.into())
     };
     let l2 = log.clone();
+    let l3 = log.clone();
     SettingsEnv {
         paths: home.paths(),
         tokens,
@@ -103,6 +105,15 @@ fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv
                 error: None,
             }),
             test_sound: Arc::new(|_| Ok(())),
+            // Recorded, never played; the picker answers `None` (cancelled) unless a test says.
+            play_sound: Box::new(move |kind, choice, file| {
+                l3.borrow_mut().push(format!(
+                    "play {kind:?} {} {}",
+                    choice.slug(),
+                    file.unwrap_or_default()
+                ));
+            }),
+            pick_sound_file: std::rc::Rc::new(|| None),
             mic_level: Box::new(|_| Ok(Box::new(|| Some(0.5_f32)) as MicPoll)),
             // Never the network: a check that was not given a fake answer fails.
             check_update: Arc::new(|| Err("no network in tests".into())),
@@ -960,7 +971,6 @@ fn the_page_list_and_find_in_settings_switch_pages() {
 
 #[test]
 fn the_calls_page_picks_a_ringtone_and_is_honest_about_forwarding() {
-    use crate::backend::ringtone::RingtoneChoice;
     let home = Home::new("ringtone");
     let dir = home.paths().config_dir;
     let ui = window(home);
@@ -968,14 +978,26 @@ fn the_calls_page_picks_a_ringtone_and_is_honest_about_forwarding() {
     open_page(app, "general");
     press(app, "Calls");
     assert_eq!(value_of(app, "Settings page"), "Calls");
-    assert!(checked(app, "Ringtone: Chime"), "the chime is the default");
+    assert!(
+        checked(app, "Ringtone: Default"),
+        "the new sounds are the default"
+    );
+    assert_listed_first(
+        app,
+        "Ringtone",
+        "Default",
+        &["Chime", "Soft", "Pulse", "Custom file"],
+    );
+    press(app, "Play ringtone");
+    assert_eq!(*ui.log.borrow(), ["play Ringtone default "]);
 
     press(app, "Ringtone: Soft");
     assert_eq!(store(app).get_ringtone(), "soft");
     assert!(checked(app, "Ringtone: Soft"));
     assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Soft);
-    // Play makes no sound in tests, and changes nothing.
+    // Play sends the preview command for the choice, and changes nothing.
     press(app, "Play ringtone");
+    assert_eq!(ui.log.borrow().last().unwrap(), "play Ringtone soft ");
     assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Soft);
 
     // Forwarding and the voicemail greeting live in Teams: shown, not pretending to work.
@@ -1911,4 +1933,164 @@ fn the_update_rows_stay_inside_a_narrow_window() {
             super::overflow::assert_texts_inside(&row, &format!("{kind} on the about page"));
         }
     }
+}
+
+/// The options of a choice row are listed in reading order: `first` comes before each of
+/// `others` (side by side, or one under the other when the row does not fit).
+fn assert_listed_first(app: &AppWindow, group: &str, first: &str, others: &[&str]) {
+    let at = |option: &str| {
+        let p = control(app, &format!("{group}: {option}")).absolute_position();
+        (p.y, p.x)
+    };
+    let top = at(first);
+    for other in others {
+        assert!(top < at(other), "{group}: {first} comes before {other}");
+    }
+}
+
+/// A tiny valid WAV (8 kHz, mono, 16 bit, 0.1 s), to pick as a sound.
+fn write_wav(path: &std::path::Path) {
+    let data: Vec<u8> = (0..800i16).flat_map(|i| (i * 20).to_le_bytes()).collect();
+    let mut f = Vec::new();
+    f.extend(b"RIFF");
+    f.extend((36 + data.len() as u32).to_le_bytes());
+    f.extend(b"WAVEfmt ");
+    f.extend(16u32.to_le_bytes());
+    f.extend(1u16.to_le_bytes());
+    f.extend(1u16.to_le_bytes());
+    f.extend(8_000u32.to_le_bytes());
+    f.extend(16_000u32.to_le_bytes());
+    f.extend(2u16.to_le_bytes());
+    f.extend(16u16.to_le_bytes());
+    f.extend(b"data");
+    f.extend((data.len() as u32).to_le_bytes());
+    f.extend(data);
+    std::fs::write(path, f).unwrap();
+}
+
+/// What the "Choose a file…" dialog answers in a test.
+type NextFile = std::rc::Rc<std::cell::RefCell<Option<PathBuf>>>;
+
+/// A window whose "Choose a file…" dialog answers with whatever `next` holds.
+fn window_picking(home: Home, next: &NextFile) -> Ui {
+    let answer = next.clone();
+    window_tweaked(home, move |env| {
+        env.hooks.pick_sound_file = std::rc::Rc::new(move || answer.borrow().clone());
+    })
+}
+
+#[test]
+fn the_notifications_page_picks_the_message_sound_and_plays_it() {
+    let home = Home::new("message-sound");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    assert!(
+        checked(app, "Message sound: Default"),
+        "new users get the default message sound"
+    );
+    assert_eq!(store(app).get_message_sound(), "default");
+    assert_listed_first(
+        app,
+        "Message sound",
+        "Default",
+        &["Chime", "Soft", "Pulse", "Custom file"],
+    );
+
+    press(app, "Play message sound");
+    press(app, "Message sound: Pulse");
+    assert_eq!(store(app).get_message_sound(), "pulse");
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::Pulse);
+    press(app, "Play message sound");
+    assert_eq!(
+        *ui.log.borrow(),
+        ["play Message default ", "play Message pulse "],
+        "Play sends the preview command for the choice shown"
+    );
+    // The ringtone is its own setting.
+    assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Teams);
+}
+
+#[test]
+fn a_sound_file_becomes_the_custom_message_sound_and_a_bad_one_is_refused() {
+    let home = Home::new("message-file");
+    let dir = home.paths().config_dir;
+    let good = home.0.join("ping.wav");
+    std::fs::create_dir_all(&home.0).unwrap();
+    write_wav(&good);
+    let bad = home.0.join("notes.mp3");
+    std::fs::write(&bad, b"this is not audio").unwrap();
+    let next = NextFile::default();
+    let ui = window_picking(home, &next);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+
+    // Cancelled: Custom is chosen but there is no file, so it plays the default.
+    press(app, "Message sound: Custom file");
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::Custom);
+    assert_eq!(Local::load(&dir).sounds.message_file, None);
+
+    *next.borrow_mut() = Some(bad.clone());
+    press(app, "Choose a file…");
+    assert!(
+        store(app).get_notice().contains("can't be used as a sound"),
+        "{}",
+        store(app).get_notice()
+    );
+    assert_eq!(Local::load(&dir).sounds.message_file, None);
+
+    *next.borrow_mut() = Some(good.clone());
+    press(app, "Choose a file…");
+    let saved = Local::load(&dir).sounds;
+    assert_eq!(saved.message, RingtoneChoice::Custom);
+    assert_eq!(
+        saved.message_file.as_deref(),
+        Some(good.to_str().unwrap()),
+        "the path is what is saved"
+    );
+    assert_eq!(store(app).get_message_sound_file(), "ping.wav");
+    assert!(checked(app, "Message sound: Custom file"));
+
+    press(app, "Play message sound");
+    assert_eq!(
+        *ui.log.borrow(),
+        [format!("play Message custom {}", good.display())]
+    );
+}
+
+#[test]
+fn a_sound_file_becomes_the_custom_ringtone() {
+    let home = Home::new("ringtone-file");
+    let dir = home.paths().config_dir;
+    let good = home.0.join("ring.wav");
+    write_wav(&good);
+    let next = NextFile::default();
+    let ui = window_picking(home, &next);
+    let app = &ui.app;
+    open_page(app, "general");
+    press(app, "Calls");
+
+    *next.borrow_mut() = Some(good.clone());
+    press(app, "Choose a file…");
+    let saved = Local::load(&dir).calls;
+    assert_eq!(saved.ringtone, RingtoneChoice::Custom);
+    assert_eq!(saved.ringtone_file.as_deref(), Some(good.to_str().unwrap()));
+    assert_eq!(store(app).get_ringtone(), "custom");
+    assert_eq!(store(app).get_ringtone_file(), "ring.wav");
+    // The message sound is untouched.
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::Teams);
+
+    press(app, "Play ringtone");
+    assert_eq!(
+        *ui.log.borrow(),
+        [format!("play Ringtone custom {}", good.display())]
+    );
+    // Going back to a built-in one keeps the file for later.
+    press(app, "Ringtone: Default");
+    let kept = Local::load(&dir).calls;
+    assert_eq!(kept.ringtone, RingtoneChoice::Teams);
+    assert!(kept.ringtone_file.is_some());
 }

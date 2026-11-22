@@ -87,13 +87,15 @@ pub fn files_prefs() -> FilesPrefs {
 }
 
 /// Calls preferences, in `calls.json`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CallsPrefs {
     /// "Ask about call quality after calls".
     pub ask_feedback: call_feedback::Ask,
-    /// The sound of an incoming call.
+    /// The sound of an incoming call. A file saved without one gets the Default.
     pub ringtone: super::ringtone::RingtoneChoice,
+    /// The sound file of the "Custom" ringtone.
+    pub ringtone_file: Option<String>,
 }
 
 /// The saved calls preferences, read from `calls.json` (the ringing path reads it each time, so
@@ -147,6 +149,7 @@ pub struct Local {
     pub devices: DevicePrefs,
     pub files: FilesPrefs,
     pub calls: CallsPrefs,
+    pub sounds: super::sounds::SoundPrefs,
     pub grants: Grants,
 }
 
@@ -167,6 +170,7 @@ impl Local {
             devices: read_json(&dir.join(DEVICES_FILE)),
             files: read_json(&dir.join(FILES_FILE)),
             calls: read_json(&dir.join(CALLS_FILE)),
+            sounds: read_json(&dir.join(super::sounds::SOUNDS_FILE)),
             grants: Grants::from_json(&perms),
         }
     }
@@ -209,7 +213,14 @@ impl Local {
     pub fn save_calls(&self) -> anyhow::Result<()> {
         Ok(write_json(
             &self.dir.join(CALLS_FILE),
-            &serde_json::to_value(self.calls)?,
+            &serde_json::to_value(&self.calls)?,
+        )?)
+    }
+
+    pub fn save_sounds(&self) -> anyhow::Result<()> {
+        Ok(write_json(
+            &self.dir.join(super::sounds::SOUNDS_FILE),
+            &serde_json::to_value(&self.sounds)?,
         )?)
     }
 
@@ -998,7 +1009,12 @@ const INDEX: &[(&str, &str, &str)] = &[
         "Ask about call quality after calls",
         "calls survey feedback rating",
     ),
-    ("calls", "Ringtone", "incoming call sound ring"),
+    ("calls", "Ringtone", "incoming call sound ring custom file"),
+    (
+        "notifications",
+        "Message sound",
+        "notification sound new message pop ding custom file play",
+    ),
     (
         "calls",
         "Call forwarding",
@@ -1123,7 +1139,7 @@ pub fn remember_notification_settings(n: Option<NotificationSettings>) {
     *NOTIFY_SETTINGS.lock().unwrap_or_else(|e| e.into_inner()) = n;
 }
 
-fn remembered_notification_settings() -> Option<NotificationSettings> {
+pub(super) fn remembered_notification_settings() -> Option<NotificationSettings> {
     NOTIFY_SETTINGS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -2171,11 +2187,16 @@ mod tests {
     }
 
     #[test]
-    fn the_ringtone_defaults_to_the_chime_and_survives_a_save() {
+    fn the_ringtone_defaults_to_the_default_sound_and_survives_a_save() {
         use super::super::ringtone::RingtoneChoice;
-        assert_eq!(CallsPrefs::default().ringtone, RingtoneChoice::Chime);
+        assert_eq!(CallsPrefs::default().ringtone, RingtoneChoice::Teams);
+        assert_eq!(CallsPrefs::default().ringtone.slug(), "default");
+        // New users, and a file that never saved a ringtone, get the new default.
+        let p: CallsPrefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.ringtone, RingtoneChoice::Teams);
         let p: CallsPrefs = serde_json::from_str(r#"{"ask_feedback":"never"}"#).unwrap();
-        assert_eq!(p.ringtone, RingtoneChoice::Chime, "an old file has none");
+        assert_eq!(p.ringtone, RingtoneChoice::Teams, "an old file has none");
+        assert_eq!(p.ringtone_file, None);
         let p = CallsPrefs {
             ringtone: RingtoneChoice::Pulse,
             ..Default::default()
@@ -2183,6 +2204,46 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"pulse\""), "{json}");
         assert_eq!(serde_json::from_str::<CallsPrefs>(&json).unwrap(), p);
+    }
+
+    #[test]
+    fn a_saved_ringtone_choice_is_kept_whatever_it_is() {
+        use super::super::ringtone::RingtoneChoice;
+        for (saved, want) in [
+            ("chime", RingtoneChoice::Chime),
+            ("soft", RingtoneChoice::Soft),
+            ("pulse", RingtoneChoice::Pulse),
+            ("default", RingtoneChoice::Teams),
+            ("custom", RingtoneChoice::Custom),
+        ] {
+            let json = format!(r#"{{"ringtone":"{saved}"}}"#);
+            let p: CallsPrefs = serde_json::from_str(&json).unwrap();
+            assert_eq!(p.ringtone, want, "{saved}");
+        }
+        let json = r#"{"ringtone":"custom","ringtone_file":"/a/b.wav"}"#;
+        let p: CallsPrefs = serde_json::from_str(json).unwrap();
+        assert_eq!(p.ringtone_file.as_deref(), Some("/a/b.wav"));
+    }
+
+    #[test]
+    fn the_message_sound_defaults_to_the_default_and_a_saved_choice_is_kept() {
+        use super::super::ringtone::RingtoneChoice;
+        use super::super::sounds::SoundPrefs;
+        assert_eq!(SoundPrefs::default().message, RingtoneChoice::Teams);
+        let p: SoundPrefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.message, RingtoneChoice::Teams);
+        assert_eq!(p.message_file, None);
+        let p: SoundPrefs = serde_json::from_str(r#"{"message":"soft"}"#).unwrap();
+        assert_eq!(p.message, RingtoneChoice::Soft);
+        // Saved through Local, read back by a fresh load.
+        let dir = tempfile_dir("sounds");
+        let mut l = Local::load(&dir);
+        assert_eq!(l.sounds.message, RingtoneChoice::Teams, "no file yet");
+        l.sounds.message = RingtoneChoice::Custom;
+        l.sounds.message_file = Some("/a/ping.mp3".into());
+        l.save_sounds().unwrap();
+        assert_eq!(Local::load(&dir).sounds, l.sounds);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ---- files and app grants (X1.6, X1.7) ----

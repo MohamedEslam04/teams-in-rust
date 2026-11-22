@@ -2187,3 +2187,23 @@ msgstr "ضحك"
 
 msgid "Surprised"
 msgstr "مندهش"
+
+# Sounds: the message sound and the ringtone.
+
+msgid "Default"
+msgstr "افتراضي"
+
+msgid "Custom file"
+msgstr "ملف مخصص"
+
+msgid "Choose a file…"
+msgstr "اختيار ملف…"
+
+msgid "Message sound"
+msgstr "صوت الرسائل"
+
+msgid "Play message sound"
+msgstr "تشغيل صوت الرسائل"
+
+msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
+msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."

@@ -1235,6 +1235,7 @@ impl Engine {
     /// Open (any other event), Snooze and Dismiss. Always a system notification, also while the
     /// window is focused: the in-app toast is for chat messages only.
     fn notify_reminder(self: &Arc<Self>, r: reminders::Reminder, now: i64, started: bool) {
+        self.play_reminder_sound();
         let engine = self.clone();
         let rt = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
@@ -1253,6 +1254,9 @@ impl Engine {
                 .body(&body)
                 .icon("appointment-soon")
                 .timeout(notify_rust::Timeout::Milliseconds(60_000));
+            // The reminder sound is IronTeams's own (`sounds`), so the server stays silent.
+            #[cfg(target_os = "linux")]
+            n.hint(notify_rust::Hint::SuppressSound(true));
             if r.join_url.is_some() {
                 n.action("join", "Join");
             } else {

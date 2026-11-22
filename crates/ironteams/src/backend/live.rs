@@ -240,6 +240,7 @@ impl Engine {
         let focus = quiet::focus_active(quiet::focus_until(&prefs), now.timestamp_millis());
         let decision =
             quiet::should_banner(&inc, chrono::Local::now().naive_local(), &prefs, focus);
+        self.play_message_sound(m, &inc, &decision);
         // The one decision is made; where it shows depends on the window being the active one.
         let route = super::banner::route(&decision, self.focused.load(Ordering::Relaxed));
         let keyword = match decision {
