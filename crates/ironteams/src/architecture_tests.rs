@@ -2,7 +2,9 @@
 //!
 //! `ui_api` <- `backend`: the backend reaches the UI only through `crate::ui_api`.
 //! `ui` -> `ui_api` + `support` + `backend::Cmd`: nothing below `ui` may name `crate::ui` or
-//! `crate::backend`. The scan is plain text and std-only, so it needs no build of the crate.
+//! `crate::backend`. The scan is plain text and std-only. It is a unit test, not a file under
+//! `tests/`: cargo builds the whole binary a second time for an integration test of a bin crate,
+//! and the CI test job was killed for memory when this test lived there.
 
 use std::fs;
 use std::path::{Path, PathBuf};
