@@ -26,7 +26,7 @@ pub struct Palette {
     pub unread_badge: u32,
 }
 
-/// The dark palette IronTeams always had (ui/theme.slint defaults).
+/// The dark palette IronTeams always had (ui/tokens/theme.slint defaults).
 pub const DARK: Palette = Palette {
     rail: 0x0f0f0f,
     sidebar: 0x1f1f1f,

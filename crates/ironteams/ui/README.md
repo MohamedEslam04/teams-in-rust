@@ -1,3 +1,5 @@
+Docs synced to commit be977c73 ("Merge feat/ui-organisms: composer and app.slint split into organisms, duplicate component names resolved", 2026-11-22)
+
 # IronTeams UI (Slint)
 
 `build.rs` compiles `app.slint`; everything else is imported from it. The files are grouped by
@@ -143,6 +145,11 @@ write it) and callbacks:
 `Composer` keeps the text box, its keys and the popups' state; `ComposerToolbar`,
 `ComposerAttachments`, `ImportanceTag` and `organisms/composer_popups.slint` (emoji suggestions,
 the emoji panel, the "…" menu, the Attach menu) draw the rest.
+
+Two things stay larger than the plan's target on purpose: `app.slint` (about 1290 lines, roughly 410 of
+them the property, callback and function declarations Rust binds by name) and `Composer` (the text box
+and its key handling). Moving them would pass most of their state through new properties and put the
+UI tests at risk, so the user accepted them as exceptions.
 
 Element ids the UI tests use are `Component::id`: an element that moves into an organism is
 found as `Organism::id` (for example `MessagePane::msg-list`).
