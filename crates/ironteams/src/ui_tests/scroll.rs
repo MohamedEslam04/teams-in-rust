@@ -228,15 +228,24 @@ fn land_older(app: &AppWindow, count: usize, anchor: usize, off: f32) {
 /// with the view's top or part way scrolled.
 #[test]
 fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
-    let app = app_with_messages(many_short(60));
+    // The subject is drawn as a `Text`, so each row can be found (and placed) by it.
+    let rows: Vec<Msg> = many_short(60)
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut m)| {
+            m.subject = format!("subject {i}").into();
+            m
+        })
+        .collect();
+    let app = app_with_messages(rows);
     app.set_scroll_tick(app.get_scroll_tick() + 1);
     settle(&app);
-    // The way a user gets there: wheel steps, a few frames each.
-    for _ in 0..200 {
-        if !find_label(&app, "message 0").is_empty() && app.get_msg_top_id() == "m0" {
+    // The way a user gets there: wheel notches, a few frames each.
+    for _ in 0..600 {
+        if app.get_msg_top_id() == "m0" && app.get_msg_view_y() == 0. {
             break;
         }
-        scroll_up(&app, 600.);
+        scroll_up(&app, 60.);
         for _ in 0..4 {
             testing::mock_elapsed_time(std::time::Duration::from_millis(16));
         }
@@ -248,7 +257,7 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
         app.get_msg_top_off(),
         app.get_msg_top_cy(),
         app.get_msg_view_y(),
-        !find_label(&app, "message 0").is_empty()
+        !find_label(&app, "subject 0").is_empty()
     );
     assert_eq!(
         app.get_msg_top_id(),
@@ -259,10 +268,10 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
         (app.get_msg_top_cy() - app.get_msg_view_y()).abs() < 1.,
         "the recorded row belongs to where the view is: {facts}"
     );
-    let before = row_y(&app, "message 0");
+    let before = row_y(&app, "subject 0");
     land_older(&app, 40, 40, 0.);
     settle(&app);
-    let after = row_y(&app, "message 0");
+    let after = row_y(&app, "subject 0");
     assert!(
         (after - before).abs() <= 2.,
         "the first row moved from {before} to {after}"
@@ -270,7 +279,7 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
     // Part way into the row: its top sits 30px above the view's top.
     land_older(&app, 20, 60, 30.);
     settle(&app);
-    let shifted = row_y(&app, "message 0");
+    let shifted = row_y(&app, "subject 0");
     assert!(
         (shifted - (before - 30.)).abs() <= 2.,
         "the row should keep the user's 30px offset: {before} -> {shifted}"
