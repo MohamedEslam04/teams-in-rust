@@ -179,7 +179,7 @@ fn synth_event(f: &FormFields, id: &str, existing: Option<&Event>) -> Option<Eve
         "responseStatus": {"response": "organizer"},
         "organizer": {"emailAddress": {"name": "You", "address": "demo@contoso.com"}},
         "attendees": attendees,
-        "type": if f.repeat == "none" || f.repeat == "keep" { "singleInstance" } else { "seriesMaster" },
+        "type": if f.repeat == "none" || f.repeat == "keep" { "singleInstance" } else { "occurrence" },
     });
     if f.teams_meeting {
         v["onlineMeeting"] = json!({"joinUrl": "https://teams.example/join"});

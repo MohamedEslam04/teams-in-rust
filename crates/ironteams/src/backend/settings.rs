@@ -1306,6 +1306,20 @@ pub fn banner_for(m: &teams_proto::model::Message, me: &str) -> Option<bool> {
     }
 }
 
+/// Whether the Teams "Meeting started" switch (and the tray mute and pause) lets a calendar
+/// event's start notice pop a desktop notification.
+pub fn meeting_started_banner(now: chrono::DateTime<chrono::Utc>) -> bool {
+    matches!(
+        banner_decision(
+            remembered_notification_settings().as_ref(),
+            Kind::MeetingStarted,
+            crate::tray_wiring::notifications_muted(),
+            now,
+        ),
+        Banner::Show { .. }
+    )
+}
+
 /// The notification text: the message, or a neutral line when previews are off.
 pub fn banner_body(preview: bool, text: String) -> String {
     if preview { text } else { "New message".into() }

@@ -1003,6 +1003,29 @@ mod tests {
     }
 
     #[test]
+    fn the_peek_of_a_filled_occurrence_has_its_title_organizer_and_join() {
+        let page = json!({"value": [
+            {"id": "m1", "type": "seriesMaster", "subject": "Morning Standup",
+                "organizer": {"emailAddress": {"name": "Alice Chen", "address": "alice@contoso.com"}},
+                "isOnlineMeeting": true,
+                "onlineMeeting": {"joinUrl": "https://teams.microsoft.com/l/meetup-join/x"},
+                "start": {"dateTime": "2026-10-01T09:00:00.0000000", "timeZone": "UTC"},
+                "end": {"dateTime": "2026-10-01T09:15:00.0000000", "timeZone": "UTC"}},
+            {"id": "o1", "type": "occurrence", "seriesMasterId": "m1",
+                "start": {"dateTime": "2026-11-18T09:00:00.0000000", "timeZone": "UTC"},
+                "end": {"dateTime": "2026-11-18T09:15:00.0000000", "timeZone": "UTC"}},
+        ]});
+        let mut cache = ::calendar::EventCache::default();
+        cache.apply(::calendar::parse_delta_page(&page).changes);
+        let events = cache.in_range(i64::MIN / 2, i64::MAX / 2);
+        assert_eq!(events.len(), 1);
+        let p = peek_data(events[0], &utc);
+        assert_eq!(p.title, "Morning Standup");
+        assert_eq!(p.organizer, "Alice Chen invited you");
+        assert!(p.has_join);
+    }
+
+    #[test]
     fn the_peek_of_an_invitation_offers_answers_and_a_join() {
         let p = peek_data(&invited(json!({})), &utc);
         assert_eq!(p.title, "Planning");

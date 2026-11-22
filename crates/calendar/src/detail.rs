@@ -151,8 +151,24 @@ pub fn parse_event_detail(v: &Value) -> Option<EventDetail> {
     })
 }
 
-/// The event with its body, attachments and dial-in details.
-pub async fn event_detail(client: &Client, id: &str) -> Result<EventDetail> {
+impl EventDetail {
+    /// An occurrence that came without its series' details takes them, and the body,
+    /// attachments and dial-in, from the series master's detail. Its own times stay.
+    pub fn fill_from_master(&mut self, master: EventDetail) {
+        self.event.fill_from_master(&master.event);
+        self.counts = response_counts(&self.event);
+        self.body = master.body;
+        self.body_is_html = master.body_is_html;
+        self.attachments = master.attachments;
+        self.dial_in = master.dial_in;
+        self.is_organizer = master.is_organizer;
+        self.response_requested = master.response_requested;
+        self.allow_new_time_proposals = master.allow_new_time_proposals;
+        self.hide_attendees = master.hide_attendees;
+    }
+}
+
+async fn fetch_detail(client: &Client, id: &str) -> Result<EventDetail> {
     let v = graph(
         client,
         "event detail",
@@ -162,6 +178,21 @@ pub async fn event_detail(client: &Client, id: &str) -> Result<EventDetail> {
     )
     .await?;
     parse_event_detail(&v).ok_or_else(|| Error::Protocol("event detail: no id".into()))
+}
+
+/// The event with its body, attachments and dial-in details. An occurrence that comes back
+/// without details falls back to its series master.
+pub async fn event_detail(client: &Client, id: &str) -> Result<EventDetail> {
+    let mut d = fetch_detail(client, id).await?;
+    if d.event.is_bare_occurrence()
+        && let Some(master_id) = d.event.series_master_id.clone()
+    {
+        // Without the master the occurrence is shown as it came.
+        if let Ok(master) = fetch_detail(client, &master_id).await {
+            d.fill_from_master(master);
+        }
+    }
+    Ok(d)
 }
 
 /// The occurrences of a series between two instants (UTC milliseconds), for "edit this one".
@@ -256,6 +287,33 @@ mod tests {
                 not_responded: 2
             }
         );
+    }
+
+    #[test]
+    fn a_bare_occurrence_detail_takes_the_masters_details_and_keeps_its_times() {
+        let mut occ = parse_event_detail(&json!({"id": "occ", "type": "occurrence",
+            "seriesMasterId": "AAA",
+            "start": {"dateTime": "2026-12-19T09:00:00.0000000", "timeZone": "UTC"},
+            "end": {"dateTime": "2026-12-19T09:30:00.0000000", "timeZone": "UTC"}}))
+        .unwrap();
+        assert!(occ.event.is_bare_occurrence());
+        let mut master = fixture();
+        master["type"] = json!("seriesMaster");
+        master["organizer"] =
+            json!({"emailAddress": {"name": "Olivia", "address": "olivia@x.example"}});
+        occ.fill_from_master(parse_event_detail(&master).unwrap());
+        assert_eq!(occ.event.id, "occ");
+        assert_eq!(occ.event.subject, "Planning");
+        assert_eq!(occ.event.organizer_email, "olivia@x.example");
+        assert_eq!(
+            occ.event.join_url.as_deref(),
+            Some("https://teams.microsoft.com/l/meetup-join/x")
+        );
+        assert_eq!(occ.event.end_ms - occ.event.start_ms, 30 * 60_000);
+        assert_eq!(occ.body, "<p>Agenda</p>");
+        assert_eq!(occ.attachments.len(), 2);
+        assert_eq!(occ.counts.accepted, 2);
+        assert_eq!(occ.dial_in.conference_id.as_deref(), Some("123456789"));
     }
 
     #[test]
