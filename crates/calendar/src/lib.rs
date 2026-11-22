@@ -20,7 +20,7 @@ mod teams_meet;
 mod tz;
 mod write;
 
-pub use api::{Calendar, EventCache, delta_url, view_url};
+pub use api::{Calendar, EventCache, delta_link_expired, delta_url, view_url};
 pub use calendars::{
     CALENDAR_COLORS, CalendarGroup, CalendarInfo, PersonView, calendar_groups, calendar_view,
     calendars, calendars_in_group, create_calendar, create_calendar_body, delete_calendar,

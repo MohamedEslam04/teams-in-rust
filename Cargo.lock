@@ -936,6 +936,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "reqwest",
+ "serde",
  "serde_json",
  "teams-proto",
 ]
