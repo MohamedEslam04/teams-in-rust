@@ -116,10 +116,10 @@ organisms/composer_format.slint #ebd3e1
 organisms/composer_format.slint #f4a593
 organisms/composer_format.slint #fdd472
 organisms/composer_format.slint #ffffff
+organisms/composer_importance.slint #4d2024
+organisms/composer_importance.slint #6b2f33
+organisms/composer_importance.slint #ff7e83
 organisms/composer_send.slint #ffffff
-organisms/composer.slint #4d2024
-organisms/composer.slint #6b2f33
-organisms/composer.slint #ff7e83
 organisms/drive_items.slint #f2c94c
 organisms/drive_share_dialog.slint #34365c
 organisms/drive_share_dialog.slint #e3e4fa

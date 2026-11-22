@@ -1,0 +1,46 @@
+// The IMPORTANT! or URGENT! tag above the composer's text, with its remove button.
+import { Theme } from "../tokens/theme.slint";
+
+export component ImportanceTag inherits HorizontalLayout {
+    in-out property <bool> important;
+    in-out property <bool> urgent;
+    padding-left: 10px;
+    padding-top: 6px;
+    alignment: start;
+    Rectangle {
+        height: 24px;
+        width: important-text.preferred-width + 34px;
+        border-radius: 12px;
+        background: #4d2024;
+        border-width: 1px;
+        border-color: Theme.danger;
+        accessible-role: groupbox;
+        accessible-label: root.urgent ? @tr("Urgent message") : @tr("Important message");
+        important-text := Text {
+            x: 10px;
+            text: root.urgent ? @tr("URGENT!") : @tr("IMPORTANT!");
+            color: #ff7e83;
+            font-size: 11px;
+            font-weight: 800;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            x: parent.width - 22px;
+            width: 18px;
+            height: 18px;
+            y: 3px;
+            border-radius: 9px;
+            background: important-x.has-hover ? #6b2f33 : transparent;
+            accessible-role: button;
+            accessible-label: root.urgent ? @tr("Remove urgent") : @tr("Remove important");
+            Text { text: "✕"; color: #ff7e83; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+            important-x := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.important = false;
+                    root.urgent = false;
+                }
+            }
+        }
+    }
+}
