@@ -190,6 +190,18 @@ pub fn apply(core: &Core, msg: ToHost) -> bool {
     }
 }
 
+/// The window size the stack wants, logical pixels (`wanted-width`, `wanted-height`).
+///
+/// Slint makes a repeater's rows lazily, when the window draws or takes input; until then a
+/// card just added is an empty row of the stack's layout, so `wanted-height` read straight after
+/// the change leaves it out. The window would be sized for the old stack and the new card drawn
+/// below its bottom edge. The rows are made here first, as the next draw would make them.
+pub fn wanted_size(host: &CardHost) -> (f32, f32) {
+    slint::private_unstable_api::re_exports::WindowInner::from_pub(host.window())
+        .ensure_tree_instantiated();
+    (host.get_wanted_width(), host.get_wanted_height())
+}
+
 fn id_of(s: &str) -> Option<u32> {
     s.parse().ok()
 }
@@ -324,9 +336,10 @@ fn accessory_event_loop() -> slint::winit_030::EventLoopBuilder {
 
 /// Sizes the window to the stack and puts it in the bottom-right corner of the primary monitor
 /// (the one the window is on when there is no primary), or hides it when the stack is empty.
+/// The corner is the window's bottom-right, so a taller stack moves the window up.
 fn place_window(host: &CardHost) {
     use slint::winit_030::WinitWindowAccessor;
-    let (w, h) = (host.get_wanted_width(), host.get_wanted_height());
+    let (w, h) = wanted_size(host);
     if h <= 0.0 {
         let _ = host.hide();
         return;
