@@ -388,11 +388,14 @@ fn ctrl_f_finds_in_a_channel_and_does_nothing_outside_a_conversation() {
         "19:team1@thread.tacv2".into(),
         "General".into(),
     ));
+    // Keys reach the app's chords once the window has the focus, as a click in the box gives it.
+    composer(&h.app).mock_single_click(PointerEventButton::Left);
     chord(&h.app, &[Key::Control], "f");
     assert!(h.app.global::<FindStore>().get_chat_find_open());
 
     let (h, log) = harness(&[]);
     h.select(NOTES);
+    composer(&h.app).mock_single_click(PointerEventButton::Left);
     h.app.set_view("activity".into());
     chord(&h.app, &[Key::Control], "f");
     assert!(!h.app.global::<FindStore>().get_chat_find_open());
