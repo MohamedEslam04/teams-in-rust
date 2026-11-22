@@ -32,7 +32,7 @@ jobs:
           cat /proc/swaps
       - name: Tools
         run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Build the RPM
         env:
           # As release.yml: compiles the large ironteams crate in parallel, with less memory.
@@ -47,7 +47,7 @@ jobs:
           cargo vendor --locked --versioned-dirs vendor-dir/vendor
           tar -C vendor-dir -c vendor | xz -T0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
           rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ironteams-rpm
           path: rpmtop/RPMS/**/*.rpm
@@ -58,7 +58,7 @@ jobs:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Generate cargo-sources.json
         run: |
           # The image sets PYTHONPATH to /app/lib/python3.13/site-packages, so pip believes aiohttp is
@@ -80,7 +80,7 @@ jobs:
     steps:
       - name: Tools
         run: pacman -Syu --noconfirm --needed git rust cmake alsa-lib fontconfig libxkbcommon libxkbcommon-x11 dbus wayland libx11 libxcursor libxi libxrender libglvnd namcap
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Build the package (makepkg refuses to run as root)
         run: |
           useradd -m builder

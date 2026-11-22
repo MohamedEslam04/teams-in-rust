@@ -38,7 +38,7 @@ jobs:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -64,7 +64,7 @@ jobs:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold
@@ -87,7 +87,7 @@ jobs:
     steps:
       # Fixtures and include_str! files must keep LF line endings on Windows.
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
