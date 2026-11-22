@@ -1277,7 +1277,7 @@ mod tests {
 
     /// The button, menu row or checkbox with this label.
     fn button(app: &AppWindow, label: &str) -> ElementHandle {
-        ["CalButton", "CalMenuItem", "CalCheck"]
+        ["FlexButton", "MenuItem", "Check"]
             .iter()
             .flat_map(|t| ElementHandle::find_by_element_type_name(app, t))
             .find(|e| e.accessible_label().as_deref() == Some(label))
@@ -1285,7 +1285,7 @@ mod tests {
     }
 
     fn has_button(app: &AppWindow, label: &str) -> bool {
-        ["CalButton", "CalMenuItem", "CalCheck"]
+        ["FlexButton", "MenuItem", "Check"]
             .iter()
             .flat_map(|t| ElementHandle::find_by_element_type_name(app, t))
             .any(|e| e.accessible_label().as_deref() == Some(label))
