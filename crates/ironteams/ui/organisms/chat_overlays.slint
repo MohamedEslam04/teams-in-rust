@@ -28,7 +28,6 @@ export component ProfileCardLayer inherits Rectangle {
     callback open-url(string);
     // Above the call window too (its roster photos open cards), and above the search
     // dropdown (z 65) for a hover card opened from one of its rows.
-    z: PeopleStore.card-by-hover && TopBarStore.search-open ? 66 : 50;
     // A clicked card closes on a click anywhere else; a hover card when the pointer leaves
     // it and its photo (so the photo under it keeps its hover).
     if !PeopleStore.card-by-hover: TouchArea {
@@ -155,7 +154,6 @@ export component ReactionPickerLayer inherits Rectangle {
     in property <length> picker-x;
     in property <length> picker-y;
     callback react(string, string);
-    z: 46;
     TouchArea {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
@@ -183,7 +181,6 @@ export component SeenByLayer inherits Rectangle {
     in property <Msg> readers-msg;
     in-out property <bool> readers-open;
     in property <length> readers-y;
-    z: 46;
     TouchArea {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {
@@ -237,7 +234,6 @@ export component MessageMenuLayer inherits Rectangle {
     in-out property <bool> select-mode;
     in property <string> thread-root;
     callback toggle-save(string);
-    z: 46;
     TouchArea {
         pointer-event(e) => {
             if e.kind == PointerEventKind.down {

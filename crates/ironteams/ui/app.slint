@@ -742,6 +742,7 @@ export component AppWindow inherits Window {
                     Text { text: @tr("Pick a channel"); color: Theme.fg-subtle; horizontal-alignment: center; }
                 }
                 if root.banner != "": NoticeBanner {
+                    z: 10;
                     banner: root.banner;
                     banner-action: root.banner-action;
                     banner-action-clicked => { root.banner-action-clicked(); }
@@ -942,6 +943,7 @@ export component AppWindow inherits Window {
     // The chat popups (message menu, Seen by list, reaction picker) draw above the floating call
     // window (z 45), which can sit over the message they were opened from.
     if root.login-state == "ready" && root.menu-open: MessageMenuLayer {
+        z: 46;
         width: root.width;
         height: root.height;
         copy-link(a0) => { root.copy-link(a0); }
@@ -980,6 +982,7 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.readers-open: SeenByLayer {
+        z: 46;
         width: root.width;
         height: root.height;
         focus-tick <=> root.focus-tick;
@@ -1021,6 +1024,7 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.picker-open: ReactionPickerLayer {
+        z: 46;
         width: root.width;
         height: root.height;
         picker-items: root.picker-items;
@@ -1112,6 +1116,7 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && PeopleStore.card-open: ProfileCardLayer {
+        z: PeopleStore.card-by-hover && TopBarStore.search-open ? 66 : 50;
         width: root.width;
         height: root.height;
         card-h <=> root.card-h;

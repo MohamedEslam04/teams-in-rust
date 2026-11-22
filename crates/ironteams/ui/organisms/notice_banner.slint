@@ -10,7 +10,6 @@ export component NoticeBanner inherits Rectangle {
     in property <bool> banner-info;
     callback dismiss-banner;
     in property <length> area-width;
-    z: 10;
     x: (root.area-width - self.width) / 2;
     y: 70px;
     width: min(root.area-width - 40px, banner-text.preferred-width + 60px + (root.banner-action != "" ? 110px : 0px));
