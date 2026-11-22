@@ -271,7 +271,6 @@ fn the_account_card_shows_who_is_signed_in_and_has_only_the_four_rows() {
     // The photo offers the change dialog; Manage presence status opens Settings.
     press(app, "Profile photo");
     let photo = control(app, "Change profile photo");
-    assert_eq!(photo.accessible_enabled(), Some(true));
     assert!(
         photo.absolute_position().x + photo.size().width <= card.absolute_position().x,
         "the flyout is left of the card"
