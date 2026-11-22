@@ -1543,3 +1543,141 @@ fn system_event_messages_are_not_search_hits() {
     }
     assert_eq!(find(&s, "IronTeams"), ["1"]);
 }
+
+// ---- history gaps (migration v8) ---------------------------------------------------------
+
+fn gap(newer_ms: i64, older_ms: i64) -> HistoryGap {
+    HistoryGap { newer_ms, older_ms }
+}
+
+#[test]
+fn history_gaps_are_added_listed_newest_first_and_per_conversation() {
+    let s = Store::open_in_memory().unwrap();
+    assert!(s.history_gaps("c").unwrap().is_empty());
+    s.add_history_gap("c", 500, 400).unwrap();
+    s.add_history_gap("c", 300, 100).unwrap();
+    s.add_history_gap("other", 50, 10).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap(), [gap(500, 400), gap(300, 100)]);
+    assert_eq!(s.history_gaps("other").unwrap(), [gap(50, 10)]);
+    // The same gap twice stays one gap, and an empty range is no gap.
+    s.add_history_gap("c", 500, 400).unwrap();
+    s.add_history_gap("c", 70, 70).unwrap();
+    s.add_history_gap("c", 60, 70).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap().len(), 2);
+}
+
+#[test]
+fn a_history_gap_shrinks_from_its_newer_edge_and_goes_when_closed() {
+    let s = Store::open_in_memory().unwrap();
+    s.add_history_gap("c", 500, 100).unwrap();
+    s.shrink_history_gap("c", 500, 350).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap(), [gap(350, 100)]);
+    // Reaching or passing the older edge closes it.
+    s.shrink_history_gap("c", 350, 100).unwrap();
+    assert!(s.history_gaps("c").unwrap().is_empty());
+
+    s.add_history_gap("c", 500, 100).unwrap();
+    s.add_history_gap("c", 90, 80).unwrap();
+    s.shrink_history_gap("c", 500, 20).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap(), [gap(90, 80)]);
+    // A gap that is not there, or a shrink that does not shrink, changes nothing.
+    s.shrink_history_gap("c", 12345, 1).unwrap();
+    s.shrink_history_gap("c", 90, 95).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap(), [gap(90, 80)]);
+
+    s.remove_history_gap("c", 90).unwrap();
+    assert!(s.history_gaps("c").unwrap().is_empty());
+}
+
+#[test]
+fn forgetting_a_conversation_forgets_its_gaps() {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_conversation(&conv("c", ConvKind::Group, "G", 1))
+        .unwrap();
+    s.add_history_gap("c", 500, 100).unwrap();
+    s.add_history_gap("keep", 500, 100).unwrap();
+    s.delete_conversation("c").unwrap();
+    assert!(s.history_gaps("c").unwrap().is_empty());
+    assert_eq!(s.history_gaps("keep").unwrap().len(), 1);
+}
+
+#[test]
+fn a_v7_database_gains_the_history_gaps_table() {
+    let conn = Connection::open_in_memory().unwrap();
+    fts::register(&conn).unwrap();
+    for sql in &migrations::MIGRATIONS[..7] {
+        conn.execute_batch(sql).unwrap();
+    }
+    conn.execute_batch("PRAGMA user_version = 7").unwrap();
+    conn.execute(
+        "INSERT INTO conversations VALUES ('c', 'group', 't', NULL, NULL, 1, '', 0, 0, 0)",
+        [],
+    )
+    .unwrap();
+    let s = Store::init(conn).unwrap();
+    let v: i64 = s
+        .conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(v, migrations::MIGRATIONS_LEN as i64);
+    assert!(s.conversation("c").unwrap().is_some());
+    s.add_history_gap("c", 9, 3).unwrap();
+    assert_eq!(s.history_gaps("c").unwrap(), [gap(9, 3)]);
+}
+
+#[test]
+fn a_fresh_database_has_the_history_gaps_table() {
+    let s = Store::open_in_memory().unwrap();
+    let n: i64 = s
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'history_gaps'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 1);
+}
+
+// ---- batch writes ------------------------------------------------------------------------
+
+#[test]
+fn a_batch_of_messages_roundtrips_and_is_searchable() {
+    let mut s = Store::open_in_memory().unwrap();
+    let batch = vec![
+        html_msg("b1", "c", 1, "<p>quarterly report</p>"),
+        html_msg("b2", "c", 2, "<p>lunch plans</p>"),
+        html_msg("b3", "c", 3, "<p>quarterly budget</p>"),
+    ];
+    s.upsert_messages(&batch).unwrap();
+    let got = s.messages_before("c", None, 10).unwrap();
+    assert_eq!(msg_ids(&got), ["b1", "b2", "b3"]);
+    assert_eq!(got[1].content_html, "<p>lunch plans</p>");
+    let mut hits = find(&s, "quarterly");
+    hits.sort();
+    assert_eq!(hits, ["b1", "b3"]);
+
+    // A second batch updates in place (the conflict path keeps the index in sync).
+    s.upsert_messages(&[html_msg("b1", "c", 1, "<p>annual report</p>")])
+        .unwrap();
+    assert_eq!(find(&s, "quarterly"), ["b3"]);
+    assert_eq!(find(&s, "annual"), ["b1"]);
+    s.upsert_messages(&[]).unwrap();
+}
+
+#[test]
+fn a_batch_of_conversations_roundtrips_and_keeps_favorites() {
+    let mut s = Store::open_in_memory().unwrap();
+    s.upsert_conversations(&[
+        conv("c1", ConvKind::Group, "One", 10),
+        conv("c2", ConvKind::Group, "Two", 20),
+    ])
+    .unwrap();
+    s.set_favorite("c1", true).unwrap();
+    s.upsert_conversations(&[conv("c1", ConvKind::Group, "One renamed", 30)])
+        .unwrap();
+    let c1 = s.conversation("c1").unwrap().unwrap();
+    assert_eq!(c1.title, "One renamed");
+    assert!(c1.favorite, "favorite is a local choice");
+    assert!(s.conversation("c2").unwrap().is_some());
+}

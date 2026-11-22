@@ -14,8 +14,8 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub use fts::{MARK_END, MARK_START};
 pub use model::{
-    ConvFilter, ConvKind, ConversationRow, Draft, LocalFilters, LocalHit, MessageRow, OutboxItem,
-    OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
+    ConvFilter, ConvKind, ConversationRow, Draft, HistoryGap, LocalFilters, LocalHit, MessageRow,
+    OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -137,6 +137,60 @@ fn limit_i64(limit: usize) -> i64 {
     i64::try_from(limit).unwrap_or(i64::MAX)
 }
 
+fn insert_conversation(conn: &Connection, c: &ConversationRow) -> Result<()> {
+    conn.prepare_cached(
+        "INSERT INTO conversations (id, kind, title, team_id, team_name, \
+             last_activity_ms, last_preview, unread, favorite, read_horizon_ms) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
+         ON CONFLICT(id) DO UPDATE SET \
+             kind = excluded.kind, title = excluded.title, \
+             team_id = excluded.team_id, team_name = excluded.team_name, \
+             last_activity_ms = excluded.last_activity_ms, \
+             last_preview = excluded.last_preview, unread = excluded.unread, \
+             read_horizon_ms = excluded.read_horizon_ms",
+    )?
+    .execute(params![
+        c.id,
+        c.kind.as_db(),
+        c.title,
+        c.team_id,
+        c.team_name,
+        c.last_activity_ms,
+        c.last_preview,
+        c.unread,
+        c.favorite,
+        c.read_horizon_ms
+    ])?;
+    Ok(())
+}
+
+fn insert_message(conn: &Connection, m: &MessageRow) -> Result<()> {
+    conn.prepare_cached(
+        "INSERT INTO messages (id, conversation_id, parent_id, sender_mri, sender_name, \
+             compose_ms, edited_ms, deleted, message_type, content_html, \
+             client_message_id, reactions_json) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+         ON CONFLICT(id) DO UPDATE SET \
+             content_html = excluded.content_html, edited_ms = excluded.edited_ms, \
+             deleted = excluded.deleted, reactions_json = excluded.reactions_json",
+    )?
+    .execute(params![
+        m.id,
+        m.conversation_id,
+        m.parent_id,
+        m.sender_mri,
+        m.sender_name,
+        m.compose_ms,
+        m.edited_ms,
+        m.deleted,
+        m.message_type,
+        m.content_html,
+        m.client_message_id,
+        m.reactions_json
+    ])?;
+    Ok(())
+}
+
 impl Store {
     /// Opens (creating if needed) the database at `path`, creating parent
     /// directories, enabling WAL and foreign keys, and running migrations.
@@ -174,31 +228,17 @@ impl Store {
     /// Inserts or updates a conversation. On update every field except
     /// `favorite` is overwritten (favorite is a local user choice).
     pub fn upsert_conversation(&self, c: &ConversationRow) -> Result<()> {
-        self.conn
-            .prepare_cached(
-                "INSERT INTO conversations (id, kind, title, team_id, team_name, \
-                     last_activity_ms, last_preview, unread, favorite, read_horizon_ms) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
-                 ON CONFLICT(id) DO UPDATE SET \
-                     kind = excluded.kind, title = excluded.title, \
-                     team_id = excluded.team_id, team_name = excluded.team_name, \
-                     last_activity_ms = excluded.last_activity_ms, \
-                     last_preview = excluded.last_preview, unread = excluded.unread, \
-                     read_horizon_ms = excluded.read_horizon_ms",
-            )?
-            .execute(params![
-                c.id,
-                c.kind.as_db(),
-                c.title,
-                c.team_id,
-                c.team_name,
-                c.last_activity_ms,
-                c.last_preview,
-                c.unread,
-                c.favorite,
-                c.read_horizon_ms
-            ])?;
-        Ok(())
+        insert_conversation(&self.conn, c)
+    }
+
+    /// [`Store::upsert_conversation`] for a list inside one transaction: one commit instead of
+    /// one per row, so the store lock is held for far less time.
+    pub fn upsert_conversations(&mut self, rows: &[ConversationRow]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for c in rows {
+            insert_conversation(&tx, c)?;
+        }
+        Ok(tx.commit()?)
     }
 
     /// Forgets a conversation (after leaving a group chat): its row, cached messages, draft and
@@ -207,6 +247,7 @@ impl Store {
         for sql in [
             "DELETE FROM messages WHERE conversation_id = ?1",
             "DELETE FROM drafts WHERE conversation_id = ?1",
+            "DELETE FROM history_gaps WHERE conversation_id = ?1",
             "DELETE FROM conversations WHERE id = ?1",
         ] {
             self.conn.prepare_cached(sql)?.execute([id])?;
@@ -340,31 +381,17 @@ impl Store {
     /// deleted flag and reactions in place. Does not touch the conversation
     /// row; call [`Store::touch_conversation`] for that.
     pub fn upsert_message(&self, m: &MessageRow) -> Result<()> {
-        self.conn
-            .prepare_cached(
-                "INSERT INTO messages (id, conversation_id, parent_id, sender_mri, sender_name, \
-                     compose_ms, edited_ms, deleted, message_type, content_html, \
-                     client_message_id, reactions_json) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
-                 ON CONFLICT(id) DO UPDATE SET \
-                     content_html = excluded.content_html, edited_ms = excluded.edited_ms, \
-                     deleted = excluded.deleted, reactions_json = excluded.reactions_json",
-            )?
-            .execute(params![
-                m.id,
-                m.conversation_id,
-                m.parent_id,
-                m.sender_mri,
-                m.sender_name,
-                m.compose_ms,
-                m.edited_ms,
-                m.deleted,
-                m.message_type,
-                m.content_html,
-                m.client_message_id,
-                m.reactions_json
-            ])?;
-        Ok(())
+        insert_message(&self.conn, m)
+    }
+
+    /// [`Store::upsert_message`] for a batch inside one transaction: a history page is up to
+    /// hundreds of rows (each firing the FTS trigger), so it costs one commit, not one per row.
+    pub fn upsert_messages(&mut self, rows: &[MessageRow]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for m in rows {
+            insert_message(&tx, m)?;
+        }
+        Ok(tx.commit()?)
     }
 
     /// Marks a message deleted and drops its content, keeping the row so
@@ -543,6 +570,85 @@ impl Store {
             )?
             .query_row(params![conversation_id, compose_ms], |r| r.get(0))
             .optional()?)
+    }
+
+    // ---- history gaps ----------------------------------------------------
+
+    /// Records that messages composed between `older_ms` and `newer_ms` may be missing from the
+    /// cache. Recording the same gap again changes nothing; an empty range is no gap.
+    pub fn add_history_gap(
+        &self,
+        conversation_id: &str,
+        newer_ms: i64,
+        older_ms: i64,
+    ) -> Result<()> {
+        if newer_ms <= older_ms {
+            return Ok(());
+        }
+        self.conn
+            .prepare_cached(
+                "INSERT OR REPLACE INTO history_gaps (conversation_id, newer_ms, older_ms) \
+                 VALUES (?1, ?2, ?3)",
+            )?
+            .execute(params![conversation_id, newer_ms, older_ms])?;
+        Ok(())
+    }
+
+    /// A conversation's gaps, newest first.
+    pub fn history_gaps(&self, conversation_id: &str) -> Result<Vec<HistoryGap>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT newer_ms, older_ms FROM history_gaps \
+             WHERE conversation_id = ?1 ORDER BY newer_ms DESC",
+        )?;
+        Ok(stmt
+            .query_map([conversation_id], |r| {
+                Ok(HistoryGap {
+                    newer_ms: r.get(0)?,
+                    older_ms: r.get(1)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Moves the newer edge of the gap that ends at `newer_ms` down to `to_ms` (messages down to
+    /// there were fetched), or removes the gap once `to_ms` reaches its older edge. A `to_ms`
+    /// that is not below the current edge changes nothing.
+    pub fn shrink_history_gap(
+        &self,
+        conversation_id: &str,
+        newer_ms: i64,
+        to_ms: i64,
+    ) -> Result<()> {
+        if to_ms >= newer_ms {
+            return Ok(());
+        }
+        let n = self
+            .conn
+            .prepare_cached(
+                "UPDATE OR REPLACE history_gaps SET newer_ms = ?3 \
+                 WHERE conversation_id = ?1 AND newer_ms = ?2 AND older_ms < ?3",
+            )?
+            .execute(params![conversation_id, newer_ms, to_ms])?;
+        if n == 0 {
+            // Closed (or no such gap): drop it when it exists and `to_ms` is past its older edge.
+            self.conn
+                .prepare_cached(
+                    "DELETE FROM history_gaps \
+                     WHERE conversation_id = ?1 AND newer_ms = ?2 AND older_ms >= ?3",
+                )?
+                .execute(params![conversation_id, newer_ms, to_ms])?;
+        }
+        Ok(())
+    }
+
+    /// Forgets the gap that ends at `newer_ms` (it was filled, or the server has nothing in it).
+    pub fn remove_history_gap(&self, conversation_id: &str, newer_ms: i64) -> Result<()> {
+        self.conn
+            .prepare_cached(
+                "DELETE FROM history_gaps WHERE conversation_id = ?1 AND newer_ms = ?2",
+            )?
+            .execute(params![conversation_id, newer_ms])?;
+        Ok(())
     }
 
     // ---- saved messages --------------------------------------------------

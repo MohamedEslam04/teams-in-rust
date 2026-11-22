@@ -100,6 +100,17 @@ pub struct SavedMessage {
     pub saved_ms: i64,
 }
 
+/// A stretch of a conversation's history the cache does not hold: a newest page was stored above
+/// older cached messages without the pages in between (a long offline period). Messages composed
+/// after `older_ms` and before `newer_ms` may be missing; both edges are cached messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistoryGap {
+    /// Compose time of the oldest message of the page stored above the hole.
+    pub newer_ms: i64,
+    /// Compose time of the newest message that was cached before that page.
+    pub older_ms: i64,
+}
+
 /// An unsent message being composed in a conversation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Draft {
