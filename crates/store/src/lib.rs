@@ -585,6 +585,18 @@ impl Store {
         Ok(v)
     }
 
+    /// Oldest top-level compose time in a conversation (where paging further back starts).
+    pub fn oldest_compose_ms(&self, conversation_id: &str) -> Result<Option<i64>> {
+        let v: Option<i64> = self
+            .conn
+            .prepare_cached(
+                "SELECT MIN(compose_ms) FROM messages \
+                 WHERE conversation_id = ?1 AND parent_id IS NULL",
+            )?
+            .query_row([conversation_id], |r| r.get(0))?;
+        Ok(v)
+    }
+
     pub fn message(&self, id: &str) -> Result<Option<MessageRow>> {
         Ok(self
             .conn

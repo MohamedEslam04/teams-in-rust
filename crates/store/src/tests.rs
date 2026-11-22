@@ -352,6 +352,19 @@ fn latest_compose_ms() {
 }
 
 #[test]
+fn oldest_compose_ms_skips_replies_and_other_conversations() {
+    let s = Store::open_in_memory().unwrap();
+    assert_eq!(s.oldest_compose_ms("c").unwrap(), None);
+    s.upsert_message(&msg("b", "c", 9)).unwrap();
+    s.upsert_message(&msg("a", "c", 5)).unwrap();
+    s.upsert_message(&msg("z", "other", 1)).unwrap();
+    let mut reply = msg("r", "c", 2);
+    reply.parent_id = Some("a".into());
+    s.upsert_message(&reply).unwrap();
+    assert_eq!(s.oldest_compose_ms("c").unwrap(), Some(5));
+}
+
+#[test]
 fn edits_update_in_place() {
     let s = Store::open_in_memory().unwrap();
     let mut m = msg("1", "c", 10);
