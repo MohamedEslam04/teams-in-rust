@@ -410,7 +410,7 @@ export component TeamsPage inherits Rectangle {
                     clicked => { TeamsStore.sort = s.k; TeamsStore.command("sort", s.k); }
                 }
                 Rectangle { horizontal-stretch: 1; }
-                SearchBox { min-width: 220px;
+                SearchBox {
                     label: "Search teams";
                     placeholder: "Search teams";
                     text: TeamsStore.query;

@@ -40,7 +40,10 @@ export component Field inherits Rectangle {
     property <length> inset: root.bare ? 8px : 10px;
     property <length> text-size: root.settings ? Theme.font-body : 13px * Theme.font-scale;
 
-    height: root.bare ? (root.multiline ? max(root.field-height, 88px) : root.field-height)
+    // `bare`: the box's own height.
+    property <length> bare-height: root.multiline ? max(root.field-height, 88px) : root.field-height;
+
+    height: root.bare ? root.bare-height
         : root.settings ? lay.preferred-height
         : 58px;
 
@@ -54,7 +57,7 @@ export component Field inherits Rectangle {
             overflow: root.variant == FieldVariant.kit ? TextOverflow.elide : TextOverflow.clip;
         }
         box := Rectangle {
-            height: root.bare ? root.height : root.settings ? max(30px, input.preferred-height + 12px) : 32px;
+            height: root.bare ? root.bare-height : root.settings ? max(30px, input.preferred-height + 12px) : 32px;
             max-width: root.settings ? 360px : 100000px;
             border-radius: 4px;
             background: root.settings ? Theme.surface : Theme.sidebar;
