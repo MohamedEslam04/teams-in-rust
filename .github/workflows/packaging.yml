@@ -36,13 +36,15 @@ jobs:
         id: rust
         run: echo "version=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
       # The cargo target dir lives outside rpmbuild's BUILD dir, so it can be cached. Only dev saves
-      # it (cache-warm.yml runs this nightly); a release tag restores dev's copy.
+      # it (cache-warm.yml runs this nightly); a release tag restores dev's copy. The key has no
+      # commit: the spec rebuilds the workspace crates every time, so only the dependencies (set by
+      # Cargo.lock and the compiler) are worth keeping, and one copy stays within the 10 GB limit.
       - uses: actions/cache/restore@v6
+        id: rpm-cache
         with:
           path: rpm-target
-          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}-
             rpm-target-${{ steps.rust.outputs.version }}-
       - name: Build the RPM
         env:
@@ -60,10 +62,10 @@ jobs:
           tar -C vendor-dir -c vendor | xz -T0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
           rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
       - uses: actions/cache/save@v6
-        if: always() && github.ref == 'refs/heads/dev'
+        if: always() && github.ref == 'refs/heads/dev' && steps.rpm-cache.outputs.cache-hit != 'true'
         with:
           path: rpm-target
-          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
       - uses: actions/upload-artifact@v7
         with:
           name: ironteams-rpm

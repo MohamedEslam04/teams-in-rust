@@ -78,3 +78,30 @@ jobs:
       - run: cargo build --release --locked -p ironteams --bin ironteams
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
+
+  # GitHub keeps 10 GB of caches per repository and drops the least recently used beyond that, which
+  # would send a release back to a cold build. Every run here restores every cache in use, so a cache
+  # nobody restored for 3 days is a stale copy (an old Cargo.lock or compiler): delete it, then warn
+  # well before the limit is reached.
+  cache-usage:
+    needs: [gate, packages, linux, windows, macos]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - run: |
+          cutoff=$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            -q ".actions_caches[] | select(.last_accessed_at < \"$cutoff\") | .id" |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" && echo "deleted stale cache $id"; done
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            -q '.actions_caches[] | "\(.size_in_bytes / 1048576 | floor) MB  \(.ref)  \(.key)"' | sort -rn
+          used=$(gh api "repos/$GITHUB_REPOSITORY/actions/cache/usage" -q .active_caches_size_in_bytes)
+          gb=$(awk "BEGIN { printf \"%.1f\", $used / 1073741824 }")
+          echo "Cache in use: $gb GB of 10 GB"
+          if awk "BEGIN { exit !($used > 9 * 1073741824) }"; then
+            echo "::warning::Actions caches use $gb GB of 10 GB; GitHub will soon evict some and builds will slow down."
+          fi
