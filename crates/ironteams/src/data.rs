@@ -184,6 +184,8 @@ pub struct MsgData {
     pub quote_author: String,
     pub quote_text: String,
     pub markdown: String,
+    /// The text and code blocks of the body, in order; empty when it has no code block.
+    pub segments: Vec<crate::markdown::Segment>,
     pub plain: String,
     pub rtl: bool,
     pub images: Vec<ImgData>,

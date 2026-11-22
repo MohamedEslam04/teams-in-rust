@@ -7,6 +7,7 @@ import { CalStore } from "../stores/calendar_store.slint";
 import { CardView } from "../molecules/card_view.slint";
 import { LinkCardView, MediaStore } from "media.slint";
 import { VoicePlayer } from "../molecules/voice_player.slint";
+import { CodeBlock } from "../molecules/code_block.slint";
 import { VideoClipCard } from "video_clip.slint";
 import { MeetingCardView } from "meeting_card.slint";
 import { FadeImage, Motion, PopIn } from "../tokens/motion.slint";
@@ -258,7 +259,7 @@ export component MessageRow inherits TouchArea {
                         open-url(u) => { root.open-url(u); }
                     }
 
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != ""): StyledText {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0: StyledText {
                         text: root.m.body;
                         default-color: Theme.fg;
                         default-font-size: 14px * Theme.font-scale;
@@ -266,6 +267,27 @@ export component MessageRow inherits TouchArea {
                         selectable: true;
                         horizontal-alignment: root.m.rtl ? right : left;
                         link-clicked(url) => { root.open-url(url); }
+                    }
+
+                    // A text with code blocks: its runs of text and its boxes of code, in order.
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0: VerticalLayout {
+                        spacing: 6px;
+                        for p in root.m.parts: VerticalLayout {
+                            if !p.is-code: StyledText {
+                                text: p.body;
+                                default-color: Theme.fg;
+                                default-font-size: 14px * Theme.font-scale;
+                                link-color: Theme.accent;
+                                selectable: true;
+                                horizontal-alignment: root.m.rtl ? right : left;
+                                link-clicked(url) => { root.open-url(url); }
+                            }
+                            if p.is-code: CodeBlock {
+                                code: p.code;
+                                min-width: min(240px, root.max-bubble - 28px);
+                                copy(c) => { MediaStore.command("text-copy", c); }
+                            }
+                        }
                     }
 
                     // Several pictures form a grid (plan 9.5); clicking one opens the viewer.

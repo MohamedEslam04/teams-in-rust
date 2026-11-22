@@ -936,6 +936,15 @@ msgstr "رسائل متعددة"
 msgid "Copy message link"
 msgstr "نسخ ارتباط الرسالة"
 
+msgid "Copy text"
+msgstr "نسخ النص"
+
+msgid "Copy code"
+msgstr "نسخ التعليمات البرمجية"
+
+msgid "Drop to attach"
+msgstr "أفلت الملف لإرفاقه"
+
 msgid "Unsave this message"
 msgstr "إلغاء حفظ هذه الرسالة"
 

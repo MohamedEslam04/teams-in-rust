@@ -14,6 +14,7 @@ mod desktop_cards;
 #[cfg(target_os = "linux")]
 mod desktop_entry;
 mod external;
+mod file_hover;
 mod find_data;
 mod language;
 mod lists_data;
@@ -798,6 +799,12 @@ fn main() -> anyhow::Result<()> {
             }
             if matches!(event, WindowEvent::Focused(_)) {
                 window_watch::focus_changed(weak.clone());
+            }
+            // A file dragged over the window shows the chat's drop zone until it leaves or drops.
+            if let Some(over) = file_hover::of(event)
+                && let Some(w) = weak.upgrade()
+            {
+                w.set_file_hover(over);
             }
             if let WindowEvent::DroppedFile(path) = event {
                 // On the OneDrive view a drop uploads; elsewhere it attaches to the message.

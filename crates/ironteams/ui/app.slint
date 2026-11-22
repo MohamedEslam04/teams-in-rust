@@ -15,6 +15,7 @@ import { SeenByList } from "molecules/seen_by.slint";
 import { ReactionPicker } from "molecules/reaction_picker.slint";
 import { ForwardDialog } from "organisms/forward_dialog.slint";
 import { SelectBar } from "molecules/select_bar.slint";
+import { DropZone } from "molecules/drop_zone.slint";
 import { LoginView } from "pages/login.slint";
 import { CalendarView, JoinBanner, CalStore } from "pages/calendar.slint";
 import { CallsPage, CallsPageStore } from "pages/calls_page.slint";
@@ -69,7 +70,7 @@ export { MessageToastStore, ToastCard, CardHost } from "organisms/message_toast.
 export { Theme } from "tokens/theme.slint";
 export { Motion, TypingStore } from "tokens/motion.slint";
 export { ReaderItem, Reactor } from "tokens/types.slint";
-export { PersonItem, PinnedItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "tokens/types.slint";
+export { BodyPart, PersonItem, PinnedItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "tokens/types.slint";
 export { EmojiApi } from "organisms/composer.slint";
 export { SpellApi, SpellWord } from "molecules/spelling.slint";
 export { FormatApi, FormatEdit } from "organisms/composer_format.slint";
@@ -336,6 +337,10 @@ export component AppWindow inherits Window {
     in property <int> cursor-tick; // Rust bumps it to put the composer cursor at the end
     // A channel's top level shows post cards (channel_posts.slint) instead of the flat list.
     property <bool> posts-mode: root.current-is-channel && root.thread-root == "" && ChannelStore.active;
+    // A file is being dragged over the window (Rust sets it from the window system's drag events).
+    in property <bool> file-hover: false;
+    // A file dropped now becomes an attachment: a chat or channel is open with its composer showing.
+    property <bool> accepts-files: (root.view == "chat" || root.view == "teams") && root.current-id != "" && !root.teams-no-channel && FindStore.chat-tab == "chat" && (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable && !SettingsStore.open;
 
     // --- callbacks to Rust ---
     callback retry-login();
@@ -934,6 +939,11 @@ export component AppWindow inherits Window {
                     y: 60px;
                     height: parent.height - 60px;
                     title: root.current-title;
+                }
+                if root.file-hover && root.accepts-files: DropZone {
+                    z: 25;
+                    width: parent.width;
+                    height: parent.height;
                 }
             }
         }

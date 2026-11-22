@@ -11,11 +11,12 @@ use crate::data::{
     AttachmentData, ChatData, HeaderData, MeetingCardData, MsgData, Pixels, RecipientData, Scroll,
     TeamData,
 };
+use crate::markdown::Segment;
 use crate::reactions;
 use crate::ui_api::UiHandle;
 use crate::{
-    AppWindow, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem, LinkCard,
-    LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, Reactor,
+    AppWindow, BodyPart, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem,
+    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, Reactor,
     ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
 };
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
@@ -103,6 +104,22 @@ fn styled(markdown: &str) -> StyledText {
     StyledText::from_markdown(markdown).unwrap_or_else(|_| StyledText::from_plain_text(markdown))
 }
 
+/// A run of text or a code block of a message that has code blocks (`Msg.parts`).
+fn body_part(s: &Segment) -> BodyPart {
+    match s {
+        Segment::Text(md) => BodyPart {
+            body: styled(md),
+            code: SharedString::default(),
+            is_code: false,
+        },
+        Segment::Code(code) => BodyPart {
+            body: StyledText::default(),
+            code: code.as_str().into(),
+            is_code: true,
+        },
+    }
+}
+
 /// Everyone who has seen my newest message: a circle of initials and the full name each. The
 /// line under the message draws the first three (`Msg.readers`); the "Seen by" list shows them
 /// all (`Msg.reader_list`).
@@ -139,6 +156,7 @@ fn msg(m: MsgData) -> Msg {
         quote_author: m.quote_author.into(),
         quote_text: m.quote_text.into(),
         body: styled(&m.markdown),
+        parts: model(m.segments.iter().map(body_part).collect()),
         plain: m.plain.into(),
         rtl: m.rtl,
         images: model(

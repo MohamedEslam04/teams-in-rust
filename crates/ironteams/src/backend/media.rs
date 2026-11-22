@@ -53,6 +53,8 @@ pub enum MediaCmd {
     },
     /// The message menu's "Copy link" of a link in the text.
     CopyLink(String),
+    /// "Copy text" of a message, or a code block's Copy button: the text for the clipboard.
+    CopyText(String),
     /// "Share to Outlook" of a message (its id).
     ShareToOutlook(String),
     /// "Report this message" (its id).
@@ -93,6 +95,7 @@ impl MediaCmd {
                 }
             }
             "link-copy" => MediaCmd::CopyLink(arg.to_string()),
+            "text-copy" => MediaCmd::CopyText(arg.to_string()),
             "outlook" => MediaCmd::ShareToOutlook(arg.to_string()),
             "report" => MediaCmd::Report(arg.to_string()),
             "popout" => MediaCmd::PopOut(arg.to_string()),
@@ -345,6 +348,10 @@ impl Engine {
             MediaCmd::CopyLink(url) => {
                 arboard::Clipboard::new()?.set_text(url)?;
                 self.ui.banner("Link copied".into());
+            }
+            MediaCmd::CopyText(text) => {
+                arboard::Clipboard::new()?.set_text(text)?;
+                self.ui.banner("Text copied".into());
             }
             MediaCmd::ShareToOutlook(id) => self.share_to_outlook(&id).await?,
             MediaCmd::Report(id) => self.report_message(&id).await?,
@@ -1062,6 +1069,15 @@ mod tests {
         assert_eq!(translate_state(Some(&done(true)), true, true), "shown");
         assert_eq!(translate_state(Some(&done(false)), true, true), "offer");
         assert_eq!(translate_state(Some(&done(false)), false, true), "can");
+    }
+
+    #[test]
+    fn copy_text_keeps_every_character_of_the_text() {
+        let code = "fn main() {\n    println!(\"a|b\");\n}";
+        assert_eq!(
+            MediaCmd::parse("text-copy", code),
+            Some(MediaCmd::CopyText(code.into()))
+        );
     }
 
     #[test]

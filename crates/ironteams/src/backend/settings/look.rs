@@ -22,6 +22,7 @@ pub struct Palette {
     pub bubble_mine: u32,
     pub bubble_other: u32,
     pub mention: u32,
+    pub code_bg: u32,
     pub danger: u32,
     pub unread_badge: u32,
 }
@@ -44,6 +45,7 @@ pub const DARK: Palette = Palette {
     bubble_mine: 0x2f2f4a,
     bubble_other: 0x292929,
     mention: 0xb4b8ff,
+    code_bg: 0x1b1b1b,
     danger: 0xd13438,
     unread_badge: 0xc4314b,
 };
@@ -66,6 +68,7 @@ pub const LIGHT: Palette = Palette {
     bubble_mine: 0xe8ebfa,
     bubble_other: 0xf5f5f5,
     mention: 0x4f52b2,
+    code_bg: 0xebebeb,
     danger: 0xc4314b,
     unread_badge: 0xc4314b,
 };
@@ -88,6 +91,7 @@ pub const CONTRAST_DARK: Palette = Palette {
     bubble_mine: 0x000000,
     bubble_other: 0x000000,
     mention: 0xffff00,
+    code_bg: 0x000000,
     danger: 0xff6b6b,
     unread_badge: 0xffff00,
 };
@@ -110,6 +114,7 @@ pub const CONTRAST_LIGHT: Palette = Palette {
     bubble_mine: 0xffffff,
     bubble_other: 0xffffff,
     mention: 0x00009f,
+    code_bg: 0xffffff,
     danger: 0xa80000,
     unread_badge: 0xa80000,
 };

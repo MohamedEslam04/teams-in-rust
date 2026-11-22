@@ -57,6 +57,14 @@ fn palettes_follow_theme_contrast_and_accent() {
 }
 
 #[test]
+fn a_code_block_stands_out_from_the_bubble_it_sits_in() {
+    for p in [DARK, LIGHT] {
+        assert_ne!(p.code_bg, p.bubble_other);
+        assert_ne!(p.code_bg, p.bubble_mine);
+    }
+}
+
+#[test]
 fn look_resolves_system_theme_contrast_motion_and_text_scale() {
     let mut l = Local::load(&tempfile_dir("look"));
     let dark_portal = PortalSettings {
