@@ -145,8 +145,10 @@ component ButtonBody inherits Rectangle {
         height: 20px;
     }
     lbl := Text {
-        x: root.inline-row ? root.pad + root.icon-part : 0px;
-        width: root.inline-row ? root.width - self.x - root.pad - root.chevron-part : root.width;
+        // A centred label keeps its own width (as the copies' bare `Text` did), and shrinks to
+        // the button when the button is narrower.
+        x: root.inline-row ? root.pad + root.icon-part : (root.width - self.width) / 2;
+        width: root.inline-row ? root.width - root.pad - root.icon-part - root.pad - root.chevron-part : min(root.width, self.preferred-width);
         y: root.inline-row ? 0px : root.stacked ? (root.height - 23px - self.preferred-height) / 2 + 23px : (root.height - self.height) / 2;
         height: root.inline-row ? root.height : self.preferred-height;
         opacity: root.stacked && !root.enabled ? 0.4 : 1;
