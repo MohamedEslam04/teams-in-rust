@@ -16,7 +16,7 @@ use slint::{ComponentHandle, Model, SharedString};
 use tokio::sync::mpsc::UnboundedSender;
 
 mod push;
-pub use push::*;
+use push::*;
 mod form;
 pub use form::*;
 mod wire;

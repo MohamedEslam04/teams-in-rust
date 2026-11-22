@@ -52,13 +52,13 @@ pub use hooks::*;
 mod install;
 pub use install::*;
 mod push;
-pub use push::*;
+pub(super) use push::*;
 mod misc;
-pub use misc::*;
+use misc::*;
 mod updates;
 pub use updates::*;
 mod command;
-pub use command::*;
+use command::*;
 
 /// Polls a running microphone test; `None` when there is no new reading.
 pub type MicPoll = Box<dyn FnMut() -> Option<f32>>;

@@ -23,7 +23,7 @@ mod top_messages;
 mod model;
 pub use model::*;
 mod pure;
-pub use pure::*;
+use pure::*;
 mod dispatch;
 mod navigate;
 mod quick_lists;

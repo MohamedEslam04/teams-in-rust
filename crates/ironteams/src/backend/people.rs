@@ -23,7 +23,7 @@ use teams_proto::time::now_ms;
 mod model;
 pub use model::*;
 mod pure;
-pub use pure::*;
+pub(super) use pure::*;
 mod commands;
 mod members;
 mod mention_flow;

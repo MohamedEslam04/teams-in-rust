@@ -25,7 +25,7 @@ use teams_proto::time::now_ms;
 mod payloads;
 pub use payloads::*;
 mod helpers;
-pub use helpers::*;
+pub(super) use helpers::*;
 mod dispatch;
 mod edit;
 mod load;
