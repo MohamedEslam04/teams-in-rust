@@ -369,7 +369,7 @@ fn followed_threads_list_new_replies_on_top_and_unfollow_removes_one() {
 #[test]
 fn channel_posts_offer_follow_in_their_menu_and_chats_do_not() {
     // Following itself goes through the channel post path (ChannelStore), covered by
-    // ui_tests::channels::the_post_menu_can_follow_a_thread_and_the_card_can_unfollow_it.
+    // ui_tests::channels::the_post_menu_follows_and_unfollows_a_thread.
     let h = Harness::new();
     let _log = wire(&h);
     h.select(CHANNEL);

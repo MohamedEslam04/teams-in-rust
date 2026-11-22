@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::backend::{ChannelCmd, DriveCmd};
-use crate::{ChannelStore, DriveStore};
+use crate::{ChannelStore, DriveStore, Replier};
 use serde_json::json;
 use store::MessageRow;
 
@@ -105,17 +105,39 @@ fn post_ids(app: &AppWindow) -> Vec<String> {
         .collect()
 }
 
-fn reply_texts(app: &AppWindow, post: usize) -> Vec<String> {
+/// The texts of the replies in the thread panel.
+fn thread_texts(app: &AppWindow) -> Vec<String> {
     cs(app)
-        .get_posts()
-        .row_data(post)
-        .unwrap()
-        .replies
+        .get_thread_replies()
         .iter()
         .map(|m| m.plain.to_string())
         .collect()
 }
 
+/// The Reply field under each post card, top to bottom.
+fn reply_fields(app: &AppWindow) -> Vec<ElementHandle> {
+    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "PostCard::reply-field").collect();
+    v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
+    v
+}
+
+fn thread_panel(app: &AppWindow) -> Option<ElementHandle> {
+    ElementHandle::find_by_element_type_name(app, "ThreadPanel").next()
+}
+
+fn rows_in(e: &ElementHandle) -> usize {
+    e.query_descendants()
+        .match_type_name("MessageRow")
+        .find_all()
+        .len()
+}
+
+/// Lets the thread panel slide in.
+fn settle() {
+    for ms in [16, 16, 250, 16] {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(ms));
+    }
+}
 fn first(app: &AppWindow, label: &str) -> ElementHandle {
     find_label(app, label)
         .into_iter()
@@ -373,7 +395,7 @@ fn people_the_service_sends_the_same_picture_for_show_initials_not_that_picture(
 }
 
 #[test]
-fn a_channel_shows_posts_as_cards_with_the_first_two_replies_inline() {
+fn a_post_card_folds_its_replies_into_a_summary_with_no_reply_rows() {
     let h = channel_harness(3);
     assert!(h.app.get_current_is_channel());
     assert_eq!(
@@ -383,83 +405,235 @@ fn a_channel_shows_posts_as_cards_with_the_first_two_replies_inline() {
     );
     let p = cs(&h.app).get_posts().row_data(0).unwrap();
     assert_eq!(p.post.subject, "Upgrade plan");
-    assert_eq!(
-        reply_texts(&h.app, 0),
-        vec!["reply number 1", "reply number 2"]
-    );
-    assert_eq!(p.more, 1);
-    assert!(!p.expanded);
-    // The cards are drawn: the post, its replies and the "See 1 more reply" link.
-    assert!(!find_label(&h.app, "See 1 more reply").is_empty());
+    assert_eq!(p.reply_count, 3);
+    // The newest reply's writer first, each once.
+    let names: Vec<String> = p.repliers.iter().map(|r| r.name.to_string()).collect();
+    assert_eq!(names, ["Me", "Sara Hassan"]);
+    assert!(!find_label(&h.app, "3 replies from Me and Sara Hassan").is_empty());
     assert_eq!(
         rows(&h.app).len(),
-        1 + 2 + 1,
-        "post, two replies, the quiet post"
+        2,
+        "the two posts, and none of the replies"
     );
-    assert_eq!(reply_texts(&h.app, 1), Vec::<String>::new());
+    let quiet = cs(&h.app).get_posts().row_data(1).unwrap();
+    assert_eq!(quiet.reply_count, 0);
+    // Every card has the Reply field under it.
+    assert_eq!(reply_fields(&h.app).len(), 2);
 }
 
 #[test]
-fn see_more_replies_shows_the_whole_thread() {
+fn the_replies_summary_names_two_people_then_others() {
+    let h = channel_harness(0);
+    let people = |names: &[&str]| -> ModelRc<Replier> {
+        ModelRc::new(VecModel::from(
+            names
+                .iter()
+                .map(|n| Replier {
+                    name: (*n).into(),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    let s = cs(&h.app);
+    assert_eq!(
+        s.invoke_replies_summary(1, people(&["A"])),
+        "1 reply from A"
+    );
+    assert_eq!(
+        s.invoke_replies_summary(4, people(&["A"])),
+        "4 replies from A"
+    );
+    assert_eq!(
+        s.invoke_replies_summary(2, people(&["A", "B"])),
+        "2 replies from A and B"
+    );
+    assert_eq!(
+        s.invoke_replies_summary(5, people(&["A", "B", "C"])),
+        "5 replies from A, B and others"
+    );
+}
+
+#[test]
+fn the_summary_opens_the_thread_panel_with_the_post_and_its_replies() {
     let h = channel_harness(3);
     let log = wire(&h);
-    click(&first(&h.app, "See 1 more reply"));
-    assert_eq!(*log.borrow(), vec!["expand 1000"]);
-    assert_eq!(reply_texts(&h.app, 0).len(), 3);
-    let p = cs(&h.app).get_posts().row_data(0).unwrap();
-    assert!(p.expanded);
-    assert_eq!(p.more, 0);
-    assert!(find_label(&h.app, "See 1 more reply").is_empty());
+    click(&first(&h.app, "3 replies from Me and Sara Hassan"));
+    assert_eq!(*log.borrow(), vec!["thread 1000"]);
+    let s = cs(&h.app);
+    assert_eq!(s.get_thread_id(), "1000");
+    assert_eq!(s.get_thread_post().id, "1000");
+    assert_eq!(
+        thread_texts(&h.app),
+        ["reply number 1", "reply number 2", "reply number 3"]
+    );
+    settle();
+    let panel = thread_panel(&h.app).expect("the thread panel");
+    let posts = ElementHandle::find_by_element_type_name(&h.app, "ChannelPosts")
+        .next()
+        .expect("the Posts tab");
+    let right = posts.absolute_position().x + posts.size().width;
+    let (x, w) = (panel.absolute_position().x, panel.size().width);
+    assert!(
+        (x + w - right).abs() < 2.0 && (w == posts.size().width || (400.0..=480.0).contains(&w)),
+        "slid in at the right edge: x {x}, width {w}, posts end at {right}"
+    );
+    // The post at the top, then its replies as rows.
+    assert_eq!(rows_in(&panel), 4, "the post and three replies");
+    assert!(
+        !panel
+            .query_descendants()
+            .match_accessible_label("3 replies")
+            .find_all()
+            .is_empty(),
+        "the divider counts the replies"
+    );
+    // The posts stay on screen beside it.
+    assert_eq!(post_ids(&h.app), ["1000", "2000"]);
 }
 
 #[test]
-fn a_post_with_two_replies_or_fewer_has_no_see_more() {
+fn escape_and_the_close_button_close_the_thread_panel() {
     let h = channel_harness(2);
-    assert_eq!(cs(&h.app).get_posts().row_data(0).unwrap().more, 0);
-    assert!(find_label(&h.app, "See 1 more reply").is_empty());
-    let h = channel_harness(5);
-    assert_eq!(cs(&h.app).get_posts().row_data(0).unwrap().more, 3);
-    assert!(!find_label(&h.app, "See 3 more replies").is_empty());
+    let log = wire(&h);
+    click(&reply_fields(&h.app)[0]);
+    settle();
+    assert!(thread_panel(&h.app).is_some());
+    key(&h.app, Key::Escape, true);
+    key(&h.app, Key::Escape, false);
+    assert_eq!(cs(&h.app).get_thread_id(), "");
+    assert!(thread_panel(&h.app).is_none());
+    assert_eq!(*log.borrow(), vec!["thread 1000", "close-thread "]);
+
+    click(&first(&h.app, "2 replies from Sara Hassan and Me"));
+    settle();
+    click(&first(&h.app, "Close thread"));
+    assert_eq!(cs(&h.app).get_thread_id(), "");
+    assert_eq!(log.borrow().last().unwrap(), "close-thread ");
 }
 
 #[test]
-fn reply_opens_an_inline_box_and_enter_sends_into_the_thread() {
+fn a_reply_from_the_panel_goes_into_the_thread_and_updates_the_summary() {
     let h = channel_harness(1);
     let log = wire(&h);
-    // "Reply" under the first post (its Link; the quiet post has one too).
-    click(&find_label(&h.app, "Reply")[0]);
-    assert_eq!(cs(&h.app).get_reply_root(), "1000");
+    // The Reply field under the first post opens its thread with the cursor in the composer.
+    click(&reply_fields(&h.app)[0]);
+    assert_eq!(cs(&h.app).get_thread_id(), "1000");
+    assert!(!find_label(&h.app, "Reply in thread").is_empty());
+    settle();
     type_text(&h.app, "ship it");
-    assert_eq!(cs(&h.app).get_reply_text(), "ship it");
+    assert_eq!(cs(&h.app).get_thread_text(), "ship it");
     enter(&h.app);
-    assert_eq!(*log.borrow(), vec!["reply 1000 | ship it"]);
-    assert_eq!(cs(&h.app).get_reply_root(), "", "the box closes");
-    // The reply waits in the outbox and shows under its post as a pending row.
-    let texts = reply_texts(&h.app, 0);
+    assert_eq!(*log.borrow(), vec!["thread 1000", "reply 1000 | ship it"]);
+    assert_eq!(cs(&h.app).get_thread_text(), "", "the composer empties");
+    // The reply waits in the outbox: it shows in the panel and counts in the summary.
+    let texts = thread_texts(&h.app);
     assert_eq!(texts.len(), 2, "{texts:?}");
     assert!(texts[1].contains("ship it"));
+    assert!(cs(&h.app).get_thread_replies().row_data(1).unwrap().pending);
+    assert_eq!(cs(&h.app).get_posts().row_data(0).unwrap().reply_count, 2);
+}
+
+#[test]
+fn posts_of_different_days_have_a_day_divider_and_a_dated_time() {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    let other = "8:orgid:00000000-0000-0000-0000-000000000003";
+    let mut old = row("900", None, other, "Poster", "an older post", json!({}));
+    old.compose_ms -= 10 * 86_400_000;
+    store.upsert_message(&old).unwrap();
+    let mut today = row("1000", None, other, "Poster", "a post of today", json!({}));
+    today.compose_ms = teams_proto::time::now_ms() - 1000;
+    store.upsert_message(&today).unwrap();
+    let h = Harness::with_store(store);
+    h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
+    let posts = cs(&h.app).get_posts();
+    let (old, today) = (posts.row_data(0).unwrap(), posts.row_data(1).unwrap());
+    assert_eq!(today.day, "Today");
     assert!(
-        cs(&h.app)
-            .get_posts()
-            .row_data(0)
-            .unwrap()
-            .replies
-            .row_data(1)
-            .unwrap()
-            .pending
+        !old.day.is_empty() && old.day != "Today",
+        "the older post's day: {:?}",
+        old.day
+    );
+    // The card itself carries no divider: the post row draws none.
+    assert_eq!(old.post.day, "");
+    let words = |t: &str| t.split(' ').count();
+    assert!(
+        words(&old.post.time) > words(&today.post.time),
+        "an older post names its day: {:?} / {:?}",
+        old.post.time,
+        today.post.time
+    );
+    let list = ElementHandle::find_by_element_type_name(&h.app, "ChannelPosts")
+        .next()
+        .expect("the Posts tab");
+    assert!(
+        !list
+            .query_descendants()
+            .match_accessible_label("Today")
+            .find_all()
+            .is_empty(),
+        "the divider is drawn"
     );
 }
 
 #[test]
-fn escape_closes_the_inline_reply_box_without_sending() {
-    let h = channel_harness(0);
-    let log = wire(&h);
-    click(&find_label(&h.app, "Reply")[0]);
-    type_text(&h.app, "never mind");
-    key(&h.app, Key::Escape, true);
-    key(&h.app, Key::Escape, false);
-    assert_eq!(cs(&h.app).get_reply_root(), "");
-    assert!(log.borrow().is_empty());
+fn scrolling_to_the_oldest_post_asks_for_an_older_page_and_keeps_the_first_card() {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    for i in 0..30 {
+        store
+            .upsert_message(&row(
+                &format!("{}", 3000 + i),
+                None,
+                &format!("8:orgid:00000000-0000-0000-0000-0000000001{i:02}"),
+                &format!("Poster {i}"),
+                &format!("post number {i}"),
+                json!({}),
+            ))
+            .unwrap();
+    }
+    let h = Harness::with_store(store);
+    h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
+    let loads = Rc::new(RefCell::new(0));
+    {
+        let l = loads.clone();
+        h.app.on_load_older(move || *l.borrow_mut() += 1);
+    }
+    for ms in [16, 16, 200, 16] {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(ms));
+    }
+    assert_eq!(*loads.borrow(), 0, "at the newest post nothing is asked");
+    let posts = ElementHandle::find_by_element_type_name(&h.app, "ChannelPosts")
+        .next()
+        .expect("the Posts tab");
+    let (p, s) = (posts.absolute_position(), posts.size());
+    let at = LogicalPosition::new(p.x + s.width / 2., p.y + s.height / 2.);
+    // Wheel up to the top: one older page is asked for, not one per wheel step.
+    for _ in 0..40 {
+        h.app.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: at,
+            delta_x: 0.,
+            delta_y: 400.,
+        });
+        testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    }
+    assert_eq!(*loads.borrow(), 1, "one older page asked for");
+
+    // The engine reads it (no network here) and shows more: the card that was first stays.
+    let tick = cs(&h.app).get_anchor_tick();
+    h.runner()(Cmd::LoadOlder);
+    assert_eq!(cs(&h.app).get_anchor_tick(), tick + 1);
+    let first_card = cs(&h.app).get_anchor_index();
+    assert_eq!(
+        cs(&h.app)
+            .get_posts()
+            .row_data(first_card as usize)
+            .unwrap()
+            .post
+            .id,
+        "3000"
+    );
 }
 
 #[test]
@@ -560,22 +734,23 @@ fn the_posts_menu_puts_new_posts_at_the_top() {
 }
 
 #[test]
-fn the_post_menu_can_follow_a_thread_and_the_card_can_unfollow_it() {
+fn the_post_menu_follows_and_unfollows_a_thread() {
     let h = channel_harness(1);
     let log = wire(&h);
-    // Right click on the post opens the message menu, which has Follow thread in channels.
+    // The post's "…" menu has Follow thread in channels.
     let post = rows(&h.app).into_iter().next().unwrap();
     open_menu(&h.app, &post);
     click(&menu_item(&h.app, "Follow thread"));
     assert_eq!(*log.borrow(), vec!["follow-msg 1000"]);
     assert_eq!(h.engine.test_followed("1000"), Some(true));
     assert!(cs(&h.app).get_posts().row_data(0).unwrap().following);
-    assert!(!find_label(&h.app, "Unfollow thread").is_empty());
-    click(&first(&h.app, "Unfollow thread"));
+    // Opened again, it offers to unfollow.
+    let post = rows(&h.app).into_iter().next().unwrap();
+    open_menu(&h.app, &post);
+    click(&menu_item(&h.app, "Unfollow thread"));
     assert_eq!(h.engine.test_followed("1000"), Some(false));
     assert!(log.borrow().iter().any(|l| l == "unfollow 1000"));
 }
-
 #[test]
 fn a_chat_has_no_post_cards_and_no_follow_entry() {
     let h = Harness::new();
