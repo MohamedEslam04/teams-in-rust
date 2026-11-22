@@ -162,7 +162,7 @@ impl Engine {
 
     /// A calendar reminder or start notice as a desktop card (Join for a Teams meeting, Snooze
     /// 5/10/15 minutes, Dismiss). False when the cards are off: the caller shows its own system
-    /// notification. Once it returns true it also takes care of the fallback.
+    /// notification. Once it returns true, `system` runs when the card cannot be shown.
     pub(super) fn reminder_card(
         self: &Arc<Self>,
         id: &str,
@@ -170,6 +170,7 @@ impl Engine {
         subject: &str,
         body: &str,
         join_url: Option<&str>,
+        system: impl FnOnce() + Send + 'static,
     ) -> bool {
         if !cards_on() {
             return false;
@@ -230,58 +231,8 @@ impl Engine {
                 });
             }
         });
-        let e = self.clone();
-        let (event, title, body, url) = (
-            id.to_owned(),
-            title.to_owned(),
-            body.to_owned(),
-            join_url.map(str::to_owned),
-        );
-        self.card_or_system(Source::Calendar, card, on_action, move || {
-            e.reminder_banner(event, start_ms, title, body, url)
-        });
+        self.card_or_system(Source::Calendar, card, on_action, system);
         true
-    }
-
-    /// The system notification of a reminder, as `cal.rs` shows it when the cards are off.
-    fn reminder_banner(
-        self: &Arc<Self>,
-        id: String,
-        start_ms: i64,
-        title: String,
-        body: String,
-        join_url: Option<String>,
-    ) {
-        let e = self.clone();
-        let rt = tokio::runtime::Handle::current();
-        tokio::task::spawn_blocking(move || {
-            let mut n = notify_rust::Notification::new();
-            n.appname("IronTeams")
-                .summary(&title)
-                .body(&body)
-                .icon("appointment-soon")
-                .timeout(notify_rust::Timeout::Milliseconds(60_000));
-            if join_url.is_some() {
-                n.action("join", "Join");
-            }
-            n.action("snooze", "Snooze 5 min")
-                .action("dismiss", "Dismiss");
-            let Ok(handle) = n.show() else { return };
-            handle.wait_for_action(|action| {
-                let cmd = match action {
-                    "join" | "default" => join_url.clone().map(CalCmd::Join),
-                    "snooze" => Some(CalCmd::Snooze(id.clone(), start_ms)),
-                    "dismiss" => Some(CalCmd::Dismiss(id.clone(), start_ms)),
-                    _ => None,
-                };
-                if let Some(cmd) = cmd {
-                    let e = e.clone();
-                    rt.spawn(async move {
-                        let _ = e.calendar_cmd(cmd).await;
-                    });
-                }
-            });
-        });
     }
 
     /// An incoming call as a desktop card with Accept and Decline; it stays until the call stops
