@@ -41,11 +41,13 @@ fn the_message_menu_is_above_the_floating_call() {
     let app = app_with_messages(vec![msg("m1", "mine", true)]);
     let log = record_actions(&app);
     open_menu(&app, &rows(&app)[0]);
-    let delete = menu_item(&app, "Delete");
-    park_the_floating_call_under(&app, center(&delete));
+    // Edit, not the last entry: the menu has grown, and the floating call cannot be dragged as
+    // far down as the last entry now sits.
+    let edit = menu_item(&app, "Edit");
+    park_the_floating_call_under(&app, center(&edit));
 
-    click(&delete);
-    assert_eq!(*log.borrow(), ["delete m1"], "the click reached the menu");
+    click(&edit);
+    assert_eq!(*log.borrow(), ["edit m1"], "the click reached the menu");
     assert!(still_minimized(&app), "and not the floating call");
 }
 

@@ -1013,8 +1013,8 @@ impl Engine {
             // The text's parse is kept per row and version (`msg_memo`): only new or changed
             // rows are parsed. Pictures, names and marks below are read on every build.
             // Mentions are drawn in the theme's colour: a new look is a new version.
-            let version = msg_memo::version(r, html)
-                ^ crate::markdown::mention_color().map_or(0, u64::from);
+            let version =
+                msg_memo::version(r, html) ^ crate::markdown::mention_color().map_or(0, u64::from);
             let memo = self.msg_memo.lock().unwrap().get(&r.id, version);
             let text = memo.unwrap_or_else(|| {
                 built += 1;
