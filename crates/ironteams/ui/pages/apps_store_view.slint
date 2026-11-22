@@ -4,7 +4,11 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, AppCard } from "../stores/apps_store.slint";
-import { AppTile, KitButton, KitSearch, KitMenuRow, KitMenuFrame, KitBadge, KitPill, AppCardView } from "../molecules/apps_kit.slint";
+import { AppTile, AppCardView } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { MenuItem, MenuItemVariant, MenuColumn } from "../atoms/menu.slint";
+import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
+import { SearchBox } from "../atoms/search_box.slint";
 
 // Cards in as many columns as fit.
 component CardGrid inherits Rectangle {
@@ -30,7 +34,7 @@ component SectionTitle inherits Rectangle {
         spacing: 12px;
         Text { text: root.text; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
         Rectangle { horizontal-stretch: 1; }
-        if root.link != "": KitButton { y: 2px; label: root.link; clicked => { root.link-clicked(); } }
+        if root.link != "": Button { variant: ButtonVariant.kit; y: 2px; label: root.link; clicked => { root.link-clicked(); } }
     }
 }
 
@@ -76,19 +80,19 @@ component AppPageView inherits ScrollView {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            add-btn := KitButton {
+            add-btn := Button { variant: ButtonVariant.kit;
                 label: AppsStore.app-installed ? "Add to another place" : "Add";
                 primary: true;
                 chevron: true;
                 enabled: AppsStore.app-targets.length > 0;
                 clicked => { root.open-add(self.absolute-position.x, self.absolute-position.y + self.height); }
             }
-            if AppsStore.app-installed && AppsStore.app-opens-here: KitButton { label: "Open"; clicked => { AppsStore.command("open-app", AppsStore.app-id); } }
-            if AppsStore.app-update: KitButton { label: "Update"; clicked => { AppsStore.command("app-update", AppsStore.app-id); } }
-            if AppsStore.app-installed: KitButton { label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", AppsStore.app-id); } }
-            if AppsStore.app-installed && AppsStore.app-can-pin && !AppsStore.app-pinned: KitButton { label: "Pin to app bar"; clicked => { AppsStore.command("pin", AppsStore.app-id); } }
-            if AppsStore.app-installed && AppsStore.app-pinned: KitButton { label: "Unpin from app bar"; clicked => { AppsStore.command("unpin", AppsStore.app-id); } }
-            KitButton { label: "Share"; clicked => { AppsStore.command("app-share", AppsStore.app-id); } }
+            if AppsStore.app-installed && AppsStore.app-opens-here: Button { variant: ButtonVariant.kit; label: "Open"; clicked => { AppsStore.command("open-app", AppsStore.app-id); } }
+            if AppsStore.app-update: Button { variant: ButtonVariant.kit; label: "Update"; clicked => { AppsStore.command("app-update", AppsStore.app-id); } }
+            if AppsStore.app-installed: Button { variant: ButtonVariant.kit; label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", AppsStore.app-id); } }
+            if AppsStore.app-installed && AppsStore.app-can-pin && !AppsStore.app-pinned: Button { variant: ButtonVariant.kit; label: "Pin to app bar"; clicked => { AppsStore.command("pin", AppsStore.app-id); } }
+            if AppsStore.app-installed && AppsStore.app-pinned: Button { variant: ButtonVariant.kit; label: "Unpin from app bar"; clicked => { AppsStore.command("unpin", AppsStore.app-id); } }
+            Button { variant: ButtonVariant.kit; label: "Share"; clicked => { AppsStore.command("app-share", AppsStore.app-id); } }
         }
         if AppsStore.app-blurb != "": Text { text: AppsStore.app-blurb; color: Theme.fg; font-size: 14px * Theme.font-scale; wrap: word-wrap; }
         if AppsStore.app-shot-count > 0: HorizontalLayout {
@@ -129,8 +133,8 @@ component AppPageView inherits ScrollView {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            if AppsStore.app-privacy != "": KitButton { label: "Privacy policy"; clicked => { AppsStore.command("app-link", "privacy"); } }
-            if AppsStore.app-terms != "": KitButton { label: "Terms of use"; clicked => { AppsStore.command("app-link", "terms"); } }
+            if AppsStore.app-privacy != "": Button { variant: ButtonVariant.kit; label: "Privacy policy"; clicked => { AppsStore.command("app-link", "privacy"); } }
+            if AppsStore.app-terms != "": Button { variant: ButtonVariant.kit; label: "Terms of use"; clicked => { AppsStore.command("app-link", "terms"); } }
         }
     }
 }
@@ -162,10 +166,10 @@ component ManageView inherits ScrollView {
                     Text { text: a.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; overflow: elide; }
                     Text { text: a.developer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
                 }
-                if a.update: KitBadge { y: 18px; text: "Update available"; tone: "warn"; }
-                if a.update: KitButton { y: 12px; label: "Update"; clicked => { AppsStore.command("app-update", a.id); } }
-                KitButton { y: 12px; label: "Details"; clicked => { AppsStore.command("app-page", a.id); } }
-                KitButton { y: 12px; label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", a.id); } }
+                if a.update: Badge { variant: BadgeVariant.status; y: 18px; text: "Update available"; tone: "warn"; }
+                if a.update: Button { variant: ButtonVariant.kit; y: 12px; label: "Update"; clicked => { AppsStore.command("app-update", a.id); } }
+                Button { variant: ButtonVariant.kit; y: 12px; label: "Details"; clicked => { AppsStore.command("app-page", a.id); } }
+                Button { variant: ButtonVariant.kit; y: 12px; label: "Remove"; danger: true; clicked => { AppsStore.command("app-remove", a.id); } }
             }
         }
     }
@@ -244,7 +248,7 @@ export component StoreView inherits Rectangle {
                 padding-right: 16px;
                 spacing: 10px;
                 Text { text: "Store"; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
-                KitSearch {
+                SearchBox {
                     y: 14px;
                     width: store-head.narrow ? 180px : 340px;
                     placeholder: "Search for agents and apps";
@@ -252,12 +256,12 @@ export component StoreView inherits Rectangle {
                     text <=> AppsStore.store-query;
                     accepted(t) => { AppsStore.command("store-search", t); }
                 }
-                KitButton { y: 14px; label: "Home"; active: AppsStore.store-page == "home"; clicked => { root.go-home(); } }
-                KitButton { y: 14px; label: "Featured"; chevron: true; clicked => { root.open-menu("featured", self.absolute-position.x, self.absolute-position.y + self.height); } }
-                KitButton { y: 14px; label: "Categories"; chevron: true; clicked => { root.open-menu("categories", self.absolute-position.x, self.absolute-position.y + self.height); } }
-                if !store-head.narrow: KitButton { y: 14px; label: "Devices"; clicked => { AppsStore.command("app-link", "devices"); } }
+                Button { variant: ButtonVariant.kit; y: 14px; label: "Home"; active: AppsStore.store-page == "home"; clicked => { root.go-home(); } }
+                Button { variant: ButtonVariant.kit; y: 14px; label: "Featured"; chevron: true; clicked => { root.open-menu("featured", self.absolute-position.x, self.absolute-position.y + self.height); } }
+                Button { variant: ButtonVariant.kit; y: 14px; label: "Categories"; chevron: true; clicked => { root.open-menu("categories", self.absolute-position.x, self.absolute-position.y + self.height); } }
+                if !store-head.narrow: Button { variant: ButtonVariant.kit; y: 14px; label: "Devices"; clicked => { AppsStore.command("app-link", "devices"); } }
                 Rectangle { horizontal-stretch: 1; }
-                if !store-head.narrow: KitButton { y: 14px; label: "Manage your apps"; active: AppsStore.store-page == "manage"; clicked => { AppsStore.command("manage", ""); } }
+                if !store-head.narrow: Button { variant: ButtonVariant.kit; y: 14px; label: "Manage your apps"; active: AppsStore.store-page == "manage"; clicked => { AppsStore.command("manage", ""); } }
                 if store-head.narrow: IconButton { y: 14px; icon: @image-url("../icons/video.svg"); tooltip: "Devices"; clicked => { AppsStore.command("app-link", "devices"); } }
                 if store-head.narrow: IconButton { y: 14px; icon: @image-url("../icons/grid.svg"); tooltip: "Manage your apps"; active: AppsStore.store-page == "manage"; clicked => { AppsStore.command("manage", ""); } }
                 IconButton { y: 14px; icon: @image-url("../icons/settings.svg"); tooltip: "Store settings"; active: AppsStore.store-page == "settings"; clicked => { AppsStore.command("store-settings", ""); } }
@@ -276,7 +280,7 @@ export component StoreView inherits Rectangle {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Works in"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for s in [{k: "all", l: "All"}, {k: "personal", l: "Personal"}, {k: "chat", l: "Chat"}, {k: "team", l: "Team"}, {k: "meeting", l: "Meeting"}]: KitPill {
+                    for s in [{k: "all", l: "All"}, {k: "personal", l: "Personal"}, {k: "chat", l: "Chat"}, {k: "team", l: "Team"}, {k: "meeting", l: "Meeting"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                         y: 5px;
                         label: s.l;
                         active: AppsStore.scope-filter == s.k;
@@ -286,7 +290,7 @@ export component StoreView inherits Rectangle {
                         spacing: 6px;
                         padding-left: 10px;
                         Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                        for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                             y: 5px;
                             label: s.l;
                             active: AppsStore.kind-filter == s.k;
@@ -301,7 +305,7 @@ export component StoreView inherits Rectangle {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Type"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: KitPill {
+                    for s in [{k: "all", l: "Apps and agents"}, {k: "apps", l: "Apps"}, {k: "agents", l: "Agents"}]: Pill { variant: PillVariant.toggle; width: self.natural-width;
                         y: 5px;
                         label: s.l;
                         active: AppsStore.kind-filter == s.k;
@@ -350,25 +354,25 @@ export component StoreView inherits Rectangle {
 
     if root.menu != "": Rectangle {
         TouchArea { clicked => { root.menu = ""; } }
-        KitMenuFrame {
+        MenuColumn {
             x: max(8px, min(root.menu-x, root.width - self.width - 8px));
             y: max(8px, min(root.menu-y, root.height - self.height - 8px));
             menu-width: 240px;
             if root.menu == "featured": VerticalLayout {
-                for n in AppsStore.featured: KitMenuRow {
+                for n in AppsStore.featured: MenuItem { variant: MenuItemVariant.kit;
                     label: n.label;
                     clicked => { root.menu = ""; AppsStore.command("store-category", n.key); }
                 }
             }
             if root.menu == "categories": VerticalLayout {
-                for n in AppsStore.categories: KitMenuRow {
+                for n in AppsStore.categories: MenuItem { variant: MenuItemVariant.kit;
                     label: n.label;
                     hint: n.count;
                     clicked => { root.menu = ""; AppsStore.command("store-category", n.key); }
                 }
             }
             if root.menu == "add": VerticalLayout {
-                for n in AppsStore.app-targets: KitMenuRow {
+                for n in AppsStore.app-targets: MenuItem { variant: MenuItemVariant.kit;
                     label: n.label;
                     clicked => { root.menu = ""; AppsStore.command("app-add", n.key); }
                 }

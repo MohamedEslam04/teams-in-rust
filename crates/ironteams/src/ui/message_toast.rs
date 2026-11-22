@@ -1,4 +1,4 @@
-//! UI-thread side of the message cards (`ui/message_toast.slint`): fills the stack in the
+//! UI-thread side of the message cards (`ui/organisms/message_toast.slint`): fills the stack in the
 //! window's bottom-right corner and sends what the cards do (a reply, a reaction, "turn off
 //! notifications for this chat", a click on the chat) to the engine.
 

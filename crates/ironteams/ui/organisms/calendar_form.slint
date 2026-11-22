@@ -3,7 +3,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalButton, CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+import { FlexButton, ButtonVariant } from "../atoms/button.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
 
 
 
@@ -97,7 +100,7 @@ component RecurrencePicker inherits VerticalLayout {
     HorizontalLayout {
         spacing: 6px;
         alignment: start;
-        for k in [{key: "none", label: "Never"}, {key: "daily", label: "Daily"}, {key: "weekdays", label: "Every weekday"}, {key: "weekly", label: "Weekly"}, {key: "monthly", label: "Monthly on the date"}, {key: "monthly-nth", label: "Monthly on the weekday"}, {key: "yearly", label: "Yearly"}]: CalButton {
+        for k in [{key: "none", label: "Never"}, {key: "daily", label: "Daily"}, {key: "weekdays", label: "Every weekday"}, {key: "weekly", label: "Weekly"}, {key: "monthly", label: "Monthly on the date"}, {key: "monthly-nth", label: "Monthly on the weekday"}, {key: "yearly", label: "Yearly"}]: FlexButton { variant: ButtonVariant.toolbar;
             label: k.label;
             active: CalForm.repeat == k.key;
             clicked => { CalForm.repeat = k.key; }
@@ -110,7 +113,7 @@ component RecurrencePicker inherits VerticalLayout {
             spacing: 8px;
             alignment: start;
             Text { text: "Every"; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-            CalField { width: 56px; placeholder: "1"; text <=> CalForm.interval; }
+            Field { variant: FieldVariant.bare; width: 56px; placeholder: "1"; text <=> CalForm.interval; }
             Text {
                 text: CalForm.repeat == "daily" ? "day(s)" : (CalForm.repeat == "weekdays" || CalForm.repeat == "weekly" ? "week(s)" : (CalForm.repeat == "yearly" ? "year(s)" : "month(s)"));
                 color: Theme.fg;
@@ -122,7 +125,7 @@ component RecurrencePicker inherits VerticalLayout {
             spacing: 4px;
             alignment: start;
             Text { text: "On"; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-            for d[i] in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]: CalButton {
+            for d[i] in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]: FlexButton { variant: ButtonVariant.toolbar;
                 label: d;
                 active: CalForm.repeat-days[i];
                 clicked => { CalForm.repeat-days[i] = !CalForm.repeat-days[i]; }
@@ -132,12 +135,12 @@ component RecurrencePicker inherits VerticalLayout {
             spacing: 6px;
             alignment: start;
             Text { text: "Ends"; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-            for k in [{key: "never", label: "Never"}, {key: "on", label: "On date"}, {key: "after", label: "After occurrences"}]: CalButton {
+            for k in [{key: "never", label: "Never"}, {key: "on", label: "On date"}, {key: "after", label: "After occurrences"}]: FlexButton { variant: ButtonVariant.toolbar;
                 label: k.label;
                 active: CalForm.end-kind == k.key;
                 clicked => { CalForm.end-kind = k.key; }
             }
-            if CalForm.end-kind != "never": CalField {
+            if CalForm.end-kind != "never": Field { variant: FieldVariant.bare;
                 width: 130px;
                 placeholder: CalForm.end-kind == "on" ? "2026-12-31" : "10";
                 text <=> CalForm.end-value;
@@ -159,7 +162,7 @@ component RoomPicker inherits Rectangle {
             spacing: 6px;
             alignment: start;
             height: 28px;
-            for l in CalForm.room-lists: CalButton { label: l.name; clicked => { CalStore.command("room-list", l.email); } }
+            for l in CalForm.room-lists: FlexButton { variant: ButtonVariant.toolbar; label: l.name; clicked => { CalStore.command("room-list", l.email); } }
             if CalForm.room-lists.length == 0 && !CalForm.rooms-loading: Text { text: CalForm.rooms-note != "" ? CalForm.rooms-note : "No room lists found."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
             if CalForm.rooms-loading: Text { text: "Loading rooms…"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
         }
@@ -189,7 +192,7 @@ component RoomPicker inherits Rectangle {
     }
 }
 
-export component EventForm inherits CalCard {
+export component EventForm inherits MenuFrame { variant: MenuFrameVariant.card;
     accessible-role: groupbox;
     accessible-label: CalForm.heading;
     VerticalLayout {
@@ -199,8 +202,8 @@ export component EventForm inherits CalCard {
             spacing: 8px;
             height: 32px;
             Text { text: CalForm.heading; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
-            CalButton { label: "Save"; primary: true; y: 2px; clicked => { CalForm.submit(); } }
-            CalButton { label: "Discard"; y: 2px; clicked => { CalForm.cancel(); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Save"; primary: true; y: 2px; clicked => { CalForm.submit(); } }
+            FlexButton { variant: ButtonVariant.toolbar; label: "Discard"; y: 2px; clicked => { CalForm.cancel(); } }
         }
         if CalForm.error != "": Rectangle {
             height: 28px;
@@ -215,45 +218,45 @@ export component EventForm inherits CalCard {
             VerticalLayout {
                 spacing: 10px;
                 width: parent.width - 14px;
-                CalField { placeholder: "Add a title"; text <=> CalForm.subject; field-height: 34px; }
+                Field { variant: FieldVariant.bare; placeholder: "Add a title"; text <=> CalForm.subject; field-height: 34px; }
                 if CalForm.channel-mode: Labeled {
                     label: "Channel";
                     HorizontalLayout {
                         spacing: 6px;
                         alignment: start;
-                        for c in CalForm.channels: CalButton { label: c; active: CalForm.channel == c; clicked => { CalForm.channel = c; } }
+                        for c in CalForm.channels: FlexButton { variant: ButtonVariant.toolbar; label: c; active: CalForm.channel == c; clicked => { CalForm.channel = c; } }
                         if CalForm.channels.length == 0: Text { text: "You are not in any team yet."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; }
                     }
                 }
                 Labeled {
                     label: "Required attendees (email addresses, separated by commas)";
-                    CalField { placeholder: "name@company.com"; text <=> CalForm.required; }
+                    Field { variant: FieldVariant.bare; placeholder: "name@company.com"; text <=> CalForm.required; }
                 }
-                if !CalForm.show-optional: CalButton { label: "+ Optional attendees"; preferred-width: 170px; max-width: 170px; clicked => { CalForm.show-optional = true; } }
+                if !CalForm.show-optional: FlexButton { variant: ButtonVariant.toolbar; label: "+ Optional attendees"; preferred-width: 170px; max-width: 170px; clicked => { CalForm.show-optional = true; } }
                 if CalForm.show-optional: Labeled {
                     label: "Optional attendees";
-                    CalField { placeholder: "name@company.com"; text <=> CalForm.optional; }
+                    Field { variant: FieldVariant.bare; placeholder: "name@company.com"; text <=> CalForm.optional; }
                 }
                 HorizontalLayout {
                     spacing: 8px;
-                    Labeled { label: "Start date"; CalField { placeholder: "2026-12-18"; text <=> CalForm.start-date; } }
-                    if !CalForm.all-day: Labeled { label: "Start time"; width: 90px; CalField { placeholder: "9:30 AM"; text <=> CalForm.start-time; edited(t) => { CalForm.times-edited(); } } }
-                    Labeled { label: "End date"; CalField { placeholder: "2026-12-18"; text <=> CalForm.end-date; } }
-                    if !CalForm.all-day: Labeled { label: "End time"; width: 90px; CalField { placeholder: "10:30 AM"; text <=> CalForm.end-time; edited(t) => { CalForm.times-edited(); } } }
+                    Labeled { label: "Start date"; Field { variant: FieldVariant.bare; placeholder: "2026-12-18"; text <=> CalForm.start-date; } }
+                    if !CalForm.all-day: Labeled { label: "Start time"; width: 90px; Field { variant: FieldVariant.bare; placeholder: "9:30 AM"; text <=> CalForm.start-time; edited(t) => { CalForm.times-edited(); } } }
+                    Labeled { label: "End date"; Field { variant: FieldVariant.bare; placeholder: "2026-12-18"; text <=> CalForm.end-date; } }
+                    if !CalForm.all-day: Labeled { label: "End time"; width: 90px; Field { variant: FieldVariant.bare; placeholder: "10:30 AM"; text <=> CalForm.end-time; edited(t) => { CalForm.times-edited(); } } }
                 }
                 HorizontalLayout {
                     spacing: 16px;
                     alignment: start;
-                    CalCheck { label: "All day"; checked <=> CalForm.all-day; }
-                    CalCheck { label: "Microsoft Teams meeting"; checked <=> CalForm.teams-meeting; }
+                    Check { variant: CheckVariant.toolbar; label: "All day"; checked <=> CalForm.all-day; }
+                    Check { variant: CheckVariant.toolbar; label: "Microsoft Teams meeting"; checked <=> CalForm.teams-meeting; }
                     Text { text: "Times are in your local time zone."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                 }
                 RecurrencePicker { }
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
-                    CalButton { label: "Scheduler"; active: CalForm.sched-open; clicked => { CalForm.sched-open = !CalForm.sched-open; if CalForm.sched-open { CalStore.command("sched", ""); } } }
-                    CalButton { label: "Rooms"; active: CalForm.rooms-open; clicked => { CalForm.rooms-open = !CalForm.rooms-open; if CalForm.rooms-open { CalStore.command("rooms", ""); } } }
+                    FlexButton { variant: ButtonVariant.toolbar; label: "Scheduler"; active: CalForm.sched-open; clicked => { CalForm.sched-open = !CalForm.sched-open; if CalForm.sched-open { CalStore.command("sched", ""); } } }
+                    FlexButton { variant: ButtonVariant.toolbar; label: "Rooms"; active: CalForm.rooms-open; clicked => { CalForm.rooms-open = !CalForm.rooms-open; if CalForm.rooms-open { CalStore.command("rooms", ""); } } }
                 }
                 if CalForm.sched-open: VerticalLayout {
                     spacing: 6px;
@@ -261,7 +264,7 @@ export component EventForm inherits CalCard {
                         spacing: 8px;
                         alignment: start;
                         Text { text: CalForm.sched-loading ? "Checking calendars…" : (CalForm.sched-note != "" ? CalForm.sched-note : "Click a time to move the event there."); color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        CalButton { label: "Refresh"; clicked => { CalStore.command("sched", ""); } }
+                        FlexButton { variant: ButtonVariant.toolbar; label: "Refresh"; clicked => { CalStore.command("sched", ""); } }
                     }
                     SchedulerGrid { }
                     if CalForm.suggestions.length > 0: VerticalLayout {
@@ -270,20 +273,20 @@ export component EventForm inherits CalCard {
                         HorizontalLayout {
                             spacing: 6px;
                             alignment: start;
-                            for s[i] in CalForm.suggestions: CalButton { label: s.label; clicked => { CalForm.apply-suggestion(i); } }
+                            for s[i] in CalForm.suggestions: FlexButton { variant: ButtonVariant.toolbar; label: s.label; clicked => { CalForm.apply-suggestion(i); } }
                         }
                     }
                 }
                 Labeled {
                     label: CalForm.room-name != "" ? "Location (room: " + CalForm.room-name + ")" : "Location";
-                    CalField { placeholder: "Add a room or a place"; text <=> CalForm.location; }
+                    Field { variant: FieldVariant.bare; placeholder: "Add a room or a place"; text <=> CalForm.location; }
                 }
                 if CalForm.rooms-open: RoomPicker { }
                 HorizontalLayout {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Show as"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for s in [{key: "busy", label: "Busy"}, {key: "tentative", label: "Tentative"}, {key: "free", label: "Free"}, {key: "oof", label: "Out of office"}, {key: "elsewhere", label: "Working elsewhere"}]: CalButton {
+                    for s in [{key: "busy", label: "Busy"}, {key: "tentative", label: "Tentative"}, {key: "free", label: "Free"}, {key: "oof", label: "Out of office"}, {key: "elsewhere", label: "Working elsewhere"}]: FlexButton { variant: ButtonVariant.toolbar;
                         label: s.label;
                         active: CalForm.show-as == s.key;
                         clicked => { CalForm.show-as = s.key; }
@@ -293,7 +296,7 @@ export component EventForm inherits CalCard {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Reminder"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    for r in [{key: "default", label: "Default"}, {key: "off", label: "None"}, {key: "5", label: "5 min"}, {key: "15", label: "15 min"}, {key: "60", label: "1 hour"}, {key: "1440", label: "1 day"}]: CalButton {
+                    for r in [{key: "default", label: "Default"}, {key: "off", label: "None"}, {key: "5", label: "5 min"}, {key: "15", label: "15 min"}, {key: "60", label: "1 hour"}, {key: "1440", label: "1 day"}]: FlexButton { variant: ButtonVariant.toolbar;
                         label: r.label;
                         active: CalForm.reminder == r.key;
                         clicked => { CalForm.reminder = r.key; }
@@ -303,20 +306,20 @@ export component EventForm inherits CalCard {
                     spacing: 6px;
                     alignment: start;
                     Text { text: "Category"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                    CalButton { label: "None"; active: CalForm.category == ""; clicked => { CalForm.category = ""; } }
-                    for c in CalForm.categories: CalButton { label: c; active: CalForm.category == c; clicked => { CalForm.category = c; } }
+                    FlexButton { variant: ButtonVariant.toolbar; label: "None"; active: CalForm.category == ""; clicked => { CalForm.category = ""; } }
+                    for c in CalForm.categories: FlexButton { variant: ButtonVariant.toolbar; label: c; active: CalForm.category == c; clicked => { CalForm.category = c; } }
                 }
                 HorizontalLayout {
                     spacing: 16px;
                     alignment: start;
-                    CalCheck { label: "Private"; checked <=> CalForm.private; }
-                    CalCheck { label: "Request responses"; checked <=> CalForm.response-requested; }
-                    CalCheck { label: "Allow new time proposals"; checked <=> CalForm.allow-proposals; }
-                    CalCheck { label: "Hide attendee list"; checked <=> CalForm.hide-attendees; }
+                    Check { variant: CheckVariant.toolbar; label: "Private"; checked <=> CalForm.private; }
+                    Check { variant: CheckVariant.toolbar; label: "Request responses"; checked <=> CalForm.response-requested; }
+                    Check { variant: CheckVariant.toolbar; label: "Allow new time proposals"; checked <=> CalForm.allow-proposals; }
+                    Check { variant: CheckVariant.toolbar; label: "Hide attendee list"; checked <=> CalForm.hide-attendees; }
                 }
                 Labeled {
                     label: "Details (supports **bold**, _italic_ and lists)";
-                    CalField { multiline: true; field-height: 140px; placeholder: "Add an agenda or a description"; text <=> CalForm.body; }
+                    Field { variant: FieldVariant.bare; multiline: true; field-height: 140px; placeholder: "Add an agenda or a description"; text <=> CalForm.body; }
                 }
             }
         }

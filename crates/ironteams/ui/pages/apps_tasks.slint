@@ -4,25 +4,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { TasksStore, AppRow } from "../stores/apps_store.slint";
-import { KitButton, KitNavRow, KitNavHeader, KitBadge, KitNote } from "../molecules/apps_kit.slint";
-
-component TaskCheck inherits Rectangle {
-    in property <bool> done;
-    in property <string> label;
-    callback toggled();
-    width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    border-width: 1.5px;
-    border-color: root.done ? #6bd69b : Theme.fg-subtle;
-    background: root.done ? #1d3a2a : transparent;
-    accessible-role: checkbox;
-    accessible-label: root.label;
-    accessible-checked: root.done;
-    accessible-action-default => { root.toggled(); }
-    Text { text: root.done ? "✓" : ""; color: #6bd69b; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-    TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
-}
+import { KitNavRow, KitNavHeader, KitNote } from "../molecules/apps_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
+import { Badge, BadgeVariant } from "../atoms/chip.slint";
 
 component TaskRowView inherits Rectangle {
     in property <AppRow> t;
@@ -37,9 +22,9 @@ component TaskRowView inherits Rectangle {
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
-        TaskCheck {
+        CheckBox { variant: CheckBoxVariant.round;
             y: 17px;
-            done: root.t.done;
+            checked: root.t.done;
             label: root.t.done ? "Mark " + root.t.title + " as not completed" : "Complete " + root.t.title;
             toggled => { TasksStore.command("task-toggle", root.t.id); }
         }
@@ -50,7 +35,7 @@ component TaskRowView inherits Rectangle {
             Text { text: root.t.title; color: root.t.done ? Theme.fg-subtle : Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
             Text { text: root.t.subtitle + (root.t.subtitle != "" && root.t.meta != "" ? " · " : "") + root.t.meta; color: root.t.subtitle.ends-with("(overdue)") ? #ff8a8f : Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
         }
-        KitBadge { y: 16px; text: root.t.badge; tone: root.t.tone; }
+        Badge { variant: BadgeVariant.status; y: 16px; text: root.t.badge; tone: root.t.tone; }
         IconButton { y: 12px; size: 28px; icon: @image-url("../icons/edit.svg"); tooltip: "Edit " + root.t.title; clicked => { TasksStore.command("task-edit", root.t.id); } }
         IconButton { y: 12px; size: 28px; icon: @image-url("../icons/trash.svg"); tooltip: "Delete " + root.t.title; clicked => { TasksStore.command("task-delete", root.t.id); } }
     }
@@ -108,9 +93,9 @@ export component TasksView inherits Rectangle {
                     padding-right: 16px;
                     spacing: 8px;
                     Text { text: TasksStore.title; color: Theme.fg; font-size: 18px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
-                    KitButton { y: 12px; label: "New task"; primary: true; enabled: TasksStore.can-add; clicked => { TasksStore.command("task-new", ""); } }
-                    KitButton { y: 12px; label: "List"; active: TasksStore.mode == "list"; clicked => { TasksStore.command("tasks-mode", "list"); } }
-                    KitButton { y: 12px; label: "Board"; active: TasksStore.mode == "board"; enabled: TasksStore.can-board; clicked => { TasksStore.command("tasks-mode", "board"); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "New task"; primary: true; enabled: TasksStore.can-add; clicked => { TasksStore.command("task-new", ""); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "List"; active: TasksStore.mode == "list"; clicked => { TasksStore.command("tasks-mode", "list"); } }
+                    Button { variant: ButtonVariant.kit; y: 12px; label: "Board"; active: TasksStore.mode == "board"; enabled: TasksStore.can-board; clicked => { TasksStore.command("tasks-mode", "board"); } }
                     IconButton { y: 12px; icon: @image-url("../icons/sync.svg"); tooltip: "Refresh tasks"; clicked => { TasksStore.command("tasks-refresh", ""); } }
                 }
             }

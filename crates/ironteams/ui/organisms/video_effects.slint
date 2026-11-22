@@ -6,6 +6,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 component Heading inherits Text {
     color: Theme.fg-muted;
@@ -128,62 +129,6 @@ component FilterChip inherits Rectangle {
     }
 }
 
-component FxSwitch inherits Rectangle {
-    in property <string> label;
-    in property <string> hint;
-    in property <bool> checked;
-    callback toggled();
-    height: col.preferred-height + 8px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: switch;
-    accessible-label: root.label;
-    accessible-description: root.hint;
-    accessible-checkable: true;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.toggled(); }
-    HorizontalLayout {
-        padding: 4px;
-        padding-left: 6px;
-        spacing: 8px;
-        col := VerticalLayout {
-            horizontal-stretch: 1;
-            Text {
-                text: root.label;
-                color: Theme.fg;
-                font-size: 13px * Theme.font-scale;
-                overflow: elide;
-            }
-            if root.hint != "": Text {
-                text: root.hint;
-                color: Theme.fg-subtle;
-                font-size: 11px * Theme.font-scale;
-                wrap: word-wrap;
-            }
-        }
-        Rectangle {
-            width: 34px;
-            height: 18px;
-            y: 4px;
-            border-radius: 9px;
-            background: root.checked ? Theme.accent-strong : Theme.surface-hover;
-            border-width: 1px;
-            border-color: root.checked ? Theme.accent-strong : Theme.border;
-            Rectangle {
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                x: root.checked ? parent.width - 15px : 3px;
-                background: #ffffff;
-            }
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.toggled(); }
-    }
-}
-
 export component VideoEffectsPanel inherits Rectangle {
     background: Theme.sidebar;
     VerticalLayout {
@@ -248,19 +193,19 @@ export component VideoEffectsPanel inherits Rectangle {
                     FilterChip { key: "mono"; label: "B&W"; description: "Black and white"; }
                     FilterChip { key: "vivid"; label: "Vivid"; }
                 }
-                FxSwitch {
+                Switch { variant: SwitchVariant.panel;
                     label: "Adjust brightness";
                     hint: "Brightens your video in low light";
                     checked: VideoFxStore.brighten;
                     toggled => { CallStore.command("fx-brighten", VideoFxStore.brighten ? "off" : "on"); }
                 }
-                FxSwitch {
+                Switch { variant: SwitchVariant.panel;
                     label: "Soft focus";
                     hint: "Smooths your appearance a little";
                     checked: VideoFxStore.soft-focus;
                     toggled => { CallStore.command("fx-soft-focus", VideoFxStore.soft-focus ? "off" : "on"); }
                 }
-                FxSwitch {
+                Switch { variant: SwitchVariant.panel;
                     label: "Mirror my video";
                     hint: "Only you see your video mirrored";
                     checked: VideoFxStore.mirror;

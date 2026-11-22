@@ -149,15 +149,15 @@ fn open_item_menu(app: &AppWindow, title: &str) {
     right_click(app, &rows[0]);
 }
 
-/// Labels of the open list menu (the rows of `MenuRow`), top to bottom.
+/// Labels of the open list menu (the rows of `MenuItem`), top to bottom.
 fn menu_rows(app: &AppWindow) -> Vec<String> {
-    let mut v: Vec<_> = ElementHandle::find_by_element_type_name(app, "MenuRow").collect();
+    let mut v: Vec<_> = ElementHandle::find_by_element_type_name(app, "MenuItem").collect();
     v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     v.iter().map(label).collect()
 }
 
 fn menu_row(app: &AppWindow, name: &str) -> ElementHandle {
-    ElementHandle::find_by_element_type_name(app, "MenuRow")
+    ElementHandle::find_by_element_type_name(app, "MenuItem")
         .find(|r| label(r) == name)
         .unwrap_or_else(|| panic!("menu row {name:?} in {:?}", menu_rows(app)))
 }

@@ -2,12 +2,13 @@
 // is one of the app views, so the chat views underneath stay as they are.
 import { Theme } from "../tokens/theme.slint";
 import { AppsStore } from "../stores/apps_store.slint";
-import { KitButton, AppTile } from "../molecules/apps_kit.slint";
+import { AppTile } from "../molecules/apps_kit.slint";
 import { StoreView } from "apps_store_view.slint";
 import { TasksView } from "apps_tasks.slint";
 import { FlowsView } from "apps_flows.slint";
 import { NotesView, ListsView } from "apps_notes.slint";
 import { RecapsView } from "apps_recaps.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // An app IronTeams has no screen for: its page opens in Teams on the web.
 component HostView inherits Rectangle {
@@ -27,8 +28,8 @@ component HostView inherits Rectangle {
         HorizontalLayout {
             spacing: 8px;
             alignment: start;
-            KitButton { label: "Open in Teams on the web"; primary: true; clicked => { AppsStore.command("app-link", "host"); } }
-            for t in AppsStore.host-tabs: KitButton { label: t.label; clicked => { AppsStore.command("app-link", "tab:" + t.key); } }
+            Button { variant: ButtonVariant.kit; label: "Open in Teams on the web"; primary: true; clicked => { AppsStore.command("app-link", "host"); } }
+            for t in AppsStore.host-tabs: Button { variant: ButtonVariant.kit; label: t.label; clicked => { AppsStore.command("app-link", "tab:" + t.key); } }
         }
     }
 }

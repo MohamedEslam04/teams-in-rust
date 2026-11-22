@@ -1,0 +1,89 @@
+// The reusable OneDrive file picker (attach a cloud file, add a tab).
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { SkeletonList } from "../tokens/motion.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { DialogFrame } from "../atoms/dialog_frame.slint";
+import { KindBadge } from "../atoms/file_kind.slint";
+import { DriveRow, DriveStore } from "../stores/drive_store.slint";
+
+// The reusable file picker. It browses OneDrive and the libraries from the DriveStore picker-*
+// properties; other features open it with `DriveStore.command("pick-begin", "<purpose>")` and
+// handle the answer in `Engine::drive_picked` (see backend/drive.rs).
+export component DriveFilePicker inherits Rectangle {
+    in property <string> title;
+    in property <bool> folders-only;
+    in property <[DriveRow]> rows;
+    in property <[string]> crumbs;
+    in property <bool> loading;
+    in property <bool> can-choose;
+    in property <string> choose-label: "Select";
+    callback open(string);
+    callback crumb(int);
+    callback pick(string);
+    callback choose();
+    callback cancel();
+    width: 520px;
+    height: 460px;
+    DialogFrame {
+        title: root.title;
+        dialog-width: root.width;
+        height: root.height;
+        close => { root.cancel(); }
+        HorizontalLayout {
+            height: 28px;
+            spacing: 2px;
+            alignment: start;
+            for c[i] in root.crumbs: HorizontalLayout {
+                spacing: 2px;
+                if i > 0: Text { text: "›"; color: Theme.fg-subtle; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
+                Rectangle {
+                    width: pc.preferred-width + 12px;
+                    border-radius: 4px;
+                    background: pt.has-hover && i < root.crumbs.length - 1 ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: "Picker location " + c;
+                    pc := Text { x: 6px; text: c; color: i == root.crumbs.length - 1 ? Theme.fg : Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+                    pt := TouchArea { enabled: i < root.crumbs.length - 1; mouse-cursor: pointer; clicked => { root.crumb(i); } }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            clip: true;
+            ListView {
+                for r in root.rows: Rectangle {
+                    height: 34px;
+                    background: r.selected ? Theme.selected : (pr.has-hover ? Theme.surface-hover : transparent);
+                    accessible-role: list-item;
+                    accessible-label: (r.is-folder ? "Folder " : "File ") + r.name;
+                    accessible-item-selected: r.selected;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        KindBadge { kind: r.kind; size: 22px; y: 6px; }
+                        Text { text: r.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                        if r.is-folder: Icon { source: @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 10px; }
+                    }
+                    pr := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { if r.is-folder { root.open(r.id); } else { root.pick(r.id); } }
+                    }
+                }
+            }
+            if root.loading: SkeletonList { count: 6; avatar: 22px; row-height: 34px; label: "Loading..."; }
+            if !root.loading && root.rows.length == 0: Text { text: "Nothing here"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        HorizontalLayout {
+            height: 34px;
+            spacing: 8px;
+            alignment: end;
+            Button { variant: ButtonVariant.flat; label: "Cancel"; clicked => { root.cancel(); } }
+            Button { variant: ButtonVariant.flat; label: root.choose-label; primary: true; enabled: root.can-choose; clicked => { root.choose(); } }
+        }
+    }
+}

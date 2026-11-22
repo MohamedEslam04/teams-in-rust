@@ -1,0 +1,111 @@
+// What Find shows (plan chat 7.1, 7.2, 7.4, 7.5, 7.6): the Search page, the quick views, the Find in
+// chat bar, the Shared tab, the chat details pane and the channel tabs. Rust fills the properties;
+// the UI sends `command(name, argument)`.
+
+
+// One row of the Search page or a quick view.
+export struct HitRow {
+    id: string,
+    kind: string,        // message | file | person | channel | chat | meeting | thread
+    section: string,     // non-empty: the first row of a section of the All tab
+    title: string,
+    subtitle: string,
+    snippet: styled-text,
+    snippet-plain: string,
+    time: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+    // The person the photo shows ("" when none), for the hover card.
+    person: string,
+    rtl: bool,
+}
+
+// A suggestion of the "In" and "Person" filters.
+export struct PickRow { id: string, title: string, subtitle: string }
+
+// One row of the Shared tab.
+// `editable` rows are SharePoint drive items (Download, Share, Rename and Delete apply);
+// `sharepoint` rows can be opened in SharePoint.
+// `icon` is `folder`, `link` or a document kind (`word`, `excel`, `pdf`, `image`, `archive`, `other`, ...);
+// `busy` says what is being done to the row while the server answers ("Deleting…"); `highlight`
+// marks a row just created.
+export struct SharedRow { kind: string, name: string, ext: string, shared-by: string, date: string, url: string, editable: bool, sharepoint: bool, icon: string, busy: string, highlight: bool }
+
+// A channel tab beyond Posts and Files (Notes, a website, Planner, …).
+export struct ChannelTabItem { name: string, url: string, id: string }
+
+// An installed app that can have a tab in a channel.
+export struct ChannelTabApp { id: string, name: string }
+
+export global FindStore {
+    // The open channel's other tabs, and the "Add a tab" dialog.
+    in property <[ChannelTabItem]> channel-tabs;
+    in-out property <bool> tab-add-open: false;
+    // The installed apps the "Add a tab" dialog offers, and which kind it adds (website | app).
+    in property <[ChannelTabApp]> tab-apps;
+    // The dialog was opened from a chat: the tab goes to the chat (chat-tab-add, chat-tab-add-app).
+    in-out property <bool> tab-for-chat: false;
+    in-out property <string> tab-add-kind: "website";
+    // The tab whose menu is open (its id, name and place), and the dialog it leads to
+    // ("" | rename | remove).
+    in-out property <string> tab-menu-id;
+    in-out property <string> tab-menu-name;
+    in-out property <length> tab-menu-x;
+    in-out property <length> tab-menu-y;
+    in-out property <string> tab-dialog;
+    // --- Search page (Ctrl+Alt+E) ---
+    in-out property <string> query;
+    in-out property <string> tab: "all"; // all | messages | files | people | channels | chats | meetings
+    in property <[HitRow]> results;
+    in property <bool> searching;
+    in property <bool> searched;         // a search ran (shows the empty state when it found nothing)
+    in property <bool> more;             // more messages can be loaded
+    in property <string> filter-in;      // label of the chosen chat or channel
+    in property <string> filter-person;
+    in property <string> filter-date;    // "", "Past 24 hours", "Past week", "Past month"
+    in-out property <string> filter-editor; // "" | in | person | date
+    in property <[PickRow]> picks;
+    in-out property <int> focus-tick;
+
+    // --- Quick views ---
+    in-out property <bool> quick-open: false;
+    in property <string> quick-kind;     // mentions | saved | followed | discover
+    in property <[HitRow]> quick-rows;
+    in property <bool> quick-loading;
+    in property <bool> quick-more;
+
+    // --- Find in chat ---
+    in-out property <bool> chat-find-open: false;
+    in-out property <string> chat-find-query;
+    in property <int> chat-find-count;
+    in property <int> chat-find-index;   // 1-based, in time order; 0 when there is no match
+    in-out property <int> chat-find-tick;
+
+    // --- Shared tab and details pane ---
+    in-out property <string> chat-tab: "chat"; // chat | shared | storyline
+    in property <[SharedRow]> shared;
+    in property <[SharedRow]> recent;
+    in property <bool> shared-loading;
+    // New folder and New document apply (a channel with a files folder), and the last file
+    // action's outcome.
+    in property <bool> shared-can-create;
+    in property <string> shared-note;
+    in property <bool> shared-note-error; // the note says an action failed
+    in-out property <string> shared-filter: "recent"; // recent | files | links
+    in-out property <bool> details-open: false;
+
+    // The open message menu's thread is followed.
+    in property <bool> menu-following;
+
+    // (name, argument). Names: search, search-tab, editor, pick-query, pick, filter-clear, date, open,
+    // more, close-search, quick, quick-close, unfollow, find-open, find-close, find-query, find-prev,
+    // find-next, tab, shared-filter, shared-keyword, shared-open, shared-upload, shared-download,
+    // shared-copy-link, shared-share, shared-rename (url U+001F name), shared-delete,
+    // shared-new-folder, shared-new-doc (word | excel | powerpoint), channel-tab-open,
+    // channel-tab-add, channel-tab-add-app (app id U+001F name), channel-tab-rename (tab id
+    // U+001F name), channel-tab-remove, channel-tab-apps, details, follow, unfollow-msg,
+    // menu-follow, people-profile.
+    callback command(string, string);
+}

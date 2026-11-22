@@ -8,8 +8,11 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { RecapsStore, RecapRow, AppRow } from "../stores/apps_store.slint";
-import { KitBadge, KitButton, KitNote, KitPill, KitSearch } from "../molecules/apps_kit.slint";
+import { KitNote } from "../molecules/apps_kit.slint";
 import { RecordingMenu } from "../organisms/meeting_card.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
+import { SearchBox } from "../atoms/search_box.slint";
 
 component Heading inherits Text {
     color: Theme.fg;
@@ -113,12 +116,12 @@ component RecapsHome inherits Rectangle {
                 // "Followed" needs a list of followed meetings IronTeams has no source for: All only.
                 VerticalLayout {
                     alignment: center;
-                    KitPill { label: "All"; active: true; }
+                    Pill { variant: PillVariant.toggle; width: self.natural-width; label: "All"; active: true; }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 VerticalLayout {
                     alignment: center;
-                    KitSearch {
+                    SearchBox {
                         width: min(280px, max(120px, root.width - 140px));
                         placeholder: "Search for meetings";
                         label: "Search for meetings";
@@ -209,7 +212,7 @@ component FileRow inherits Rectangle {
         spacing: 10px;
         VerticalLayout {
             alignment: center;
-            KitBadge { text: root.f.meta; }
+            Badge { variant: BadgeVariant.status; text: root.f.meta; }
         }
         VerticalLayout {
             horizontal-stretch: 1;
@@ -256,7 +259,7 @@ component RecapSide inherits Rectangle {
             Text { text: RecapsStore.notes-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             if RecapsStore.has-notes: HorizontalLayout {
                 alignment: start;
-                KitButton { label: "Open meeting notes"; clicked => { RecapsStore.command("recaps-notes", ""); } }
+                Button { variant: ButtonVariant.kit; label: "Open meeting notes"; clicked => { RecapsStore.command("recaps-notes", ""); } }
             }
         }
         if RecapsStore.tab == "transcript": VerticalLayout {
@@ -264,7 +267,7 @@ component RecapSide inherits Rectangle {
             if RecapsStore.transcript-note != "": Text { text: RecapsStore.transcript-note; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             if RecapsStore.has-transcript-link: HorizontalLayout {
                 alignment: start;
-                KitButton { label: "Open transcript"; clicked => { RecapsStore.command("recaps-transcript", ""); } }
+                Button { variant: ButtonVariant.kit; label: "Open transcript"; clicked => { RecapsStore.command("recaps-transcript", ""); } }
             }
             if RecapsStore.transcript != "": Text { text: RecapsStore.transcript; color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Transcript text"; }
         }
@@ -316,17 +319,17 @@ component RecapDetailPage inherits Rectangle {
                         spacing: 8px;
                         for p[i] in RecapsStore.parts: VerticalLayout {
                             alignment: center;
-                            KitPill { label: p.label; active: i == RecapsStore.part; clicked => { RecapsStore.command("recaps-part", "\{i}"); } }
+                            Pill { variant: PillVariant.toggle; width: self.natural-width; label: p.label; active: i == RecapsStore.part; clicked => { RecapsStore.command("recaps-part", "\{i}"); } }
                         }
                     }
                 }
                 VerticalLayout {
                     alignment: center;
-                    KitButton { label: "Share"; icon: @image-url("../icons/share.svg"); enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-share", ""); } }
+                    Button { variant: ButtonVariant.kit; label: "Share"; icon: @image-url("../icons/share.svg"); enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-share", ""); } }
                 }
                 VerticalLayout {
                     alignment: center;
-                    KitButton { label: "Watch"; primary: true; enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-watch", ""); } }
+                    Button { variant: ButtonVariant.kit; label: "Watch"; primary: true; enabled: RecapsStore.has-recording; clicked => { RecapsStore.command("recaps-watch", ""); } }
                 }
                 if RecapsStore.has-recording: VerticalLayout {
                     alignment: center;

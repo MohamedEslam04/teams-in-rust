@@ -2,41 +2,15 @@
 // transcribe, live captions, device settings).
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Avatar, Icon, IconButton } from "../atoms/widgets.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Avatar } from "../atoms/avatar.slint";
 import { CallStore, CallPerson, CallFound } from "../stores/call_store.slint";
-import { CallAction, CallButton, DeviceSettings } from "../molecules/call_widgets.slint";
+import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { VideoEffectsPanel } from "video_effects.slint";
-
-// A small text button of a People row (Admit, Admit all).
-component RowButton inherits Rectangle {
-    in property <string> label;
-    // What the button shows when it is not the label (a name would make it as wide as the name).
-    in property <string> shown: root.label;
-    callback clicked();
-    height: 26px;
-    width: txt.preferred-width + 20px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    txt := Text {
-        text: root.shown;
-        color: Theme.fg;
-        font-size: 12px * Theme.font-scale;
-        font-weight: 600;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
 
 component PersonRow inherits Rectangle {
     in property <CallPerson> p;
@@ -86,9 +60,9 @@ component PersonRow inherits Rectangle {
         }
         if root.p.lobby && CallStore.can-admit: VerticalLayout {
             alignment: center;
-            RowButton {
-                label: "Admit " + CallStore.tagged-name(root.p);
-                shown: "Admit";
+            Button { variant: ButtonVariant.solid;
+                accessible-label: "Admit " + CallStore.tagged-name(root.p);
+                label: "Admit";
                 clicked => { CallStore.command("admit", root.p.id); }
             }
         }
@@ -224,7 +198,7 @@ export component PeoplePanel inherits Rectangle {
                         }
                         if CallStore.can-admit: VerticalLayout {
                             alignment: end;
-                            RowButton {
+                            Button { variant: ButtonVariant.solid;
                                 label: "Admit all";
                                 clicked => { CallStore.command("admit-all", ""); }
                             }
@@ -244,54 +218,6 @@ component SectionTitle inherits Text {
     font-weight: 600;
 }
 
-// An on/off row of the More panel (Show live captions).
-component SwitchRow inherits Rectangle {
-    in property <string> label;
-    in property <bool> checked;
-    callback toggled();
-    height: 36px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: switch;
-    accessible-label: root.label;
-    accessible-checkable: true;
-    accessible-checked: root.checked;
-    accessible-action-default => { root.toggled(); }
-    HorizontalLayout {
-        padding-left: 6px;
-        padding-right: 6px;
-        spacing: 8px;
-        Text {
-            text: root.label;
-            color: Theme.fg;
-            font-size: 13px * Theme.font-scale;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
-        }
-        Rectangle {
-            width: 34px;
-            height: 18px;
-            y: 9px;
-            border-radius: 9px;
-            background: root.checked ? Theme.accent-strong : Theme.surface-hover;
-            border-width: 1px;
-            border-color: root.checked ? Theme.accent-strong : Theme.border;
-            Rectangle {
-                width: 12px;
-                height: 12px;
-                border-radius: 6px;
-                x: root.checked ? parent.width - 15px : 3px;
-                background: #ffffff;
-            }
-        }
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.toggled(); }
-    }
-}
-
 // More, as Teams' "..." menu: Record and transcribe, Language and speech, Video effects and the
 // devices. The
 // service decides who may record; a refusal shows as the call's error banner.
@@ -307,27 +233,27 @@ export component MorePanel inherits Rectangle {
         if root.fold: HorizontalLayout {
             alignment: start;
             spacing: 4px;
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/people.svg");
                 label: "People";
                 checkable: true;
                 clicked => { CallStore.panel = "people"; }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/hand.svg");
                 label: CallStore.hand ? "Lower" : "Raise";
                 checkable: true;
                 active: CallStore.hand;
                 clicked => { CallStore.command("hand", ""); }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/grid.svg");
                 label: "View";
                 tip: "Gallery, speaker or focus on content";
                 active: CallStore.menu == "view";
                 clicked => { CallStore.menu = CallStore.menu == "view" ? "" : "view"; }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/emoji.svg");
                 label: "React";
                 enabled: CallStore.phase == "connected";
@@ -339,7 +265,7 @@ export component MorePanel inherits Rectangle {
         if root.fold && CallStore.kind == "direct": HorizontalLayout {
             alignment: start;
             spacing: 4px;
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/pause.svg");
                 label: CallStore.held ? "Resume" : "Hold";
                 checkable: true;
@@ -347,7 +273,7 @@ export component MorePanel inherits Rectangle {
                 tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
                 clicked => { CallStore.command("hold", ""); }
             }
-            CallButton {
+            Button { variant: ButtonVariant.call;
                 icon: @image-url("../icons/forward.svg");
                 label: "Transfer";
                 active: CallStore.menu == "transfer";
@@ -366,17 +292,17 @@ export component MorePanel inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             spacing: 8px;
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: CallStore.recording ? "Stop recording" : "Start recording";
                 clicked => { CallStore.command("recording", CallStore.recording ? "stop" : "start"); }
             }
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: CallStore.transcribing ? "Stop transcription" : "Start transcription";
                 clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
             }
         }
         SectionTitle { text: "Language and speech"; }
-        SwitchRow {
+        Switch { variant: SwitchVariant.row;
             label: "Show live captions";
             checked: CallStore.captions;
             toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }
@@ -384,7 +310,7 @@ export component MorePanel inherits Rectangle {
         SectionTitle { text: "Video"; }
         HorizontalLayout {
             alignment: start;
-            CallAction {
+            Button { variant: ButtonVariant.action;
                 label: "Video effects";
                 clicked => { VideoFxStore.open = true; }
             }

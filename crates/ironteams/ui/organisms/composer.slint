@@ -14,6 +14,7 @@ import { SpellApi, SpellOverlay, SpellWord } from "../molecules/spelling.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ClipStore, ClipRecorderPanel } from "video_clip.slint";
 import { LoopStore, LoopEditor } from "../molecules/loop_editor.slint";
+import { EmojiGrid } from "../molecules/emoji_grid.slint";
 
 // Emoji search, `:name` completion and cursor-aware insertion live in Rust (src/composer.rs).
 export global EmojiApi {
@@ -24,26 +25,6 @@ export global EmojiApi {
     pure callback insert(string, int, string) -> Edited;
     // like insert, but replaces the `:xx` before the cursor
     pure callback complete(string, int, string) -> Edited;
-}
-
-component EmojiGrid inherits Rectangle {
-    in property <[ComposerEmoji]> items;
-    callback picked(string);
-    width: 324px; // nine columns
-    height: ceil(root.items.length / 9) * 36px;
-    for e[i] in root.items: Rectangle {
-        x: mod(i, 9) * 36px;
-        y: floor(i / 9) * 36px;
-        width: 36px;
-        height: 36px;
-        border-radius: 4px;
-        background: cell.has-hover ? Theme.surface-hover : transparent;
-        Text { text: e.ch; font-size: 20px * Theme.font-scale; }
-        cell := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.picked(e.ch); }
-        }
-    }
 }
 
 export component Composer inherits Rectangle {

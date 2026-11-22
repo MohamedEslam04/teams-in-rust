@@ -1,5 +1,5 @@
 //! Spell check for the composer. Slint's `TextInput` has no spell-check hook, so the draft is
-//! checked here and the composer draws the red underlines itself (`ui/spelling.slint`): it puts
+//! checked here and the composer draws the red underlines itself (`ui/molecules/spelling.slint`): it puts
 //! the cursor of a hidden copy of the text input at each word's ends to learn where the word is.
 //!
 //! The dictionaries are the system's Hunspell ones (`/usr/share/hunspell`, `/usr/share/myspell`;
