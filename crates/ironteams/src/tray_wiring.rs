@@ -44,10 +44,11 @@ pub fn close_action(tray_registered: bool, keep_running: bool) -> CloseAction {
     }
 }
 
-/// `--hidden` or the "open in background" setting starts without a window, but only when the
-/// tray can bring it back.
+/// A start from the autostart entry (`--hidden`) with the "open in background" setting on stays
+/// in the tray, but only when the tray can bring the window back. A start by hand always shows
+/// the window, whatever the setting says.
 pub fn start_hidden(hidden_flag: bool, open_in_background: bool, tray_registered: bool) -> bool {
-    (hidden_flag || open_in_background) && tray_registered
+    hidden_flag && open_in_background && tray_registered
 }
 
 /// The count the tray shows: Activity items plus unread chats, the same total as the window
@@ -353,20 +354,21 @@ mod tests {
     }
 
     #[test]
-    fn hidden_start_needs_the_tray() {
-        assert!(start_hidden(true, false, true));
-        assert!(!start_hidden(true, false, false));
-        assert!(!start_hidden(false, false, true));
-        assert!(!start_hidden(false, false, false));
+    fn an_autostart_with_the_setting_on_stays_in_the_tray() {
+        assert!(start_hidden(true, true, true));
+        assert!(!start_hidden(true, true, false), "never without a way back");
     }
 
     #[test]
-    fn the_open_in_background_setting_starts_hidden_like_the_flag() {
-        assert!(start_hidden(false, true, true));
-        assert!(
-            !start_hidden(false, true, false),
-            "never without a way back"
-        );
+    fn an_autostart_with_the_setting_off_shows_the_window() {
+        assert!(!start_hidden(true, false, true));
+        assert!(!start_hidden(true, false, false));
+    }
+
+    #[test]
+    fn a_start_by_hand_shows_the_window_whatever_the_setting() {
+        assert!(!start_hidden(false, true, true));
+        assert!(!start_hidden(false, false, true));
     }
 
     #[test]

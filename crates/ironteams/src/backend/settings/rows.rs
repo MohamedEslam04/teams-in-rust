@@ -35,7 +35,7 @@ pub fn startup_rows(g: &GeneralPrefs) -> Vec<ToggleRow> {
         toggle(
             "open-in-background",
             "Open in the background",
-            "Start without showing the window, in the tray. Takes effect the next time IronTeams starts.",
+            "When IronTeams starts with your sign-in, it stays in the tray without showing the window. Opening it yourself always shows the window.",
             g.open_in_background,
             true,
         ),
