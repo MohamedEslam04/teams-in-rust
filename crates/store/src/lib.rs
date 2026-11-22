@@ -644,7 +644,9 @@ impl Store {
     /// Forgets the gap that ends at `newer_ms` (it was filled, or the server has nothing in it).
     pub fn remove_history_gap(&self, conversation_id: &str, newer_ms: i64) -> Result<()> {
         self.conn
-            .prepare_cached("DELETE FROM history_gaps WHERE conversation_id = ?1 AND newer_ms = ?2")?
+            .prepare_cached(
+                "DELETE FROM history_gaps WHERE conversation_id = ?1 AND newer_ms = ?2",
+            )?
             .execute(params![conversation_id, newer_ms])?;
         Ok(())
     }

@@ -596,9 +596,7 @@ enum GapStep {
 
 fn gap_step(gap: &HistoryGap, page: &[Message]) -> GapStep {
     match page.iter().map(|m| m.compose_ms).min() {
-        Some(oldest)
-            if page.len() >= PAGE && oldest < gap.newer_ms && oldest > gap.older_ms =>
-        {
+        Some(oldest) if page.len() >= PAGE && oldest < gap.newer_ms && oldest > gap.older_ms => {
             GapStep::Shrink(oldest)
         }
         _ => GapStep::Close,
@@ -660,7 +658,10 @@ mod gap_tests {
         // Nothing cached: the page is the start of the cache.
         assert_eq!(gap_above_cache(None, &page, |_| false), None);
         // A short page is the whole history since the cache (or a young chat).
-        assert_eq!(gap_above_cache(Some(500), &page[..PAGE - 1], |_| false), None);
+        assert_eq!(
+            gap_above_cache(Some(500), &page[..PAGE - 1], |_| false),
+            None
+        );
         assert_eq!(gap_above_cache(Some(500), &[], |_| false), None);
         // The page shares a message with the cache: the history is contiguous.
         assert_eq!(gap_above_cache(Some(500), &page, |id| id == "m1030"), None);
@@ -696,7 +697,10 @@ mod gap_tests {
         assert_eq!(gap_step(&gap(2000, 830), &full_page(800)), GapStep::Close);
         assert_eq!(gap_step(&gap(2000, 800), &full_page(800)), GapStep::Close);
         // A short or empty page: the server has nothing older.
-        assert_eq!(gap_step(&gap(2000, 10), &full_page(800)[..5]), GapStep::Close);
+        assert_eq!(
+            gap_step(&gap(2000, 10), &full_page(800)[..5]),
+            GapStep::Close
+        );
         assert_eq!(gap_step(&gap(2000, 10), &[]), GapStep::Close);
         // A page that does not go below the anchor cannot loop forever.
         assert_eq!(gap_step(&gap(800, 10), &full_page(800)), GapStep::Close);

@@ -1121,10 +1121,11 @@ fn messages_containing_finds_text_in_one_chat_or_all_of_them() {
         ["1"]
     );
     assert_eq!(s.messages_containing(None, "%", 10).unwrap().len(), 1);
-    assert!(s
-        .messages_containing(None, "nothing", 10)
-        .unwrap()
-        .is_empty());
+    assert!(
+        s.messages_containing(None, "nothing", 10)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 // ---- offline full-text search (migration v7) ---------------------------------------------
@@ -1429,12 +1430,14 @@ fn search_filters_narrow_by_conversation_sender_and_time() {
         }),
         ["3", "2"]
     );
-    assert!(found(LocalFilters {
-        sender: Some("8:orgid:a"),
-        since_ms: Some(150),
-        ..in_c
-    })
-    .is_empty());
+    assert!(
+        found(LocalFilters {
+            sender: Some("8:orgid:a"),
+            since_ms: Some(150),
+            ..in_c
+        })
+        .is_empty()
+    );
     assert_eq!(
         s.search_messages_local("plan", &LocalFilters::default(), 2)
             .unwrap()
