@@ -4,7 +4,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SChoice, SChoiceRow, SPersonRow, SRadio, SSection } from "../molecules/settings_widgets.slint";
+import { SChoice, SChoiceRow, SPersonRow, SRadio, SRadioList, SSection } from "../molecules/settings_widgets.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
@@ -469,9 +469,10 @@ export component NotificationsPage inherits VerticalLayout {
     SSection {
         title: @tr("Message sound");
         hint: @tr("The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above.");
-        SChoiceRow {
+        SRadioList {
             label: @tr("Message sound");
-            options: [{v: "default", l: @tr("Teams (default)")}, {v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+            teams: SettingsStore.message-originals;
+            others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
             value: SettingsStore.message-sound;
             picked(v) => { SettingsStore.message-sound = v; SettingsStore.command("message-sound", v); }
         }
@@ -484,10 +485,22 @@ export component NotificationsPage inherits VerticalLayout {
         }
         Switch { variant: SwitchVariant.settings;
             label: @tr("Download Teams' original sounds");
-            hint: @tr("Teams (default) plays Microsoft's own message and ringtone sounds. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Off: nothing is downloaded and IronTeams' own sounds play instead.");
+            hint: @tr("Teams' own ringtones and message sounds are Microsoft's. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Until a sound is downloaded, and when this is off, IronTeams' own sounds play instead.");
             checked: SettingsStore.download-teams-sounds;
             toggled(on) => { SettingsStore.command("teams-sounds", on ? "1" : "0"); }
         }
+    }
+    SSection {
+        title: @tr("Urgent and priority messages");
+        hint: @tr("The sound for an urgent message or one from a priority contact, when the message sound is one of Teams'. Other message sounds stay as they are.");
+        SRadioList {
+            label: @tr("Urgent message sound");
+            teams: SettingsStore.urgent-originals;
+            others: [];
+            value: SettingsStore.urgent-sound;
+            picked(v) => { SettingsStore.urgent-sound = v; SettingsStore.command("urgent-sound", v); }
+        }
+        Button { variant: ButtonVariant.settings; label: @tr("Play urgent sound"); clicked => { SettingsStore.command("urgent-sound-preview", SettingsStore.urgent-sound); } }
     }
     for n in SettingsStore.notify: VerticalLayout {
         spacing: 4px;
@@ -707,9 +720,10 @@ export component CallsSettingsPage inherits VerticalLayout {
     SSection {
         title: @tr("Ringtone");
         hint: @tr("The sound IronTeams plays for an incoming call. It is kept on this computer.");
-        SChoiceRow {
+        SRadioList {
             label: @tr("Ringtone");
-            options: [{v: "default", l: @tr("Teams (default)")}, {v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+            teams: SettingsStore.ringtone-originals;
+            others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
             value: SettingsStore.ringtone;
             picked(v) => { SettingsStore.ringtone = v; SettingsStore.command("ringtone", v); }
         }

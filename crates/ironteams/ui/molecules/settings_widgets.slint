@@ -193,6 +193,27 @@ export component SRadio inherits Rectangle {
     rt := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
 }
 
+// The sounds of one setting (ringtone, message sound, urgent sound): Teams' own, listed from the
+// table the engine keeps, then IronTeams's and the others, one radio row each.
+export component SRadioList inherits VerticalLayout {
+    in property <string> label;
+    in property <[SOption]> teams;
+    in property <[SOption]> others;
+    in property <string> value;
+    callback picked(string);
+    // Opened by a Find result: tells the page where this list is.
+    Timer {
+        running: root.label != "" && root.label == SettingsStore.target;
+        interval: 60ms;
+        triggered => {
+            SettingsStore.target-y = root.absolute-position.y;
+            SettingsStore.target = "";
+        }
+    }
+    for o in root.teams: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
+    for o in root.others: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
+}
+
 // A person row with one action button (Unblock, Remove).
 export component SPersonRow inherits Rectangle {
     in property <string> name;

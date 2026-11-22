@@ -1,12 +1,12 @@
 //! Sounds: a new message, a reminder or a meeting starting, a call joined or left, the ringtone of
 //! an incoming call and the ringback of our own.
 //!
-//! The default is Microsoft Teams' own ringtone and message sounds, downloaded on the user's
-//! machine after sign-in (`teams_assets`: never shipped). Until a file is there, or with the
-//! download off in Settings, the same choice plays IronTeams's own synthesized equivalent
-//! (`synth`: additive synthesis, soft marimba-like notes, no asset and no one else's recording),
-//! which is also a choice of its own ("IronTeams"). The user can keep the older ringtones, or
-//! pick a sound file (WAV, MP3 or M4A) for the message sound and the ringtone.
+//! The default is Microsoft Teams' own sounds (its ringtones, message sounds and urgent-message
+//! sounds), downloaded on the user's machine after sign-in (`teams_assets`: never shipped). Until
+//! a file is there, or with the download off in Settings, the same choice plays IronTeams's own
+//! synthesized equivalent (`synth`: additive synthesis, soft marimba-like notes, no asset and no
+//! one else's recording), which is also a choice of its own ("IronTeams"). The user can keep the
+//! older ringtones, or pick a sound file (WAV, MP3 or M4A) for the message sound and the ringtone.
 //!
 //! Everything plays through `devices::open_output_stream`, the same cpal output the Settings test
 //! sound uses, on the speaker chosen in Settings › Devices (the system default when none is) and
@@ -19,7 +19,7 @@
 mod cursor;
 mod policy;
 mod synth;
-mod teams_assets;
+pub(crate) mod teams_assets;
 mod wav;
 
 use super::ringtone::RingtoneChoice;
@@ -33,7 +33,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use synth::{Plain, Sound};
-use teams_assets::Asset;
+use teams_assets::{Original, Slot};
 use teams_proto::user_settings::{NotificationSettings, SoundField};
 
 #[cfg(feature = "calls")]
@@ -50,9 +50,12 @@ pub struct SoundPrefs {
     pub message: RingtoneChoice,
     /// The sound file of the "Custom" message sound.
     pub message_file: Option<String>,
-    /// Download Teams' original sounds (the Default of the message sound and the ringtone). Off:
-    /// nothing is downloaded and the Default plays IronTeams's own sounds. A file saved without
-    /// it is on.
+    /// The sound of an urgent message or one from a priority contact, while the message sound is
+    /// one of Teams' (only Teams' urgent sounds apply: the Default is Prioritize).
+    pub urgent: RingtoneChoice,
+    /// Download Teams' original sounds (what the Default of the message sound and the ringtone
+    /// play, and the others of Teams'). Off: nothing is downloaded and they play IronTeams's own
+    /// sounds. A file saved without it is on.
     pub download_teams_sounds: bool,
 }
 
@@ -61,6 +64,7 @@ impl Default for SoundPrefs {
         SoundPrefs {
             message: RingtoneChoice::default(),
             message_file: None,
+            urgent: RingtoneChoice::default(),
             download_teams_sounds: true,
         }
     }
@@ -77,6 +81,7 @@ fn sound_prefs() -> SoundPrefs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Message,
+    Urgent,
     Ringtone,
 }
 
@@ -140,33 +145,41 @@ fn teams_dir(prefs: &SoundPrefs) -> Option<PathBuf> {
 }
 
 /// A Teams sound: the downloaded file in `dir` when it is there, else the synthesized `fallback`
-/// (nothing downloaded yet, offline, the download off): never silence.
-fn teams_tone(asset: Asset, fallback: Sound, dir: Option<&Path>) -> Tone {
-    match dir
-        .map(|d| teams_assets::file_in(d, asset))
-        .filter(|p| p.is_file())
-    {
-        Some(path) => Tone::File(path, fallback),
-        None => Tone::Sound(fallback),
+/// (nothing downloaded yet, offline, the download off): never silence. A sound that is not there
+/// yet is fetched now, for the next time.
+fn teams_tone(sound: Option<&'static Original>, fallback: Sound, dir: Option<&Path>) -> Tone {
+    let (Some(sound), Some(dir)) = (sound, dir) else {
+        return Tone::Sound(fallback);
+    };
+    let path = teams_assets::file_in(dir, sound);
+    if path.is_file() {
+        Tone::File(path, fallback)
+    } else {
+        teams_assets::request(dir, sound);
+        Tone::Sound(fallback)
     }
 }
 
-/// The message sound of a choice. `urgent`: an urgent message or one from a priority contact,
-/// which Teams' own sounds tell apart ("Prioritize"). `teams` is `teams_dir`.
+/// The message sound of a choice. `urgent`: for an urgent message or one from a priority
+/// contact, the urgent-message choice, which takes the place of a Teams message sound (as in
+/// Teams, which keeps the two apart); the other message sounds stay as they are. `teams` is
+/// `teams_dir`.
 fn message_tone(
     choice: RingtoneChoice,
     file: Option<&str>,
-    urgent: bool,
+    urgent: Option<RingtoneChoice>,
     teams: Option<&Path>,
 ) -> Tone {
+    let is_teams = choice.original(Slot::Message).is_some();
+    if let Some(sound) = urgent
+        .filter(|_| is_teams)
+        .and_then(|u| u.original(Slot::Urgent))
+    {
+        return teams_tone(Some(sound), Sound::Message, teams);
+    }
     match choice {
-        RingtoneChoice::Teams => {
-            let asset = if urgent {
-                Asset::Urgent
-            } else {
-                Asset::Message
-            };
-            teams_tone(asset, Sound::Message, teams)
+        RingtoneChoice::Teams | RingtoneChoice::Original(_) => {
+            teams_tone(choice.original(Slot::Message), Sound::Message, teams)
         }
         RingtoneChoice::IronTeams => Tone::Sound(Sound::Message),
         RingtoneChoice::Chime => Tone::Plain(Plain::Chime),
@@ -176,11 +189,21 @@ fn message_tone(
     }
 }
 
+/// The urgent-message sound of a choice, for the Settings preview: a Teams one, or (nothing of
+/// Teams' there) the message sound.
+fn urgent_tone(choice: RingtoneChoice, teams: Option<&Path>) -> Tone {
+    teams_tone(choice.original(Slot::Urgent), Sound::Message, teams)
+}
+
 /// The ringtone of a choice made here. `None`: one of the older ringtones, which `call_direct`
 /// generates.
 fn ring_tone(choice: RingtoneChoice, file: Option<&str>, teams: Option<&Path>) -> Option<Tone> {
     match choice {
-        RingtoneChoice::Teams => Some(teams_tone(Asset::Ring, Sound::Ringtone, teams)),
+        RingtoneChoice::Teams | RingtoneChoice::Original(_) => Some(teams_tone(
+            choice.original(Slot::Ring),
+            Sound::Ringtone,
+            teams,
+        )),
         RingtoneChoice::IronTeams => Some(Tone::Sound(Sound::Ringtone)),
         RingtoneChoice::Custom => Some(file_tone(file, Sound::Ringtone)),
         RingtoneChoice::Chime | RingtoneChoice::Soft | RingtoneChoice::Pulse => None,
@@ -361,9 +384,10 @@ pub(crate) fn preview(kind: Kind, choice: RingtoneChoice, file: Option<&str>) {
     let teams = teams_dir(&sound_prefs());
     match kind {
         Kind::Message => play_once(
-            message_tone(choice, file, false, teams.as_deref()),
+            message_tone(choice, file, None, teams.as_deref()),
             Role::Preview,
         ),
+        Kind::Urgent => play_once(urgent_tone(choice, teams.as_deref()), Role::Preview),
         Kind::Ringtone => match ring_tone(choice, file, teams.as_deref()) {
             Some(tone) => play_once(tone, Role::Preview),
             None => preview_older_ringtone(choice),
@@ -376,6 +400,14 @@ pub(crate) fn preview(kind: Kind, choice: RingtoneChoice, file: Option<&str>) {
 pub(crate) fn fetch_teams_sounds() {
     if let Some(dir) = teams_dir(&sound_prefs()) {
         teams_assets::start(dir);
+    }
+}
+
+/// A sound was picked in Settings: fetches the Teams file of `choice` for `slot` now when it is
+/// not there yet (what plays until then is the synthesized equivalent).
+pub(crate) fn fetch_picked(choice: RingtoneChoice, slot: Slot) {
+    if let (Some(dir), Some(sound)) = (teams_dir(&sound_prefs()), choice.original(slot)) {
+        teams_assets::request(&dir, sound);
     }
 }
 
@@ -476,7 +508,7 @@ impl Engine {
             message_tone(
                 prefs.message,
                 prefs.message_file.as_deref(),
-                inc.urgent || inc.priority_sender,
+                (inc.urgent || inc.priority_sender).then_some(prefs.urgent),
                 teams_dir(&prefs).as_deref(),
             ),
             Role::Once,
@@ -521,32 +553,40 @@ mod tests {
     use appearance::general::{GeneralPrefs, QuietHoursPrefs};
     use chrono::NaiveDate;
 
-    /// A folder with the three Teams files in it (their bytes do not matter to the choice).
-    fn teams_folder(which: &[Asset]) -> tempfile::TempDir {
+    /// A folder with the files of `which` in it (their bytes do not matter to the choice).
+    fn teams_folder(which: &[&Original]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        for a in which {
-            std::fs::write(teams_assets::file_in(dir.path(), *a), b"x").unwrap();
+        for o in which {
+            std::fs::write(teams_assets::file_in(dir.path(), o), b"x").unwrap();
         }
         dir
+    }
+
+    fn orig(slug: &str) -> &'static Original {
+        teams_assets::by_slug(slug).unwrap()
+    }
+
+    fn all_files() -> tempfile::TempDir {
+        teams_folder(&teams_assets::ORIGINALS.iter().collect::<Vec<_>>())
     }
 
     #[test]
     fn the_older_choices_and_the_ironteams_set_map_to_their_sounds() {
         let no_dir: Option<&Path> = None;
         assert_eq!(
-            message_tone(RingtoneChoice::IronTeams, None, false, no_dir),
+            message_tone(RingtoneChoice::IronTeams, None, None, no_dir),
             Tone::Sound(Sound::Message)
         );
         assert_eq!(
-            message_tone(RingtoneChoice::Chime, None, false, no_dir),
+            message_tone(RingtoneChoice::Chime, None, None, no_dir),
             Tone::Plain(Plain::Chime)
         );
         assert_eq!(
-            message_tone(RingtoneChoice::Soft, None, false, no_dir),
+            message_tone(RingtoneChoice::Soft, None, None, no_dir),
             Tone::Plain(Plain::Soft)
         );
         assert_eq!(
-            message_tone(RingtoneChoice::Pulse, None, false, no_dir),
+            message_tone(RingtoneChoice::Pulse, None, None, no_dir),
             Tone::Plain(Plain::Pulse)
         );
         assert_eq!(
@@ -567,15 +607,22 @@ mod tests {
     }
 
     #[test]
-    fn the_ironteams_set_ignores_the_downloaded_sounds() {
-        let dir = teams_folder(&Asset::ALL);
+    fn the_ironteams_set_and_the_older_ones_ignore_the_downloaded_sounds_even_when_urgent() {
+        let dir = all_files();
         let teams = Some(dir.path());
-        for urgent in [false, true] {
-            assert_eq!(
-                message_tone(RingtoneChoice::IronTeams, None, urgent, teams),
-                Tone::Sound(Sound::Message)
-            );
-        }
+        let urgent = Some(RingtoneChoice::Teams);
+        assert_eq!(
+            message_tone(RingtoneChoice::IronTeams, None, urgent, teams),
+            Tone::Sound(Sound::Message)
+        );
+        assert_eq!(
+            message_tone(RingtoneChoice::Pulse, None, urgent, teams),
+            Tone::Plain(Plain::Pulse)
+        );
+        assert_eq!(
+            message_tone(RingtoneChoice::Custom, Some("/a.wav"), urgent, teams),
+            Tone::File("/a.wav".into(), Sound::Message)
+        );
         assert_eq!(
             ring_tone(RingtoneChoice::IronTeams, None, teams),
             Some(Tone::Sound(Sound::Ringtone))
@@ -583,16 +630,29 @@ mod tests {
     }
 
     #[test]
-    fn the_teams_default_plays_the_downloaded_files_with_prioritize_for_urgent_messages() {
-        let dir = teams_folder(&Asset::ALL);
+    fn the_teams_default_plays_the_downloaded_files_and_urgent_messages_their_own_sound() {
+        let dir = all_files();
         let teams = Some(dir.path());
         assert_eq!(
-            message_tone(RingtoneChoice::Teams, None, false, teams),
-            Tone::File(dir.path().join("message.mp3"), Sound::Message)
+            message_tone(RingtoneChoice::Teams, None, None, teams),
+            Tone::File(
+                dir.path().join("a4_teams_basic_notification_r4_tap.mp3"),
+                Sound::Message
+            ),
+            "Tap is the message default"
         );
         assert_eq!(
-            message_tone(RingtoneChoice::Teams, None, true, teams),
-            Tone::File(dir.path().join("urgent.mp3"), Sound::Message),
+            message_tone(
+                RingtoneChoice::Teams,
+                None,
+                Some(RingtoneChoice::Teams),
+                teams
+            ),
+            Tone::File(
+                dir.path()
+                    .join("b2_teams_urgent_notification_r4_prioritize.mp3"),
+                Sound::Message
+            ),
             "urgent and priority messages sound like Teams' Prioritize"
         );
         assert_eq!(
@@ -602,33 +662,103 @@ mod tests {
     }
 
     #[test]
-    fn the_teams_default_falls_back_to_the_synthesized_sound_for_every_file_not_there() {
+    fn every_teams_sound_plays_its_own_file_in_its_own_slot() {
+        let dir = all_files();
+        let teams = Some(dir.path());
+        for o in teams_assets::ORIGINALS.iter().filter(|o| !o.is_default()) {
+            let choice = RingtoneChoice::Original(o);
+            let want = |fallback| Tone::File(dir.path().join(o.file), fallback);
+            match o.slot {
+                Slot::Ring => assert_eq!(
+                    ring_tone(choice, None, teams),
+                    Some(want(Sound::Ringtone)),
+                    "{}",
+                    o.label
+                ),
+                Slot::Message => assert_eq!(
+                    message_tone(choice, None, None, teams),
+                    want(Sound::Message),
+                    "{}",
+                    o.label
+                ),
+                Slot::Urgent => assert_eq!(
+                    urgent_tone(choice, teams),
+                    want(Sound::Message),
+                    "{}",
+                    o.label
+                ),
+            }
+        }
+        // The urgent choice replaces a Teams message sound, whichever it is, for urgent messages.
+        let alarm = RingtoneChoice::from_slug("alarm").unwrap();
+        for message in ["default", "vibe", "ping"] {
+            let choice = RingtoneChoice::from_slug(message).unwrap();
+            assert_eq!(
+                message_tone(choice, None, Some(alarm), teams),
+                Tone::File(dir.path().join(orig("alarm").file), Sound::Message),
+                "{message}"
+            );
+            assert_ne!(
+                message_tone(choice, None, None, teams),
+                message_tone(choice, None, Some(alarm), teams),
+                "an ordinary message keeps {message}"
+            );
+        }
+        // A sound of another slot where a slot's own goes (a hand-edited file) plays the default.
+        assert_eq!(
+            message_tone(
+                RingtoneChoice::from_slug("beep").unwrap(),
+                None,
+                None,
+                teams
+            ),
+            message_tone(RingtoneChoice::Teams, None, None, teams)
+        );
+    }
+
+    #[test]
+    fn a_teams_sound_falls_back_to_the_synthesized_one_for_every_file_not_there() {
         // Nothing downloaded yet (first run), the folder missing, or the download off (no folder).
         let empty = teams_folder(&[]);
         let gone = empty.path().join("never-created");
+        let urgent = Some(RingtoneChoice::Teams);
         for teams in [Some(empty.path()), Some(gone.as_path()), None] {
-            for urgent in [false, true] {
+            for u in [None, urgent] {
+                for choice in [
+                    RingtoneChoice::Teams,
+                    RingtoneChoice::from_slug("nudge").unwrap(),
+                ] {
+                    assert_eq!(
+                        message_tone(choice, None, u, teams),
+                        Tone::Sound(Sound::Message),
+                        "{teams:?} {choice:?} {u:?}"
+                    );
+                }
+            }
+            for choice in [
+                RingtoneChoice::Teams,
+                RingtoneChoice::from_slug("remix").unwrap(),
+            ] {
                 assert_eq!(
-                    message_tone(RingtoneChoice::Teams, None, urgent, teams),
-                    Tone::Sound(Sound::Message),
-                    "{teams:?} urgent={urgent}"
+                    ring_tone(choice, None, teams),
+                    Some(Tone::Sound(Sound::Ringtone)),
+                    "{teams:?} {choice:?}"
                 );
             }
             assert_eq!(
-                ring_tone(RingtoneChoice::Teams, None, teams),
-                Some(Tone::Sound(Sound::Ringtone)),
-                "{teams:?}"
+                urgent_tone(RingtoneChoice::from_slug("escalate").unwrap(), teams),
+                Tone::Sound(Sound::Message)
             );
         }
         // Each file on its own: only what is missing falls back.
-        let only_message = teams_folder(&[Asset::Message]);
-        let teams = Some(only_message.path());
+        let only_tap = teams_folder(&[teams_assets::default_of(Slot::Message)]);
+        let teams = Some(only_tap.path());
         assert!(matches!(
-            message_tone(RingtoneChoice::Teams, None, false, teams),
+            message_tone(RingtoneChoice::Teams, None, None, teams),
             Tone::File(..)
         ));
         assert_eq!(
-            message_tone(RingtoneChoice::Teams, None, true, teams),
+            message_tone(RingtoneChoice::Teams, None, urgent, teams),
             Tone::Sound(Sound::Message),
             "no Prioritize file yet: the message sound's synthesized equivalent"
         );
@@ -638,17 +768,17 @@ mod tests {
         );
         // A folder where the file's name is taken is not a file.
         let odd = tempfile::tempdir().unwrap();
-        std::fs::create_dir(odd.path().join("message.mp3")).unwrap();
+        std::fs::create_dir(odd.path().join("a4_teams_basic_notification_r4_tap.mp3")).unwrap();
         assert_eq!(
-            message_tone(RingtoneChoice::Teams, None, false, Some(odd.path())),
+            message_tone(RingtoneChoice::Teams, None, None, Some(odd.path())),
             Tone::Sound(Sound::Message)
         );
     }
 
     #[test]
     fn a_downloaded_file_that_does_not_decode_plays_the_synthesized_sound_instead() {
-        let dir = teams_folder(&[Asset::Message]);
-        let tone = message_tone(RingtoneChoice::Teams, None, false, Some(dir.path()));
+        let dir = teams_folder(&[teams_assets::default_of(Slot::Message)]);
+        let tone = message_tone(RingtoneChoice::Teams, None, None, Some(dir.path()));
         assert_eq!(
             samples(&tone, 48_000, Role::Once),
             synth::synth(Sound::Message, 48_000),
@@ -659,13 +789,19 @@ mod tests {
     #[test]
     fn the_download_switch_is_on_by_default_and_old_files_without_it_keep_it_on() {
         assert!(SoundPrefs::default().download_teams_sounds);
+        assert_eq!(SoundPrefs::default().urgent, RingtoneChoice::Teams);
         let old: SoundPrefs = serde_json::from_str(r#"{"message":"soft"}"#).unwrap();
         assert!(old.download_teams_sounds, "a file saved before the switch");
+        assert_eq!(old.urgent, RingtoneChoice::Teams);
         assert_eq!(old.message, RingtoneChoice::Soft);
         let off: SoundPrefs = serde_json::from_str(r#"{"download_teams_sounds":false}"#).unwrap();
         assert!(!off.download_teams_sounds);
         assert_eq!(off.message, RingtoneChoice::Teams);
-        // Off: no folder, so the Default plays IronTeams's own sounds even if files are there.
+        let picked: SoundPrefs =
+            serde_json::from_str(r#"{"message":"vibe","urgent":"alarm"}"#).unwrap();
+        assert_eq!(picked.message.slug(), "vibe");
+        assert_eq!(picked.urgent.slug(), "alarm");
+        // Off: no folder, so Teams' sounds play IronTeams's own even if files are there.
         assert_eq!(teams_dir(&off), None);
         let on = SoundPrefs::default();
         assert!(teams_dir(&on).is_none_or(|d| d.ends_with("sounds/teams")));
@@ -675,7 +811,7 @@ mod tests {
     fn a_custom_choice_plays_its_file_or_the_default_when_it_has_none() {
         let file = Some("/home/me/ping.wav");
         assert_eq!(
-            message_tone(RingtoneChoice::Custom, file, false, None),
+            message_tone(RingtoneChoice::Custom, file, None, None),
             Tone::File("/home/me/ping.wav".into(), Sound::Message)
         );
         assert_eq!(
@@ -684,7 +820,7 @@ mod tests {
         );
         for none in [None, Some("")] {
             assert_eq!(
-                message_tone(RingtoneChoice::Custom, none, false, None),
+                message_tone(RingtoneChoice::Custom, none, None, None),
                 Tone::Sound(Sound::Message)
             );
             assert_eq!(
@@ -877,7 +1013,9 @@ mod tests {
         preview(Kind::Message, RingtoneChoice::Teams, None);
         preview(Kind::Ringtone, RingtoneChoice::Chime, None);
         call_cue(true);
+        preview(Kind::Urgent, RingtoneChoice::Teams, None);
         fetch_teams_sounds();
+        fetch_picked(RingtoneChoice::Teams, Slot::Ring);
     }
 
     #[cfg(feature = "calls")]

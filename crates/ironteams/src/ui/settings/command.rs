@@ -307,21 +307,38 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
-        "ringtone" | "message-sound" => {
+        "ringtone" | "message-sound" | "urgent-sound" => {
             let choice = RingtoneChoice::from_slug(arg).unwrap_or_default();
             let needs_file = {
                 let mut c = shared.borrow_mut();
-                let (r, has_file) = if name == "ringtone" {
-                    c.local.calls.ringtone = choice;
-                    (c.local.save_calls(), c.local.calls.ringtone_file.is_some())
-                } else {
-                    c.local.sounds.message = choice;
-                    (c.local.save_sounds(), c.local.sounds.message_file.is_some())
+                let (r, has_file) = match name {
+                    "ringtone" => {
+                        c.local.calls.ringtone = choice;
+                        (c.local.save_calls(), c.local.calls.ringtone_file.is_some())
+                    }
+                    "urgent-sound" => {
+                        c.local.sounds.urgent = choice;
+                        (c.local.save_sounds(), true)
+                    }
+                    _ => {
+                        c.local.sounds.message = choice;
+                        (c.local.save_sounds(), c.local.sounds.message_file.is_some())
+                    }
                 };
                 push_local(w, &c);
                 saved(w, r);
                 choice == RingtoneChoice::Custom && !has_file
             };
+            // A Teams sound that is not on disk yet is fetched now; until then its synthesized
+            // equivalent plays.
+            sounds::fetch_picked(
+                choice,
+                match name {
+                    "ringtone" => Slot::Ring,
+                    "urgent-sound" => Slot::Urgent,
+                    _ => Slot::Message,
+                },
+            );
             // Custom with no file yet: ask for one right away.
             if needs_file {
                 let which = if name == "ringtone" {
@@ -349,13 +366,13 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
         }
         "ringtone-file" => choose_sound_file(shared, w, SoundFor::Ringtone),
         "message-sound-file" => choose_sound_file(shared, w, SoundFor::Message),
-        "ringtone-preview" | "message-sound-preview" => {
+        "ringtone-preview" | "message-sound-preview" | "urgent-sound-preview" => {
             let c = shared.borrow();
             let choice = RingtoneChoice::from_slug(arg).unwrap_or_default();
-            let (kind, file) = if name == "ringtone-preview" {
-                (SoundKind::Ringtone, c.local.calls.ringtone_file.clone())
-            } else {
-                (SoundKind::Message, c.local.sounds.message_file.clone())
+            let (kind, file) = match name {
+                "ringtone-preview" => (SoundKind::Ringtone, c.local.calls.ringtone_file.clone()),
+                "urgent-sound-preview" => (SoundKind::Urgent, None),
+                _ => (SoundKind::Message, c.local.sounds.message_file.clone()),
             };
             (c.env.hooks.play_sound)(kind, choice, file);
         }

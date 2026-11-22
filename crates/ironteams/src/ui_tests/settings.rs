@@ -977,19 +977,43 @@ fn the_calls_page_picks_a_ringtone_and_is_honest_about_forwarding() {
     let app = &ui.app;
     open_page(app, "general");
     press(app, "Calls");
+    tall_window(app);
     assert_eq!(value_of(app, "Settings page"), "Calls");
     assert!(
-        checked(app, "Ringtone: Teams (default)"),
-        "Teams' original sound is the default"
+        checked(app, "Ringtone: Default"),
+        "Teams' own default ring is the default"
     );
     assert_eq!(store(app).get_ringtone(), "default");
+    // Teams' ringtones come first, in Teams' order, then IronTeams's and the older ones.
     assert_listed_first(
         app,
         "Ringtone",
-        "Teams (default)",
-        &["IronTeams", "Chime", "Soft", "Pulse", "Custom file"],
+        "Default",
+        &[
+            "Beep",
+            "Bubbles (Loud)",
+            "Ring Ring",
+            "Wobble",
+            "IronTeams",
+            "Chime",
+            "Soft",
+            "Pulse",
+            "Custom file",
+        ],
     );
+    assert_listed_first(app, "Ringtone", "Wobble", &["IronTeams", "Custom file"]);
     assert!(!checked(app, "Ringtone: IronTeams"));
+    assert!(!checked(app, "Ringtone: Beep"));
+    // A Teams ringtone is a pick like any other, and Play previews what is picked.
+    press(app, "Ringtone: Ripple");
+    assert_eq!(store(app).get_ringtone(), "ripple");
+    assert_eq!(Local::load(&dir).calls.ringtone.slug(), "ripple");
+    assert!(checked(app, "Ringtone: Ripple"));
+    press(app, "Play ringtone");
+    assert_eq!(*ui.log.borrow(), ["play Ringtone ripple "]);
+    ui.log.borrow_mut().clear();
+    press(app, "Ringtone: Default");
+    assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Teams);
     press(app, "Play ringtone");
     assert_eq!(*ui.log.borrow(), ["play Ringtone default "]);
 
@@ -2014,17 +2038,42 @@ fn the_notifications_page_picks_the_message_sound_and_plays_it() {
     open_page(app, "notifications");
     tall_window(app);
     assert!(
-        checked(app, "Message sound: Teams (default)"),
-        "new users get Teams' message sound"
+        checked(app, "Message sound: Tap (default)"),
+        "new users get Teams' Tap"
     );
     assert_eq!(store(app).get_message_sound(), "default");
     assert_listed_first(
         app,
         "Message sound",
-        "Teams (default)",
-        &["IronTeams", "Chime", "Soft", "Pulse", "Custom file"],
+        "Tap (default)",
+        &[
+            "Vibe",
+            "Nudge",
+            "Flick",
+            "Pluck",
+            "Summon",
+            "Ping",
+            "IronTeams",
+            "Chime",
+            "Soft",
+            "Pulse",
+            "Custom file",
+        ],
     );
     assert!(!checked(app, "Message sound: IronTeams"));
+    assert!(!checked(app, "Message sound: Vibe"));
+    // Teams' message sounds each play when picked.
+    press(app, "Message sound: Vibe");
+    assert_eq!(Local::load(&dir).sounds.message.slug(), "vibe");
+    press(app, "Play message sound");
+    press(app, "Message sound: Tap (default)");
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::Teams);
+    assert_eq!(
+        *ui.log.borrow(),
+        ["play Message vibe "],
+        "Play previews the pick"
+    );
+    ui.log.borrow_mut().clear();
 
     press(app, "Play message sound");
     press(app, "Message sound: Pulse");
@@ -2038,6 +2087,37 @@ fn the_notifications_page_picks_the_message_sound_and_plays_it() {
     );
     // The ringtone is its own setting.
     assert_eq!(Local::load(&dir).calls.ringtone, RingtoneChoice::Teams);
+}
+
+#[test]
+fn the_urgent_message_sound_is_its_own_choice_next_to_the_message_sound() {
+    let home = Home::new("urgent-sound");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    assert!(checked(app, "Urgent message sound: Prioritize (default)"));
+    assert_eq!(store(app).get_urgent_sound(), "default");
+    assert_listed_first(
+        app,
+        "Urgent message sound",
+        "Prioritize (default)",
+        &["Escalate", "Alarm"],
+    );
+    press(app, "Play urgent sound");
+    press(app, "Urgent message sound: Alarm");
+    assert_eq!(store(app).get_urgent_sound(), "alarm");
+    assert_eq!(Local::load(&dir).sounds.urgent.slug(), "alarm");
+    press(app, "Play urgent sound");
+    assert_eq!(
+        *ui.log.borrow(),
+        ["play Urgent default ", "play Urgent alarm "]
+    );
+    // The message sound is untouched.
+    assert_eq!(Local::load(&dir).sounds.message, RingtoneChoice::Teams);
+    press(app, "Urgent message sound: Prioritize (default)");
+    assert_eq!(Local::load(&dir).sounds.urgent, RingtoneChoice::Teams);
 }
 
 #[test]
@@ -2128,6 +2208,7 @@ fn a_sound_file_becomes_the_custom_ringtone() {
     let app = &ui.app;
     open_page(app, "general");
     press(app, "Calls");
+    tall_window(app);
 
     *next.borrow_mut() = Some(good.clone());
     press(app, "Choose a file…");
@@ -2145,7 +2226,7 @@ fn a_sound_file_becomes_the_custom_ringtone() {
         [format!("play Ringtone custom {}", good.display())]
     );
     // Going back to a built-in one keeps the file for later.
-    press(app, "Ringtone: Teams (default)");
+    press(app, "Ringtone: Default");
     let kept = Local::load(&dir).calls;
     assert_eq!(kept.ringtone, RingtoneChoice::Teams);
     assert!(kept.ringtone_file.is_some());

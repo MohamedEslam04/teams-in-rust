@@ -462,12 +462,19 @@ fn a_file_that_says_default_moves_to_the_teams_sounds_and_the_other_choices_stay
         ("soft", RingtoneChoice::Soft),
         ("pulse", RingtoneChoice::Pulse),
         ("custom", RingtoneChoice::Custom),
+        ("ironteams", RingtoneChoice::IronTeams),
     ] {
         let p: SoundPrefs = serde_json::from_str(&format!(r#"{{"message":"{saved}"}}"#)).unwrap();
         assert_eq!(p.message, want, "{saved}");
         let p: CallsPrefs = serde_json::from_str(&format!(r#"{{"ringtone":"{saved}"}}"#)).unwrap();
         assert_eq!(p.ringtone, want, "{saved}");
     }
+    // One of Teams' other sounds is kept too, and so is the urgent choice.
+    let p: SoundPrefs = serde_json::from_str(r#"{"message":"vibe","urgent":"escalate"}"#).unwrap();
+    assert_eq!(p.message.slug(), "vibe");
+    assert_eq!(p.urgent.slug(), "escalate");
+    let p: CallsPrefs = serde_json::from_str(r#"{"ringtone":"wish-granted"}"#).unwrap();
+    assert_eq!(p.ringtone.slug(), "wish-granted");
     // The download switch is on in every file that never said, and a saved off is kept.
     let old: SoundPrefs = serde_json::from_str(r#"{"message":"soft"}"#).unwrap();
     assert!(old.download_teams_sounds);

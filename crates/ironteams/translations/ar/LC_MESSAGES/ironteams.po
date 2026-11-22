@@ -2205,8 +2205,8 @@ msgstr "صوت الرسائل"
 msgid "Play message sound"
 msgstr "تشغيل صوت الرسائل"
 
-msgid "Teams (default)"
-msgstr "Teams (الافتراضي)"
+msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
+msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."
 
 msgid "IronTeams"
 msgstr "IronTeams"
@@ -2214,11 +2214,20 @@ msgstr "IronTeams"
 msgid "Download Teams' original sounds"
 msgstr "تنزيل أصوات Teams الأصلية"
 
-msgid "Teams (default) plays Microsoft's own message and ringtone sounds. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Off: nothing is downloaded and IronTeams' own sounds play instead."
-msgstr "الخيار Teams (الافتراضي) يشغّل أصوات الرسائل والرنين الأصلية من Microsoft. ينزّلها IronTeams مرة واحدة من خوادم Microsoft ويحتفظ بها على هذا الكمبيوتر، وهي ليست جزءًا من IronTeams. عند الإيقاف لا يُنزَّل شيء ويشغّل IronTeams أصواته الخاصة بدلًا منها."
+msgid "Teams' own ringtones and message sounds are Microsoft's. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Until a sound is downloaded, and when this is off, IronTeams' own sounds play instead."
+msgstr "رنّات Teams وأصوات رسائله ملك Microsoft. ينزّلها IronTeams مرة واحدة من خوادم Microsoft ويحتفظ بها على هذا الكمبيوتر، وهي ليست جزءًا من IronTeams. إلى أن يُنزَّل الصوت، وعند إيقاف هذا الخيار، يشغّل IronTeams أصواته الخاصة بدلًا منها."
 
-msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
-msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."
+msgid "Urgent and priority messages"
+msgstr "الرسائل العاجلة ورسائل الأولوية"
+
+msgid "The sound for an urgent message or one from a priority contact, when the message sound is one of Teams'. Other message sounds stay as they are."
+msgstr "الصوت الخاص بالرسالة العاجلة أو الرسالة من جهة اتصال ذات أولوية، عندما يكون صوت الرسائل من أصوات Teams. أصوات الرسائل الأخرى تبقى كما هي."
+
+msgid "Urgent message sound"
+msgstr "صوت الرسالة العاجلة"
+
+msgid "Play urgent sound"
+msgstr "تشغيل الصوت العاجل"
 
 msgid "Accept"
 msgstr "قبول"

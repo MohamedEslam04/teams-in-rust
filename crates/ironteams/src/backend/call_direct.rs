@@ -1276,7 +1276,10 @@ impl RingtoneChoice {
             RingtoneChoice::Chime => Some(ring_sample),
             RingtoneChoice::Soft => Some(soft_sample),
             RingtoneChoice::Pulse => Some(pulse_sample),
-            RingtoneChoice::Teams | RingtoneChoice::IronTeams | RingtoneChoice::Custom => None,
+            RingtoneChoice::Teams
+            | RingtoneChoice::Original(_)
+            | RingtoneChoice::IronTeams
+            | RingtoneChoice::Custom => None,
         }
     }
 }
@@ -1637,7 +1640,7 @@ mod tests {
 
     #[test]
     fn every_ringtone_choice_sounds_repeats_and_stays_quiet() {
-        for choice in RingtoneChoice::ALL {
+        for choice in RingtoneChoice::all() {
             // The Default and a file are played by `sounds`, which tests its own.
             let Some(f) = choice.sample() else { continue };
             let peak = (0..RING_CYCLE).map(|n| f(n).unsigned_abs()).max().unwrap();
