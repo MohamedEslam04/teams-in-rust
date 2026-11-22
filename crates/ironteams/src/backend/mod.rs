@@ -52,7 +52,7 @@ pub(crate) mod outsider;
 mod people;
 #[cfg(test)]
 mod people_live;
-mod people_presence;
+pub(crate) mod people_presence;
 mod photo;
 pub(crate) mod quiet;
 mod remind;

@@ -2217,6 +2217,9 @@ impl CallManager {
                 if self.shared.promote_held() {
                     self.shared.tick();
                 }
+                // The driver reports no end for a hang-up made here, so no event brings the
+                // presence back from "In a call": say it now (nothing is sent if unchanged).
+                self.shared.publish_presence();
             }
             Some(c) => self.shared.control(c),
             None => {}

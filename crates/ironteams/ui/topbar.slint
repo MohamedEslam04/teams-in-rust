@@ -476,9 +476,10 @@ export component MoreButton inherits Rectangle {
     }
 }
 
-// "Settings and more": Settings, Zoom, Keyboard shortcuts, Check for updates, About and Help.
+// "Settings and more": Settings, Zoom, Saved, Keyboard shortcuts, Check for updates, About and Help.
 export component MoreMenu inherits Rectangle {
     callback show-shortcuts();
+    callback open-saved();
     // How tall the panel is (app.slint `pointer-pressed` knows its place).
     out property <length> panel-height: panel.height;
     // Clicking outside closes it (a press the window reported closed it already).
@@ -513,6 +514,11 @@ export component MoreMenu inherits Rectangle {
                 clicked => { TopBarStore.more-open = false; SettingsStore.show("general"); }
             }
             ZoomRow { }
+            MenuItem {
+                label: @tr("Saved");
+                icon: @image-url("icons/star.svg");
+                clicked => { TopBarStore.more-open = false; root.open-saved(); }
+            }
             MenuItem {
                 label: @tr("Keyboard shortcuts");
                 icon: @image-url("icons/shortcut.svg");

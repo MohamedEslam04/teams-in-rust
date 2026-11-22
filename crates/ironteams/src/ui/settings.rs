@@ -22,6 +22,7 @@ use super::{UiHandle, model, rgb};
 use crate::backend::Cmd;
 use crate::backend::call_feedback::Ask;
 use crate::backend::expiry;
+use crate::backend::people_presence;
 use crate::backend::ringtone::RingtoneChoice;
 use crate::backend::settings::{
     self as st, DeviceLists, Local, Look, OpenFilesIn, ServerData, SettingsCmd,
@@ -228,9 +229,9 @@ struct Ctl {
     /// The status picked here with an end ("Reset status after"): `(availability, end ms)`, for
     /// the "Until 3:45 PM" line while the service still reports that status.
     status_until: Option<(String, i64)>,
-    /// What the menu showed before a status pick (presence, its "Until" line), put back when
-    /// the service refuses the change.
-    status_before: Option<(String, String)>,
+    /// What the menu showed before a status pick (presence, activity, its "Until" line), put back
+    /// when the service refuses the change.
+    status_before: Option<(String, String, String)>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.
@@ -746,6 +747,14 @@ fn status_until_line(c: &Ctl, presence: &str) -> String {
     }
 }
 
+/// My availability (the dot's colour) and what I am doing, with the words Teams shows for them
+/// ("In a call").
+pub(super) fn show_my_status(g: &SettingsStore<'_>, presence: &str, activity: &str) {
+    g.set_me_status_label(s(people_presence::status_label(presence, activity)));
+    g.set_me_activity(s(activity));
+    g.set_me_presence(s(presence));
+}
+
 fn push_profile(w: &AppWindow, c: &Ctl) {
     let g = w.global::<SettingsStore>();
     let cfg = config(c);
@@ -764,8 +773,9 @@ fn push_profile(w: &AppWindow, c: &Ctl) {
     g.set_me_email(s(email));
     g.set_me_status(s(d.and_then(|d| d.me_status.clone()).unwrap_or_default()));
     let presence = d.and_then(|d| d.me_presence.clone()).unwrap_or_default();
+    let activity = d.and_then(|d| d.me_activity.clone()).unwrap_or_default();
     g.set_me_presence_until(s(status_until_line(c, &presence)));
-    g.set_me_presence(s(presence));
+    show_my_status(&g, &presence, &activity);
     g.set_me_work_location(s(d
         .and_then(|d| d.me_work_location.as_deref())
         .map(
@@ -849,9 +859,9 @@ impl UiHandle {
             let Some(shared) = ctl() else { return };
             let mut c = shared.borrow_mut();
             c.status_until = None;
-            if let Some((presence, until)) = c.status_before.take() {
+            if let Some((presence, activity, until)) = c.status_before.take() {
                 let g = w.global::<SettingsStore>();
-                g.set_me_presence(s(presence));
+                show_my_status(&g, &presence, &activity);
                 g.set_me_presence_until(s(until));
             }
         });
@@ -1833,13 +1843,14 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 let mut c = shared.borrow_mut();
                 c.status_before = Some((
                     g.get_me_presence().to_string(),
+                    g.get_me_activity().to_string(),
                     g.get_me_presence_until().to_string(),
                 ));
                 c.status_until = until.map(|ms| (status.clone(), ms));
                 // A reset goes back to the automatic status, which only the service knows.
                 if !status.is_empty() {
                     g.set_me_presence_until(s(status_until_line(&c, &status)));
-                    g.set_me_presence(s(status));
+                    show_my_status(&g, &status, people_presence::forced_activity(&status));
                 } else {
                     g.set_me_presence_until(s(""));
                 }
@@ -1847,6 +1858,13 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             // The photo answers with its own notice; the status options close.
             if !name.starts_with("photo") {
                 g.set_status_open(false);
+            }
+            // A picked status closes the menu too; a saved message, its editor.
+            if name == "status" {
+                g.set_profile_open(false);
+            }
+            if name == "status-note" {
+                g.set_message_open(false);
             }
         }
         // --- Chats (local, and where a chat opens: kept by the engine) ---

@@ -218,18 +218,65 @@ fn open_page(app: &AppWindow, page: &str) {
 }
 
 #[test]
-fn profile_menu_shows_who_is_signed_in_and_opens_settings() {
+fn the_account_card_shows_who_is_signed_in_and_has_only_the_four_rows() {
     let ui = window(Home::new("profile").with_accounts());
     let app = &ui.app;
     press(app, "Profile menu");
     assert!(store(app).get_profile_open());
     assert_eq!(value_of(app, "Name"), "Test User");
     assert_eq!(value_of(app, "Email"), "test.user@example.invalid");
-    assert_eq!(value_of(app, "Status message"), "", "read-only, none set");
-    let photo = control(app, "Change profile photo");
-    assert_eq!(photo.accessible_enabled(), Some(true));
+    assert_eq!(
+        value_of(app, "Set status message"),
+        "",
+        "none set, so nothing to read out"
+    );
+    // The card is 230px wide and its rows are flat rows, 32px tall, across the card.
+    let card = ElementHandle::find_by_accessible_label(app, "Your profile")
+        .next()
+        .expect("the card");
+    assert!((card.size().width - 230.).abs() < 0.5, "{:?}", card.size());
+    for row in [
+        "Set status",
+        "Pause notifications",
+        "Set work location",
+        "Set status message",
+    ] {
+        let r = control(app, row);
+        assert!(
+            r.size().width >= card.size().width - 20.,
+            "{row} is {:?} wide, the card {:?}",
+            r.size().width,
+            card.size().width
+        );
+        assert!((r.size().height - 32.).abs() < 0.5, "{row}");
+    }
+    // Everything else moved to the "..." menu or into a flyout: no boxed buttons are left.
+    for gone in [
+        "Saved",
+        "Zoom in",
+        "Keyboard shortcuts",
+        "Settings",
+        "Remove photo",
+        "Change profile photo",
+        "Sign out",
+    ] {
+        assert!(
+            ElementHandle::find_by_accessible_label(app, gone)
+                .next()
+                .is_none(),
+            "{gone} is not on the card"
+        );
+    }
 
-    press(app, "Settings");
+    // The photo offers the change dialog; Manage presence status opens Settings.
+    press(app, "Profile photo");
+    let photo = control(app, "Change profile photo");
+    assert!(
+        photo.absolute_position().x + photo.size().width <= card.absolute_position().x,
+        "the flyout is left of the card"
+    );
+    press(app, "Set status");
+    press(app, "Manage presence status");
     assert!(!store(app).get_profile_open());
     assert!(store(app).get_open());
     assert_eq!(value_of(app, "Settings page"), "General");
@@ -250,15 +297,19 @@ fn the_profile_menu_sets_my_status_and_work_location_through_the_engine() {
         rx.try_recv(),
         Ok(Cmd::Settings(SettingsCmd::SetStatus(s, None))) if s == "Busy"
     ));
-    // Picking closes the options; reset sends an empty status.
+    // Picking closes the flyout and the card.
     assert!(!store(app).get_status_open());
+    assert!(!store(app).get_profile_open());
+    press(app, "Profile menu");
     press(app, "Set status");
     press(app, "Reset status");
     assert!(matches!(
         rx.try_recv(),
         Ok(Cmd::Settings(SettingsCmd::SetStatus(s, None))) if s.is_empty()
     ));
-    press(app, "Set status");
+    assert!(!store(app).get_profile_open());
+    press(app, "Profile menu");
+    press(app, "Set status message");
     press(app, "Clear message");
     assert!(matches!(
         rx.try_recv(),
@@ -270,14 +321,14 @@ fn the_profile_menu_sets_my_status_and_work_location_through_the_engine() {
         rx.try_recv(),
         Ok(Cmd::Settings(SettingsCmd::SetWorkLocation(w))) if w == "office"
     ));
-    // The engine's answer shows on the menu.
+    // The engine's answer shows on the card.
     let handle = UiHandle::new(app.as_weak());
     handle.settings_server(crate::backend::settings::ServerData {
         me_presence: Some("Busy".into()),
         me_work_location: Some("office".into()),
         ..Default::default()
     });
-    assert_eq!(value_of(app, "Status"), "Busy");
+    assert_eq!(value_of(app, "Set status"), "Busy");
     assert_eq!(value_of(app, "Work location"), "In the office today");
     assert_eq!(value_of(app, "Presence"), "Busy");
 }
@@ -300,12 +351,22 @@ fn a_status_ends_after_the_chosen_duration_and_a_bad_custom_time_is_refused() {
     app.window().set_size(LogicalSize::new(1200., 2600.));
     press(app, "Profile menu");
     press(app, "Set status");
+    // Duration opens a second flyout, left of the status one.
+    press(app, "Duration");
     while rx.try_recv().is_ok() {}
 
     // Never is the default: no end.
     assert_eq!(store(app).get_status_duration(), "never");
     press(app, "Reset status after: 1 hour");
     assert_eq!(store(app).get_status_duration(), "1h");
+    let (duration, busy) = (
+        control(app, "Reset status after: 1 hour"),
+        control(app, "Busy"),
+    );
+    assert!(
+        duration.absolute_position().x + duration.size().width <= busy.absolute_position().x,
+        "the duration flyout is left of the status flyout"
+    );
     press(app, "Busy");
     let Ok(Cmd::Settings(SettingsCmd::SetStatus(status, Some(until)))) = rx.try_recv() else {
         panic!("a status that ends");
@@ -315,7 +376,9 @@ fn a_status_ends_after_the_chosen_duration_and_a_bad_custom_time_is_refused() {
     assert!((ms - (teams_proto::time::now_ms() + 3_600_000)).abs() < 60_000);
 
     // A custom time in the past is refused with words and nothing is sent.
+    press(app, "Profile menu");
     press(app, "Set status");
+    press(app, "Duration");
     press(app, "Reset status after: Custom");
     control(app, "Reset at").set_accessible_value("2000-01-01 10:00");
     press(app, "Busy");
@@ -325,7 +388,7 @@ fn a_status_ends_after_the_chosen_duration_and_a_bad_custom_time_is_refused() {
         "{}",
         store(app).get_notice()
     );
-    // A time ahead goes out as a UTC time (the options stayed open after the refusal).
+    // A time ahead goes out as a UTC time (the flyouts stayed open after the refusal).
     control(app, "Reset at").set_accessible_value("2099-12-31 17:30");
     press(app, "Do not disturb");
     let Ok(Cmd::Settings(SettingsCmd::SetStatus(status, Some(until)))) = rx.try_recv() else {
@@ -341,6 +404,7 @@ fn a_status_ends_after_the_chosen_duration_and_a_bad_custom_time_is_refused() {
     assert!(until.ends_with('Z'));
 
     // Resetting never has an end.
+    press(app, "Profile menu");
     press(app, "Set status");
     press(app, "Reset status");
     assert!(matches!(
@@ -356,7 +420,7 @@ fn settle_tree() {
 }
 
 #[test]
-fn status_rows_have_presence_icons_and_check_the_current_status() {
+fn the_status_flyout_has_the_nine_rows_in_teams_order_with_their_icons() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let ui = window_with(Home::new("status-rows").with_accounts(), Some(tx), false);
     let app = &ui.app;
@@ -366,9 +430,10 @@ fn status_rows_have_presence_icons_and_check_the_current_status() {
         ..Default::default()
     });
     press(app, "Profile menu");
-    // The header says it in words.
-    assert_eq!(value_of(app, "Status"), "Do not disturb");
+    // The card says it in words, and the status row is highlighted while the flyout is open.
+    assert_eq!(value_of(app, "Set status"), "Do not disturb");
     press(app, "Set status");
+    assert!(store(app).get_status_open());
     let description = |label: &str| {
         control(app, label)
             .accessible_description()
@@ -378,16 +443,50 @@ fn status_rows_have_presence_icons_and_check_the_current_status() {
     assert_eq!(description("Do not disturb"), "Current status");
     assert_eq!(description("Available"), "");
     assert_eq!(description("Appear offline"), "");
-    // Six statuses and Reset, each a row with its icon, not a plain button.
-    assert_eq!(
-        ElementHandle::find_by_element_type_name(app, "StatusRow").count(),
-        7
-    );
+    // Teams' order: six statuses, Duration, Reset status, Manage presence status.
+    let order = [
+        "Available",
+        "Busy",
+        "Do not disturb",
+        "Be right back",
+        "Appear away",
+        "Appear offline",
+        "Duration",
+        "Reset status",
+        "Manage presence status",
+    ];
+    let mut last = f32::MIN;
+    for label in order {
+        let r = control(app, label);
+        let (y, h) = (r.absolute_position().y, r.size().height);
+        assert!(y > last, "{label} is below the one before");
+        assert!((h - 34.).abs() < 0.5, "{label} is 34px tall, not {h}");
+        last = y;
+    }
+    // The six statuses and Duration have a presence glyph (the card's own makes eight); Reset
+    // and Manage have plain icons.
     assert_eq!(
         ElementHandle::find_by_element_type_name(app, "PresenceIcon").count(),
-        // The six rows and the header's.
-        7
+        8
     );
+    // The flyout is left of the card and about 215px wide.
+    let card = ElementHandle::find_by_accessible_label(app, "Your profile")
+        .next()
+        .expect("the card");
+    let first = control(app, "Available");
+    assert!(first.absolute_position().x + first.size().width <= card.absolute_position().x);
+    assert!(
+        (first.size().width - 207.).abs() < 1.5,
+        "a 215px flyout with 4px padding: {}",
+        first.size().width
+    );
+    // Escape closes the card and its flyout.
+    app.window().dispatch_event(WindowEvent::KeyPressed {
+        text: Key::Escape.into(),
+    });
+    settle_tree();
+    assert!(!store(app).get_profile_open());
+    assert!(!store(app).get_status_open());
 }
 
 #[test]
@@ -404,6 +503,7 @@ fn a_picked_status_shows_at_once_with_its_end_and_goes_back_when_teams_refuses()
     });
     press(app, "Profile menu");
     press(app, "Set status");
+    press(app, "Duration");
     press(app, "Reset status after: 1 hour");
     while rx.try_recv().is_ok() {}
     press(app, "Busy");
@@ -411,16 +511,18 @@ fn a_picked_status_shows_at_once_with_its_end_and_goes_back_when_teams_refuses()
         rx.try_recv(),
         Ok(Cmd::Settings(SettingsCmd::SetStatus(s, Some(_)))) if s == "Busy"
     ));
-    // Before Teams answers: the menu already shows it, and when it ends.
+    // Before Teams answers: the card (opened again, without a new read) already shows it, and
+    // when it ends.
+    store(app).set_profile_open(true);
     settle_tree();
-    assert_eq!(value_of(app, "Status"), "Busy");
+    assert_eq!(value_of(app, "Set status"), "Busy");
     let ends = value_of(app, "Status ends");
     assert!(ends.starts_with("Until "), "{ends}");
 
     // Teams refuses: the old status comes back and a red banner says why.
     handle.settings_status_failed("Could not change your status: refused".into());
     settle_tree();
-    assert_eq!(value_of(app, "Status"), "Available");
+    assert_eq!(value_of(app, "Set status"), "Available");
     assert!(
         ElementHandle::find_by_accessible_label(app, "Status ends")
             .next()
@@ -435,38 +537,37 @@ fn a_picked_status_shows_at_once_with_its_end_and_goes_back_when_teams_refuses()
 }
 
 #[test]
-fn the_status_options_fit_a_short_window_and_scroll_to_the_end() {
+fn the_card_and_the_status_flyout_fit_a_short_window() {
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let ui = window_with(Home::new("status-short").with_accounts(), Some(tx), false);
     let app = &ui.app;
-    app.window().set_size(LogicalSize::new(1000., 700.));
+    app.window().set_size(LogicalSize::new(1000., 400.));
     press(app, "Profile menu");
     press(app, "Set status");
+    press(app, "Duration");
     settle_tree();
     let panel = ElementHandle::find_by_accessible_label(app, "Your profile")
         .next()
         .expect("the profile menu");
     let (p, size) = (panel.absolute_position(), panel.size());
-    let bottom = p.y + size.height;
     assert!(
-        bottom <= 700.,
-        "the menu ends at {bottom}, below the window"
+        p.y + size.height <= 400.,
+        "the card ends at {}, below the window",
+        p.y + size.height
     );
-    // Scrolled to its end, the menu's last item is inside it, not cut off.
-    for _ in 0..80 {
-        app.window().dispatch_event(WindowEvent::PointerScrolled {
-            position: LogicalPosition::new(p.x + size.width / 2., p.y + size.height / 2.),
-            delta_x: 0.,
-            delta_y: -120.,
-        });
+    // The flyout is moved up to stay inside the window, its first and last rows both in.
+    for label in [
+        "Available",
+        "Manage presence status",
+        "Reset status after: Never",
+    ] {
+        let r = control(app, label);
+        let (top, bottom) = (
+            r.absolute_position().y,
+            r.absolute_position().y + r.size().height,
+        );
+        assert!(top >= 0. && bottom <= 400., "{label} is at {top}..{bottom}");
     }
-    settle_tree();
-    let last = control(app, "Sign out");
-    let end = last.absolute_position().y + last.size().height;
-    assert!(
-        end <= bottom + 0.5,
-        "Sign out ends at {end}, the menu at {bottom}"
-    );
 }
 
 #[test]
@@ -478,7 +579,7 @@ fn a_status_message_clears_after_the_chosen_time_and_can_show_when_people_messag
     // Tall enough that the whole list of options is on screen (the menu scrolls otherwise).
     app.window().set_size(LogicalSize::new(1200., 2600.));
     press(app, "Profile menu");
-    press(app, "Set status");
+    press(app, "Set status message");
     while rx.try_recv().is_ok() {}
 
     control(app, "New status message").set_accessible_value("Heads down");
@@ -487,8 +588,10 @@ fn a_status_message_clears_after_the_chosen_time_and_can_show_when_people_messag
         rx.try_recv(),
         Ok(Cmd::Settings(SettingsCmd::SetStatusNote(t, None, false))) if t == "Heads down"
     ));
+    // Saving closes the editor.
+    assert!(!store(app).get_message_open());
 
-    press(app, "Set status");
+    press(app, "Set status message");
     control(app, "New status message").set_accessible_value("Out for lunch");
     press(app, "Clear message after: 4 hours");
     press(app, "Show when people message me");
@@ -502,7 +605,7 @@ fn a_status_message_clears_after_the_chosen_time_and_can_show_when_people_messag
     assert!((ms - (teams_proto::time::now_ms() + 4 * 3_600_000)).abs() < 60_000);
 
     // Clearing the message never has an end.
-    press(app, "Set status");
+    press(app, "Set status message");
     press(app, "Clear message");
     assert!(matches!(
         rx.try_recv(),
@@ -519,6 +622,8 @@ fn the_profile_menu_changes_and_removes_the_photo_and_shows_it() {
     press(app, "Profile menu");
     while rx.try_recv().is_ok() {}
     assert!(!store(app).get_me_has_photo());
+    // Clicking the photo (a camera shows on hover) offers the change and remove choices.
+    press(app, "Profile photo");
     assert!(
         ElementHandle::find_by_accessible_label(app, "Remove photo")
             .next()
@@ -536,6 +641,7 @@ fn the_profile_menu_changes_and_removes_the_photo_and_shows_it() {
         slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(2, 2),
     ));
     assert!(store(app).get_me_has_photo());
+    press(app, "Profile photo");
     press(app, "Remove photo");
     assert!(matches!(
         rx.try_recv(),
@@ -551,7 +657,7 @@ fn the_profile_menu_changes_and_removes_the_photo_and_shows_it() {
 }
 
 #[test]
-fn the_profile_menu_has_saved_zoom_and_keyboard_shortcuts() {
+fn settings_zoom_keyboard_shortcuts_and_saved_are_in_the_more_menu() {
     let ui = window(Home::new("profile-more").with_accounts());
     let app = &ui.app;
     let quick = Log::default();
@@ -560,7 +666,19 @@ fn the_profile_menu_has_saved_zoom_and_keyboard_shortcuts() {
         .on_command(move |n, a| q.borrow_mut().push(format!("{n} {a}")));
     app.set_view("calendar".into());
 
+    // The account card no longer has them.
     press(app, "Profile menu");
+    for gone in ["Saved", "Zoom in", "Keyboard shortcuts", "Settings"] {
+        assert!(
+            ElementHandle::find_by_accessible_label(app, gone)
+                .next()
+                .is_none(),
+            "{gone} moved to the \"...\" menu"
+        );
+    }
+    store(app).set_profile_open(false);
+
+    press(app, "Settings and more");
     press(app, "Zoom in");
     assert!((app.global::<Theme>().get_font_scale() - 1.05).abs() < 1e-6);
     assert_eq!(value_of(app, "Zoom level"), "105%");
@@ -569,13 +687,58 @@ fn the_profile_menu_has_saved_zoom_and_keyboard_shortcuts() {
 
     press(app, "Keyboard shortcuts");
     assert!(app.get_shortcuts_open());
-    assert!(!store(app).get_profile_open());
+    assert!(!app.global::<crate::TopBarStore>().get_more_open());
+    app.set_shortcuts_open(false);
 
-    press(app, "Profile menu");
+    press(app, "Settings and more");
     press(app, "Saved");
-    assert!(!store(app).get_profile_open());
+    assert!(!app.global::<crate::TopBarStore>().get_more_open());
     assert_eq!(app.get_view(), "chat");
     assert_eq!(*quick.borrow(), ["quick saved"]);
+
+    press(app, "Settings and more");
+    press(app, "Settings");
+    assert!(store(app).get_open());
+    assert_eq!(value_of(app, "Settings page"), "General");
+}
+
+#[test]
+fn the_account_card_says_in_a_call_while_the_presence_activity_is_a_call() {
+    let ui = window(Home::new("in-a-call").with_accounts());
+    let app = &ui.app;
+    let handle = UiHandle::new(app.as_weak());
+    let read = |presence: &str, activity: &str| {
+        handle.settings_server(ServerData {
+            me_presence: Some(presence.into()),
+            me_activity: Some(activity.into()),
+            ..Default::default()
+        });
+    };
+    // In a call: Teams' words, and the dot stays the availability's (red for Busy).
+    read("Busy", "InACall");
+    press(app, "Profile menu");
+    assert_eq!(value_of(app, "Set status"), "In a call");
+    assert_eq!(store(app).get_me_status_label(), "In a call");
+    assert_eq!(store(app).get_me_presence(), "Busy");
+    assert_eq!(value_of(app, "Presence"), "Busy");
+
+    // A meeting joined by link or from another device, and the end of the call.
+    read("Busy", "InAConferenceCall");
+    assert_eq!(store(app).get_me_status_label(), "In a call");
+    read("Busy", "InAMeeting");
+    assert_eq!(store(app).get_me_status_label(), "In a meeting");
+    read("Busy", "");
+    assert_eq!(value_of(app, "Set status"), "Busy");
+    read("Available", "Available");
+    assert_eq!(value_of(app, "Set status"), "Available");
+
+    // The live read (every minute, and Teams' pushes) updates it while the card is open.
+    handle.me_presence("Busy".into(), "InACall".into());
+    settle_tree();
+    assert_eq!(value_of(app, "Set status"), "In a call");
+    handle.me_presence("Busy".into(), String::new());
+    settle_tree();
+    assert_eq!(value_of(app, "Set status"), "Busy");
 }
 
 #[test]
@@ -1062,10 +1225,10 @@ fn sign_out_removes_the_tokens_after_confirming() {
     use session::TokenStore;
     ui.tokens.set("default", "fake-refresh-token").unwrap();
     press(app, "Profile menu");
-    press(app, "Sign out");
+    press(app, "Sign out of IronTeams");
     assert_eq!(ui.tokens.keys(), ["default"], "asks first");
     press(app, "Cancel");
-    press(app, "Sign out");
+    press(app, "Sign out of IronTeams");
     press(app, "Yes, sign out");
     assert!(ui.tokens.keys().is_empty());
     assert_eq!(*ui.log.borrow(), ["signed-out"]);
