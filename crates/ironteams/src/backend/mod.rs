@@ -34,6 +34,7 @@ pub(crate) mod calls_page;
 mod channel_tabs;
 mod channels;
 mod clip_capture;
+mod dirty_stats;
 pub(crate) mod composer_apps;
 mod drafts;
 pub(crate) mod drive;
@@ -299,6 +300,33 @@ struct Dirty {
     activity: bool,
 }
 
+impl Dirty {
+    /// Sets every part `other` sets.
+    fn merge(&mut self, other: &Dirty) {
+        self.chats |= other.chats;
+        self.messages |= other.messages;
+        self.teams |= other.teams;
+        self.header |= other.header;
+        self.scroll |= other.scroll;
+        self.activity |= other.activity;
+    }
+
+    /// The parts set, as bits in the order of `dirty_stats::PARTS`.
+    fn mask(&self) -> u8 {
+        [
+            self.chats,
+            self.messages,
+            self.teams,
+            self.header,
+            self.scroll,
+            self.activity,
+        ]
+        .iter()
+        .enumerate()
+        .fold(0, |m, (i, on)| if *on { m | 1 << i } else { m })
+    }
+}
+
 /// Shared engine state.
 pub struct Engine {
     client: Client,
@@ -310,6 +338,8 @@ pub struct Engine {
     my_name: String,
     view: Mutex<View>,
     dirty: Mutex<Dirty>,
+    /// The dirty marks of the last minute, by the line that made them (debug log only).
+    mark_stats: Mutex<dirty_stats::MarkStats>,
     activity: Mutex<activity::State>,
     people: Mutex<people::State>,
     find: Mutex<find::State>,
@@ -404,6 +434,7 @@ impl Engine {
                 teams: true,
                 ..Default::default()
             }),
+            mark_stats: Mutex::new(dirty_stats::MarkStats::new(Instant::now())),
             activity: Mutex::new(activity::State::default()),
             people: Mutex::new(people::State::default()),
             find: Mutex::new(find::State::default()),
@@ -453,8 +484,21 @@ impl Engine {
         engine
     }
 
+    /// Marks parts of the view for the next render. With debug logging on, the mark is counted
+    /// by its caller's line (`dirty_stats`).
+    #[track_caller]
     fn mark(&self, f: impl FnOnce(&mut Dirty)) {
-        f(&mut self.dirty.lock().unwrap());
+        // The closure only ever sets parts, so running it on a blank set tells which ones.
+        let mut set = Dirty::default();
+        f(&mut set);
+        self.dirty.lock().unwrap().merge(&set);
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let mut stats = self.mark_stats.lock().unwrap();
+            stats.record(std::panic::Location::caller(), set.mask());
+            if let Some(summary) = stats.take_due(Instant::now()) {
+                tracing::debug!("dirty marks, last minute: {summary}");
+            }
+        }
     }
 
     /// The delivery option for the next message: `level` when `on`, else Standard.

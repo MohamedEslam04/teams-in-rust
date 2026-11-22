@@ -336,6 +336,7 @@ impl Engine {
     }
 
     fn render_chats(self: &Arc<Self>) {
+        let started = Instant::now();
         let (filter, search, current, keep_unread) = {
             let v = self.view.lock().unwrap();
             (
@@ -531,11 +532,17 @@ impl Engine {
         }
         // The Meetings section's rows end the main list (see `UiHandle::chats`).
         main.extend(meetings);
+        let shown = fav.len() + main.len() + chans.len();
         self.ui.chats(fav, main, chans);
         self.want_standing(partners);
         self.push_sections(by_section);
         // The chat list draws first after sign-in: our own photo opens our card from then on.
         self.ui.me_id(self.me.clone());
+        tracing::debug!(
+            rows = shown,
+            us = started.elapsed().as_micros() as u64,
+            "render_chats"
+        );
     }
 
     fn render_teams(self: &Arc<Self>) {
@@ -671,6 +678,7 @@ impl Engine {
     }
 
     fn render_messages(self: &Arc<Self>, scroll: bool) {
+        let started = Instant::now();
         let (cur, thread, limit, pending, selected) = {
             let v = self.view.lock().unwrap();
             (
@@ -820,7 +828,13 @@ impl Engine {
             }
             mode
         };
+        let rows = out.len();
         self.ui.messages(out, mode);
+        tracing::debug!(
+            rows,
+            us = started.elapsed().as_micros() as u64,
+            "render_messages"
+        );
     }
 
     /// Turns stored messages into view data (shared by the chat view and the Activity preview).
@@ -832,6 +846,7 @@ impl Engine {
         reply_counts: &HashMap<String, usize>,
         marks: &MsgMarks,
     ) -> Vec<MsgData> {
+        let started = Instant::now();
         let none = HashSet::new();
         let saved = marks.saved.unwrap_or(&none);
         let selected = marks.selected;
@@ -1062,6 +1077,11 @@ impl Engine {
             });
             prev = Some(r);
         }
+        tracing::debug!(
+            rows = out.len(),
+            us = started.elapsed().as_micros() as u64,
+            "build_msgs"
+        );
         out
     }
 }
