@@ -84,6 +84,8 @@ impl Engine {
                         &name,
                         Instant::now(),
                     );
+                    // The render loop shows the indicator; it sleeps until woken.
+                    self.wake_render();
                 }
             }
             Event::ConversationUpdate { conversation_id }

@@ -1,17 +1,18 @@
 //! The render loop: rebuilds the visible view data from the store and pushes it to the UI.
 
 use super::Engine;
+use super::msg_memo;
 use super::avatar_placeholder::{self, Verdict};
 use super::outbox::{PENDING_PREFIX, row_from_outbox};
 use super::outsider::{Outsider, classify, is_guest_upn, tagged};
 use super::unread::{divider_index, open_at_divider, unread_after};
 use super::util::*;
 use crate::data::{
-    ChatData, FileData, HeaderData, LoopData, MsgData, Pixels, ReactData, Scroll, TeamChannel,
-    TeamData, color_for, initials,
+    ChatData, FileData, HeaderData, MsgData, Pixels, ReactData, Scroll, TeamChannel, TeamData,
+    color_for, initials,
 };
-use crate::markdown::{reaction_emoji, render_blocks};
-use serde_json::{Value, json};
+use crate::markdown::reaction_emoji;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,6 +20,8 @@ use store::{ConvFilter, ConvKind, MessageRow, OutboxState, UserRow};
 
 /// The biggest inline image that is downloaded.
 const INLINE_MAX_BYTES: usize = 10 * 1024 * 1024;
+/// How long the render loop waits after a mark, gathering the marks that follow it.
+const RENDER_DEBOUNCE: Duration = Duration::from_millis(120);
 /// Tries at one inline image, the first included, before the message keeps its fallback.
 const INLINE_ATTEMPTS: u32 = 3;
 
@@ -89,12 +92,15 @@ pub(super) struct MsgMarks<'a> {
 }
 
 impl Engine {
+    /// Renders what was marked dirty, a short debounce after the mark, so a burst of marks
+    /// makes one render. Between marks it sleeps: an idle app has no wakeups from here, except
+    /// when a typing indicator runs out.
     pub(super) async fn render_loop(self: Arc<Self>) {
         let mut last_typing = (Vec::new(), Vec::new());
         loop {
-            tokio::time::sleep(Duration::from_millis(120)).await;
+            tokio::time::sleep(RENDER_DEBOUNCE).await;
             self.render_dirty();
-            let typing = {
+            let (typing, lapse) = {
                 let mut v = self.view.lock().unwrap();
                 v.typing.expire(Instant::now());
                 let names = v
@@ -102,11 +108,21 @@ impl Engine {
                     .as_ref()
                     .map(|c| v.typing.names(c))
                     .unwrap_or_default();
-                (names, v.typing.chats())
+                ((names, v.typing.chats()), v.typing.next_lapse())
             };
             if typing != last_typing {
                 self.ui.typing(typing.0.clone(), typing.1.clone());
                 last_typing = typing;
+            }
+            // A mark made since the render left a permit: `notified` returns at once then.
+            match lapse {
+                Some(at) => {
+                    tokio::select! {
+                        _ = self.render_wake.notified() => {}
+                        _ = tokio::time::sleep_until(at.into()) => {}
+                    }
+                }
+                None => self.render_wake.notified().await,
             }
         }
     }
@@ -135,6 +151,17 @@ impl Engine {
     }
 
     pub(super) fn avatar(self: &Arc<Self>, mri: &str) -> Option<Pixels> {
+        self.avatar_lookup(mri, false)
+    }
+
+    /// `avatar` for the chat list, the header and the messages, which are drawn again when a
+    /// photo arrives: a stored photo is decoded on the blocking pool, not on an async worker in
+    /// the middle of a render, and the views are marked once it is in the cache.
+    fn avatar_deferred(self: &Arc<Self>, mri: &str) -> Option<Pixels> {
+        self.avatar_lookup(mri, true)
+    }
+
+    fn avatar_lookup(self: &Arc<Self>, mri: &str, defer: bool) -> Option<Pixels> {
         if mri.is_empty() || mri.starts_with("28:") {
             return None;
         }
@@ -142,6 +169,7 @@ impl Engine {
         if let Some(p) = cache.get(mri) {
             return p.clone();
         }
+        // The empty entry also keeps the next lookups from starting the same work.
         cache.insert(mri.to_string(), None);
         drop(cache);
         // Stored avatar first, network second. A stored picture of the old 64-pixel size is
@@ -154,10 +182,16 @@ impl Engine {
             .ok()
             .flatten()
             .and_then(|u| u.avatar);
+        // Not in the statement above: `is_photo` takes the store's lock again.
+        let stored = stored.filter(|bytes| self.is_photo(mri, bytes));
+        if defer {
+            let e = self.clone();
+            let mri = mri.to_string();
+            tokio::spawn(async move { e.load_avatar(mri, stored).await });
+            return None;
+        }
         let mut shown = None;
-        if let Some(bytes) = stored
-            && self.is_photo(mri, &bytes)
-        {
+        if let Some(bytes) = stored {
             let px = decode_image(&bytes, AVATAR_PX, AVATAR_PX);
             self.avatars
                 .lock()
@@ -170,31 +204,59 @@ impl Engine {
         }
         let e = self.clone();
         let mri = mri.to_string();
-        tokio::spawn(async move {
-            if let Ok(bytes) = e.client.avatar(&e.me, &mri).await
-                && e.is_photo(&mri, &bytes)
-                && let Some(px) = decode_image(&bytes, AVATAR_PX, AVATAR_PX)
-            {
-                e.avatars.lock().unwrap().insert(mri.clone(), Some(px));
-                let st = e.store.lock().unwrap();
-                let mut u = st.user(&mri).ok().flatten().unwrap_or(UserRow {
-                    mri: mri.clone(),
-                    display_name: String::new(),
-                    email: None,
-                    avatar: None,
-                    updated_ms: 0,
-                });
-                u.avatar = Some(bytes);
-                let _ = st.upsert_user(&u);
-                drop(st);
-                e.mark(|d| {
+        tokio::spawn(async move { e.fetch_avatar(mri).await });
+        shown
+    }
+
+    /// Decodes a stored photo on the blocking pool, then downloads the sharp one when none is
+    /// stored or the stored one is of the old small size (in that order, so the sharp one wins).
+    async fn load_avatar(self: Arc<Self>, mri: String, stored: Option<Vec<u8>>) {
+        if let Some(bytes) = stored {
+            let low_res = avatar_is_low_res(&bytes);
+            let px =
+                tokio::task::spawn_blocking(move || decode_image(&bytes, AVATAR_PX, AVATAR_PX))
+                    .await
+                    .ok()
+                    .flatten();
+            if px.is_some() {
+                self.avatars.lock().unwrap().insert(mri.clone(), px);
+                self.mark(|d| {
                     d.chats = true;
                     d.messages = true;
                     d.header = true;
                 });
             }
-        });
-        shown
+            if !low_res {
+                return;
+            }
+        }
+        self.fetch_avatar(mri).await;
+    }
+
+    /// Downloads a person's photo into the cache and the store, and marks the views showing it.
+    async fn fetch_avatar(self: Arc<Self>, mri: String) {
+        if let Ok(bytes) = self.client.avatar(&self.me, &mri).await
+            && self.is_photo(&mri, &bytes)
+            && let Some(px) = decode_image(&bytes, AVATAR_PX, AVATAR_PX)
+        {
+            self.avatars.lock().unwrap().insert(mri.clone(), Some(px));
+            let st = self.store.lock().unwrap();
+            let mut u = st.user(&mri).ok().flatten().unwrap_or(UserRow {
+                mri: mri.clone(),
+                display_name: String::new(),
+                email: None,
+                avatar: None,
+                updated_ms: 0,
+            });
+            u.avatar = Some(bytes);
+            let _ = st.upsert_user(&u);
+            drop(st);
+            self.mark(|d| {
+                d.chats = true;
+                d.messages = true;
+                d.header = true;
+            });
+        }
     }
 
     /// False when `bytes` is the picture the service sends for people without a photo (see
@@ -489,7 +551,7 @@ impl Engine {
                     _ => initials(&r.title),
                 },
                 color: color_for(&r.id),
-                avatar: avatar_mri.and_then(|m| self.avatar(&m)).or(team_photo),
+                avatar: avatar_mri.and_then(|m| self.avatar_deferred(&m)).or(team_photo),
                 private: chan
                     .as_ref()
                     .is_some_and(|c| c.kind == teams_proto::teams::ChannelKind::Private),
@@ -658,7 +720,7 @@ impl Engine {
             person,
             initials: ini,
             color: color_for(&id),
-            avatar: avatar_mri.and_then(|m| self.avatar(&m)),
+            avatar: avatar_mri.and_then(|m| self.avatar_deferred(&m)),
             is_channel: kind == ConvKind::Channel,
             // Not known before the chat is stored: the header keeps the initials.
             kind: match (&row, kind) {
@@ -859,52 +921,37 @@ impl Engine {
         let mut prev: Option<&MessageRow> = None;
         // Where a file card opens (Settings > Files and links), read once and only when needed.
         let open_in = std::cell::OnceCell::new();
+        let mut built = 0usize;
         for (i, r) in visible.iter().copied().enumerate() {
             let system = system_text(r);
             let this_receipt = receipt.filter(|x| x.msg_id == r.id);
-            let props: Value =
-                serde_json::from_str(&r.reactions_json).unwrap_or_else(|_| json!({}));
             let mine = r.sender_mri == self.me;
             let shown = self.translated_html(&r.id);
             let html = shown.as_deref().unwrap_or(&r.content_html);
-            // Voice messages are drawn as players: their "▶ Play" link leaves the text.
-            let split = teams_proto::cards::split_voice(html);
-            let (html, voices) = match &split {
-                Some((rest, clips)) => (rest.as_str(), self.voice_rows(clips, mine)),
-                None => (html, Vec::new()),
-            };
-            // Video clips are drawn as clip cards: their tags and "▶ Play" links leave the text.
-            let clip_split = teams_proto::video_clip::split_video(html);
-            let (html, videos) = match &clip_split {
-                Some((rest, clips)) => (rest.as_str(), self.clip_rows(clips)),
-                None => (html, Vec::new()),
-            };
-            let mut rich = render::parse_teams_html(html);
-            // A URL typed or pasted as plain text is a link too.
-            render::linkify(&mut rich);
-            let urls = render::links(&rich);
-            let joins: Vec<String> = urls
-                .iter()
-                .filter(|u| render::is_meeting_link(u))
-                .cloned()
-                .collect();
-            let loops: Vec<LoopData> = urls
-                .iter()
-                .filter(|u| render::is_loop_link(u))
-                .map(|u| LoopData {
-                    url: u.clone(),
-                    title: render::loop_title(u),
-                })
-                .collect();
-            let mut parsed = render_blocks(&rich);
-            // Headings, tables and colors (the plan's 5.4): the richer model draws the body.
-            crate::markdown::upgrade_rich(&mut parsed, html);
+            // The text's parse is kept per row and version (`msg_memo`): only new or changed
+            // rows are parsed. Pictures, names and marks below are read on every build.
+            let version = msg_memo::version(r, html);
+            let memo = self.msg_memo.lock().unwrap().get(&r.id, version);
+            let text = memo.unwrap_or_else(|| {
+                built += 1;
+                let p = Arc::new(msg_memo::parse(html, &r.reactions_json));
+                self.msg_memo
+                    .lock()
+                    .unwrap()
+                    .insert(&r.id, version, p.clone());
+                p
+            });
+            let props = &text.props;
+            let voices = self.voice_rows(&text.voices, mine);
+            let videos = self.clip_rows(&text.videos);
+            let (urls, joins, loops) = (text.urls.clone(), text.joins.clone(), text.loops.clone());
+            let parsed = text.body.clone();
             let headline = props
                 .get("t")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let card = self.card_rows(&props, &headline);
+            let card = self.card_rows(props, &headline);
             let new_day = prev.is_none_or(|p| !same_day(p.compose_ms, r.compose_ms));
             let show_header = new_day
                 || divider == Some(i)
@@ -977,7 +1024,7 @@ impl Engine {
                 mine,
                 has_text,
             );
-            let mut links = self.link_cards(&props);
+            let mut links = self.link_cards(props);
             // A Loop component gets its own card instead of a link preview.
             links.retain(|l| !loops.iter().any(|x| x.url == l.url) && !joins.contains(&l.url));
             let sender = if r.sender_name.is_empty() {
@@ -999,7 +1046,7 @@ impl Engine {
                 // Every row of someone else carries the photo: the chat draws it on the first row
                 // of a group only (`show-header`), a card draws it on every row.
                 avatar: if !mine {
-                    self.avatar(&r.sender_mri)
+                    self.avatar_deferred(&r.sender_mri)
                 } else {
                     None
                 },
@@ -1046,7 +1093,7 @@ impl Engine {
                     String::new()
                 },
                 sender_id: r.sender_mri.clone(),
-                mentions_me: super::mentions::mentions_me(&props, &self.me),
+                mentions_me: super::mentions::mentions_me(props, &self.me),
                 receipt: this_receipt.map(|x| x.state.clone()).unwrap_or_default(),
                 receipt_names: this_receipt.map(|x| x.names.clone()).unwrap_or_default(),
                 receipt_readers: this_receipt.map(|x| x.readers.clone()).unwrap_or_default(),
@@ -1079,6 +1126,7 @@ impl Engine {
         }
         tracing::debug!(
             rows = out.len(),
+            built,
             us = started.elapsed().as_micros() as u64,
             "build_msgs"
         );
