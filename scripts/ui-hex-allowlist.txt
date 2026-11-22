@@ -83,6 +83,8 @@ organisms/chat_header.slint #e04a4f
 organisms/chat_header.slint #ffffff
 organisms/chat_list_extras.slint #00000060
 organisms/chat_list_extras.slint #ffffff
+organisms/communities_section.slint #0f7b5f
+organisms/communities_section.slint #ffffff
 organisms/composer_apps.slint #000000a0
 organisms/composer_apps.slint #2b2b2b
 organisms/composer_apps.slint #ffffff
@@ -166,11 +168,6 @@ organisms/sidebar.slint #ffd335
 organisms/teams_dialogs.slint #3b3d6b
 organisms/teams_dialogs.slint #7fd49a
 organisms/teams_dialogs.slint #ffffff
-organisms/teams_page.slint #00000090
-organisms/teams_page.slint #0f7b5f
-organisms/teams_page.slint #1e2f27
-organisms/teams_page.slint #3b1f22
-organisms/teams_page.slint #ffffff
 organisms/topbar.slint #00000080
 organisms/video_clip.slint #000000
 organisms/video_clip.slint #00000099
@@ -247,6 +244,10 @@ pages/settings_pages.slint #ca5010
 pages/settings.slint #00000080
 pages/settings.slint #00000099
 pages/settings.slint #ffffff
+pages/teams_page.slint #00000090
+pages/teams_page.slint #1e2f27
+pages/teams_page.slint #3b1f22
+pages/teams_page.slint #ffffff
 stores/calendar_store.slint #1c1c1c
 stores/calendar_store.slint #3a3a3a
 stores/calendar_store.slint #5b5fc7

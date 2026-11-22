@@ -1,5 +1,6 @@
-// "Your teams and channels": the Teams, Discover, Pending invites, Analytics and Communities tabs,
-// the team and channel menus, and the Communities section of the chat list.
+// "Your teams and channels": the Teams, Discover, Pending invites, Analytics and Communities tabs
+// and the channel menu. The team menu (organisms/team_menu.slint) and the chat list's Communities
+// section (organisms/communities_section.slint) live beside the chat list.
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
@@ -10,6 +11,7 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { SearchBox } from "../atoms/search_box.slint";
+import { TeamMenuItems } from "../organisms/team_menu.slint";
 
 component ChannelLine inherits Rectangle {
     in property <TChannel> c;
@@ -298,26 +300,6 @@ component CommunitiesTab inherits Rectangle {
     }
 }
 
-// The whole page, drawn over the area right of the rail. `go(id, title)` opens a channel in Teams.
-// The team menu, shared by "Your teams and channels" and the Teams list in the sidebar.
-export component TeamMenuItems inherits VerticalLayout {
-    in property <TTeam> t;
-    callback go(string, string);
-    // Closes the menu; called after each action.
-    callback done();
-    MenuItem { variant: MenuItemVariant.dialog; label: "Go to team"; clicked => { root.go(root.t.id, root.t.name); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "New channel"; clicked => { TeamsActions.open-dialog("new-channel", root.t.id, ""); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Add members"; clicked => { TeamsActions.open-dialog("members", root.t.id, ""); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Manage team"; clicked => { TeamsActions.open-dialog("manage-team", root.t.id, ""); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Manage team tags"; clicked => { TeamsActions.open-dialog("tags", root.t.id, ""); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", root.t.id, ""); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: root.t.shown ? "Hide team" : "Show team"; clicked => { TeamsStore.command("team-show", root.t.id + "\u{1f}" + (root.t.shown ? "0" : "1")); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Get link to team"; clicked => { TeamsStore.command("team-link", root.t.id); root.done(); } }
-    MenuItem { variant: MenuItemVariant.dialog; label: "Leave the team"; danger: true; clicked => { TeamsActions.confirm("Leave " + root.t.name + "?", "leave-team", root.t.id); root.done(); } }
-    if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: root.t.archived ? "Restore team from the archive" : "Archive team"; clicked => { TeamsActions.confirm((root.t.archived ? "Restore " : "Archive ") + root.t.name + "?", "team-archive", root.t.id + "\u{1f}" + (root.t.archived ? "0" : "1")); root.done(); } }
-    if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: "Delete the team"; danger: true; clicked => { TeamsActions.confirm("Delete " + root.t.name + "? Its group stays in the recycle bin for 30 days.", "team-delete", root.t.id); root.done(); } }
-}
-
 export component TeamsPage inherits Rectangle {
     callback go(string, string);
     background: Theme.main;
@@ -490,25 +472,5 @@ export component TeamsPage inherits Rectangle {
                 }
             }
         }
-    }
-}
-
-// The Communities section of the chat list: one row per community; a click opens its feed.
-export component CommunitiesSection inherits VerticalLayout {
-    callback open(string);
-    for c in TeamsStore.communities: Rectangle {
-        height: 40px;
-        border-radius: 4px;
-        background: ct.has-hover ? Theme.surface-hover : transparent;
-        accessible-role: list-item;
-        accessible-label: c.name;
-        accessible-action-default => { root.open(c.id); }
-        HorizontalLayout {
-            padding-left: 12px;
-            spacing: 10px;
-            Rectangle { width: 24px; height: 24px; y: 8px; border-radius: 12px; background: #0f7b5f; Text { text: "C"; color: #ffffff; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-            Text { text: c.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-        }
-        ct := TouchArea { mouse-cursor: pointer; clicked => { root.open(c.id); } }
     }
 }
