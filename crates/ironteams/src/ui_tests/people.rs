@@ -1387,7 +1387,9 @@ fn clicking_a_report_moves_the_chart_to_them_and_back_returns() {
     click(&find_label(&h.app, "Organization back")[0]);
     assert_eq!(org_focus_name(&h.app), "Report A");
 
-    // The manager is one click away too.
+    // Sara's manager is one click away from her card.
+    click(&find_label(&h.app, "Organization home")[0]);
+    assert_eq!(org_focus_name(&h.app), "Sara Hassan");
     click(&report_card(&h.app, "Omar Boss"));
     assert_eq!(org_focus_name(&h.app), "Omar Boss");
 }
