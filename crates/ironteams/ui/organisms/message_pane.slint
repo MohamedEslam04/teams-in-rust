@@ -7,7 +7,7 @@ import { ListView } from "std-widgets.slint";
 import { MessageRow } from "message_row.slint";
 import { Msg } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SkeletonMessages, Spinner } from "../tokens/motion.slint";
+import { Motion, SkeletonMessages, Spinner } from "../tokens/motion.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export component MessagePane inherits Rectangle {
@@ -119,7 +119,18 @@ export component MessagePane inherits Rectangle {
             self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
         }
         // The user scrolled (wheel, drag, scrollbar): that is never growth.
-        scrolled => { self.recheck(); }
+        scrolled => {
+            self.recheck();
+            Motion.scrolling = true;
+            scroll-idle.restart();
+        }
+        // The pane got taller or shorter (typing indicator, composer, window resize) while at
+        // the newest message: stay at it.
+        changed visible-height => {
+            if self.pinned && !self.aligning {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+        }
         changed content-height => {
             self.seen-height = self.content-height;
             if self.pinned && !self.aligning {
@@ -257,6 +268,15 @@ export component MessagePane inherits Rectangle {
             msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
         }
     }
+    // The user stopped scrolling.
+    scroll-idle := Timer {
+        interval: 250ms;
+        running: false;
+        triggered => {
+            Motion.scrolling = false;
+            self.running = false;
+        }
+    }
     Timer {
         interval: 700ms;
         running: msg-list.aligning;
@@ -270,8 +290,8 @@ export component MessagePane inherits Rectangle {
         height: 32px;
         border-radius: 16px;
         background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
-        drop-shadow-blur: 8px;
-        drop-shadow-color: #00000080;
+        border-width: 1px;
+        border-color: Theme.accent-strong;
         jump-text := Text {
             text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
             color: #ffffff;

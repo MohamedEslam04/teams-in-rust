@@ -22,6 +22,9 @@ export global Motion {
     // A section was just opened or closed by the user: the rows it creates slide open (rows that
     // exist at start-up, or after a refresh, are placed at once). The sidebar clears it.
     in-out property <bool> toggled: false;
+    // The user is scrolling a message list: rows that scroll into view are drawn in their final
+    // state at once, so their pop-ins (reactions, readers) do not replay for every row passed.
+    in-out property <bool> scrolling: false;
 }
 
 // Who is typing, as the backend reports it (`ui.rs` `typing`).
@@ -177,6 +180,7 @@ export component PopIn inherits Rectangle {
     transform-scale: root.shown ? 1.0 : root.from-scale;
     animate opacity { duration: Motion.fast; easing: ease-out; }
     animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    init => { if Motion.scrolling { root.shown = true; } }
     Timer {
         interval: 16ms;
         running: !root.shown;
@@ -236,7 +240,9 @@ export component TypingIndicator inherits Rectangle {
     changed now => {
         if root.now != "" { root.last = root.now; }
     }
-    height: 22px * root.fade;
+    // The height jumps (the list re-pins itself to the newest message); only the opacity fades, so
+    // the list's height is not animated frame by frame.
+    height: root.fade > 0.01 ? 22px : 0px;
     opacity: root.fade;
     clip: true;
     accessible-role: text;

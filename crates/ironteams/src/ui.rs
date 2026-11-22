@@ -44,6 +44,7 @@ mod palette;
 mod people;
 pub(crate) mod popout;
 mod remind;
+mod row_fingerprint;
 pub(crate) mod settings;
 mod teams;
 pub(crate) mod topbar;
@@ -51,6 +52,8 @@ mod voice;
 
 thread_local! {
     static MESSAGES: RefCell<Option<Rc<VecModel<Msg>>>> = const { RefCell::new(None) };
+    /// The fingerprint of each row of `MESSAGES` (see `row_fingerprint`), in the same order.
+    static MESSAGE_PRINTS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
 }
 
 fn rgb(c: u32) -> Color {
@@ -658,6 +661,12 @@ impl UiHandle {
                 // forgets the pointer resting on it until the pointer moves again, so its photo
                 // would not open the hover card.
                 let old = m.row_count();
+                let new_prints: Vec<u64> = msgs.iter().map(row_fingerprint::of).collect();
+                // The model was emptied elsewhere (another conversation opened): nothing is known.
+                let mut prints = MESSAGE_PRINTS.with(|p| std::mem::take(&mut *p.borrow_mut()));
+                if prints.len() != old {
+                    prints = vec![u64::MAX; old];
+                }
                 let id = |i: usize| m.row_data(i).map(|r| r.id).unwrap_or_default();
                 // Where the shared run starts in the old list (a) and in the new one (b).
                 let (a, b) = match msgs
@@ -686,24 +695,35 @@ impl UiHandle {
                     .count();
                 if run == 0 {
                     m.set_vec(msgs.into_iter().map(msg).collect::<Vec<_>>());
+                    prints = new_prints;
                 } else {
                     // Keep only the run, then add the new rows before and after it.
                     for _ in 0..a {
                         m.remove(0);
+                        prints.remove(0);
                     }
                     for _ in 0..old - a - run {
                         m.remove(run);
+                        prints.remove(run);
                     }
                     for (j, x) in msgs.into_iter().enumerate() {
                         if j < b {
                             m.insert(j, msg(x));
+                            prints.insert(j, new_prints[j]);
                         } else if j < b + run {
-                            m.set_row_data(j, msg(x));
+                            // A row that did not change is not written: writing it notifies
+                            // every binding of the row and parses its text again.
+                            if prints[j] != new_prints[j] {
+                                m.set_row_data(j, msg(x));
+                                prints[j] = new_prints[j];
+                            }
                         } else {
                             m.push(msg(x));
+                            prints.push(new_prints[j]);
                         }
                     }
                 }
+                MESSAGE_PRINTS.with(|p| *p.borrow_mut() = prints);
             });
             match scroll {
                 Scroll::Keep => {}

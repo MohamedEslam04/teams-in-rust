@@ -97,6 +97,7 @@ export component ReactionChip inherits Rectangle {
     transform-scale: root.shown ? 1.0 : 0.8;
     animate opacity { duration: Motion.fast; easing: ease-out; }
     animate transform-scale { duration: Motion.fast; easing: ease-out; }
+    init => { if Motion.scrolling { root.shown = true; } }
     Timer {
         interval: 16ms;
         running: !root.shown;

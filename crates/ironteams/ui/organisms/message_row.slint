@@ -39,6 +39,7 @@ component ReaderAvatar inherits Rectangle {
         animate x { duration: Motion.normal; delay: root.index * 60ms; easing: ease-out; }
         animate opacity { duration: Motion.normal; delay: root.index * 60ms; easing: ease-out; }
     }
+    init => { if Motion.scrolling { root.shown = true; } }
     Timer {
         interval: 16ms;
         running: !root.shown;
@@ -440,8 +441,6 @@ export component MessageRow inherits TouchArea {
                         background: Theme.surface;
                         border-width: 1px;
                         border-color: Theme.border;
-                        drop-shadow-blur: 6px;
-                        drop-shadow-color: #00000080;
                         actions := HorizontalLayout {
                             padding-left: 4px;
                             padding-right: 4px;
