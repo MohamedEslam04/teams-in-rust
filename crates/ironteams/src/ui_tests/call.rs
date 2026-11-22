@@ -931,6 +931,203 @@ fn the_gallery_keeps_tiles_16_by_9_and_centres_the_last_row() {
     );
 }
 
+/// `n` people in the call (and us last), by name `Person 01`...; their tiles' hover areas stand
+/// for the tiles, so their sizes are the tiles'.
+fn crowd(c: &CallHarness, n: usize) -> Vec<String> {
+    let names: Vec<String> = (1..=n).map(|k| format!("Person {k:02}")).collect();
+    c.fake.emit(Event::Roster(
+        names
+            .iter()
+            .map(|n| Person {
+                name: n.clone(),
+                mri: format!("8:orgid:example-{}", n.replace(' ', "-")),
+                ..Default::default()
+            })
+            .collect(),
+    ));
+    names
+}
+
+fn tiles(c: &CallHarness) -> Vec<ElementHandle> {
+    ElementHandle::find_by_element_id(&c.h.app, "Tile::hover").collect()
+}
+
+/// Seventeen people: the gallery shows sixteen (4 x 4) and a pager "1/2"; the next page has the
+/// 17th person alone in one large 16:9 tile.
+#[test]
+fn the_gallery_pages_sixteen_tiles_at_a_time_with_a_pager() {
+    let c = CallHarness::new();
+    c.connected();
+    let names = crowd(&c, 17);
+
+    assert_eq!(tiles(&c).len(), 16);
+    assert!(c.shows("Person 01") && c.shows("Person 16") && !c.shows("Person 17"));
+    c.with_role("1/2", AccessibleRole::Text);
+    assert_eq!(c.button("Previous page").accessible_enabled(), Some(false));
+    assert_eq!(c.button("Next page").accessible_enabled(), Some(true));
+    let small = tiles(&c)[0].size();
+
+    click(&c.button("Next page"));
+    c.with_role("2/2", AccessibleRole::Text);
+    assert_eq!(cs(&c.h.app).get_gallery_page(), 1);
+    assert_eq!(tiles(&c).len(), 1, "the 17th person is alone");
+    assert!(c.shows(&names[16]) && !c.shows("Person 01"));
+    let big = tiles(&c)[0].size();
+    assert!(
+        (big.width / big.height - 16. / 9.).abs() < 0.02,
+        "one 16:9 tile, got {} x {}",
+        big.width,
+        big.height
+    );
+    assert!(
+        big.width > small.width * 1.5,
+        "it fills the stage: {} against {}",
+        big.width,
+        small.width
+    );
+    assert_eq!(c.button("Next page").accessible_enabled(), Some(false));
+    assert_eq!(c.button("Previous page").accessible_enabled(), Some(true));
+
+    click(&c.button("Previous page"));
+    c.with_role("1/2", AccessibleRole::Text);
+    assert_eq!(tiles(&c).len(), 16);
+    assert!(c.shows("Person 01") && !c.shows("Person 17"));
+}
+
+#[test]
+fn one_page_has_no_pager_and_a_page_that_loses_its_people_gives_way() {
+    let c = CallHarness::new();
+    c.connected();
+    crowd(&c, 16);
+    assert_eq!(tiles(&c).len(), 16);
+    assert!(!c.shows("Next page"), "sixteen people fit one page");
+
+    crowd(&c, 17);
+    click(&c.button("Next page"));
+    assert_eq!(tiles(&c).len(), 1);
+    // The 17th leaves while we look at their page: back to the last page there is.
+    crowd(&c, 16);
+    assert_eq!(cs(&c.h.app).get_gallery_page(), 0);
+    assert_eq!(tiles(&c).len(), 16);
+    assert!(!c.shows("Next page"));
+}
+
+fn tile_menu_roster(c: &CallHarness) {
+    let p = |mri: &str, name: &str, me, spoke| Person {
+        mri: mri.into(),
+        name: name.into(),
+        me,
+        spoke,
+        speaking: spoke > 0,
+        ..Default::default()
+    };
+    c.fake.emit(Event::Roster(vec![
+        p("8:orgid:ada", "Ada Lovelace", false, 9),
+        p("8:orgid:bo", "Bo Ström", false, 0),
+        p("8:orgid:me", "Me", true, 0),
+    ]));
+}
+
+#[test]
+fn the_tile_menu_offers_pin_and_shows_what_the_call_cannot_do_yet_as_disabled() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    assert!(!c.shows("Pin for me"));
+
+    click(&c.button("More options for Bo Ström"));
+    let pin = c.row("Pin for me");
+    assert_eq!(pin.accessible_enabled(), Some(true));
+    for label in ["Mute participant", "Spotlight for everyone"] {
+        assert_eq!(c.row(label).accessible_enabled(), Some(false), "{label}");
+    }
+    assert!(!c.shows("Report"), "there is no API for it");
+    // The disabled rows do nothing.
+    let asked = c.sent().len();
+    click(&c.row("Mute participant"));
+    assert!(c.shows("Pin for me"), "the menu stays open");
+    assert_eq!(c.sent().len(), asked, "nothing was asked of the call");
+
+    // A click outside closes it; our own tile only offers Pin.
+    click(&c.button("More options for Me"));
+    assert!(!c.shows("Pin for me"));
+    click(&c.button("More options for Me"));
+    assert!(c.shows("Pin for me"));
+    assert!(!c.shows("Mute participant") && !c.shows("Spotlight for everyone"));
+}
+
+#[test]
+fn pinning_a_person_makes_their_tile_the_large_one_until_unpinned() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    assert!(!c.shows("Pinned: Bo Ström"));
+    assert_eq!(tiles(&c).len(), 3, "the gallery");
+
+    click(&c.button("More options for Bo Ström"));
+    click(&c.row("Pin for me"));
+    assert_eq!(cs(&c.h.app).get_pinned(), "8:orgid:bo");
+    assert!(!c.shows("Pin for me"), "picking closes the menu");
+    let big = c.with_role("Pinned: Bo Ström", AccessibleRole::Text);
+    assert!(
+        !c.shows("Active speaker: Ada Lovelace"),
+        "Ada speaks, but Bo is pinned"
+    );
+    c.with_role("Pinned", AccessibleRole::Image);
+    let bottom = big.absolute_position().y + big.size().height;
+    for other in ["Ada Lovelace", "Me (You)"] {
+        assert!(
+            c.all(other)[0].absolute_position().y >= bottom,
+            "{other} is in the strip"
+        );
+    }
+    assert_eq!(c.all("Bo Ström").len(), 1, "not shown twice");
+
+    // While pinned the menu says Unpin; it returns to the gallery.
+    click(&c.button("More options for Bo Ström"));
+    assert!(!c.shows("Pin for me"));
+    click(&c.row("Unpin"));
+    assert_eq!(cs(&c.h.app).get_pinned(), "");
+    assert!(!c.shows("Pinned: Bo Ström") && !c.shows("Pinned"));
+    assert_eq!(tiles(&c).len(), 3, "the gallery is back");
+    assert_eq!(cs(&c.h.app).get_view_mode(), "gallery");
+}
+
+#[test]
+fn a_pin_ends_when_the_person_leaves_and_when_a_view_is_picked() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    click(&c.button("More options for Bo Ström"));
+    click(&c.row("Pin for me"));
+    c.with_role("Pinned: Bo Ström", AccessibleRole::Text);
+
+    // Bo leaves.
+    c.fake.emit(Event::Roster(vec![
+        Person {
+            mri: "8:orgid:ada".into(),
+            name: "Ada Lovelace".into(),
+            ..Default::default()
+        },
+        Person {
+            mri: "8:orgid:me".into(),
+            name: "Me".into(),
+            me: true,
+            ..Default::default()
+        },
+    ]));
+    assert_eq!(cs(&c.h.app).get_pinned(), "");
+    assert_eq!(tiles(&c).len(), 2, "the gallery");
+
+    // Picking a view in the View menu unpins too.
+    click(&c.button("More options for Ada Lovelace"));
+    click(&c.row("Pin for me"));
+    assert_eq!(cs(&c.h.app).get_pinned(), "8:orgid:ada");
+    click(&c.button("View"));
+    click(&view_item(&c, "Gallery"));
+    assert_eq!(cs(&c.h.app).get_pinned(), "");
+    assert_eq!(tiles(&c).len(), 2);
+}
 #[test]
 fn photos_replace_the_initials_of_the_people_who_have_one() {
     use slint::Model;

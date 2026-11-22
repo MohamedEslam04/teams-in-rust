@@ -52,6 +52,8 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
         s.set_minimized(false);
         s.set_menu(SharedString::new());
         s.set_view_mode("gallery".into());
+        s.set_gallery_page(0);
+        s.set_pinned(SharedString::new());
         if d.phase.is_empty() {
             s.set_panel(SharedString::new());
         }
@@ -125,6 +127,11 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     s.set_can_rejoin(d.can_rejoin);
     s.set_held_name(d.held_name.into());
     s.set_in_call(int(d.in_call));
+    s.set_gallery_page(clamp_page(
+        s.get_gallery_page(),
+        d.in_call,
+        s.get_gallery_per_page(),
+    ));
     s.set_in_lobby(int(d.in_lobby));
     s.set_can_admit(d.can_admit);
     let images = photo_images(&photos);
@@ -141,15 +148,17 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
             .collect(),
     ));
     s.set_mini_more(int(more));
-    let speakers = speaker_order(&d.people);
-    let speakers_owner = video_owner(&speakers);
-    s.set_speaker_people(model(
-        speakers
-            .into_iter()
-            .enumerate()
-            .map(|(i, p)| call_person(p, &images, Some(i) == speakers_owner))
-            .collect(),
-    ));
+    // Somebody who left is no longer pinned.
+    if !pin_holds(&s.get_pinned(), &d.people) {
+        s.set_pinned(SharedString::new());
+    }
+    let last = Last {
+        people: d.people.clone(),
+        images: images.clone(),
+        live: live.clone(),
+    };
+    fill_speakers(&s, &last);
+    LAST.with(|l| *l.borrow_mut() = Some(last));
     let owner = video_owner(&d.people);
     s.set_people(model(
         d.people
@@ -314,6 +323,53 @@ fn video_owner(people: &[Person]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// What the speaker view is built from, kept so pinning (a window-side choice) can rebuild it
+/// without waiting for the next roster.
+struct Last {
+    people: Vec<Person>,
+    images: HashMap<String, Image>,
+    live: HashMap<String, &'static str>,
+}
+
+thread_local! {
+    static LAST: RefCell<Option<Last>> = const { RefCell::new(None) };
+}
+
+/// Fills the speaker view's people: the pinned person first, else the latest speaker.
+fn fill_speakers(s: &CallStore, last: &Last) {
+    let speakers = speaker_order(&last.people, &s.get_pinned());
+    let owner = video_owner(&speakers);
+    s.set_speaker_people(model(
+        speakers
+            .into_iter()
+            .enumerate()
+            .map(|(i, p)| reacting(call_person(p, &last.images, Some(i) == owner), &last.live))
+            .collect(),
+    ));
+}
+
+/// Pins `mri` for us ("" unpins) and rebuilds the speaker view around it.
+fn pin(s: &CallStore, mri: &str) {
+    s.set_pinned(mri.into());
+    LAST.with(|l| {
+        if let Some(last) = l.borrow().as_ref() {
+            fill_speakers(s, last);
+        }
+    });
+}
+
+/// The gallery page to show: `page`, at most the last of the pages `in_call` people fill.
+fn clamp_page(page: i32, in_call: usize, per_page: i32) -> i32 {
+    let per_page = usize::try_from(per_page).unwrap_or(1).max(1);
+    let last = int(in_call.div_ceil(per_page).max(1) - 1);
+    page.clamp(0, last)
+}
+
+/// The pinned person (an MRI, "" for nobody) is still in the call.
+fn pin_holds(pinned: &str, people: &[Person]) -> bool {
+    pinned.is_empty() || people.iter().any(|p| !p.lobby && p.mri == pinned)
+}
+
 /// The floating call shows at most this many tiles.
 const MINI_TILES: usize = 4;
 
@@ -330,15 +386,20 @@ fn mini_people(people: &[Person]) -> (Vec<Person>, usize) {
     (others.into_iter().take(MINI_TILES).cloned().collect(), more)
 }
 
-/// Who the speaker view shows, in-call people only: the latest speaker first (somebody else rather
-/// than us until anyone speaks), then everyone else in the call's order.
-fn speaker_order(people: &[Person]) -> Vec<Person> {
+/// Who the speaker view shows, in-call people only: the pinned person first, else the latest
+/// speaker (somebody else rather than us until anyone speaks), then everyone else in the call's
+/// order.
+fn speaker_order(people: &[Person], pinned: &str) -> Vec<Person> {
     let mut v: Vec<&Person> = people.iter().filter(|p| !p.lobby).collect();
-    let lead = v
-        .iter()
-        .enumerate()
-        .max_by_key(|(i, p)| (p.spoke, !p.me, std::cmp::Reverse(*i)))
-        .map(|(i, _)| i);
+    let at = (!pinned.is_empty())
+        .then(|| v.iter().position(|p| p.mri == pinned))
+        .flatten();
+    let lead = at.or_else(|| {
+        v.iter()
+            .enumerate()
+            .max_by_key(|(i, p)| (p.spoke, !p.me, std::cmp::Reverse(*i)))
+            .map(|(i, _)| i)
+    });
     if let Some(i) = lead {
         let p = v.remove(i);
         v.insert(0, p);
@@ -351,6 +412,12 @@ fn speaker_order(people: &[Person]) -> Vec<Person> {
 pub fn wire(window: &AppWindow) {
     let s = window.global::<CallStore>();
     s.on_is_meeting_chat(|id| is_meeting_chat(&id));
+    let weak = window.as_weak();
+    s.on_pin(move |mri| {
+        if let Some(w) = weak.upgrade() {
+            pin(&w.global::<CallStore>(), &mri);
+        }
+    });
     #[cfg(feature = "calls")]
     s.set_camera_available(crate::backend::call::camera::wanted());
     #[cfg(feature = "calls")]
@@ -519,7 +586,10 @@ mod tests {
             p("Bo", false, false, 7),
             p("Di", false, false, 0),
         ];
-        assert_eq!(names(&speaker_order(&people)), ["Bo", "Me", "Ada", "Di"]);
+        assert_eq!(
+            names(&speaker_order(&people, "")),
+            ["Bo", "Me", "Ada", "Di"]
+        );
     }
 
     #[test]
@@ -529,15 +599,62 @@ mod tests {
             p("Ada", false, false, 0),
             p("Bo", false, false, 0),
         ];
-        assert_eq!(names(&speaker_order(&people)), ["Ada", "Me", "Bo"]);
-        assert_eq!(names(&speaker_order(&people[..1])), ["Me"]);
-        assert!(speaker_order(&[]).is_empty());
+        assert_eq!(names(&speaker_order(&people, "")), ["Ada", "Me", "Bo"]);
+        assert_eq!(names(&speaker_order(&people[..1], "")), ["Me"]);
+        assert!(speaker_order(&[], "").is_empty());
     }
 
     #[test]
     fn we_lead_the_speaker_view_when_we_spoke_last() {
         let people = [p("Ada", false, false, 2), p("Me", true, false, 5)];
-        assert_eq!(names(&speaker_order(&people)), ["Me", "Ada"]);
+        assert_eq!(names(&speaker_order(&people, "")), ["Me", "Ada"]);
+    }
+
+    #[test]
+    fn a_pinned_person_leads_the_speaker_view_whoever_speaks() {
+        let mut people = [
+            p("Me", true, false, 0),
+            p("Ada", false, false, 9),
+            p("Bo", false, false, 0),
+            p("Cy", false, true, 0),
+        ];
+        people[2].mri = "8:orgid:bo".into();
+        people[3].mri = "8:orgid:cy".into();
+        assert_eq!(
+            names(&speaker_order(&people, "8:orgid:bo")),
+            ["Bo", "Me", "Ada"]
+        );
+        // Nobody pinned, an unknown MRI or one waiting in the lobby: the latest speaker leads.
+        for pinned in ["", "8:orgid:nobody", "8:orgid:cy"] {
+            assert_eq!(names(&speaker_order(&people, pinned))[0], "Ada");
+        }
+    }
+
+    #[test]
+    fn a_pin_holds_while_its_person_is_in_the_call() {
+        let mut people = [p("Ada", false, false, 0), p("Bo", false, true, 0)];
+        people[0].mri = "8:orgid:ada".into();
+        people[1].mri = "8:orgid:bo".into();
+        assert!(pin_holds("", &people));
+        assert!(pin_holds("8:orgid:ada", &people));
+        assert!(
+            !pin_holds("8:orgid:bo", &people),
+            "the lobby is not the call"
+        );
+        assert!(!pin_holds("8:orgid:gone", &people));
+    }
+
+    #[test]
+    fn the_gallery_page_never_passes_the_last_page() {
+        // 17 people at 16 a page: two pages.
+        assert_eq!(clamp_page(0, 17, 16), 0);
+        assert_eq!(clamp_page(1, 17, 16), 1);
+        assert_eq!(clamp_page(2, 17, 16), 1);
+        // The 17th left: back to one page.
+        assert_eq!(clamp_page(1, 16, 16), 0);
+        assert_eq!(clamp_page(1, 0, 16), 0);
+        assert_eq!(clamp_page(-1, 40, 16), 0);
+        assert_eq!(clamp_page(5, 40, 16), 2);
     }
 
     #[test]

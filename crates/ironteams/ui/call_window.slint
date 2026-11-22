@@ -369,15 +369,23 @@ component Tile inherits Rectangle {
     in property <CallPerson> p;
     // The avatar's size, at most (the speaker view's large tile has a bigger one).
     in property <length> avatar-size: 96px;
+    // Hovering shows a "…" button after the name (Pin, and what a person's tile offers); the floating
+    // call's tiles have none.
+    in property <bool> menu-enabled: false;
+    // The "…" button was pressed: the person and where its top left is in the window.
+    callback more-clicked(CallPerson, length, length);
     // Our camera in our tile, the other side's video in theirs: their meeting gallery slot, else
     // the call's one remote picture.
     property <bool> self-view: root.p.me && CallStore.camera && CallStore.has-self-view;
     property <bool> gallery: !root.p.me && root.p.gallery-slot > 0
         && CallStore.slot-videos[root.p.gallery-slot - 1].shown;
     property <bool> remote: !root.p.me && !root.gallery && root.p.video && CallStore.has-remote-video;
+    property <bool> pinned: root.p.id != "" && CallStore.pinned == root.p.id;
     border-radius: 8px;
     clip: true;
     background: Theme.surface;
+    // Under everything: only tells whether the pointer is over the tile.
+    hover := TouchArea { enabled: root.menu-enabled; }
     if root.self-view || root.gallery || root.remote: Image {
         source: root.self-view ? CallStore.self-view
             : root.gallery ? CallStore.slot-videos[root.p.gallery-slot - 1].frame
@@ -396,8 +404,8 @@ component Tile inherits Rectangle {
         x: (root.width - self.width) / 2;
         y: (root.height - self.height) / 2;
     }
-    // The name in a dark pill at the bottom left: the name, then muted, then the raised hand.
-    Rectangle {
+    // The name in a dark pill at the bottom left: the name, then pinned, muted, then the raised hand.
+    pill := Rectangle {
         x: 8px;
         y: root.height - self.height - 8px;
         height: 24px;
@@ -414,6 +422,18 @@ component Tile inherits Rectangle {
                 font-size: 12px * Theme.font-scale;
                 overflow: elide;
                 vertical-alignment: center;
+            }
+            if root.pinned: Rectangle {
+                width: 16px;
+                accessible-role: image;
+                accessible-label: @tr("Pinned");
+                Icon {
+                    source: @image-url("icons/pin.svg");
+                    tint: Theme.fg;
+                    width: 16px;
+                    height: 16px;
+                    y: (parent.height - self.height) / 2;
+                }
             }
             if root.p.muted: Rectangle {
                 width: 16px;
@@ -435,6 +455,37 @@ component Tile inherits Rectangle {
                 }
             }
         }
+    }
+    // "…" right after the pill, while the pointer is over the tile. Always there for the screen
+    // reader, which has no hover.
+    more := Rectangle {
+        visible: root.menu-enabled;
+        x: min(pill.x + pill.width + 4px, root.width - self.width - 8px);
+        y: pill.y;
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        background: more-touch.has-hover ? #000000cc : #00000099;
+        opacity: hover.has-hover || more-touch.has-hover ? 1 : 0;
+        accessible-role: button;
+        accessible-label: @tr("More options for {}", root.p.name);
+        accessible-action-default => { root.open-more(); }
+        Icon {
+            source: @image-url("icons/more.svg");
+            tint: Theme.fg;
+            width: 16px;
+            height: 16px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+        more-touch := TouchArea {
+            enabled: root.menu-enabled;
+            mouse-cursor: pointer;
+            clicked => { root.open-more(); }
+        }
+    }
+    function open-more() {
+        root.more-clicked(root.p, more.absolute-position.x, more.absolute-position.y);
     }
     // Their live reaction, in the corner while it floats.
     if root.p.reaction != "": Text {
@@ -602,10 +653,201 @@ component SharingBanner inherits Rectangle {
     }
 }
 
+// One row of a tile's "…" menu: a 16px icon and a label. The keyboard-focused row has a white
+// outline.
+component TileMenuRow inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <string> why;
+    in property <bool> enabled: true;
+    // Drawn with the keyboard focus outline.
+    in property <bool> ring: false;
+    callback activated();
+    height: 36px;
+    border-radius: 4px;
+    border-width: root.ring && root.enabled ? 1px : 0px;
+    border-color: #ffffff;
+    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    accessible-role: list-item;
+    accessible-label: root.label;
+    accessible-description: root.why;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.activated();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        opacity: root.enabled ? 1 : 0.4;
+        Icon {
+            source: root.icon;
+            tint: Theme.fg;
+            width: 16px;
+            height: 16px;
+            y: (root.height - self.height) / 2;
+        }
+        Text {
+            text: root.label;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if root.enabled {
+                root.activated();
+            }
+        }
+    }
+}
+
+// What a tile's "…" button opens, as Teams: Mute participant, Pin for me (Unpin while pinned),
+// Spotlight for everyone. Mute and Spotlight stay disabled: the calling crate has no request for
+// them yet (see `signaling/controls.rs`). Our own tile only offers Pin. No Report: no API.
+component TileMenu inherits Rectangle {
+    in property <CallPerson> p;
+    callback close();
+    // Set by the first arrow or Tab key, so the outline shows for keyboard users only.
+    property <bool> keys: false;
+    property <bool> pinned: root.p.id != "" && CallStore.pinned == root.p.id;
+    property <bool> can-pin: root.pinned || root.p.id != "";
+    function pin() {
+        if root.can-pin {
+            CallStore.pin(root.pinned ? "" : root.p.id);
+            root.close();
+        }
+    }
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000080;
+    accessible-role: groupbox;
+    accessible-label: @tr("Options for {}", root.p.name);
+    scope := FocusScope {
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.close();
+                return accept;
+            }
+            if e.text == Key.Return {
+                root.pin();
+                return accept;
+            }
+            if e.text == Key.UpArrow || e.text == Key.DownArrow || e.text == Key.Tab {
+                root.keys = true;
+                return accept;
+            }
+            return reject;
+        }
+        VerticalLayout {
+            padding: 4px;
+            if !root.p.me: TileMenuRow {
+                icon: @image-url("icons/mic-off.svg");
+                label: @tr("Mute participant");
+                why: @tr("Not available yet");
+                enabled: false;
+            }
+            TileMenuRow {
+                icon: @image-url("icons/pin.svg");
+                label: root.pinned ? @tr("Unpin") : @tr("Pin for me");
+                enabled: root.can-pin;
+                ring: root.keys && scope.has-focus;
+                activated => { root.pin(); }
+            }
+            if !root.p.me: TileMenuRow {
+                icon: @image-url("icons/star.svg");
+                label: @tr("Spotlight for everyone");
+                why: @tr("Not available yet");
+                enabled: false;
+            }
+        }
+    }
+}
+
+// The small arrows of the gallery pager.
+component PagerArrow inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    opacity: root.enabled ? 1 : 0.35;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+    Icon {
+        source: root.icon;
+        tint: Theme.fg;
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// "‹ 1/2 ›" under the gallery when it has more than one page.
+component GalleryPager inherits Rectangle {
+    in property <int> page;
+    in property <int> pages;
+    width: row.preferred-width;
+    height: 28px;
+    row := HorizontalLayout {
+        spacing: 6px;
+        PagerArrow {
+            icon: @image-url("icons/chevron-left.svg");
+            label: @tr("Previous page");
+            enabled: root.page > 0;
+            clicked => { CallStore.gallery-page = root.page - 1; }
+        }
+        Text {
+            text: @tr("{}/{}", root.page + 1, root.pages);
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+        }
+        PagerArrow {
+            icon: @image-url("icons/chevron-right.svg");
+            label: @tr("Next page");
+            enabled: root.page < root.pages - 1;
+            clicked => { CallStore.gallery-page = root.page + 1; }
+        }
+    }
+}
+
 // What fills the middle: the lobby, connecting, the participants' tiles, or a shared screen.
 component Stage inherits Rectangle {
     property <bool> content: CallStore.view-mode == "content" && CallStore.content-shared();
-    property <int> count: max(1, min(CallStore.in-call, 16));
+    // The gallery's pages of `gallery-per-page` tiles: the page shown (never past the last one)
+    // and the people on it. A pinned person makes it the speaker view.
+    property <int> pages: max(1, Math.ceil(CallStore.in-call / CallStore.gallery-per-page));
+    property <int> page: max(0, min(CallStore.gallery-page, root.pages - 1));
+    property <int> page-start: root.page * CallStore.gallery-per-page;
+    property <bool> speaker: CallStore.view-mode == "speaker" || CallStore.pinned != "";
+    property <int> count: max(1, min(CallStore.gallery-per-page, CallStore.in-call - root.page-start));
+    // The room the pager takes under the tiles.
+    property <length> pager-h: root.pages > 1 ? 36px : 0px;
     property <int> cols: count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
     property <int> rows: Math.ceil(count / cols);
     property <length> gap: 8px;
@@ -614,7 +856,7 @@ component Stage inherits Rectangle {
     // Tiles are always 16:9: as wide as the width allows, shrunk when the height is the limit.
     property <length> tile-h: max(0px, min(
         (root.width - 32px - (cols - 1) * gap) / cols * 9 / 16,
-        (root.height - top - 32px - (rows - 1) * gap) / rows));
+        (root.height - top - pager-h - 32px - (rows - 1) * gap) / rows));
     property <length> tile-w: tile-h * 16 / 9;
     property <length> grid-h: rows * tile-h + (rows - 1) * gap;
     // How many tiles the last row has, so it is centred like the others.
@@ -625,6 +867,25 @@ component Stage inherits Rectangle {
     property <length> strip-h: min(120px, root.height / 4);
     property <length> strip-w: min(strip-h * 16 / 9, (root.width - 32px - max(0, strip-n - 1) * gap) / max(1, strip-n));
     background: Theme.main;
+    // A tile's "…" menu: whose, where its button is in the stage, and where the menu goes: under
+    // the button, above it when that does not fit.
+    property <bool> menu-open: false;
+    property <CallPerson> menu-p;
+    property <length> anchor-x;
+    property <length> anchor-y;
+    property <length> menu-w: 240px;
+    // Rows of 36px (TileMenuRow) in 4px of padding.
+    property <length> menu-h: (root.menu-p.me ? 1 : 3) * 36px + 8px;
+    property <length> menu-x: max(8px, min(root.anchor-x, root.width - root.menu-w - 8px));
+    property <length> menu-y: root.anchor-y + 28px + root.menu-h > root.height - 8px
+        ? max(8px, root.anchor-y - root.menu-h - 4px)
+        : root.anchor-y + 28px;
+    function open-menu(p: CallPerson, ax: length, ay: length) {
+        root.menu-p = p;
+        root.anchor-x = ax - root.absolute-position.x;
+        root.anchor-y = ay - root.absolute-position.y;
+        root.menu-open = true;
+    }
     if CallStore.phase == "lobby" || CallStore.phase == "connecting": VerticalLayout {
         alignment: center;
         spacing: 14px;
@@ -664,30 +925,43 @@ component Stage inherits Rectangle {
             y: 12px;
             width: root.width - 32px;
         }
-        // Gallery, also for "content" while nobody shares.
-        if !root.content && CallStore.view-mode != "speaker": Rectangle {
-            for p[i] in CallStore.people: Tile {
-                visible: i < root.count;
-                p: p;
-                width: root.tile-w;
-                height: root.tile-h;
-                // Each row is centred: a full one has `cols` tiles, the last one what remains.
-                x: (root.width - root.row-w(Math.floor(i / root.cols) == root.rows - 1 ? root.last-n : root.cols)) / 2
-                    + Math.mod(i, root.cols) * (root.tile-w + root.gap);
-                y: root.top + (root.height - root.top - root.grid-h) / 2
-                    + Math.floor(i / root.cols) * (root.tile-h + root.gap);
+        // Gallery, also for "content" while nobody shares: one page of it.
+        if !root.content && !root.speaker: Rectangle {
+            for p[i] in CallStore.people: Rectangle {
+                if i >= root.page-start && i < root.page-start + root.count && i < CallStore.in-call: Tile {
+                    p: p;
+                    menu-enabled: true;
+                    more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+                    width: root.tile-w;
+                    height: root.tile-h;
+                    // Each row is centred: a full one has `cols` tiles, the last one what remains.
+                    x: (root.width - root.row-w(Math.floor((i - root.page-start) / root.cols) == root.rows - 1 ? root.last-n : root.cols)) / 2
+                        + Math.mod(i - root.page-start, root.cols) * (root.tile-w + root.gap);
+                    y: root.top + (root.height - root.top - root.pager-h - root.grid-h) / 2
+                        + Math.floor((i - root.page-start) / root.cols) * (root.tile-h + root.gap);
+                }
             }
         }
-        if !root.content && CallStore.view-mode == "speaker" && CallStore.speaker-people.length > 0: Rectangle {
+        if !root.content && !root.speaker && root.pages > 1: GalleryPager {
+            x: (root.width - self.width) / 2;
+            y: root.height - self.height - 4px;
+            page: root.page;
+            pages: root.pages;
+        }
+        if !root.content && root.speaker && CallStore.speaker-people.length > 0: Rectangle {
             Tile {
                 p: CallStore.speaker-people[0];
                 avatar-size: 128px;
+                menu-enabled: true;
+                more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
                 x: 16px;
                 y: 16px + root.top;
                 width: root.width - 32px;
                 height: root.height - root.top - 32px - (root.strip-n > 0 ? root.strip-h + root.gap : 0px);
                 accessible-role: text;
-                accessible-label: "Active speaker: " + CallStore.speaker-people[0].name;
+                accessible-label: CallStore.pinned != "" && CallStore.pinned == CallStore.speaker-people[0].id
+                    ? @tr("Pinned: {}", CallStore.speaker-people[0].name)
+                    : "Active speaker: " + CallStore.speaker-people[0].name;
             }
             for p[i] in CallStore.speaker-people: Rectangle {
                 x: (root.width - root.strip-n * root.strip-w - (root.strip-n - 1) * root.gap) / 2
@@ -695,9 +969,27 @@ component Stage inherits Rectangle {
                 y: root.height - 16px - root.strip-h;
                 width: root.strip-w;
                 height: root.strip-h;
-                if i > 0 && i <= root.strip-n: Tile { p: p; }
+                if i > 0 && i <= root.strip-n: Tile {
+                    p: p;
+                    menu-enabled: true;
+                    more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+                }
             }
         }
+    }
+    // The tile menu over everything on the stage; a click outside closes it.
+    if root.menu-open && CallStore.phase == "connected": TouchArea {
+        width: root.width;
+        height: root.height;
+        clicked => { root.menu-open = false; }
+    }
+    if root.menu-open && CallStore.phase == "connected": TileMenu {
+        p: root.menu-p;
+        x: root.menu-x;
+        y: root.menu-y;
+        width: root.menu-w;
+        height: root.menu-h;
+        close => { root.menu-open = false; }
     }
 }
 
@@ -731,6 +1023,7 @@ component ViewMenu inherits Rectangle {
             accessible-action-default => {
                 if self.enabled {
                     CallStore.view-mode = item.mode;
+                    CallStore.pin("");
                     CallStore.menu = "";
                 }
             }
@@ -757,6 +1050,7 @@ component ViewMenu inherits Rectangle {
                 clicked => {
                     if parent.enabled {
                         CallStore.view-mode = item.mode;
+                        CallStore.pin("");
                         CallStore.menu = "";
                     }
                 }
