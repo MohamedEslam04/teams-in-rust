@@ -19,6 +19,7 @@ import { ComposerAttachments } from "composer_attachments.slint";
 import { ImportanceTag } from "composer_importance.slint";
 import { EmojiSuggestions, EmojiPanel, ComposerMoreMenu, AttachMenu } from "composer_popups.slint";
 import { EmojiApi } from "../stores/emoji_api.slint";
+import { ComposerToolbar } from "composer_toolbar.slint";
 export { EmojiApi } from "../stores/emoji_api.slint";
 
 export component Composer inherits Rectangle {
@@ -442,39 +443,18 @@ export component Composer inherits Rectangle {
                         color: Theme.fg-subtle;
                     }
                 }
-                HorizontalLayout {
-                    padding-left: 8px;
-                    padding-right: 8px;
-                    padding-bottom: 6px;
-                    spacing: 2px;
-                    alignment: end;
-                    FormatToggle { on: root.format-open; clicked => { root.format-open = !root.format-open; } }
-                    IconButton { icon: @image-url("../icons/emoji.svg"); clicked => { root.emoji-query = ""; emoji-popup.show(); } }
-                    IconButton { icon: @image-url("../icons/attach.svg"); tooltip: @tr("Attach file"); clicked => { attach-popup.show(); } }
-                    IconButton { icon: @image-url("../icons/more.svg"); clicked => { more-popup.show(); } }
-                    if !root.narrow-bar: IconButton {
-                        icon: @image-url("../icons/gif.svg");
-                        tooltip: @tr("GIF");
-                        clicked => { root.open-gifs(); }
-                    }
-                    if !root.narrow-bar: IconButton {
-                        icon: @image-url("../icons/loop.svg");
-                        tooltip: @tr("Loop paragraph");
-                        active: LoopStore.open;
-                        clicked => { LoopStore.open = true; }
-                    }
-                    ComposerAppsButton { }
-                    IconButton {
-                        icon: @image-url("../icons/mic.svg");
-                        tooltip: @tr("Record a voice message (Ctrl+Shift+R)");
-                        clicked => { VoiceRecStore.start(); }
-                    }
-                    Rectangle { width: 1px; background: Theme.border; }
-                    SendButton {
-                        ready: composer-input.text != "" || root.pending-attachments.length > 0 || LoopStore.open;
-                        send => { root.submit(); }
-                        options => { send-popup.show(); }
-                    }
+                ComposerToolbar {
+                    emoji-query <=> root.emoji-query;
+                    format-open <=> root.format-open;
+                    narrow-bar: root.narrow-bar;
+                    open-gifs => { root.open-gifs(); }
+                    pending-attachments: root.pending-attachments;
+                    submit => { root.submit(); }
+                    has-text: composer-input.text != "";
+                    show-emoji => { emoji-popup.show(); }
+                    show-attach => { attach-popup.show(); }
+                    show-more => { more-popup.show(); }
+                    show-send-options => { send-popup.show(); }
                 }
             }
             Rectangle {
