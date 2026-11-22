@@ -1,19 +1,33 @@
-// A channel's Posts tab like Teams (plan 8.4): every post is a card with its replies inline
-// (the first two, then "See N more replies"), "Reply" opens an inline reply box, "Post in channel"
-// opens the composer (with the Announcement option), and the "…" menu orders the posts.
-import { ListView } from "std-widgets.slint";
+// A channel's Posts tab like Teams (plan 8.4): every post is a card with a summary of its replies
+// ("3 replies from Sara, Omar and others") and a Reply field under it. Both open the thread in a
+// panel that slides in from the right, with the post, the replies and a composer. Day dividers
+// sit between the posts of different days, scrolling to the oldest post loads older ones,
+// "Post in channel" opens the composer (with the Announcement option), and the "…" menu orders
+// the posts.
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Msg } from "types.slint";
-import { Icon, IconButton } from "widgets.slint";
+import { Avatar, IconButton } from "widgets.slint";
 import { MessageRow } from "message_row.slint";
 import { PeopleStore } from "people.slint";
+import { Spinner } from "motion.slint";
+
+// Someone who replied to a post: the summary shows their photo and names the first two.
+export struct Replier {
+    name: string,
+    initials: string,
+    color: color,
+    avatar: image,
+    has-avatar: bool,
+}
 
 export struct PostItem {
     post: Msg,
-    replies: [Msg],
-    // Replies not shown yet (0 when all are, or the card is expanded).
-    more: int,
-    expanded: bool,
+    // Non-empty: a day divider above the card.
+    day: string,
+    reply-count: int,
+    // Who replied, the newest reply's writer first, at most three.
+    repliers: [Replier],
     following: bool,
 }
 
@@ -26,13 +40,60 @@ export global ChannelStore {
     in-out property <bool> announcement: false;
     in-out property <string> headline;
     in-out property <string> theme: "blue";
-    // The post whose inline reply box is open.
-    in-out property <string> reply-root;
-    in-out property <string> reply-text;
     // "See new posts at top".
     in property <bool> newest-top: false;
-    // Names: expand, reply, follow, unfollow, order, announce, post-link.
+    // Older posts were added above: the card at `anchor-index` (the one that was first) stays
+    // where it was. Rust bumps the tick.
+    in property <int> anchor-index: -1;
+    in property <int> anchor-tick;
+    // The post whose thread the panel shows ("" when it is closed).
+    in-out property <string> thread-id;
+    // The thread as Rust read it: it is the open one when `thread-post.id` is `thread-id`.
+    in property <Msg> thread-post;
+    in property <[Msg]> thread-replies;
+    // The panel composer's text, and whether it takes the cursor when the panel opens.
+    in-out property <string> thread-text;
+    in-out property <bool> thread-focus;
+    in-out property <int> thread-focus-tick;
+    // Names: thread, close-thread, reply, follow, unfollow, follow-msg, order, announce.
     callback command(string, string);
+
+    // Opens a post's thread in the panel; `focus` puts the cursor in its composer.
+    public function open-thread(id: string, focus: bool) {
+        if root.thread-id != id {
+            root.thread-text = "";
+        }
+        root.thread-id = id;
+        root.thread-focus = focus;
+        if focus {
+            root.thread-focus-tick += 1;
+        }
+        root.command("thread", id);
+    }
+
+    public function close-thread() {
+        if root.thread-id != "" {
+            root.thread-id = "";
+            root.command("close-thread", "");
+        }
+    }
+
+    // "1 reply from Sara", "2 replies from Sara and Omar", "5 replies from Sara, Omar and others".
+    public pure function replies-summary(count: int, people: [Replier]) -> string {
+        if people.length == 0 {
+            return count == 1 ? @tr("1 reply") : @tr("{} replies", count);
+        }
+        if count == 1 {
+            return @tr("1 reply from {}", people[0].name);
+        }
+        if people.length == 1 {
+            return @tr("{} replies from {}", count, people[0].name);
+        }
+        if people.length == 2 {
+            return @tr("{} replies from {} and {}", count, people[0].name, people[1].name);
+        }
+        @tr("{} replies from {}, {} and others", count, people[0].name, people[1].name)
+    }
 }
 
 component Link inherits Rectangle {
@@ -45,6 +106,7 @@ component Link inherits Rectangle {
     background: touch.has-hover ? Theme.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
     txt := Text { x: 4px; text: root.label; color: Theme.accent; font-size: 12px * Theme.font-scale; font-weight: root.bold ? 700 : 400; vertical-alignment: center; }
     touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
@@ -114,6 +176,17 @@ export component AnnouncementBar inherits Rectangle {
     }
 }
 
+// A thin line with a label in the middle: the day between posts, the reply count in the panel.
+component Divider inherits HorizontalLayout {
+    in property <string> label;
+    padding-top: 8px;
+    padding-bottom: 6px;
+    spacing: 10px;
+    Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
+    Text { text: root.label; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
+    Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
+}
+
 component PostCard inherits Rectangle {
     in property <PostItem> item;
     in property <length> bubble: 600px;
@@ -123,145 +196,261 @@ component PostCard inherits Rectangle {
     callback menu(Msg, length, length);
     callback open-url(string);
     callback profile(string);
-    callback open-thread(string);
     callback retry-send(string);
     callback discard-send(string);
-    height: lay.preferred-height + 12px;
+    height: lay.preferred-height;
 
-    Rectangle {
-        y: 6px;
-        x: 16px;
-        width: parent.width - 32px;
-        height: parent.height - 12px;
-        border-radius: 8px;
-        background: Theme.sidebar;
-        border-width: 1px;
-        border-color: Theme.border;
-    }
     lay := VerticalLayout {
-        x: 16px;
-        y: 6px;
-        width: parent.width - 32px;
+        padding-left: 16px;
+        padding-right: 16px;
         padding-top: 6px;
-        padding-bottom: 8px;
-        MessageRow {
-            m: root.item.post;
-            max-bubble: root.bubble;
-            in-channel: false;
-            card-style: true;
-            react(k) => { root.react(root.item.post.id, k); }
-            reply => { ChannelStore.reply-root = root.item.post.id; ChannelStore.reply-text = ""; }
-            edit => { root.edit(root.item.post.id); }
-            more-reactions(x, y) => { root.more-reactions(root.item.post.id, x, y); }
-            menu(x, y) => { root.menu(root.item.post, x, y); }
-            open-url(u) => { root.open-url(u); }
-            profile(id) => { root.profile(id); }
-            profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
-            photo-hover(id, on, x, y, w, h) => { if on { PeopleStore.hover-enter(id, x, y, w, h); } else { PeopleStore.hover-leave(id); } }
-            retry-send => { root.retry-send(root.item.post.id); }
-            discard-send => { root.discard-send(root.item.post.id); }
-        }
-        if root.item.replies.length > 0: Rectangle {
-            height: 1px;
-            background: Theme.border;
-        }
-        for r in root.item.replies: MessageRow {
-            m: r;
-            max-bubble: root.bubble - 40px;
-            in-channel: false;
-            card-style: true;
-            react(k) => { root.react(r.id, k); }
-            reply => { ChannelStore.reply-root = root.item.post.id; ChannelStore.reply-text = ""; }
-            edit => { root.edit(r.id); }
-            more-reactions(x, y) => { root.more-reactions(r.id, x, y); }
-            menu(x, y) => { root.menu(r, x, y); }
-            open-url(u) => { root.open-url(u); }
-            profile(id) => { root.profile(id); }
-            profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
-            photo-hover(id, on, x, y, w, h) => { if on { PeopleStore.hover-enter(id, x, y, w, h); } else { PeopleStore.hover-leave(id); } }
-            retry-send => { root.retry-send(r.id); }
-            discard-send => { root.discard-send(r.id); }
-        }
-        HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            spacing: 6px;
-            alignment: start;
-            if root.item.more > 0: Link {
-                label: "See " + root.item.more + (root.item.more == 1 ? " more reply" : " more replies");
-                bold: true;
-                clicked => { ChannelStore.command("expand", root.item.post.id); }
-            }
-            Link {
-                label: "Reply";
-                bold: true;
-                clicked => { ChannelStore.reply-root = root.item.post.id; ChannelStore.reply-text = ""; }
-            }
-            Link {
-                label: root.item.following ? "Unfollow thread" : "Follow thread";
-                clicked => { ChannelStore.command(root.item.following ? "unfollow" : "follow", root.item.post.id); }
-            }
-            Link { label: "Open thread"; clicked => { root.open-thread(root.item.post.id); } }
-        }
-        if ChannelStore.reply-root == root.item.post.id: Rectangle {
-            height: 78px;
+        padding-bottom: 6px;
+        spacing: 4px;
+        if root.item.day != "": Divider { label: root.item.day; }
+        Rectangle {
+            border-radius: 8px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: Theme.border;
             VerticalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
                 padding-top: 6px;
-                spacing: 6px;
-                Rectangle {
-                    height: 36px;
-                    border-radius: 4px;
-                    background: Theme.sidebar;
-                    border-width: 1px;
-                    border-color: reply-input.has-focus ? Theme.accent : Theme.border;
-                    FocusScope {
-                        capture-key-pressed(event) => {
-                            if event.text == Key.Escape { ChannelStore.reply-root = ""; return accept; }
-                            if event.text == Key.Return && !event.modifiers.shift && ChannelStore.reply-text != "" {
-                                ChannelStore.command("reply", root.item.post.id + "\u{9}" + ChannelStore.reply-text);
-                                ChannelStore.reply-text = "";
-                                ChannelStore.reply-root = "";
-                                return accept;
-                            }
-                            reject
-                        }
-                        reply-input := TextInput {
-                            x: 10px;
-                            width: parent.width - 20px;
-                            text <=> ChannelStore.reply-text;
-                            color: Theme.fg;
-                            font-size: 14px * Theme.font-scale;
-                            vertical-alignment: center;
-                            wrap: word-wrap;
-                            accessible-role: text-input;
-                            accessible-label: "Reply in thread";
-                            init => { self.focus(); }
-                        }
-                    }
-                    if ChannelStore.reply-text == "": Text { x: 10px; text: "Reply"; color: Theme.fg-subtle; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
+                padding-bottom: root.item.reply-count > 0 ? 6px : 8px;
+                MessageRow {
+                    m: root.item.post;
+                    max-bubble: root.bubble;
+                    in-channel: false;
+                    card-style: true;
+                    react(k) => { root.react(root.item.post.id, k); }
+                    reply => { ChannelStore.open-thread(root.item.post.id, true); }
+                    edit => { root.edit(root.item.post.id); }
+                    more-reactions(x, y) => { root.more-reactions(root.item.post.id, x, y); }
+                    menu(x, y) => { root.menu(root.item.post, x, y); }
+                    open-url(u) => { root.open-url(u); }
+                    profile(id) => { root.profile(id); }
+                    profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
+                    photo-hover(id, on, x, y, w, h) => { if on { PeopleStore.hover-enter(id, x, y, w, h); } else { PeopleStore.hover-leave(id); } }
+                    retry-send => { root.retry-send(root.item.post.id); }
+                    discard-send => { root.discard-send(root.item.post.id); }
                 }
-                HorizontalLayout {
+                // The replies stay folded: who replied and how many, which opens the thread.
+                if root.item.reply-count > 0: HorizontalLayout {
+                    // Under the post's text, past its 32px photo.
+                    padding-left: 60px;
+                    padding-right: 12px;
                     spacing: 6px;
-                    alignment: end;
-                    height: 28px;
-                    Link { label: "Cancel"; clicked => { ChannelStore.reply-root = ""; } }
+                    alignment: start;
+                    Rectangle {
+                        width: 20px + max(0, root.item.repliers.length - 1) * 14px;
+                        height: 24px;
+                        for p[i] in root.item.repliers: Avatar {
+                            x: i * 14px;
+                            y: 2px;
+                            size: 20px;
+                            initials: p.initials;
+                            tone: p.color;
+                            img: p.avatar;
+                            has-img: p.has-avatar;
+                        }
+                    }
                     Link {
-                        label: "Send";
+                        label: ChannelStore.replies-summary(root.item.reply-count, root.item.repliers);
                         bold: true;
-                        clicked => {
-                            if ChannelStore.reply-text != "" {
-                                ChannelStore.command("reply", root.item.post.id + "\u{9}" + ChannelStore.reply-text);
-                                ChannelStore.reply-text = "";
-                                ChannelStore.reply-root = "";
+                        clicked => { ChannelStore.open-thread(root.item.post.id, false); }
+                    }
+                }
+            }
+        }
+        // "↩ Reply": opens the thread with the cursor in its composer.
+        reply-field := Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: reply-touch.has-hover ? Theme.surface-hover : transparent;
+            border-width: 1px;
+            border-color: Theme.border;
+            accessible-role: button;
+            accessible-label: @tr("Reply");
+            accessible-action-default => { ChannelStore.open-thread(root.item.post.id, true); }
+            HorizontalLayout {
+                padding-left: 12px;
+                spacing: 8px;
+                alignment: start;
+                Text { text: "↩"; color: Theme.fg-subtle; font-size: 14px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                Text { text: @tr("Reply"); color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+            }
+            reply-touch := TouchArea { mouse-cursor: text; clicked => { ChannelStore.open-thread(root.item.post.id, true); } }
+        }
+    }
+}
+
+// The thread panel: the post, its replies as chat rows and a composer that replies in the thread.
+component ThreadPanel inherits Rectangle {
+    in property <string> channel;
+    callback react(string, string);
+    callback edit(string);
+    callback more-reactions(string, length, length);
+    callback menu(Msg, length, length);
+    callback open-url(string);
+    callback profile(string);
+    callback retry-send(string);
+    callback discard-send(string);
+    // Rust pushed the thread that is open.
+    property <bool> ready: ChannelStore.thread-post.id == ChannelStore.thread-id;
+    property <int> count: ChannelStore.thread-replies.length;
+    // A reply was sent from here: the list follows it down when it shows.
+    property <bool> follow-down: false;
+    background: Theme.main;
+    drop-shadow-blur: 18px;
+    drop-shadow-color: #00000059;
+
+    function send() {
+        if ChannelStore.thread-text != "" {
+            ChannelStore.command("reply", ChannelStore.thread-id + "\u{9}" + ChannelStore.thread-text);
+            ChannelStore.thread-text = "";
+            root.follow-down = true;
+        }
+    }
+
+    // Clicks inside the panel stay in it.
+    TouchArea { }
+
+    VerticalLayout {
+        Rectangle {
+            height: 56px;
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 10px;
+                spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: @tr("Thread"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; }
+                    Text { text: root.channel; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; overflow: elide; }
+                }
+                IconButton {
+                    icon: @image-url("icons/close.svg");
+                    tooltip: @tr("Close thread");
+                    y: 12px;
+                    clicked => { ChannelStore.close-thread(); }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        thread-scroll := ScrollView {
+            vertical-stretch: 1;
+            changed viewport-height => {
+                if root.follow-down {
+                    self.viewport-y = min(0px, self.visible-height - self.viewport-height);
+                }
+            }
+            VerticalLayout {
+                alignment: start;
+                padding-bottom: 8px;
+                if root.ready: MessageRow {
+                    m: ChannelStore.thread-post;
+                    max-bubble: thread-scroll.width - 90px;
+                    pane-top: thread-scroll.absolute-position.y;
+                    card-style: true;
+                    react(k) => { root.react(ChannelStore.thread-post.id, k); }
+                    reply => { ChannelStore.thread-focus-tick += 1; }
+                    edit => { root.edit(ChannelStore.thread-post.id); }
+                    more-reactions(x, y) => { root.more-reactions(ChannelStore.thread-post.id, x, y); }
+                    menu(x, y) => { root.menu(ChannelStore.thread-post, x, y); }
+                    open-url(u) => { root.open-url(u); }
+                    profile(id) => { root.profile(id); }
+                    profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
+                    photo-hover(id, on, x, y, w, h) => { if on { PeopleStore.hover-enter(id, x, y, w, h); } else { PeopleStore.hover-leave(id); } }
+                    retry-send => { root.retry-send(ChannelStore.thread-post.id); }
+                    discard-send => { root.discard-send(ChannelStore.thread-post.id); }
+                }
+                if root.ready: Divider {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    label: root.count == 0 ? @tr("No replies yet") : (root.count == 1 ? @tr("1 reply") : @tr("{} replies", root.count));
+                }
+                if root.ready: VerticalLayout {
+                    for r in ChannelStore.thread-replies: MessageRow {
+                        m: r;
+                        max-bubble: thread-scroll.width - 90px;
+                        pane-top: thread-scroll.absolute-position.y;
+                        card-style: true;
+                        react(k) => { root.react(r.id, k); }
+                        reply => { ChannelStore.thread-focus-tick += 1; }
+                        edit => { root.edit(r.id); }
+                        more-reactions(x, y) => { root.more-reactions(r.id, x, y); }
+                        menu(x, y) => { root.menu(r, x, y); }
+                        open-url(u) => { root.open-url(u); }
+                        profile(id) => { root.profile(id); }
+                        profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
+                        photo-hover(id, on, x, y, w, h) => { if on { PeopleStore.hover-enter(id, x, y, w, h); } else { PeopleStore.hover-leave(id); } }
+                        retry-send => { root.retry-send(r.id); }
+                        discard-send => { root.discard-send(r.id); }
+                    }
+                }
+            }
+        }
+        // The composer: Enter sends the reply into the thread, Shift+Enter starts a new line.
+        VerticalLayout {
+            padding: 12px;
+            Rectangle {
+                height: max(40px, thread-input.preferred-height + 18px);
+                border-radius: 4px;
+                background: Theme.sidebar;
+                border-width: 1px;
+                border-color: thread-input.has-focus ? Theme.accent : Theme.border;
+                FocusScope {
+                    capture-key-pressed(event) => {
+                        if event.text == Key.Escape {
+                            ChannelStore.close-thread();
+                            return accept;
+                        }
+                        if event.text == Key.Return && !event.modifiers.shift {
+                            root.send();
+                            return accept;
+                        }
+                        reject
+                    }
+                    thread-input := TextInput {
+                        x: 10px;
+                        y: 9px;
+                        width: parent.width - 54px;
+                        height: parent.height - 18px;
+                        text <=> ChannelStore.thread-text;
+                        color: Theme.fg;
+                        font-size: 14px * Theme.font-scale;
+                        wrap: word-wrap;
+                        accessible-role: text-input;
+                        accessible-label: @tr("Reply in thread");
+                        property <int> tick: ChannelStore.thread-focus-tick;
+                        changed tick => { self.focus(); }
+                        init => {
+                            if ChannelStore.thread-focus {
+                                self.focus();
                             }
                         }
                     }
+                }
+                if ChannelStore.thread-text == "": Text {
+                    x: 10px;
+                    text: @tr("Reply");
+                    color: Theme.fg-subtle;
+                    font-size: 14px * Theme.font-scale;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                IconButton {
+                    x: parent.width - 38px;
+                    y: (parent.height - 32px) / 2;
+                    icon: @image-url("icons/send.svg");
+                    tooltip: @tr("Send reply");
+                    tint: ChannelStore.thread-text != "" ? Theme.accent : Theme.fg-subtle;
+                    clicked => { root.send(); }
                 }
             }
         }
     }
+    // The left edge, over the shadow.
+    Rectangle { x: 0; width: 1px; background: Theme.border; }
+    if !root.ready: Spinner { x: (parent.width - self.width) / 2; y: 90px; }
 }
 
 export component ChannelPosts inherits Rectangle {
@@ -271,12 +460,17 @@ export component ChannelPosts inherits Rectangle {
     callback menu(Msg, length, length);
     callback open-url(string);
     callback profile(string);
-    callback open-thread(string);
     callback retry-send(string);
     callback discard-send(string);
     callback load-older();
     // Bumped when the conversation opens (and when End is pressed): back to the newest post.
     in property <int> scroll-tick;
+    // The next older page is being read.
+    in property <bool> loading-older;
+    // The channel's name, under the thread panel's title.
+    in property <string> channel;
+    // The thread panel: beside the posts on a wide window, over them on a narrow one.
+    property <length> panel-w: root.width < 760px ? root.width : max(400px, min(480px, root.width * 0.4));
     background: Theme.main;
 
     VerticalLayout {
@@ -307,24 +501,50 @@ export component ChannelPosts inherits Rectangle {
             }
         }
         Rectangle { height: 1px; background: Theme.border; }
-        ListView {
+        posts-list := ListView {
             vertical-stretch: 1;
             // Teams opens a channel at its newest post: at the bottom (at the top with "See new
             // posts at top"), and stays there while cards grow, until the list is scrolled away.
             property <bool> pinned: true;
             property <int> tick: root.scroll-tick;
+            property <int> a-tick: ChannelStore.anchor-tick;
+            // Older posts landed: the card that was first goes back to the top of the view.
+            property <bool> anchoring: false;
+            // An older page was asked for: one request per arrival at the oldest post.
+            property <bool> asked: false;
             function to-newest() {
                 self.content-y = ChannelStore.newest-top ? 0px : min(0px, self.visible-height - self.content-height);
+            }
+            function ask-older() {
+                if !self.asked && !root.loading-older && ChannelStore.posts.length > 0 {
+                    self.asked = true;
+                    root.load-older();
+                }
             }
             changed tick => {
                 self.pinned = true;
                 self.to-newest();
             }
+            changed a-tick => {
+                self.anchoring = true;
+                self.pinned = false;
+            }
             changed content-height => {
-                if self.pinned { self.to-newest(); }
+                if self.pinned && !self.anchoring {
+                    self.to-newest();
+                }
+                // Too few posts to scroll: the older ones are read at once.
+                if self.content-height > 0px && self.content-height < self.visible-height {
+                    self.ask-older();
+                }
             }
             changed content-y => {
                 self.pinned = ChannelStore.newest-top ? self.content-y >= -4px : self.content-y <= self.visible-height - self.content-height + 4px;
+                // Near the oldest post (the top, or the bottom with the newest posts on top).
+                if !self.pinned && !self.anchoring && self.content-height > self.visible-height + 40px
+                    && (ChannelStore.newest-top ? self.content-y < self.visible-height - self.content-height + 40px : self.content-y > -40px) {
+                    self.ask-older();
+                }
             }
             for item in ChannelStore.posts: PostCard {
                 item: item;
@@ -335,7 +555,6 @@ export component ChannelPosts inherits Rectangle {
                 menu(m, x, y) => { root.menu(m, x, y); }
                 open-url(u) => { root.open-url(u); }
                 profile(id) => { root.profile(id); }
-                open-thread(id) => { root.open-thread(id); }
                 retry-send(id) => { root.retry-send(id); }
                 discard-send(id) => { root.discard-send(id); }
             }
@@ -347,6 +566,76 @@ export component ChannelPosts inherits Rectangle {
             horizontal-alignment: center;
             vertical-alignment: center;
             vertical-stretch: 1;
+        }
+    }
+
+    // Once the bigger list is laid out, the card that was first goes back to the top of the view:
+    // from below, ensure-row-visible puts it there, measured.
+    Timer {
+        interval: 30ms;
+        running: posts-list.anchoring;
+        triggered => {
+            posts-list.anchoring = false;
+            posts-list.content-y = min(0px, posts-list.visible-height - posts-list.content-height);
+            posts-list.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+        }
+    }
+    Timer {
+        interval: 700ms;
+        running: posts-list.asked;
+        triggered => { posts-list.asked = false; }
+    }
+
+    if root.loading-older: Rectangle {
+        z: 8;
+        y: ChannelStore.newest-top ? root.height - 36px : 52px;
+        height: 24px;
+        width: older-text.preferred-width + 52px;
+        x: (root.width - self.width) / 2;
+        border-radius: 12px;
+        background: Theme.surface;
+        Spinner { x: 12px; y: 5px; }
+        older-text := Text {
+            x: 30px;
+            width: parent.width - 42px;
+            text: @tr("Loading older posts…");
+            color: Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    // A click on the posts beside the open thread panel closes it (the wheel still scrolls them).
+    if ChannelStore.thread-id != "" && root.width > root.panel-w: TouchArea {
+        z: 9;
+        y: 45px;
+        width: root.width - root.panel-w;
+        height: root.height - 45px;
+        clicked => { ChannelStore.close-thread(); }
+    }
+
+    if ChannelStore.thread-id != "": panel := ThreadPanel {
+        // Starts off the right edge and slides in (at once with reduced motion).
+        property <bool> shown: false;
+        z: 10;
+        width: root.panel-w;
+        height: root.height;
+        x: self.shown ? root.width - root.panel-w : root.width;
+        animate x { duration: Theme.reduced-motion ? 0ms : 180ms; easing: ease-out; }
+        channel: root.channel;
+        react(id, k) => { root.react(id, k); }
+        edit(id) => { root.edit(id); }
+        more-reactions(id, x, y) => { root.more-reactions(id, x, y); }
+        menu(m, x, y) => { root.menu(m, x, y); }
+        open-url(u) => { root.open-url(u); }
+        profile(id) => { root.profile(id); }
+        retry-send(id) => { root.retry-send(id); }
+        discard-send(id) => { root.discard-send(id); }
+        Timer {
+            interval: 16ms;
+            running: !panel.shown;
+            triggered => { panel.shown = true; }
         }
     }
 

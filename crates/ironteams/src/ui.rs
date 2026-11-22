@@ -637,8 +637,10 @@ impl UiHandle {
                         m.set_vec(vec![]);
                     }
                 });
-                w.global::<crate::ChannelStore>()
-                    .set_posts(ModelRc::default());
+                let posts = w.global::<crate::ChannelStore>();
+                posts.set_posts(ModelRc::default());
+                // The thread panel belongs to the channel it was opened in.
+                posts.set_thread_id("".into());
                 w.set_current_meeting_live(false);
             }
             w.set_current_id(h.id.into());

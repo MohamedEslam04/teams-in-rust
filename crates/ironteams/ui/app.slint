@@ -74,7 +74,7 @@ export { LoopStore, LoopRow } from "loop_editor.slint";
 export { PeopleStore } from "people.slint";
 export { ListStore, SectionRow, SectionChoice } from "lists.slint";
 export { RemindStore, ReminderRow, SnoozedRow } from "remind.slint";
-export { ChannelStore, PostItem } from "channel_posts.slint";
+export { ChannelStore, PostItem, Replier } from "channel_posts.slint";
 export { FindStore, HitRow, PickRow, SharedRow } from "find.slint";
 export { MediaStore } from "media.slint";
 export { EngageStore, EPost } from "engage.slint";
@@ -598,6 +598,7 @@ export component AppWindow inherits Window {
                 if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
                 if root.shortcuts-open { root.shortcuts-open = false; return accept; }
                 if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
+                if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
                 if root.thread-root != "" { root.close-thread(); return accept; }
                 if root.reply-preview != "" { root.cancel-reply(); return accept; }
             }
@@ -1284,6 +1285,9 @@ export component AppWindow inherits Window {
                             height: parent.height;
                             z: 4;
                             scroll-tick: root.scroll-tick;
+                            loading-older: root.loading-older;
+                            channel: root.current-title;
+                            load-older => { root.load-older(); }
                             react(id, k) => { root.react(id, k); }
                             edit(id) => { root.edit(id); }
                             more-reactions(id, x, y) => {
@@ -1299,10 +1303,10 @@ export component AppWindow inherits Window {
                                 root.menu-x = x;
                                 root.menu-y = y;
                                 root.menu-open = true;
+                                FindStore.command("menu-follow", m.id);
                             }
                             open-url(u) => { root.open-url(u); }
                             profile(id) => { if id != "" { PeopleStore.command("profile", id); } }
-                            open-thread(id) => { root.open-thread(id); }
                             retry-send(id) => { root.retry-send(id); }
                             discard-send(id) => { root.discard-send(id); }
                         }
@@ -1384,7 +1388,8 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                        if root.loading-older: Rectangle {
+                        // The Posts tab shows its own line (posts load at the top or the bottom).
+                        if root.loading-older && !root.posts-mode: Rectangle {
                             y: 8px;
                             height: 24px;
                             width: 200px;
@@ -1592,7 +1597,17 @@ export component AppWindow inherits Window {
                 ChannelStore.command(FindStore.menu-following ? "unfollow" : "follow-msg", root.menu-msg.id);
                 FindStore.menu-following = !FindStore.menu-following;
             }
-            reply => { root.menu-open = false; root.reply(root.menu-msg.id); }
+            reply => {
+                root.menu-open = false;
+                // On the Posts tab a reply goes into the thread: the panel's composer.
+                if root.posts-mode && ChannelStore.thread-id != "" {
+                    ChannelStore.thread-focus-tick += 1;
+                } else if root.posts-mode {
+                    ChannelStore.open-thread(root.menu-msg.id, true);
+                } else {
+                    root.reply(root.menu-msg.id);
+                }
+            }
             forward-one => {
                 root.menu-open = false;
                 root.forward-count = 1;

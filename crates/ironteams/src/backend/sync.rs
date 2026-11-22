@@ -403,12 +403,26 @@ impl Engine {
         if thread.is_some() {
             return Ok(());
         }
-        let cached = self
-            .store
-            .lock()
-            .unwrap()
-            .messages_before(&conv, None, limit + PAGE)?;
-        if cached.len() < limit + PAGE {
+        let (cached, is_channel) = {
+            let st = self.store.lock().unwrap();
+            let channel = st
+                .conversation(&conv)?
+                .is_some_and(|c| c.kind == ConvKind::Channel);
+            (st.messages_before(&conv, None, limit + PAGE)?, channel)
+        };
+        if is_channel {
+            // Nothing above what is shown, and the server has nothing older: nothing to do.
+            if cached.len() <= limit && self.history_started(&conv) {
+                return Ok(());
+            }
+            if cached.len() < limit + PAGE
+                && let Some(oldest) = cached.first().map(|m| m.compose_ms)
+            {
+                self.ui.loading_older(true);
+                self.older_posts(&conv, oldest).await;
+                self.ui.loading_older(false);
+            }
+        } else if cached.len() < limit + PAGE {
             let oldest = cached.first().map(|m| m.compose_ms);
             if let Some(oldest) = oldest {
                 self.ui.loading_older(true);

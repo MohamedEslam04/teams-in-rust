@@ -47,15 +47,33 @@ pub struct SectionData {
     pub items: Vec<ChatData>,
 }
 
-/// A channel post with its replies.
+/// A channel post card: the post and the summary of its replies (the replies open in the
+/// thread panel).
 #[derive(Clone)]
 pub struct PostData {
     pub post: MsgData,
-    pub replies: Vec<MsgData>,
-    /// Replies not shown yet.
-    pub more: i32,
-    pub expanded: bool,
+    /// Non-empty: a day divider above the card ("Today", "Thursday, November 19, 2026").
+    pub day: String,
+    pub reply_count: i32,
+    /// Who replied, newest first, at most three.
+    pub repliers: Vec<ReplierData>,
     pub following: bool,
+}
+
+/// Someone who replied to a post, for the small photos of the replies summary.
+#[derive(Clone)]
+pub struct ReplierData {
+    pub name: String,
+    pub initials: String,
+    pub color: u32,
+    pub avatar: Option<Pixels>,
+}
+
+/// The thread open in the panel: its post and the replies, oldest first.
+#[derive(Clone)]
+pub struct PostThreadData {
+    pub post: MsgData,
+    pub replies: Vec<MsgData>,
 }
 
 /// What the list menus need to know about the channel whose menu opened.

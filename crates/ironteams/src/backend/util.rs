@@ -179,6 +179,37 @@ fn meeting_day_at(zone: Option<Tz>, now_ms: i64, ms: i64) -> String {
     t.format(pattern).to_string()
 }
 
+/// The time of a channel post or reply like Teams: the clock time today, with the day before it
+/// otherwise ("Yesterday 1:20 PM", "Thursday 1:20 PM", "11/12 9:18 AM").
+pub(super) fn post_time(ms: i64) -> String {
+    post_time_at(
+        formats::time_zone(),
+        chrono::Utc::now().timestamp_millis(),
+        ms,
+    )
+}
+
+fn post_time_at(zone: Option<Tz>, now_ms: i64, ms: i64) -> String {
+    if ms <= 0 {
+        return String::new();
+    }
+    let (Some(t), Some(now)) = (formats::local_in(zone, ms), formats::local_in(zone, now_ms))
+    else {
+        return String::new();
+    };
+    let clock = formats::time_of(&t);
+    let days = now.date().signed_duration_since(t.date()).num_days();
+    match days {
+        0 => clock,
+        1 => format!("Yesterday {clock}"),
+        2..=6 => format!("{} {clock}", t.format("%A")),
+        _ => format!(
+            "{} {clock}",
+            t.format(formats::date_pattern(t.year() != now.year()))
+        ),
+    }
+}
+
 pub(super) fn day_label(ms: i64) -> String {
     day_label_at(
         formats::time_zone(),
@@ -501,6 +532,52 @@ mod tests {
             .timestamp_millis();
         assert_eq!(meeting_day_at(Some(Tz::UTC), now, last_year), "Mar 4, 2025");
         assert_eq!(meeting_day_at(Some(Tz::UTC), now, 0), "");
+    }
+
+    #[test]
+    fn a_post_time_names_the_day_unless_it_is_today() {
+        let utc = Some(Tz::UTC);
+        // Thursday, November 19th at noon.
+        let now = utc_ms(19, 12, 0);
+        let clock = |ms: i64| formats::time_of(&formats::local_in(utc, ms).unwrap());
+        let today = utc_ms(19, 9, 18);
+        assert_eq!(post_time_at(utc, now, today), clock(today));
+        let yesterday = utc_ms(18, 13, 20);
+        assert_eq!(
+            post_time_at(utc, now, yesterday),
+            format!("Yesterday {}", clock(yesterday))
+        );
+        // Monday of the same week: the weekday.
+        let monday = utc_ms(16, 13, 20);
+        assert_eq!(
+            post_time_at(utc, now, monday),
+            format!("Monday {}", clock(monday))
+        );
+        // Older: the short date ("11/12 9:18 AM"), with the year once it is another year.
+        let older = utc_ms(12, 9, 18);
+        let t = formats::local_in(utc, older).unwrap();
+        assert_eq!(
+            post_time_at(utc, now, older),
+            format!(
+                "{} {}",
+                t.format(formats::date_pattern(false)),
+                clock(older)
+            )
+        );
+        let last_year = Utc
+            .with_ymd_and_hms(2025, 11, 12, 9, 18, 0)
+            .unwrap()
+            .timestamp_millis();
+        let t = formats::local_in(utc, last_year).unwrap();
+        assert_eq!(
+            post_time_at(utc, now, last_year),
+            format!(
+                "{} {}",
+                t.format(formats::date_pattern(true)),
+                clock(last_year)
+            )
+        );
+        assert_eq!(post_time_at(utc, now, 0), "");
     }
 
     #[test]
