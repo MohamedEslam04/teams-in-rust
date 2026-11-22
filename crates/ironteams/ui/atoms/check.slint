@@ -14,6 +14,8 @@ export enum CheckBoxVariant {
     square,
     // A round green tick (Tasks app).
     round,
+    // A square with a text tick on the sidebar colour (OneDrive's file selection).
+    drive,
 }
 
 export component CheckBox inherits Rectangle {
@@ -22,19 +24,25 @@ export component CheckBox inherits Rectangle {
     in property <string> label;
     callback toggled(bool);
     property <bool> round: root.variant == CheckBoxVariant.round;
+    property <bool> drive: root.variant == CheckBoxVariant.drive;
     width: 18px;
     height: 18px;
     border-radius: root.round ? 9px : 3px;
     border-width: root.round ? 1.5px : 1px;
-    border-color: root.round ? (root.checked ? #6bd69b : Theme.fg-subtle) : (root.checked ? Theme.accent : Theme.fg-muted);
-    background: root.round ? (root.checked ? #1d3a2a : transparent) : (root.checked ? Theme.accent-strong : transparent);
+    border-color: root.round ? (root.checked ? #6bd69b : Theme.fg-subtle)
+        : root.checked ? Theme.accent
+        : root.drive ? Theme.fg-subtle : Theme.fg-muted;
+    background: root.round ? (root.checked ? #1d3a2a : transparent)
+        : root.checked ? Theme.accent-strong
+        : root.drive ? Theme.sidebar : transparent;
     accessible-role: checkbox;
     accessible-label: root.label;
-    accessible-checkable: !root.round;
+    accessible-checkable: root.variant == CheckBoxVariant.square;
     accessible-checked: root.checked;
     accessible-action-default => { root.toggled(!root.checked); }
-    if !root.round && root.checked: Icon { source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: #ffffff; }
+    if root.variant == CheckBoxVariant.square && root.checked: Icon { source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: #ffffff; }
     if root.round: Text { text: root.checked ? "✓" : ""; color: #6bd69b; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    if root.drive: Text { text: root.checked ? "✓" : ""; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
     TouchArea {
         mouse-cursor: pointer;
         clicked => { root.toggled(!root.checked); }

@@ -1,0 +1,199 @@
+// OneDrive's items: a list row, a grid tile and a For you card.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
+import { DriveLook, KindBadge } from "../atoms/file_kind.slint";
+import { DriveRow, DriveCard, DriveStore } from "../stores/drive_store.slint";
+
+// The small square check box of a row or tile.
+// One row of the list: a file, a folder or a group header.
+export component DriveListRow inherits Rectangle {
+    in property <DriveRow> r;
+    in property <bool> any-selected;
+    in property <bool> bin;
+    callback open();
+    callback select();
+    callback toggle();
+    callback favorite();
+    callback more(length, length);
+    height: 36px;
+    property <bool> hot: touch.has-hover || star.has-hover || dots.has-hover;
+    background: root.r.header ? transparent : (root.r.selected ? Theme.selected : (root.hot ? Theme.surface-hover : transparent));
+    accessible-role: list-item;
+    accessible-label: root.r.header ? "Group " + root.r.name : root.r.name;
+    accessible-item-selected: root.r.selected;
+    accessible-description: root.r.header ? "" : (root.r.is-folder ? "Folder, " : "") + root.r.modified + ", " + root.r.modified-by + ", " + root.r.size;
+    if root.r.header: Text {
+        x: 14px;
+        text: root.r.name;
+        color: Theme.fg-muted;
+        font-size: 12px * Theme.font-scale;
+        font-weight: 700;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: !root.r.header;
+        mouse-cursor: pointer;
+        clicked => { root.select(); }
+        double-clicked => { root.open(); }
+    }
+    if !root.r.header: HorizontalLayout {
+        padding-left: 40px;
+        padding-right: 76px;
+        spacing: 10px;
+        Rectangle {
+            width: 24px;
+            KindBadge { kind: root.r.kind; size: 24px; y: (parent.height - 24px) / 2; }
+        }
+        Text { text: root.r.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; min-width: 80px; }
+        if DriveStore.col-modified: Text { text: root.r.modified; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; width: DriveLook.col-modified; overflow: elide; vertical-alignment: center; }
+        if DriveStore.col-modified-by: Text { text: root.r.modified-by; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; width: DriveLook.col-modified-by; overflow: elide; vertical-alignment: center; }
+        if DriveStore.col-size: Text { text: root.r.size; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; width: DriveLook.col-size; overflow: elide; vertical-alignment: center; }
+        if DriveStore.col-location: Text { text: root.r.location; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; width: DriveLook.col-location; overflow: elide; vertical-alignment: center; }
+        if DriveStore.col-activity: Text { text: root.r.activity; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; width: DriveLook.col-activity; overflow: elide; vertical-alignment: center; }
+    }
+    if !root.r.header && (root.hot || root.r.selected || root.any-selected): CheckBox { variant: CheckBoxVariant.drive;
+        x: 12px;
+        y: 9px;
+        checked: root.r.selected;
+        label: "Select " + root.r.name;
+        toggled => { root.toggle(); }
+    }
+    star := Rectangle {
+        x: parent.width - 68px;
+        y: 5px;
+        width: 26px;
+        height: 26px;
+        out property <bool> has-hover: star-touch.has-hover;
+        visible: !root.r.header && !root.bin && (root.hot || root.r.favorite);
+        accessible-role: button;
+        accessible-label: (root.r.favorite ? "Remove from favorites " : "Add to favorites ") + root.r.name;
+        Icon {
+            source: @image-url("../icons/star.svg");
+            width: 16px;
+            height: 16px;
+            x: 5px;
+            y: 5px;
+            tint: root.r.favorite ? #f2c94c : Theme.fg-subtle;
+        }
+        star-touch := TouchArea { mouse-cursor: pointer; clicked => { root.favorite(); } }
+    }
+    dots := Rectangle {
+        x: parent.width - 36px;
+        y: 5px;
+        width: 26px;
+        height: 26px;
+        out property <bool> has-hover: dots-touch.has-hover;
+        visible: !root.r.header && root.hot;
+        border-radius: 4px;
+        background: dots-touch.has-hover ? Theme.surface-hover : transparent;
+        accessible-role: button;
+        accessible-label: "More actions for " + root.r.name;
+        Icon { source: @image-url("../icons/more.svg"); width: 16px; height: 16px; x: 5px; y: 5px; }
+        dots-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.more(dots.absolute-position.x, dots.absolute-position.y + dots.height); }
+        }
+    }
+}
+
+// One tile of the grid view.
+export component DriveTile inherits Rectangle {
+    in property <DriveRow> r;
+    callback open();
+    callback select();
+    callback toggle();
+    callback favorite();
+    width: 176px;
+    height: 168px;
+    property <bool> hot: touch.has-hover || star.has-hover;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.r.selected ? Theme.accent : Theme.border;
+    background: root.r.selected ? Theme.selected : (root.hot ? Theme.surface-hover : Theme.sidebar);
+    accessible-role: list-item;
+    accessible-label: root.r.name;
+    accessible-item-selected: root.r.selected;
+    accessible-description: root.r.modified + ", " + root.r.modified-by;
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.select(); }
+        double-clicked => { root.open(); }
+    }
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: 112px;
+        background: Theme.sidebar;
+        clip: true;
+        if root.r.has-thumb: Image { source: root.r.thumb; width: parent.width; height: parent.height; image-fit: cover; }
+        if !root.r.has-thumb: KindBadge { kind: root.r.kind; size: 48px; x: (parent.width - 48px) / 2; y: (parent.height - 48px) / 2; }
+    }
+    VerticalLayout {
+        y: 116px;
+        height: 50px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 2px;
+        Text { text: root.r.name; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+        Text { text: root.r.modified + (root.r.modified-by != "" ? " · " + root.r.modified-by : ""); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
+    }
+    if root.hot || root.r.selected: CheckBox { variant: CheckBoxVariant.drive;
+        x: 8px;
+        y: 8px;
+        checked: root.r.selected;
+        label: "Select " + root.r.name;
+        toggled => { root.toggle(); }
+    }
+    star := Rectangle {
+        x: parent.width - 34px;
+        y: 6px;
+        width: 26px;
+        height: 26px;
+        out property <bool> has-hover: star-touch.has-hover;
+        visible: root.hot || root.r.favorite;
+        accessible-role: button;
+        accessible-label: (root.r.favorite ? "Remove from favorites " : "Add to favorites ") + root.r.name;
+        Icon { source: @image-url("../icons/star.svg"); width: 16px; height: 16px; x: 5px; y: 5px; tint: root.r.favorite ? #f2c94c : Theme.fg-muted; }
+        star-touch := TouchArea { mouse-cursor: pointer; clicked => { root.favorite(); } }
+    }
+}
+
+// A "For you" card: a thumbnail, the file name and why it is shown.
+export component ForYouCard inherits Rectangle {
+    in property <DriveCard> c;
+    callback open();
+    width: 176px;
+    height: 132px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    accessible-role: button;
+    accessible-label: "For you " + root.c.title;
+    accessible-description: root.c.reason;
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: 72px;
+        background: Theme.sidebar;
+        clip: true;
+        if root.c.has-thumb: Image { source: root.c.thumb; width: parent.width; height: parent.height; image-fit: cover; }
+        if !root.c.has-thumb: KindBadge { kind: root.c.kind; size: 36px; x: (parent.width - 36px) / 2; y: (parent.height - 36px) / 2; }
+    }
+    VerticalLayout {
+        y: 76px;
+        height: 54px;
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 1px;
+        Text { text: root.c.title; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+        Text { text: root.c.reason; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; wrap: word-wrap; overflow: elide; }
+    }
+}
