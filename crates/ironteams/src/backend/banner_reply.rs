@@ -89,7 +89,7 @@ async fn run(
     mut over: oneshot::Receiver<()>,
 ) -> zbus::Result<()> {
     let conn = zbus::Connection::session().await?;
-    let proxy = zbus::proxy::Builder::new(&conn)
+    let proxy = zbus::proxy::Builder::<zbus::Proxy<'_>>::new(&conn)
         .destination(SERVICE)?
         .path(PATH)?
         .interface(SERVICE)?
