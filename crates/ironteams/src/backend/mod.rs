@@ -6,6 +6,7 @@
 
 use crate::data::Pixels;
 use crate::ui_api::UiHandle;
+use byte_lru::{AVATAR_BUDGET, ByteLru, IMAGE_BUDGET};
 use drafts::reply_preview;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -23,6 +24,9 @@ mod avatar_placeholder;
 mod banner;
 #[cfg(target_os = "linux")]
 mod banner_reply;
+mod byte_lru;
+mod cache;
+mod cache_ops;
 mod cal;
 pub(crate) mod call;
 #[cfg(feature = "calls")]
@@ -83,6 +87,8 @@ pub use activity::ActivityCmd;
 #[cfg(test)]
 pub(crate) use activity::{State as ActivityState, row_data as activity_row_data};
 pub use appstore::AppsCmd;
+#[allow(unused_imports)] // The Settings page names it (`Engine::cache_sizes`).
+pub(crate) use cache::CacheSizes;
 #[cfg(test)]
 pub use cal::{
     AttendeeRow, Ctx, DEFAULT_PREFS, Prefs, ProposalRow, SuggestRow, build, build_split,
@@ -206,6 +212,14 @@ pub enum Cmd {
     /// The composer's "+" apps picker (plan S3.6).
     ComposerApps(ComposerAppsCmd),
     SetEnterSends(bool),
+    /// Settings > Storage "Clear media cache": the pictures in memory, the media files on disk
+    /// and the stored profile pictures (`cache_ops`).
+    #[allow(dead_code)] // The Settings page sends it.
+    ClearMediaCache,
+    /// Settings > Storage "Clear all cached data": the media cache and the cached messages,
+    /// users and teams; the chat list, drafts, the outbox and saved messages stay.
+    #[allow(dead_code)] // The Settings page sends it.
+    ClearAllCache,
     /// The composer text changed.
     DraftEdited(String),
     /// The window is closing: write what is pending.
@@ -367,10 +381,14 @@ pub struct Engine {
     #[cfg(feature = "calls")]
     calls_page: Mutex<calls_page::State>,
     composer_apps: Mutex<composer_apps::State>,
-    avatars: Mutex<HashMap<String, Option<Pixels>>>,
+    /// The disk cache sweeps (`cache_ops`).
+    upkeep: cache_ops::Upkeep,
+    /// Decoded profile pictures by `util::avatar_key`, kept under a byte budget.
+    avatars: Mutex<ByteLru<String, Option<Pixels>>>,
     /// The pictures the service sends for people without a photo (shown as initials).
     avatar_placeholders: Mutex<avatar_placeholder::Placeholders>,
-    images: Mutex<HashMap<String, Option<Pixels>>>,
+    /// Decoded inline message pictures by URL, kept under a byte budget.
+    images: Mutex<ByteLru<String, Option<Pixels>>>,
     /// Reactor MRIs whose profile fetch was already started (tooltip names).
     name_requests: Mutex<HashSet<String>>,
     pub focused: Arc<AtomicBool>,
@@ -423,6 +441,7 @@ impl Engine {
                 .flatten()
                 .as_deref(),
         );
+        let upkeep = cache_ops::Upkeep::new(cfg.media_cache_mb);
         let engine = Arc::new(Engine {
             calls: call::CallManager::new(ui.clone(), client.clone(), my_name.clone()),
             client,
@@ -465,9 +484,10 @@ impl Engine {
             #[cfg(feature = "calls")]
             calls_page: Mutex::default(),
             composer_apps: Mutex::new(composer_apps::State::default()),
-            avatars: Mutex::new(HashMap::new()),
+            upkeep,
+            avatars: Mutex::new(ByteLru::new(AVATAR_BUDGET)),
             avatar_placeholders: Mutex::new(avatar_placeholders),
-            images: Mutex::new(HashMap::new()),
+            images: Mutex::new(ByteLru::new(IMAGE_BUDGET)),
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
             offline: AtomicBool::new(false),
@@ -490,7 +510,8 @@ impl Engine {
             if tokio::runtime::Handle::try_current().is_ok() {
                 e.avatar(mri)
             } else {
-                e.avatars.lock().unwrap().get(mri).cloned().flatten()
+                let key = util::avatar_key(mri, util::AVATAR_PX);
+                e.avatars.lock().unwrap().get(&*key).cloned().flatten()
             }
         });
         engine
@@ -548,6 +569,7 @@ impl Engine {
         #[cfg(feature = "calls")]
         self.start_calls();
         self.start_notify_prefs();
+        self.start_cache_upkeep();
         self.start_my_photo();
         self.start_my_presence();
         self.start_people_presence();
@@ -863,6 +885,8 @@ impl Engine {
                 self.cfg.lock().unwrap().enter_sends = on;
                 self.save_cfg();
             }
+            Cmd::ClearMediaCache => self.clear_media_cache().await?,
+            Cmd::ClearAllCache => self.clear_all_cache().await?,
             Cmd::EmojiUsed(ch) => {
                 {
                     let mut cfg = self.cfg.lock().unwrap();

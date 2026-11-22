@@ -214,6 +214,21 @@ pub(super) fn one_on_one_chat_id(a: &str, b: &str) -> Option<String> {
 /// at a scale factor of 2 (what `teams_proto::mt::AVATAR_SIZE` asks the service for).
 pub(super) const AVATAR_PX: u32 = 196;
 
+/// The pixel size of the avatars in the chat list, the header and the message rows: they are
+/// drawn at 32 logical pixels at most, 64 at a scale factor of 2.
+pub(super) const AVATAR_LIST_PX: u32 = 72;
+
+/// The avatar cache key of a person at `px` ([`AVATAR_PX`] or [`AVATAR_LIST_PX`]): the MRI for
+/// the list size, `<MRI>@<px>` for the others. Teams' pictures (`team_photo::team_key`) are
+/// list-size only.
+pub(super) fn avatar_key(mri: &str, px: u32) -> std::borrow::Cow<'_, str> {
+    if px == AVATAR_LIST_PX {
+        std::borrow::Cow::Borrowed(mri)
+    } else {
+        std::borrow::Cow::Owned(format!("{mri}@{px}"))
+    }
+}
+
 /// What a message's inline picture is decoded to: the grid draws one at most 420 x 320 logical
 /// pixels, so this is a little over that at a scale factor of 2 (the pictures kept in memory
 /// stay below 2.2 MB each).
@@ -338,6 +353,19 @@ mod tests {
         assert_eq!((px.width(), px.height()), (AVATAR_PX, AVATAR_PX));
         let small = decode_image(&png_of(100), AVATAR_PX, AVATAR_PX).unwrap();
         assert_eq!(small.width(), 100, "never scaled up in memory");
+    }
+
+    #[test]
+    fn list_avatars_are_decoded_small_and_keyed_apart_from_the_big_ones() {
+        let px = decode_image(&png_of(400), AVATAR_LIST_PX, AVATAR_LIST_PX).unwrap();
+        assert_eq!((px.width(), px.height()), (AVATAR_LIST_PX, AVATAR_LIST_PX));
+        assert!(AVATAR_LIST_PX < AVATAR_PX);
+        assert_eq!(avatar_key("8:orgid:a", AVATAR_LIST_PX), "8:orgid:a");
+        assert_eq!(avatar_key("8:orgid:a", AVATAR_PX), "8:orgid:a@196");
+        assert_ne!(
+            avatar_key("8:orgid:a", AVATAR_LIST_PX),
+            avatar_key("8:orgid:a", AVATAR_PX)
+        );
     }
 
     #[test]
