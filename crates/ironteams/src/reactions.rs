@@ -3,7 +3,7 @@
 //! Teams names six reactions (`like heart laugh surprised sad angry`); every other emoji is
 //! `<hex>_<name>` (for example `1f525_fire`), which [`crate::markdown::reaction_emoji`] decodes.
 
-use crate::data::{Pixels, ReactorData, color_for, initials};
+use crate::data::{color_for, initials, Pixels, ReactorData};
 use emoji::Emoji;
 
 /// Most rows the picker shows at once.
@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(reaction_name("loudlycrying"), "Loudly crying face");
         // A key that decodes to no emoji: its words, title-cased.
         assert_eq!(reaction_name("zzz_party_time"), "Party Time");
-        assert_eq!(reaction_name("custom"), "Custom");
+        assert_eq!(reaction_name("zzqx"), "Zzqx");
     }
 
     fn lookup(mri: &str) -> Option<String> {
