@@ -2,8 +2,9 @@
 //! peek, forms and panels do (see `actions`).
 //!
 //! Events live in memory (`EventCache`), filled by `/me/calendarView` for what is on screen and
-//! `/me/calendarView/delta` for a window around today, every two minutes. A short tick turns the
-//! cache into desktop reminders and the in-app Join banner.
+//! `/me/calendarView/delta` for a window around today, every two minutes. The window's events and
+//! delta link are saved in the store, so the next start shows them at once and syncs from there.
+//! A short tick turns the cache into desktop reminders and the in-app Join banner.
 
 mod actions;
 mod export;
@@ -427,6 +428,22 @@ struct Inner {
     form_seq: u64,
     room_lists: Vec<(String, String)>,
     last_panels: Option<Panels>,
+    /// A save of the event cache is scheduled (`save_calendar_soon`).
+    save_pending: bool,
+}
+
+/// The store `kv` key of the saved event cache. A new layout takes a new key; an old one that
+/// no longer reads is ignored (the first sync fills the calendar again).
+const SAVED_KEY: &str = "calendar.events.v1";
+/// Wait before saving the event cache, so a sync and its masters' fetch save once.
+const SAVE_AFTER: Duration = Duration::from_secs(5);
+
+/// The event cache as saved between runs: the delta window and what it holds, with the delta
+/// link that continues it.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedCalendar {
+    window: (i64, i64),
+    cache: EventCache,
 }
 
 /// The saved view key of the Split view (the grid's own keys only know single views).
@@ -496,6 +513,7 @@ impl CalState {
             form_seq: 0,
             room_lists: Vec::new(),
             last_panels: None,
+            save_pending: false,
         }))
     }
 
@@ -946,6 +964,74 @@ impl Engine {
         tokio::spawn(async move { e.load_calendar_meta().await });
     }
 
+    /// Shows the events saved by the last run, before any network: the next delta sync goes on
+    /// from their delta link.
+    pub(super) fn load_saved_calendar(&self) {
+        if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let json = match self.store.lock().unwrap().get_kv(SAVED_KEY) {
+            Ok(Some(j)) => j,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::warn!(%err, "reading the saved calendar failed");
+                return;
+            }
+        };
+        let saved: SavedCalendar = match serde_json::from_str(&json) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::warn!(%err, "the saved calendar does not read, ignoring it");
+                return;
+            }
+        };
+        {
+            let mut s = self.cal.lock();
+            s.cache = saved.cache;
+            s.window = Some(saved.window);
+            tracing::info!(events = s.cache.len(), "saved calendar loaded");
+        }
+        self.push_calendar();
+    }
+
+    /// Saves the event cache a few seconds from now (one save for changes close together), off
+    /// the async workers. A save that is lost only means the next run replays the changes since
+    /// the delta link it did save.
+    fn save_calendar_soon(self: &Arc<Self>) {
+        if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        if std::mem::replace(&mut self.cal.lock().save_pending, true) {
+            return;
+        }
+        let e = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(SAVE_AFTER).await;
+            let saved = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                let saved = {
+                    let mut s = e.cal.lock();
+                    s.save_pending = false;
+                    match s.window {
+                        Some(w) => SavedCalendar {
+                            window: w,
+                            cache: s.cache.within(w.0, w.1),
+                        },
+                        None => return Ok(()),
+                    }
+                };
+                let json = serde_json::to_string(&saved)?;
+                e.store.lock().unwrap().set_kv(SAVED_KEY, &json)?;
+                Ok(())
+            })
+            .await;
+            match saved {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => tracing::warn!(%err, "saving the calendar failed"),
+                Err(err) => tracing::warn!(%err, "saving the calendar failed"),
+            }
+        });
+    }
+
     /// Demo mode: invented events, no network and no desktop notifications.
     pub(super) fn start_calendar_offline(self: &Arc<Self>) {
         let changes =
@@ -1069,20 +1155,33 @@ impl Engine {
             (s.window.unwrap_or(want), s.cache.delta_link.clone())
         };
         let mut result = Calendar::delta(&self.client, window.0, window.1, link.as_deref()).await;
-        if matches!(result, Err(teams_proto::Error::Status { status: 410, .. })) {
+        let mut fresh = link.is_none();
+        if link.is_some() && matches!(&result, Err(e) if ::calendar::delta_link_expired(e)) {
             // The delta link expired: start the window over.
+            tracing::info!("calendar delta link expired, syncing the window again");
+            self.cal.lock().cache.delta_link = None;
+            fresh = true;
             result = Calendar::delta(&self.client, window.0, window.1, None).await;
         }
         let mut s = self.cal.lock();
         match result {
             Ok((changes, delta_link)) => {
-                s.cache.apply(changes);
+                // A delta with no changes leaves the saved link as good as the new one.
+                let save = fresh || !changes.is_empty();
+                if fresh {
+                    s.cache.apply_full(window.0, window.1, changes);
+                } else {
+                    s.cache.apply(changes);
+                }
                 s.cache.delta_link = Some(delta_link);
                 s.window = Some(window);
                 s.status.clear();
                 tracing::info!(events = s.cache.len(), "calendar synced");
                 drop(s);
                 self.push_calendar();
+                if save {
+                    self.save_calendar_soon();
+                }
                 Ok(())
             }
             Err(err) => {
@@ -1120,6 +1219,7 @@ impl Engine {
         }
         if any {
             self.push_calendar();
+            self.save_calendar_soon();
         }
     }
 
