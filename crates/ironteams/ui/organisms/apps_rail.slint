@@ -1,0 +1,389 @@
+// The pinned apps on the left rail (after the fixed Activity, Chat, Teams, Calendar and OneDrive
+// entries), the Store button and "…", and the overlays they open: the right click menu, the
+// "View more apps" flyout and the confirm and input dialog of the app screens.
+import { Theme } from "../tokens/theme.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { AppsStore, RailApp } from "../stores/apps_store.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { ScrollView } from "std-widgets.slint";
+import { AppTile, KitButton, KitSearch, KitMenuRow, KitMenuFrame, KitField } from "../molecules/apps_kit.slint";
+
+// One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
+component RailEntry inherits Rectangle {
+    in property <string> label;
+    // What a screen reader says, when it should differ from the label under the icon.
+    in property <string> a11y-label;
+    in property <image> glyph;
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> letter;
+    in property <color> tone: Theme.accent-strong;
+    in property <bool> active;
+    in property <bool> draggable: false;
+    in property <int> index;
+    in property <int> count;
+    callback clicked();
+    callback context(length);
+    callback dropped(int);
+    height: 56px;
+    property <bool> dragging;
+    property <bool> was-drag;
+    property <length> dy;
+    accessible-role: button;
+    accessible-label: root.a11y-label != "" ? root.a11y-label : root.label;
+    accessible-description: root.active ? "Current" : "";
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 32px;
+        y: 12px;
+        border-radius: 2px;
+        background: root.active ? Theme.accent : transparent;
+    }
+    Rectangle {
+        y: root.dragging ? root.dy : 0px;
+        height: parent.height;
+        opacity: root.dragging ? 0.6 : 1.0;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            if root.glyph.width > 0: Icon { source: root.glyph; tint: root.active || ta.has-hover ? Theme.accent : Theme.fg-muted; width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
+            if root.glyph.width == 0: AppTile { icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 24px; x: (parent.width - 24px) / 2; }
+            if !AppsStore.rail-collapsed: Text { accessible-role: none; text: root.label; color: root.active ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                root.context(root.absolute-position.y);
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.down {
+                root.was-drag = false;
+            } else if e.button == PointerEventButton.left && e.kind == PointerEventKind.up && root.dragging {
+                root.dragging = false;
+                root.was-drag = true;
+                // One slot is the height of an entry plus the gap.
+                root.dropped(max(0, min(root.count - 1, root.index + round(root.dy / 60px))));
+                root.dy = 0px;
+            }
+        }
+        moved => {
+            if root.draggable && self.pressed {
+                root.dy = self.mouse-y - self.pressed-y;
+                if abs(root.dy) > 8px {
+                    root.dragging = true;
+                }
+            }
+        }
+        clicked => {
+            if !root.was-drag {
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component RailApps inherits Rectangle {
+    in-out property <string> view;
+    vertical-stretch: 1;
+    VerticalLayout {
+        spacing: 4px;
+        flick := Flickable {
+            // A drag on an entry reorders it; the wheel still scrolls.
+            interactive: false;
+            vertical-stretch: 1;
+            content-height: col.preferred-height;
+            col := VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+                for a[i] in AppsStore.rail: RailEntry {
+                    label: a.name;
+                    icon: a.icon;
+                    has-icon: a.has-icon;
+                    letter: a.letter;
+                    tone: a.color;
+                    draggable: true;
+                    index: i;
+                    count: AppsStore.rail.length;
+                    active: root.view == a.view && AppsStore.active-app == a.id;
+                    // An app opened from the rail replaces Settings, as a page does.
+                    clicked => {
+                        if SettingsStore.open { SettingsStore.close(); }
+                        AppsStore.command("open-app", a.id);
+                    }
+                    context(y) => {
+                        AppsStore.menu-y = y;
+                        AppsStore.menu-app = a.id;
+                    }
+                    dropped(to) => { AppsStore.command("move", a.id + "," + to); }
+                }
+                // An app opened from "…" that is not pinned shows here while it is open.
+                if AppsStore.has-temp-app && root.view == AppsStore.temp-app.view: RailEntry {
+                    label: AppsStore.temp-app.name;
+                    icon: AppsStore.temp-app.icon;
+                    has-icon: AppsStore.temp-app.has-icon;
+                    letter: AppsStore.temp-app.letter;
+                    tone: AppsStore.temp-app.color;
+                    active: true;
+                    clicked => {
+                        if SettingsStore.open { SettingsStore.close(); }
+                        AppsStore.command("open-app", AppsStore.temp-app.id);
+                    }
+                }
+            }
+        }
+        RailEntry {
+            label: "Store";
+            glyph: @image-url("../icons/store.svg");
+            active: root.view == "store";
+            clicked => {
+                if SettingsStore.open { SettingsStore.close(); }
+                if root.view == "store" {
+                    // Already here: back to the home page.
+                    AppsStore.command("store-open", "");
+                } else {
+                    // The Store view loads itself when it appears.
+                    root.view = "store";
+                }
+            }
+        }
+        RailEntry {
+            label: "More";
+            a11y-label: "More apps";
+            glyph: @image-url("../icons/more.svg");
+            active: AppsStore.flyout-open;
+            clicked => {
+                if AppsStore.flyout-open {
+                    AppsStore.flyout-open = false;
+                    AppsStore.command("flyout-close", "");
+                } else {
+                    AppsStore.flyout-open = true;
+                    AppsStore.command("flyout-open", "");
+                }
+            }
+        }
+    }
+}
+
+// One installed app in the flyout.
+component FlyoutRow inherits Rectangle {
+    in property <string> name;
+    in property <string> detail;
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> letter;
+    in property <color> tone;
+    callback clicked();
+    callback pin();
+    height: 48px;
+    border-radius: 4px;
+    background: touch.has-hover || pin-touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.name;
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        AppTile { icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 32px; y: 8px; }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            Text { text: root.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+            Text { text: root.detail; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+        pin-btn := Rectangle {
+            width: 28px;
+            height: 28px;
+            y: 10px;
+            border-radius: 4px;
+            opacity: touch.has-hover || pin-touch.has-hover ? 1.0 : 0.45;
+            background: pin-touch.has-hover ? Theme.selected : transparent;
+            accessible-role: button;
+            accessible-label: "Pin " + root.name;
+            Icon { source: @image-url("../icons/pin.svg"); width: 16px; height: 16px; x: 6px; y: 6px; tint: pin-touch.has-hover ? Theme.accent : Theme.fg-muted; }
+            pin-touch := TouchArea { mouse-cursor: pointer; clicked => { root.pin(); } }
+        }
+    }
+}
+
+// The overlays of the app bar. Put it last in the window so it draws over everything.
+export component AppsOverlays inherits Rectangle {
+    // The confirm button of the dialog: the text fields joined by newlines.
+    function submit() {
+        AppsStore.command("form-submit", AppsStore.form-text1 + "\n" + AppsStore.form-text2 + "\n" + AppsStore.form-text3);
+    }
+    // Right click menu of a pinned app.
+    if AppsStore.menu-app != "": Rectangle {
+        width: parent.width;
+        height: parent.height;
+        TouchArea {
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    AppsStore.menu-app = "";
+                }
+            }
+        }
+        KitMenuFrame {
+            x: AppsStore.rail-width + 4px;
+            y: max(8px, min(AppsStore.menu-y, parent.height - self.height - 8px));
+            menu-width: 200px;
+            for a[i] in AppsStore.rail: VerticalLayout {
+                if a.id == AppsStore.menu-app: KitMenuRow {
+                    label: "Open";
+                    clicked => { AppsStore.menu-app = ""; AppsStore.command("open-app", a.id); }
+                }
+                if a.id == AppsStore.menu-app && !a.locked: KitMenuRow {
+                    label: "Unpin";
+                    clicked => { AppsStore.menu-app = ""; AppsStore.command("unpin", a.id); }
+                }
+                if a.id == AppsStore.menu-app && i > 0: KitMenuRow {
+                    label: "Move up";
+                    clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i - 1)); }
+                }
+                if a.id == AppsStore.menu-app && i < AppsStore.rail.length - 1: KitMenuRow {
+                    label: "Move down";
+                    clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i + 1)); }
+                }
+            }
+        }
+    }
+
+    // "View more apps"
+    if AppsStore.flyout-open: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        TouchArea {
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    AppsStore.flyout-open = false;
+                    AppsStore.command("flyout-close", "");
+                }
+            }
+        }
+        panel := Rectangle {
+            x: AppsStore.rail-width + 4px;
+            width: 340px;
+            height: min(parent.height - 64px, 560px);
+            y: parent.height - self.height - 12px;
+            border-radius: 8px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #000000a0;
+            TouchArea { }
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: "Apps"; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+                    KitButton {
+                        label: AppsStore.rail-collapsed ? "Expand the bar" : "Collapse the bar";
+                        clicked => { AppsStore.command("rail-collapse", ""); }
+                    }
+                }
+                flyout-search := KitSearch {
+                    placeholder: "Search apps";
+                    label: "Search apps";
+                    text <=> AppsStore.flyout-query;
+                    edited(q) => { AppsStore.command("flyout-query", q); }
+                    init => { self.focus-input(); }
+                }
+                if AppsStore.flyout-loading: Text { text: "Loading your apps…"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                if !AppsStore.flyout-loading && AppsStore.flyout-apps.length == 0: Text {
+                    text: AppsStore.flyout-query == "" ? "No more apps. Everything you have is on the bar." : "No apps match.";
+                    color: Theme.fg-subtle;
+                    font-size: 13px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
+                Flickable {
+                    vertical-stretch: 1;
+                    content-height: list.preferred-height;
+                    list := VerticalLayout {
+                        alignment: start;
+                        for a in AppsStore.flyout-apps: FlyoutRow {
+                            name: a.name;
+                            detail: a.developer;
+                            icon: a.icon;
+                            has-icon: a.has-icon;
+                            letter: a.letter;
+                            tone: a.color;
+                            clicked => { AppsStore.command("open-app", a.id); }
+                            pin => { AppsStore.command("pin", a.id); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The confirm and input dialog: Add, Remove and Update an app, a task, a flow, a page, a
+    // list item. The engine decides what Confirm does (form-submit).
+    if AppsStore.form-title != "": Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000080;
+        TouchArea { }
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: max(8px, (parent.height - self.height) / 2);
+            width: min(520px, parent.width - 32px);
+            height: dlg.preferred-height + 8px;
+            border-radius: 8px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            accessible-role: groupbox;
+            accessible-label: AppsStore.form-title;
+            dlg := VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                Text { text: AppsStore.form-title; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; wrap: word-wrap; }
+                if AppsStore.form-body != "": Text { text: AppsStore.form-body; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                if AppsStore.form-choices.length > 0: ScrollView {
+                    height: min(216px, AppsStore.form-choices.length * 36px);
+                    VerticalLayout {
+                        width: parent.width - 12px;
+                        spacing: 2px;
+                        alignment: start;
+                        for c in AppsStore.form-choices: Rectangle {
+                            height: 34px;
+                            border-radius: 4px;
+                            background: c.selected ? Theme.selected : (pick.has-hover ? Theme.surface-hover : transparent);
+                            accessible-role: button;
+                            accessible-label: c.title;
+                            accessible-item-selected: c.selected;
+                            Text { x: 12px; width: parent.width - 24px; text: c.title; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                            pick := TouchArea { mouse-cursor: pointer; clicked => { AppsStore.command("form-choice", c.id); } }
+                        }
+                    }
+                }
+                if AppsStore.form-label1 != "": KitField { label: AppsStore.form-label1; text <=> AppsStore.form-text1; autofocus: true; accepted => { root.submit(); } }
+                if AppsStore.form-label2 != "": KitField { label: AppsStore.form-label2; text <=> AppsStore.form-text2; accepted => { root.submit(); } }
+                if AppsStore.form-label3 != "": KitField { label: AppsStore.form-label3; text <=> AppsStore.form-text3; accepted => { root.submit(); } }
+                if AppsStore.form-error != "": Text { text: AppsStore.form-error; color: Theme.danger; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Problem: " + AppsStore.form-error; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    if AppsStore.form-link-label != "": KitButton {
+                        label: AppsStore.form-link-label;
+                        clicked => { AppsStore.command("form-link", ""); }
+                    }
+                    KitButton {
+                        label: "Cancel";
+                        clicked => { AppsStore.command("form-cancel", ""); }
+                    }
+                    KitButton {
+                        label: AppsStore.form-confirm;
+                        primary: !AppsStore.form-danger;
+                        danger: AppsStore.form-danger;
+                        clicked => { root.submit(); }
+                    }
+                }
+            }
+        }
+    }
+}

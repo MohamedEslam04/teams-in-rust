@@ -106,7 +106,7 @@ fn a_voice_message_bubble_keeps_its_width_when_playback_starts() {
 /// (such as `app.svg`) turns into a filled square when the menu tints it.
 #[test]
 fn the_message_menu_icons_exist_and_are_plain_glyphs() {
-    let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+    let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/molecules");
     let menu = std::fs::read_to_string(ui.join("message_menu.slint")).unwrap();
     let mut icons: Vec<&str> = menu
         .split("@image-url(\"")
@@ -116,7 +116,7 @@ fn the_message_menu_icons_exist_and_are_plain_glyphs() {
     icons.sort_unstable();
     icons.dedup();
     assert!(
-        icons.contains(&"icons/more.svg"),
+        icons.contains(&"../icons/more.svg"),
         "More actions has an icon"
     );
     for icon in icons {

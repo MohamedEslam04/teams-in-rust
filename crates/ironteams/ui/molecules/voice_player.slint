@@ -1,0 +1,179 @@
+// A voice message in a chat, drawn like a messenger does: a round play button, the message's
+// waveform (the played part in the accent colour, click or drag to seek), the time, a speed
+// button while it plays, and a dot until it has been played once.
+//
+// One message plays at a time. What plays lives in `VoiceStore` (filled by `src/ui/voice.rs`
+// about every 50 ms while something plays); a row only knows its own `VoiceItem`.
+import { Theme } from "../tokens/theme.slint";
+import { VoiceItem } from "../tokens/types.slint";
+
+export global VoiceStore {
+    // The message playing or paused ("" when none). `position-ms` and `playing` are its state.
+    in property <string> key;
+    in property <bool> playing;
+    in property <int> position-ms;
+    // The message being downloaded or decoded before it can play.
+    in property <string> loading-key;
+    in property <float> speed: 1.0;
+    // Play or pause `key` (its `url` is the media object).
+    callback toggle(/* key */ string, /* url */ string);
+    // Jump to `fraction` (0..1) of `key`, playing it if it was not the one playing.
+    callback seek(/* key */ string, /* url */ string, /* fraction */ float);
+    // 1× → 1.5× → 2× → 1×.
+    callback cycle-speed();
+    // "m:ss" of a time in milliseconds.
+    public pure function clock(ms: int) -> string {
+        let s = floor(max(ms, 0) / 1000);
+        let rest = mod(s, 60);
+        "\{floor(s / 60)}:\{rest < 10 ? "0" : ""}\{rest}"
+    }
+}
+
+// The waveform bars, `progress` (0..1) of them in `played` colour.
+export component Waveform inherits Rectangle {
+    in property <[float]> peaks;
+    in property <float> progress;
+    in property <color> played: Theme.accent;
+    in property <color> rest: Theme.fg-subtle;
+    // Fires with the fraction under the pointer while it is pressed (click or drag).
+    callback scrub(float);
+    min-width: 120px;
+    height: 28px;
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: stretch;
+        for p[i] in root.peaks: Rectangle {
+            min-width: 2px;
+            horizontal-stretch: 1;
+            bar := Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: parent.width;
+                height: max(3px, p * root.height);
+                border-radius: 1.5px;
+                background: (i + 0.5) / max(root.peaks.length, 1) <= root.progress ? root.played : root.rest;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.scrub(clamp(self.mouse-x / self.width, 0, 1));
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.scrub(clamp(self.mouse-x / self.width, 0, 1));
+            }
+        }
+    }
+}
+
+// A round play / pause button. `busy` shows the button dimmed while the message is fetched.
+export component PlayButton inherits Rectangle {
+    in property <bool> playing;
+    in property <bool> busy;
+    in property <string> label;
+    callback clicked();
+    width: 36px;
+    height: 36px;
+    border-radius: self.width / 2;
+    background: touch.has-hover ? Theme.accent : Theme.accent-strong;
+    opacity: busy ? 0.6 : 1.0;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-action-default => { root.clicked(); }
+    Image {
+        source: root.playing ? @image-url("../icons/pause-fill.svg") : @image-url("../icons/play.svg");
+        colorize: white;
+        width: 18px;
+        height: 18px;
+        // The triangle's weight sits left of its box: nudge it to look centred.
+        x: (parent.width - self.width) / 2 + (root.playing ? 0 : 1px);
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One voice message.
+export component VoicePlayer inherits Rectangle {
+    in property <VoiceItem> item;
+    property <bool> active: VoiceStore.key == item.key && item.key != "";
+    property <bool> playing: active && VoiceStore.playing;
+    property <float> progress: active && item.duration-ms > 0 ? VoiceStore.position-ms / item.duration-ms : 0;
+    min-width: 240px;
+    max-width: 360px;
+    height: 48px;
+    accessible-role: groupbox;
+    accessible-label: @tr("Voice message, {}", VoiceStore.clock(item.duration-ms));
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            PlayButton {
+                playing: root.playing;
+                busy: VoiceStore.loading-key == root.item.key;
+                label: root.playing ? @tr("Pause voice message") : @tr("Play voice message");
+                clicked => { VoiceStore.toggle(root.item.key, root.item.url); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Waveform {
+                peaks: root.item.peaks;
+                progress: root.progress;
+                scrub(f) => { VoiceStore.seek(root.item.key, root.item.url, f); }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    text: root.item.failed ? @tr("Couldn't load") : root.active ? VoiceStore.clock(VoiceStore.position-ms) : VoiceStore.clock(root.item.duration-ms);
+                    color: root.item.failed ? Theme.danger : Theme.fg-subtle;
+                    font-size: 11px * Theme.font-scale;
+                }
+                if root.item.unplayed && !root.active: Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 3px;
+                    background: Theme.accent;
+                    accessible-role: text;
+                    accessible-label: @tr("Not played yet");
+                }
+            }
+        }
+        // The chip's room is always kept, so the bubble does not widen when playback starts.
+        VerticalLayout {
+            width: 38px;
+            alignment: center;
+            if root.active: Rectangle {
+                width: 38px;
+                height: 22px;
+                border-radius: 11px;
+                background: speed-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+                accessible-role: button;
+                accessible-label: @tr("Playback speed {}×", VoiceStore.speed);
+                accessible-action-default => { VoiceStore.cycle-speed(); }
+                Text {
+                    text: "\{VoiceStore.speed}×";
+                    color: Theme.fg;
+                    font-size: 11px * Theme.font-scale;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                speed-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { VoiceStore.cycle-speed(); }
+                }
+            }
+        }
+    }
+}

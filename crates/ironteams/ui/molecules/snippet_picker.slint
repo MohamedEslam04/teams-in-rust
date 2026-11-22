@@ -1,0 +1,61 @@
+// Snippets (saved quick replies): the popup above the composer that lists them while a `/query`
+// is being typed, and the globals the Rust side (src/snippets.rs) fills. Same shape as the
+// @mention picker.
+import { Theme } from "../tokens/theme.slint";
+import { Edited } from "../tokens/types.slint";
+
+// `preview` is the text on one line, for lists.
+export struct SnippetItem { name: string, text: string, preview: string }
+
+export global SnippetStore {
+    // Every saved snippet, in the order the user keeps them.
+    in-out property <[SnippetItem]> items;
+    // name, text, original name ("" for a new one) -> "" when saved, else why not:
+    // name-empty | name-spaces | name-long | name-taken | text-empty
+    callback save(string, string, string) -> string;
+    callback remove(string);
+}
+
+export global SnippetApi {
+    // text, cursor byte offset -> is there a `/query` right before the cursor
+    pure callback active(string, int) -> bool;
+    // text, cursor, all snippets -> the ones that fit the query, best first
+    pure callback matches(string, int, [SnippetItem]) -> [SnippetItem];
+    // text, cursor, snippet text -> the text with the `/query` replaced by the snippet, its
+    // placeholders filled in (not pure: it reads who the chat is with)
+    callback complete(string, int, string) -> Edited;
+}
+
+export component SnippetPicker inherits Rectangle {
+    in property <[SnippetItem]> items;
+    in property <int> index: 0;
+    callback picked(int);
+
+    width: 340px;
+    height: min(items.length, 8) * 40px + 8px;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: list;
+    accessible-label: @tr("Snippets");
+    VerticalLayout {
+        padding: 4px;
+        for s[i] in root.items: Rectangle {
+            height: 40px;
+            border-radius: 4px;
+            background: i == root.index || row.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: list-item;
+            accessible-label: "/" + s.name;
+            accessible-description: s.preview;
+            VerticalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                alignment: center;
+                Text { text: "/" + s.name; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; horizontal-alignment: Theme.start-align; }
+                Text { text: s.preview; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
+            }
+            row := TouchArea { mouse-cursor: pointer; clicked => { root.picked(i); } }
+        }
+    }
+}

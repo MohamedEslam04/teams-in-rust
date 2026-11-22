@@ -1,0 +1,245 @@
+// Chat media (plan chat 9.5 to 9.7): the full-size image viewer and the link preview card. Rust
+// fills `MediaStore`; the UI sends `command(name, argument)`.
+import { Theme } from "../tokens/theme.slint";
+import { LinkCard } from "../tokens/types.slint";
+import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Spinner } from "../tokens/motion.slint";
+
+export global MediaStore {
+    in property <bool> viewer-open: false;
+    in property <image> viewer-image;
+    in property <bool> viewer-loaded: false;
+    in property <bool> viewer-failed: false;
+    in property <string> viewer-title;
+    in property <string> viewer-status;
+    in property <int> viewer-index;   // 0-based
+    in property <int> viewer-count;
+    callback command(string, string);
+}
+
+// A link preview card: thumbnail, domain, title and description. Clicking opens the link.
+export component LinkCardView inherits Rectangle {
+    in property <LinkCard> c;
+    callback open(string);
+    height: row.preferred-height;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: touch.has-hover ? Theme.surface : Theme.sidebar;
+    clip: true;
+    accessible-role: button;
+    accessible-label: "Open link " + (root.c.title != "" ? root.c.title : root.c.domain);
+    accessible-action-default => { root.open(root.c.url); }
+
+    row := HorizontalLayout {
+        spacing: 0px;
+        if root.c.has-thumb: Rectangle {
+            width: 92px;
+            background: Theme.main;
+            Image {
+                source: root.c.thumb;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+            }
+        }
+        VerticalLayout {
+            padding: 10px;
+            spacing: 2px;
+            Text { text: root.c.domain; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            if root.c.title != "": Text {
+                text: root.c.title;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                font-weight: 600;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 36px;
+            }
+            if root.c.description != "": Text {
+                text: root.c.description;
+                color: Theme.fg-muted;
+                font-size: 12px * Theme.font-scale;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 48px;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(root.c.url); }
+    }
+}
+
+// The full-window picture viewer: next and previous, zoom, Save and Copy.
+export component ImageViewer inherits Rectangle {
+    // 1.0 fits the window (never above the picture's own size).
+    property <float> zoom: 1.0;
+    property <int> shown: MediaStore.viewer-index;
+    property <length> pic-w: MediaStore.viewer-image.width * 1px;
+    property <length> pic-h: MediaStore.viewer-image.height * 1px;
+    property <length> avail-w: root.width - 160px;
+    property <length> avail-h: root.height - 120px;
+    property <float> fit: MediaStore.viewer-loaded && root.pic-w > 0px && root.pic-h > 0px
+        ? min(1.0, min(root.avail-w / root.pic-w, root.avail-h / root.pic-h))
+        : 1.0;
+    property <bool> has-prev: MediaStore.viewer-index > 0;
+    property <bool> has-next: MediaStore.viewer-index < MediaStore.viewer-count - 1;
+
+    changed shown => { root.zoom = 1.0; }
+
+    function zoom-by(f: float) {
+        root.zoom = max(0.25, min(8.0, root.zoom * f));
+    }
+    function step(d: int) {
+        MediaStore.command("image-step", d + "");
+    }
+
+    background: #000000ea;
+
+    scope := FocusScope {
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                MediaStore.command("image-close", "");
+                return accept;
+            }
+            if e.text == Key.LeftArrow && root.has-prev {
+                root.step(-1);
+                return accept;
+            }
+            if e.text == Key.RightArrow && root.has-next {
+                root.step(1);
+                return accept;
+            }
+            if e.text == "+" || e.text == "=" {
+                root.zoom-by(1.25);
+                return accept;
+            }
+            if e.text == "-" {
+                root.zoom-by(0.8);
+                return accept;
+            }
+            if e.text == "0" {
+                root.zoom = 1.0;
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Clicking beside the picture closes the viewer.
+    TouchArea { clicked => { MediaStore.command("image-close", ""); } }
+
+    if !MediaStore.viewer-loaded && !MediaStore.viewer-failed: Spinner {
+        size: 28px;
+        x: (parent.width - self.width) / 2;
+        y: parent.height / 2 - 40px;
+    }
+    if !MediaStore.viewer-loaded && !MediaStore.viewer-failed: Text {
+        text: "Loading image…";
+        color: Theme.fg-muted;
+        font-size: 14px * Theme.font-scale;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if MediaStore.viewer-failed: Text {
+        text: "This image could not be loaded.";
+        color: Theme.fg-muted;
+        font-size: 14px * Theme.font-scale;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if MediaStore.viewer-loaded: Flickable {
+        x: 80px;
+        y: 60px;
+        width: root.avail-w;
+        height: root.avail-h;
+        content-width: max(self.width, root.pic-w * root.fit * root.zoom);
+        content-height: max(self.height, root.pic-h * root.fit * root.zoom);
+        Image {
+            source: MediaStore.viewer-image;
+            width: root.pic-w * root.fit * root.zoom;
+            height: root.pic-h * root.fit * root.zoom;
+            x: max(0px, (parent.content-width - self.width) / 2);
+            y: max(0px, (parent.content-height - self.height) / 2);
+            image-fit: contain;
+            accessible-role: image;
+            accessible-label: MediaStore.viewer-title;
+        }
+    }
+
+    // Top bar.
+    Rectangle {
+        y: 0px;
+        height: 52px;
+        background: #000000b0;
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 12px;
+            spacing: 6px;
+            Text {
+                text: MediaStore.viewer-title;
+                color: Theme.fg;
+                font-size: 14px * Theme.font-scale;
+                font-weight: 600;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: MediaStore.viewer-count > 1 ? (MediaStore.viewer-index + 1) + " / " + MediaStore.viewer-count : "";
+                color: Theme.fg-muted;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: "Picture " + (MediaStore.viewer-index + 1) + " of " + MediaStore.viewer-count;
+            }
+            IconButton { icon: @image-url("../icons/plus.svg"); tooltip: "Zoom in"; clicked => { root.zoom-by(1.25); } }
+            Text { text: round(root.fit * root.zoom * 100) + "%"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; min-width: 40px; horizontal-alignment: center; }
+            IconButton { icon: @image-url("../icons/minus.svg"); tooltip: "Zoom out"; clicked => { root.zoom-by(0.8); } }
+            IconButton { icon: @image-url("../icons/download.svg"); tooltip: "Save image"; clicked => { MediaStore.command("image-save", ""); } }
+            IconButton { icon: @image-url("../icons/copy.svg"); tooltip: "Copy image"; clicked => { MediaStore.command("image-copy", ""); } }
+            IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close viewer"; clicked => { MediaStore.command("image-close", ""); } }
+        }
+    }
+
+    if root.has-prev: Rectangle {
+        x: 16px;
+        y: (parent.height - self.height) / 2;
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        background: prev-touch.has-hover ? #444444cc : #00000090;
+        accessible-role: button;
+        accessible-label: "Previous image";
+        accessible-action-default => { root.step(-1); }
+        Icon { source: @image-url("../icons/chevron-left.svg"); tint: Theme.fg; width: 24px; height: 24px; }
+        prev-touch := TouchArea { mouse-cursor: pointer; clicked => { root.step(-1); } }
+    }
+    if root.has-next: Rectangle {
+        x: parent.width - self.width - 16px;
+        y: (parent.height - self.height) / 2;
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        background: next-touch.has-hover ? #444444cc : #00000090;
+        accessible-role: button;
+        accessible-label: "Next image";
+        accessible-action-default => { root.step(1); }
+        Icon { source: @image-url("../icons/chevron-right.svg"); tint: Theme.fg; width: 24px; height: 24px; }
+        next-touch := TouchArea { mouse-cursor: pointer; clicked => { root.step(1); } }
+    }
+
+    if MediaStore.viewer-status != "": Rectangle {
+        y: parent.height - self.height - 20px;
+        x: (parent.width - self.width) / 2;
+        width: status-text.preferred-width + 28px;
+        height: 32px;
+        border-radius: 16px;
+        background: #000000c0;
+        status-text := Text { text: MediaStore.viewer-status; color: Theme.fg; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+    }
+}

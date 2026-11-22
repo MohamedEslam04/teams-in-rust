@@ -1,0 +1,140 @@
+// Immersive Reader: a message alone on the whole window, in large text that can be made bigger
+// or smaller, with an optional line focus that dims everything but a band of lines (Up and Down
+// move it). IronTeams has no text-to-speech, so there is no Read aloud.
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+
+component ReaderButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback clicked();
+    width: max(40px, label-text.preferred-width + 20px);
+    height: 32px;
+    border-radius: 4px;
+    background: root.active ? Theme.accent-strong : (touch.has-hover ? Theme.surface-hover : Theme.surface);
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: root.active;
+    accessible-checked: root.active;
+    accessible-action-default => { root.clicked(); }
+    label-text := Text { text: root.label; color: root.active ? #ffffff : Theme.fg; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component ImmersiveReader inherits Rectangle {
+    in property <string> sender;
+    in property <string> time;
+    in property <string> text;
+    in property <bool> rtl: false;
+    // Text size in pixels (before the app's font scale).
+    in-out property <int> size: 28;
+    // 0: off; 1, 3 or 5 lines in focus.
+    in-out property <int> focus-lines: 0;
+    callback close();
+
+    property <length> line-height: root.size * 1.5px * Theme.font-scale;
+    // Top of the focus band, in the text's coordinates.
+    property <length> band-y: 0px;
+
+    background: Theme.main;
+    accessible-role: groupbox;
+    accessible-label: @tr("Immersive Reader");
+
+    TouchArea { }
+
+    function step(lines: int) {
+        root.band-y = max(0px, min(body.preferred-height - root.line-height, root.band-y + lines * root.line-height));
+        // Keep the band on screen.
+        if page.content-y + root.band-y < 0px {
+            page.content-y = -root.band-y;
+        }
+        if page.content-y + root.band-y + root.focus-lines * root.line-height > page.height {
+            page.content-y = page.height - root.band-y - root.focus-lines * root.line-height;
+        }
+    }
+
+    keys := FocusScope {
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.close(); return accept; }
+            if e.text == Key.UpArrow && root.focus-lines > 0 { root.step(-1); return accept; }
+            if e.text == Key.DownArrow && root.focus-lines > 0 { root.step(1); return accept; }
+            if e.text == "+" || e.text == "=" { root.size = min(72, root.size + 4); return accept; }
+            if e.text == "-" { root.size = max(16, root.size - 4); return accept; }
+            reject
+        }
+    }
+
+    VerticalLayout {
+        Rectangle {
+            height: 56px;
+            background: Theme.topbar;
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 12px;
+                spacing: 8px;
+                Text { text: @tr("Immersive Reader"); color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                ReaderButton { label: "A−"; y: 12px; clicked => { root.size = max(16, root.size - 4); } }
+                ReaderButton { label: "A+"; y: 12px; clicked => { root.size = min(72, root.size + 4); } }
+                ReaderButton { label: @tr("Line focus: off"); active: root.focus-lines == 0; y: 12px; clicked => { root.focus-lines = 0; } }
+                for n in [1, 3, 5]: ReaderButton {
+                    label: n == 1 ? @tr("1 line") : @tr("{} lines", n);
+                    active: root.focus-lines == n;
+                    y: 12px;
+                    clicked => { root.focus-lines = n; keys.focus(); }
+                }
+                IconButton { icon: @image-url("../icons/close.svg"); tooltip: @tr("Close Immersive Reader"); y: 12px; clicked => { root.close(); } }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        page := Flickable {
+            vertical-stretch: 1;
+            content-height: body-box.preferred-height;
+            body-box := VerticalLayout {
+                // The window's width, not the list's: the list takes its size from this column.
+                width: root.width;
+                padding-top: 32px;
+                padding-bottom: 64px;
+                padding-left: max(24px, (root.width - 900px) / 2);
+                padding-right: max(24px, (root.width - 900px) / 2);
+                spacing: 16px;
+                Text {
+                    text: root.time == "" ? root.sender : root.sender + " · " + root.time;
+                    color: Theme.fg-muted;
+                    font-size: 15px * Theme.font-scale;
+                    overflow: elide;
+                }
+                Rectangle {
+                    height: body.preferred-height;
+                    body := Text {
+                        width: parent.width;
+                        text: root.text;
+                        color: Theme.fg;
+                        font-size: root.size * 1px * Theme.font-scale;
+                        wrap: word-wrap;
+                        horizontal-alignment: root.rtl ? right : left;
+                    }
+                    // Line focus: everything but the band is dimmed.
+                    if root.focus-lines > 0: Rectangle {
+                        y: -2000px;
+                        height: 2000px + root.band-y;
+                        background: Theme.main.with-alpha(0.85);
+                    }
+                    if root.focus-lines > 0: Rectangle {
+                        y: root.band-y + root.focus-lines * root.line-height;
+                        height: max(0px, body.preferred-height - self.y) + 2000px;
+                        background: Theme.main.with-alpha(0.85);
+                    }
+                    if root.focus-lines > 0: TouchArea {
+                        clicked => {
+                            root.band-y = max(0px, floor(self.mouse-y / root.line-height) * root.line-height);
+                            keys.focus();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

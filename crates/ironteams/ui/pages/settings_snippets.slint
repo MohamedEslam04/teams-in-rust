@@ -1,0 +1,156 @@
+// The Snippets section of Settings: the saved quick replies the composer offers after `/`, with
+// add, edit and delete. Self-contained (it only reads `SnippetStore`), so it can sit on whichever
+// page holds the chat settings: one `SnippetsSection { }` line.
+import { Theme } from "../tokens/theme.slint";
+import { SnippetStore } from "../molecules/snippet_picker.slint";
+import { SButton, SFont, SSection } from "../molecules/settings_widgets.slint";
+
+// The name and text boxes with Save (and Cancel while editing). `load` fills them.
+component SnippetForm inherits VerticalLayout {
+    in property <bool> editing;
+    in property <string> error;
+    callback save(string, string);
+    callback cancel();
+    public function load(name: string, text: string) {
+        name-input.text = name;
+        body-input.text = text;
+    }
+    spacing: 6px;
+    Text { horizontal-alignment: Theme.start-align; text: root.editing ? @tr("Edit snippet") : @tr("New snippet"); color: Theme.fg; font-size: SFont.body; font-weight: 600; }
+    Text { horizontal-alignment: Theme.start-align; text: @tr("Name (what you type after /)"); color: Theme.fg-muted; font-size: SFont.small; }
+    Rectangle {
+        height: max(30px, name-input.preferred-height + 12px);
+        max-width: 360px;
+        border-radius: 4px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: name-input.has-focus ? Theme.accent : Theme.border;
+        name-input := TextInput {
+            x: 10px;
+            width: parent.width - 20px;
+            color: Theme.fg;
+            font-size: SFont.body;
+            single-line: true;
+            vertical-alignment: center;
+            horizontal-alignment: Theme.start-align;
+            accessible-role: text-input;
+            accessible-label: @tr("Snippet name");
+        }
+    }
+    Text { horizontal-alignment: Theme.start-align; text: @tr("Text"); color: Theme.fg-muted; font-size: SFont.small; }
+    Rectangle {
+        height: max(80px, body-input.preferred-height + 16px);
+        max-width: 360px;
+        border-radius: 4px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: body-input.has-focus ? Theme.accent : Theme.border;
+        body-input := TextInput {
+            x: 10px;
+            y: 8px;
+            width: parent.width - 20px;
+            color: Theme.fg;
+            font-size: SFont.body;
+            single-line: false;
+            wrap: word-wrap;
+            horizontal-alignment: Theme.start-align;
+            accessible-role: text-input;
+            accessible-label: @tr("Snippet text");
+        }
+    }
+    if root.error != "": Text {
+        horizontal-alignment: Theme.start-align;
+        text: root.error;
+        color: Theme.danger;
+        font-size: SFont.small;
+        wrap: word-wrap;
+        accessible-role: text;
+        accessible-label: @tr("Snippet error");
+        accessible-value: root.error;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        SButton { label: @tr("Save snippet"); primary: true; clicked => { root.save(name-input.text, body-input.text); } }
+        if root.editing: SButton { label: @tr("Cancel"); clicked => { root.cancel(); } }
+    }
+}
+
+export component SnippetsSection inherits SSection {
+    title: @tr("Snippets");
+    hint: @tr("Type / at the start of a line in the composer to insert a saved reply. In the text, {} becomes the other person's first name in a 1:1 chat, {} your name and {} today's date.", "{first}", "{me}", "{date}");
+    // The name of the snippet being edited, "" when adding a new one.
+    property <string> original;
+    property <string> error;
+    pure function message(code: string) -> string {
+        return code == "name-empty" ? @tr("Give the snippet a name.")
+            : code == "name-spaces" ? @tr("A name is one word, without spaces or /.")
+            : code == "name-long" ? @tr("That name is too long.")
+            : code == "name-taken" ? @tr("Another snippet already has that name.")
+            : code == "text-empty" ? @tr("Write the text to insert.")
+            : "";
+    }
+    if SnippetStore.items.length == 0: Text {
+        horizontal-alignment: Theme.start-align;
+        text: @tr("No snippets yet.");
+        color: Theme.fg-muted;
+        font-size: SFont.small;
+    }
+    for s[i] in SnippetStore.items: Rectangle {
+        height: max(48px, lcol.preferred-height + 10px);
+        border-radius: 4px;
+        background: Theme.surface;
+        accessible-role: groupbox;
+        accessible-label: "/" + s.name;
+        accessible-description: s.preview;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 8px;
+            spacing: 8px;
+            lcol := VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text { horizontal-alignment: Theme.start-align; text: "/" + s.name; color: Theme.fg; font-size: SFont.body; font-weight: 600; overflow: elide; }
+                Text { horizontal-alignment: Theme.start-align; text: s.preview; color: Theme.fg-subtle; font-size: SFont.small; overflow: elide; }
+            }
+            SButton {
+                label: @tr("Edit");
+                accessible-label: @tr("Edit snippet {}", s.name);
+                y: (parent.height - self.height) / 2;
+                clicked => {
+                    root.original = s.name;
+                    root.error = "";
+                    form.load(s.name, s.text);
+                }
+            }
+            SButton {
+                label: @tr("Delete");
+                accessible-label: @tr("Delete snippet {}", s.name);
+                y: (parent.height - self.height) / 2;
+                clicked => {
+                    SnippetStore.remove(s.name);
+                    if root.original == s.name {
+                        root.original = "";
+                        form.load("", "");
+                    }
+                }
+            }
+        }
+    }
+    form := SnippetForm {
+        editing: root.original != "";
+        error: root.error;
+        save(name, text) => {
+            root.error = root.message(SnippetStore.save(name, text, root.original));
+            if root.error == "" {
+                root.original = "";
+                form.load("", "");
+            }
+        }
+        cancel => {
+            root.original = "";
+            root.error = "";
+            form.load("", "");
+        }
+    }
+}

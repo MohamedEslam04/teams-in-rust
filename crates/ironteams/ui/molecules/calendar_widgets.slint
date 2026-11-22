@@ -1,0 +1,160 @@
+// Small controls shared by the calendar's panels: buttons, checkboxes, text fields, menu rows.
+import { Theme } from "../tokens/theme.slint";
+
+export component CalButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 28px;
+    preferred-width: lbl.preferred-width + 24px;
+    min-width: lbl.preferred-width + 24px;
+    border-radius: 4px;
+    background: !root.enabled ? Theme.surface : (root.primary ? (t.has-hover ? Theme.accent : Theme.accent-strong) : (root.active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : Theme.surface)));
+    border-width: root.primary ? 0px : 1px;
+    border-color: root.active ? Theme.accent : (root.danger ? Theme.danger : Theme.border);
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    lbl := Text {
+        text: root.label;
+        color: !root.enabled ? Theme.fg-subtle : (root.danger && !root.primary ? #ff8a8d : Theme.fg);
+        font-size: 13px * Theme.font-scale;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    t := TouchArea {
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component CalCheck inherits Rectangle {
+    in-out property <bool> checked;
+    in property <string> label;
+    in property <color> tone: Theme.accent-strong;
+    callback toggled(bool);
+    height: 26px;
+    preferred-width: lbl.preferred-width + 30px;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-checked: root.checked;
+    accessible-action-default => { root.checked = !root.checked; root.toggled(root.checked); }
+    Rectangle {
+        x: 0px;
+        y: 5px;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: root.checked ? root.tone : Theme.border;
+        background: root.checked ? root.tone : transparent;
+        if root.checked: Text { text: "✓"; color: #ffffff; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    lbl := Text {
+        x: 24px;
+        text: root.label;
+        color: Theme.fg;
+        font-size: 13px * Theme.font-scale;
+        vertical-alignment: center;
+        overflow: elide;
+        width: parent.width - 24px;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.checked = !root.checked; root.toggled(root.checked); }
+    }
+}
+
+export component CalField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <bool> multiline: false;
+    in property <length> field-height: 30px;
+    callback edited(string);
+    callback accepted();
+    height: root.multiline ? max(root.field-height, 88px) : root.field-height;
+    border-radius: 4px;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    input := TextInput {
+        x: 8px;
+        y: root.multiline ? 6px : 0px;
+        width: parent.width - 16px;
+        height: root.multiline ? parent.height - 12px : parent.height;
+        color: Theme.fg;
+        font-size: 13px * Theme.font-scale;
+        single-line: !root.multiline;
+        wrap: root.multiline ? word-wrap : no-wrap;
+        vertical-alignment: root.multiline ? top : center;
+        accessible-role: text-input;
+        accessible-label: root.placeholder;
+        accessible-placeholder-text: root.placeholder;
+        edited => { root.edited(self.text); }
+        accepted => { root.accepted(); }
+    }
+    if input.text == "": Text {
+        x: 8px;
+        y: root.multiline ? 6px : 0px;
+        height: root.multiline ? 20px : parent.height;
+        text: root.placeholder;
+        color: Theme.fg-subtle;
+        font-size: 13px * Theme.font-scale;
+        vertical-alignment: center;
+    }
+}
+
+// A card for popovers and dialogs.
+export component CalCard inherits Rectangle {
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #000000a0;
+}
+
+export component CalMenuItem inherits Rectangle {
+    in property <string> label;
+    in property <string> hint;
+    in property <bool> checked: false;
+    in property <bool> enabled: true;
+    in property <color> tone: Theme.fg;
+    callback clicked();
+    height: 30px;
+    border-radius: 4px;
+    background: t.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Text { text: root.label; color: root.enabled ? root.tone : Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Text { text: root.checked ? "✓" : root.hint; color: root.checked ? Theme.accent : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+    }
+    t := TouchArea {
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if root.enabled {
+                root.clicked();
+            }
+        }
+    }
+}
+
+// Catches clicks outside an open popover and closes it.
+export component CalScrim inherits Rectangle {
+    in property <color> shade: transparent;
+    callback dismissed();
+    background: root.shade;
+    TouchArea { clicked => { root.dismissed(); } }
+}
