@@ -1829,3 +1829,55 @@ fn a_batch_of_conversations_roundtrips_and_keeps_favorites() {
     assert!(c1.favorite, "favorite is a local choice");
     assert!(s.conversation("c2").unwrap().is_some());
 }
+fn with_mentions(mut m: MessageRow, props: &str) -> MessageRow {
+    m.reactions_json = props.into();
+    m
+}
+
+const MENTION: &str = r#"{"m":[{"itemid":0,"mri":"8:orgid:me"}]}"#;
+
+#[test]
+fn mention_candidates_are_newer_than_the_horizon_foreign_and_carry_mentions() {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_message(&with_mentions(msg("old", "c", 10), MENTION))
+        .unwrap();
+    s.upsert_message(&with_mentions(msg("hit", "c", 30), MENTION))
+        .unwrap();
+    s.upsert_message(&msg("plain", "c", 40)).unwrap();
+    s.upsert_message(&with_mentions(msg("empty", "c", 50), r#"{"m":[],"r":[]}"#))
+        .unwrap();
+    s.upsert_message(&with_mentions(msg("garbage", "c", 60), "not json"))
+        .unwrap();
+    s.upsert_message(&with_mentions(msg("array", "c", 70), "[]"))
+        .unwrap();
+    let mut mine = with_mentions(msg("mine", "c", 80), MENTION);
+    mine.sender_mri = "8:orgid:me".into();
+    s.upsert_message(&mine).unwrap();
+    let mut reply = with_mentions(msg("reply", "c", 90), MENTION);
+    reply.parent_id = Some("root".into());
+    s.upsert_message(&reply).unwrap();
+    s.upsert_message(&with_mentions(msg("other", "d", 100), MENTION))
+        .unwrap();
+
+    let got = s.mention_candidates("c", 10, "8:orgid:me", 30).unwrap();
+    assert_eq!(got, [MENTION]);
+    // Nothing newer than the horizon.
+    assert!(
+        s.mention_candidates("c", 30, "8:orgid:me", 30)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn mention_candidates_look_only_at_the_newest_window_of_messages() {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_message(&with_mentions(msg("m1", "c", 10), MENTION))
+        .unwrap();
+    for i in 0..3 {
+        s.upsert_message(&msg(&format!("p{i}"), "c", 20 + i))
+            .unwrap();
+    }
+    assert!(s.mention_candidates("c", 0, "x", 3).unwrap().is_empty());
+    assert_eq!(s.mention_candidates("c", 0, "x", 4).unwrap().len(), 1);
+}
