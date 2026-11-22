@@ -50,6 +50,8 @@ import { ChatHeaderStore, HeaderMoreButton, RemoveHistoryConfirm } from "chat_he
 import { StorylineView } from "storyline.slint";
 import { TopBarStore, TopSearch, SearchDropdown, NavButtons, MoreButton, MoreMenu } from "topbar.slint";
 import { Motion, PopIn, SkeletonMessages, Spinner, TypingIndicator } from "motion.slint";
+import { MessageToasts, MessageToastStore } from "message_toast.slint";
+export { MessageToastStore, ToastCard } from "message_toast.slint";
 
 export { Theme } from "theme.slint";
 export { Motion, TypingStore } from "motion.slint";
@@ -2065,4 +2067,7 @@ export component AppWindow inherits Window {
     // 1:1 calls: the ringing screen of an outgoing call and the incoming-call toast, on top.
     if root.login-state == "ready" && DirectCallStore.outgoing-open: CallOutgoing { z: 80; width: root.width; height: root.height; }
     if root.login-state == "ready" && DirectCallStore.incoming-open: CallIncoming { z: 90; x: root.width - self.width - 20px; y: root.height - self.height - 20px; }
+    // Message cards (a new message while this window is the active one), above the call window and
+    // the stage; an incoming-call toast keeps the corner and the cards sit above it.
+    if root.login-state == "ready" && MessageToastStore.toasts.length > 0: MessageToasts { z: 95; x: root.width - self.width - 20px; y: root.height - self.height - 20px - (DirectCallStore.incoming-open ? 240px : 0px); }
 }

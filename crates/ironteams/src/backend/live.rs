@@ -234,21 +234,22 @@ impl Engine {
             keyword: quiet::keyword_hit(&keyword_text, &prefs.keyword_alerts),
         };
         let focus = quiet::focus_active(quiet::focus_until(&prefs), now.timestamp_millis());
-        let keyword =
-            match quiet::should_banner(&inc, chrono::Local::now().naive_local(), &prefs, focus) {
-                Decision::Show { keyword } => keyword,
-                Decision::Hidden(why) => {
-                    tracing::debug!(?why, conversation = %m.conversation_id, "banner held back");
-                    return;
-                }
-            };
+        let decision =
+            quiet::should_banner(&inc, chrono::Local::now().naive_local(), &prefs, focus);
+        // The one decision is made; where it shows depends on the window being the active one.
+        let route = super::banner::route(&decision, self.focused.load(Ordering::Relaxed));
+        let keyword = match decision {
+            Decision::Show { keyword } => keyword,
+            Decision::Hidden(why) => {
+                tracing::debug!(?why, conversation = %m.conversation_id, "banner held back");
+                return;
+            }
+        };
         let preview = routed.unwrap_or_else(super::settings::previews_enabled);
-        let chat = st
-            .conversation(&m.conversation_id)
-            .ok()
-            .flatten()
-            .map(|c| c.title)
-            .unwrap_or_default();
+        let conv = st.conversation(&m.conversation_id).ok().flatten();
+        let kind = conv.as_ref().map(|c| c.kind);
+        let channel = kind == Some(store::ConvKind::Channel);
+        let chat = conv.map(|c| c.title).unwrap_or_default();
         // A keyword alert is titled by the word and the chat; the sender and text follow.
         let title = match keyword {
             Some(k) => format!(
@@ -264,16 +265,30 @@ impl Engine {
         let text: String = full.chars().take(200).collect();
         let line = super::settings::banner_body(preview, super::banner::friendly(&text));
         let photo = st.user(&m.sender_mri).ok().flatten().and_then(|u| u.avatar);
-        tracing::info!(conversation = %m.conversation_id, "desktop notification");
-        self.show_banner(super::banner::Pending {
+        tracing::info!(conversation = %m.conversation_id, ?route, "message notification");
+        let thread_root = m.parent_id.as_deref().unwrap_or(&m.id);
+        let pending = super::banner::Pending {
             conversation: m.conversation_id.clone(),
+            target: super::banner::reply_target(&m.conversation_id, channel, thread_root),
             message: m.id.clone(),
+            meeting: super::banner::is_meeting(
+                &m.conversation_id,
+                kind == Some(store::ConvKind::Meeting),
+            ),
+            can_mute: matches!(
+                kind,
+                Some(store::ConvKind::OneOnOne | store::ConvKind::Group | store::ConvKind::Meeting)
+            ),
             sender: m.sender_name.clone(),
             sender_mri: m.sender_mri.clone(),
             title,
             line,
             photo,
-        });
+        };
+        match route {
+            super::banner::Route::InApp => self.show_toast(pending),
+            _ => self.show_banner(pending),
+        }
     }
 }
 

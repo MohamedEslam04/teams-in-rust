@@ -47,6 +47,12 @@ tray = { version = "0.0.0", path = "../tray" }
 webhost = { version = "0.0.0", path = "../webhost" }
 spellbook = "0.4.2"
 
+# The reply box of a desktop notification (KDE's inline reply) comes back as a D-Bus signal. Same
+# version and features as the tray's zbus, so no second copy is built (async-io has its own
+# reactor, so it works inside tokio).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+
 [features]
 default = ["calls"]
 calls = ["dep:calling"]

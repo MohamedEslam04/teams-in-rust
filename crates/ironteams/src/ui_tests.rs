@@ -45,6 +45,7 @@ mod list_parity;
 mod lists;
 mod media;
 mod meeting_cards;
+mod message_toast;
 mod motion;
 mod msg_extras;
 mod not_member;

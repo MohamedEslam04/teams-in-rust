@@ -443,6 +443,7 @@ fn main() -> anyhow::Result<()> {
     }
     ui::install_calendar(&window, tx.clone());
     ui::install_apps(&window, tx.clone());
+    ui::message_toast::install(&window, tx.clone());
     ui::settings::install_system(&window, tx.clone());
     snippets::install_system(&window);
     ui::topbar::install(&window, session::Paths::new().ok().map(|p| p.config_dir));

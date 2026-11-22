@@ -41,6 +41,7 @@ mod find;
 mod gifs;
 mod lists;
 mod media;
+pub(crate) mod message_toast;
 pub(crate) mod motion;
 mod palette;
 mod people;
@@ -313,6 +314,7 @@ fn picker_model(query: &str) -> ModelRc<EmojiItem> {
 pub fn install_local(window: &AppWindow) {
     crate::loop_compose::install_local(window);
     palette::wire(window);
+    message_toast::install_local(window);
     window.set_picker_items(picker_model(""));
     let weak = window.as_weak();
     window.on_picker_search(move |q| {

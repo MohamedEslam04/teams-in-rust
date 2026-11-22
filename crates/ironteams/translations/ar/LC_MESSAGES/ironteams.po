@@ -2152,3 +2152,35 @@ msgstr "انضمام"
 
 msgid "Join meeting"
 msgstr "الانضمام إلى الاجتماع"
+
+# The message card in the window (ui/message_toast.slint).
+
+msgid "Send a quick reply"
+msgstr "أرسل رداً سريعاً"
+
+msgid "Send reply"
+msgstr "إرسال الرد"
+
+msgid "Notification settings"
+msgstr "إعدادات الإشعارات"
+
+msgid "Close notification"
+msgstr "إغلاق الإشعار"
+
+msgid "More notification options"
+msgstr "المزيد من خيارات الإشعار"
+
+msgid "Turn off notifications for this chat"
+msgstr "إيقاف الإشعارات لهذه الدردشة"
+
+msgid "Like"
+msgstr "إعجاب"
+
+msgid "Heart"
+msgstr "قلب"
+
+msgid "Laugh"
+msgstr "ضحك"
+
+msgid "Surprised"
+msgstr "مندهش"
