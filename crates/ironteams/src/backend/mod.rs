@@ -540,7 +540,41 @@ impl Engine {
 
     /// Starts background loops: render, live events, periodic token persistence.
     pub fn start(self: &Arc<Self>) {
+        self.start_local();
+        self.start_online();
+    }
+
+    /// Starts from the saved chats while the sign-in could not reach Microsoft: only the render
+    /// loop and the saved calendar. Sends wait in the outbox, as when the connection drops later;
+    /// [`Engine::go_online`] starts the rest once the session is refreshed.
+    pub fn start_cached(self: &Arc<Self>, notice: &str) {
+        self.connected.store(false, Ordering::Relaxed);
+        self.ui.connected(false);
+        self.ui.info(notice.into());
+        self.start_local();
+    }
+
+    /// The session was refreshed after a [`Engine::start_cached`]: saves the (rotated) token and
+    /// runs the normal start-up (outbox, sync, live connection, ...).
+    pub async fn go_online(self: &Arc<Self>) {
+        let cfg = self.cfg.lock().unwrap().clone();
+        if let Err(err) = session::persist(&cfg, &self.client).await {
+            tracing::warn!(%err, "saving the session failed");
+        }
+        self.connected.store(true, Ordering::Relaxed);
+        self.ui.connected(true);
+        self.start_online();
+    }
+
+    /// What needs no network: preferences, the render loop and the saved calendar.
+    fn start_local(self: &Arc<Self>) {
         self.push_prefs();
+        self.load_saved_calendar();
+        let e = self.clone();
+        tokio::spawn(async move { e.render_loop().await });
+    }
+
+    fn start_online(self: &Arc<Self>) {
         self.start_people();
         self.start_apps();
         self.start_manage();
@@ -552,8 +586,6 @@ impl Engine {
         self.start_my_presence();
         self.start_people_presence();
         self.start_reminders();
-        let e = self.clone();
-        tokio::spawn(async move { e.render_loop().await });
         let e = self.clone();
         tokio::spawn(async move { e.live_loop().await });
         self.start_calendar();
@@ -889,9 +921,22 @@ impl Engine {
             .prefs(cfg.enter_sends, cfg.skin_tone, cfg.recent_emoji.clone());
     }
 
-    #[cfg(test)]
     pub(crate) fn config(&self) -> session::Config {
         self.cfg.lock().unwrap().clone()
+    }
+
+    pub(crate) fn my_name(&self) -> &str {
+        &self.my_name
+    }
+
+    /// Refreshes the stored session's tokens (an offline start trying again).
+    pub(crate) async fn refresh_session(&self) -> teams_proto::Result<()> {
+        self.client.sign_in_stored().await
+    }
+
+    /// A new sign-in takes over the session every part of the engine uses.
+    pub(crate) async fn adopt_sign_in(&self, client: Client) {
+        self.client.adopt(client).await;
     }
 
     /// Writes the config file. Demo mode has no config of its own, so it never touches the real one.

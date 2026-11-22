@@ -251,7 +251,44 @@ impl Client {
         Self::connect(build_http()?, session).await
     }
 
+    /// A client for a stored session, without touching the network. Its tokens are due, so the
+    /// first request refreshes them; [`Client::sign_in_stored`] does that up front.
+    pub fn restore(session: Session) -> Result<Client> {
+        Ok(Self::unrefreshed(build_http()?, session))
+    }
+
+    /// Refreshes every token of a [`Client::restore`]d client: the network half of
+    /// [`Client::resume`].
+    pub async fn sign_in_stored(&self) -> Result<()> {
+        self.refresh_all().await?;
+        // Once per start: where Meeting Recaps will look (a host, never a token).
+        let st = self.state.lock().await;
+        let from = if st.mcp_service.is_some() {
+            "regionGtms.mcpService"
+        } else if st.geo.is_some() {
+            "regionGtms geography"
+        } else {
+            "middle tier"
+        };
+        tracing::debug!(base = %mcps_of(&st), from, "meeting content service");
+        Ok(())
+    }
+
+    /// Takes over the session of `other` (a new sign-in of the same tenant), so every clone of
+    /// this client uses its tokens from now on.
+    pub async fn adopt(&self, other: Client) {
+        let mut theirs = other.state.lock().await;
+        let mut mine = self.state.lock().await;
+        std::mem::swap(&mut *mine, &mut *theirs);
+    }
+
     async fn connect(http: reqwest::Client, session: Session) -> Result<Client> {
+        let client = Self::unrefreshed(http, session);
+        client.sign_in_stored().await?;
+        Ok(client)
+    }
+
+    fn unrefreshed(http: reqwest::Client, session: Session) -> Client {
         let state = State {
             tokens: Tokens::default(),
             refresh_token: session.refresh_token,
@@ -264,26 +301,12 @@ impl Client {
             region: None,
             cache: TokenCache::default(),
         };
-        let client = Client {
+        Client {
             http,
             tenant: session.tenant,
             epid: session.epid,
             state: Arc::new(Mutex::new(state)),
-        };
-        client.refresh_all().await?;
-        {
-            // Once per start: where Meeting Recaps will look (a host, never a token).
-            let st = client.state.lock().await;
-            let from = if st.mcp_service.is_some() {
-                "regionGtms.mcpService"
-            } else if st.geo.is_some() {
-                "regionGtms geography"
-            } else {
-                "middle tier"
-            };
-            tracing::debug!(base = %mcps_of(&st), from, "meeting content service");
         }
-        Ok(client)
     }
 
     /// A client with no credentials, for demo mode and tests. Every network call fails.
@@ -926,6 +949,33 @@ mod tests {
             client.app_token("api://x.com/a openid", None).await,
             Err(Error::Protocol(_))
         ));
+    }
+
+    fn stored(rt: &str) -> Session {
+        Session {
+            tenant: "organizations".into(),
+            refresh_token: rt.into(),
+            epid: "epid".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_restored_client_has_the_stored_session_and_due_tokens() {
+        // No runtime network: this returns at once, offline or not.
+        let c = Client::restore(stored("RT")).unwrap();
+        assert_eq!(c.session().await.refresh_token, "RT");
+        assert!(refresh_due(
+            c.state.lock().await.expires_at,
+            SystemTime::now()
+        ));
+    }
+
+    #[tokio::test]
+    async fn adopting_a_new_sign_in_reaches_every_clone() {
+        let c = Client::restore(stored("OLD")).unwrap();
+        let clone = c.clone();
+        c.adopt(Client::restore(stored("NEW")).unwrap()).await;
+        assert_eq!(clone.session().await.refresh_token, "NEW");
     }
 
     #[test]

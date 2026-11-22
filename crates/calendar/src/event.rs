@@ -1,8 +1,9 @@
 //! The event model and the parsers for Graph calendarView and delta JSON.
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ShowAs {
     Free,
     Tentative,
@@ -12,7 +13,7 @@ pub enum ShowAs {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     None,
     Organizer,
@@ -22,14 +23,14 @@ pub enum Response {
     NotResponded,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AttendeeKind {
     Required,
     Optional,
     Resource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attendee {
     pub name: String,
     pub email: String,
@@ -38,7 +39,7 @@ pub struct Attendee {
 }
 
 /// Graph's `type` of an event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SeriesType {
     Single,
     /// One instance of a series. A calendarView delta answer carries only its id, times and
@@ -50,7 +51,7 @@ pub enum SeriesType {
     SeriesMaster,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
     pub ical_uid: String,
