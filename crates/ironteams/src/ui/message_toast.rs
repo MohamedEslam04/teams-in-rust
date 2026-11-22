@@ -5,7 +5,7 @@
 use super::{UiHandle, img, rgb};
 use crate::AppWindow;
 use crate::backend::{Cmd, ListsCmd};
-use crate::data::Pixels;
+use crate::ui_api::Toast;
 use crate::{MessageToastStore, ToastCard};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::cell::RefCell;
@@ -14,27 +14,6 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 /// Cards on the screen at once; a newer card pushes the oldest one out.
 pub const MAX_CARDS: usize = 3;
-
-/// One message as the card shows it.
-pub struct Toast {
-    pub conversation: String,
-    /// Where a reply goes (the chat, or a channel message's thread).
-    pub target: String,
-    /// The message, for the quick reactions.
-    pub message: String,
-    pub title: String,
-    /// "Name:" in a group chat, empty in a 1:1 chat.
-    pub sender: String,
-    pub text: String,
-    pub initials: String,
-    pub color: u32,
-    pub avatar: Option<Pixels>,
-    pub meeting: bool,
-    pub can_reply: bool,
-    pub can_mute: bool,
-    pub rtl_title: bool,
-    pub rtl_text: bool,
-}
 
 thread_local! {
     static TOASTS: RefCell<Option<Rc<VecModel<ToastCard>>>> = const { RefCell::new(None) };
@@ -80,6 +59,15 @@ pub fn install(w: &AppWindow, tx: tokio::sync::mpsc::UnboundedSender<Cmd>) {
 }
 
 impl UiHandle {
+    /// Raises the window on a Settings page (a desktop card's settings button).
+    pub fn show_settings(&self, page: &str) {
+        let page = slint::SharedString::from(page);
+        self.run(move |w: AppWindow| {
+            crate::tray_wiring::show_and_raise(&w);
+            w.global::<crate::SettingsStore>().invoke_show(page);
+        });
+    }
+
     /// Shows a message card at the bottom of the stack.
     pub fn message_toast(&self, t: Toast) {
         self.run(move |_w: AppWindow| {
@@ -92,6 +80,7 @@ impl UiHandle {
             let (avatar, has_avatar) = img(&t.avatar);
             model.push(ToastCard {
                 id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+                kind: "message".into(),
                 conversation: t.conversation.into(),
                 target: t.target.into(),
                 message: t.message.into(),
@@ -105,6 +94,7 @@ impl UiHandle {
                 meeting: t.meeting,
                 can_reply: t.can_reply,
                 can_mute: t.can_mute,
+                can_join: false,
                 rtl_title: t.rtl_title,
                 rtl_text: t.rtl_text,
             });

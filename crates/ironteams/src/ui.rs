@@ -2,26 +2,23 @@
 
 mod cal;
 pub use appstore::wire as install_apps;
-#[cfg(test)]
-pub use cal::read_form as read_form_for_test;
 pub use cal::wire as install_calendar;
-pub use clip::{ClipView, wire as install_clip};
+pub use clip::wire as install_clip;
 pub use composer_apps::wire as install_composer_apps;
-pub use voice::{PlayerView, RecorderView, wire as install_voice};
+pub use voice::wire as install_voice;
 
 use crate::data::{
     AttachmentData, ChatData, HeaderData, MeetingCardData, MsgData, Pixels, RecipientData, Scroll,
     TeamData,
 };
 use crate::reactions;
+use crate::ui_api::UiHandle;
 use crate::{
     AppWindow, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem, LinkCard,
     LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, Reactor,
     ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
 };
-use slint::{
-    Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel, Weak,
-};
+use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -341,26 +338,7 @@ pub fn install_local(window: &AppWindow) {
     });
 }
 
-/// Thread-safe handle the backend uses to update the window.
-#[derive(Clone)]
-pub struct UiHandle {
-    weak: Weak<AppWindow>,
-}
-
 impl UiHandle {
-    pub fn new(weak: Weak<AppWindow>) -> Self {
-        UiHandle { weak }
-    }
-
-    fn run(&self, f: impl FnOnce(AppWindow) + Send + 'static) {
-        // Tests drive the window on their own thread without an event loop.
-        #[cfg(test)]
-        if let Some(w) = self.weak.upgrade() {
-            return f(w);
-        }
-        let _ = self.weak.upgrade_in_event_loop(f);
-    }
-
     pub fn login_checking(&self) {
         self.run(|w| w.set_login_state("checking".into()));
     }
@@ -398,7 +376,7 @@ impl UiHandle {
     }
 
     fn transient(&self, text: String, info: bool) {
-        let text = crate::backend::util::plain_banner(&text);
+        let text = crate::support::error_text::plain_banner(&text);
         self.run(move |w| {
             let shown: SharedString = text.into();
             w.set_banner_action(SharedString::new());
@@ -481,7 +459,7 @@ impl UiHandle {
     }
 
     /// The open chat's scheduled messages ("Sending on …" bubbles).
-    pub fn scheduled(&self, items: Vec<crate::backend::ScheduledData>) {
+    pub fn scheduled(&self, items: Vec<crate::ui_api::ScheduledData>) {
         self.run(move |w| {
             w.global::<crate::SendStore>().set_scheduled(model(
                 items

@@ -1164,6 +1164,8 @@ fn sound_switches_and_meeting_chats_build_the_teams_write() {
     let ui = window(Home::new("sounds"));
     let app = &ui.app;
     open_page(app, "notifications");
+    // The page's sound and preview rows sit below the notification style and the banner rows.
+    tall_window(app);
     let mut d = server(PrivacySettings::default());
     d.notifications = Some(NotificationSettings::from_properties(&serde_json::json!({
         "userPersonalSettings": serde_json::json!({
@@ -1307,6 +1309,28 @@ fn notification_look_switches_start_on_and_save() {
     press(app, "Show Reply and Like buttons");
     let g = Local::load(&dir).general;
     assert!(!g.banner_photo && !g.banner_actions);
+}
+
+#[test]
+fn notification_style_starts_on_teams_cards_and_saves_the_choice() {
+    let home = Home::new("notification-style");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "notifications");
+    tall_window(app);
+    assert_eq!(store(app).get_notification_style(), "cards");
+    press(app, "Notification style: System notifications");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::System
+    );
+    assert_eq!(store(app).get_notification_style(), "system");
+    press(app, "Notification style: Teams cards");
+    assert_eq!(
+        Local::load(&dir).general.notification_style,
+        appearance::NotificationStyle::Cards
+    );
 }
 
 #[test]

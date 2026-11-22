@@ -2207,3 +2207,45 @@ msgstr "تشغيل صوت الرسائل"
 
 msgid "The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above."
 msgstr "الصوت الذي يشغّله IronTeams عند وصول رسالة جديدة. يُحفظ على هذا الكمبيوتر ويتبع مفاتيح الصوت أعلاه."
+
+msgid "Accept"
+msgstr "قبول"
+
+msgid "Decline"
+msgstr "رفض"
+
+msgid "Reminder"
+msgstr "تذكير"
+
+msgid "Incoming call"
+msgstr "مكالمة واردة"
+
+msgid "Snooze for 5 minutes"
+msgstr "تأجيل 5 دقائق"
+
+msgid "Snooze for 10 minutes"
+msgstr "تأجيل 10 دقائق"
+
+msgid "Snooze for 15 minutes"
+msgstr "تأجيل 15 دقيقة"
+
+msgid "5 min"
+msgstr "5 د"
+
+msgid "10 min"
+msgstr "10 د"
+
+msgid "15 min"
+msgstr "15 د"
+
+msgid "Notification style"
+msgstr "شكل الإشعارات"
+
+msgid "Teams cards"
+msgstr "بطاقات Teams"
+
+msgid "System notifications"
+msgstr "إشعارات النظام"
+
+msgid "Teams cards show in the corner of the screen, above other windows."
+msgstr "تظهر بطاقات Teams في زاوية الشاشة فوق النوافذ الأخرى."

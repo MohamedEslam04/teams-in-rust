@@ -14,7 +14,7 @@
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
 //! message-sound-file, open-files, perm, switch-account, switch-org, add-account, remove-account,
 //! refresh-license, restart, sign-out, view-account, report-problem, check-updates, check-now,
-//! release-notes, status, work-location, status-note, banner-photo, banner-actions, notify-sound,
+//! release-notes, status, work-location, status-note, notification-style, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
 //! focus-duration, keyword-add, keyword-remove, open-chat-at, link-previews, photo-change,
 //! photo-remove, check-updates-menu, auto-update, beta-updates, restart-update.
@@ -151,11 +151,28 @@ impl SettingsEnv {
             hooks: Hooks {
                 autostart: Autostart::desktop(None),
                 test_notification: Box::new(|| {
-                    let _ = notify_rust::Notification::new()
-                        .appname("IronTeams")
-                        .summary("IronTeams")
-                        .body("This is a test notification.")
-                        .show();
+                    // A Teams card when the cards are on, like the notifications it stands for.
+                    std::thread::spawn(|| {
+                        use crate::desktop_cards::{client, protocol};
+                        let cards = crate::support::quiet::load_prefs().notification_style
+                            == appearance::NotificationStyle::Cards;
+                        let card = protocol::Card {
+                            id: client::next_id(),
+                            title: "IronTeams".into(),
+                            text: "This is a test notification.".into(),
+                            initials: "IT".into(),
+                            color: 0x5b5fc7,
+                            ..protocol::Card::default()
+                        };
+                        if cards && client::show(card, Box::new(|_| {})) {
+                            return;
+                        }
+                        let _ = notify_rust::Notification::new()
+                            .appname("IronTeams")
+                            .summary("IronTeams")
+                            .body("This is a test notification.")
+                            .show();
+                    });
                 }),
                 open_url: Box::new(|u| {
                     let _ = crate::external::open(u);
@@ -577,12 +594,16 @@ fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_auto_update(gp.auto_update);
     g.set_beta_updates(gp.beta_updates);
     g.set_banner_photo(gp.banner_photo);
+    g.set_notification_style(s(match gp.notification_style {
+        appearance::NotificationStyle::Cards => "cards",
+        appearance::NotificationStyle::System => "system",
+    }));
     g.set_banner_actions(gp.banner_actions);
     g.set_check_spelling(gp.check_spelling);
     if gp.check_spelling {
         crate::spell::ensure_loaded(w);
     }
-    show_focus(w, crate::backend::quiet::focus_until(gp));
+    show_focus(w, crate::support::quiet::focus_until(gp));
     let q = &gp.quiet_hours;
     g.set_quiet_on(q.enabled);
     g.set_quiet_days(model(q.days.to_vec()));
@@ -1683,6 +1704,16 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_accounts(w, &c);
         }
         // --- Updates (opt-in; local) ---
+        "notification-style" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.notification_style = match arg {
+                "system" => appearance::NotificationStyle::System,
+                _ => appearance::NotificationStyle::Cards,
+            };
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "banner-photo" | "banner-actions" => {
             let mut c = shared.borrow_mut();
             if name == "banner-photo" {
@@ -1723,13 +1754,13 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let mut c = shared.borrow_mut();
             let now = chrono::Local::now();
             let until = bit(arg).then(|| {
-                crate::backend::quiet::focus_end(
+                crate::support::quiet::focus_end(
                     c.local.general.focus_duration,
                     now.naive_local(),
                     now.timestamp_millis(),
                 )
             });
-            crate::backend::quiet::set_focus(until);
+            crate::support::quiet::set_focus(until);
             c.local.general.focus_until_ms = until;
             let r = c.local.save_general();
             push_local(w, &c);
@@ -1756,7 +1787,7 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let word = arg.split_whitespace().collect::<Vec<_>>().join(" ");
             if name == "keyword-add" {
                 let known = words.iter().any(|k| {
-                    crate::backend::quiet::normalise(k) == crate::backend::quiet::normalise(&word)
+                    crate::support::quiet::normalise(k) == crate::support::quiet::normalise(&word)
                 });
                 if word.is_empty() || known {
                     return;

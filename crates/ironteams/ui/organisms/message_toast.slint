@@ -7,6 +7,12 @@
 //
 // Rust (`src/ui/message_toast.rs`) fills `toasts` (newest last, three at most) and takes the
 // callbacks; `app.slint` places `MessageToasts` above the call window and opens a chat.
+//
+// The same card is drawn on the desktop, outside the window, by the card host
+// (`src/desktop_cards/`): `CardHost` below is its whole window. There a card can also be a
+// meeting or calendar reminder (calendar, time and place; Join, Snooze, Dismiss; sixty seconds)
+// or an incoming call (Accept, Decline; it stays until the call stops ringing). The host puts
+// the card's number in `conversation`, `target` and `message`, so its callbacks name the card.
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
@@ -14,6 +20,8 @@ import { SettingsStore } from "../stores/settings_store.slint";
 
 export struct ToastCard {
     id: int,
+    // "message" (or ""), "meeting" (a Teams meeting), "reminder" (another calendar event), "call".
+    kind: string,
     // The chat to open on a click.
     conversation: string,
     // Where a reply goes: the chat, or a channel message's thread.
@@ -33,12 +41,16 @@ export struct ToastCard {
     // Settings › Notifications allows the buttons (the reply box and the reactions).
     can-reply: bool,
     can-mute: bool,
+    // A meeting with a Teams link: the Join button.
+    can-join: bool,
     rtl-title: bool,
     rtl-text: bool,
 }
 
 export global MessageToastStore {
     in-out property <[ToastCard]> toasts;
+    // Square cards without the shadow: the card host's opaque window (X11, Windows, macOS).
+    in-out property <bool> square: false;
     // The text typed in the reply box, for the card's `target`.
     callback reply(string, string);
     // The chat of a card was clicked.
@@ -49,6 +61,41 @@ export global MessageToastStore {
     callback react(string, string);
     // "Turn off notifications for this chat".
     callback mute(string);
+    // A button of a meeting, reminder or call card, by the card's id: "join", "snooze:5",
+    // "snooze:10", "snooze:15", "dismiss", "accept", "decline", "open", or "settings" (the
+    // header's settings button, on every card).
+    callback act(int, string);
+}
+
+// A button of a meeting, reminder or call card.
+component CardButton inherits Rectangle {
+    in property <string> label;
+    // Shown instead of the label when set ("5 min" for "Snooze for 5 minutes").
+    in property <string> text: "";
+    in property <color> tone: #ffffff2e;
+    in property <color> fg: #ffffff;
+    callback clicked();
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: MessageToastStore.square ? 0px : 4px;
+    background: touch.has-hover ? root.tone.brighter(0.25) : root.tone;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Text {
+        text: root.text != "" ? root.text : root.label;
+        color: root.fg;
+        font-size: 13px * Theme.font-scale;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
 }
 
 // A round button of the header, white on the card.
@@ -111,20 +158,26 @@ export component MessageToast inherits Rectangle {
     property <bool> menu-open: false;
     property <bool> pill-hover: r-like.hover || r-heart.hover || r-laugh.hover || r-surprised.hover || pill-touch.has-hover;
     property <bool> hovered: card-touch.has-hover || msg-touch.has-hover || root.pill-hover;
+    property <bool> is-call: root.card.kind == "call";
+    property <bool> is-calendar: root.card.kind == "meeting" || root.card.kind == "reminder";
+    property <bool> is-message: !root.is-call && !root.is-calendar;
+    // The Snooze button shows the minutes to pick.
+    property <bool> snooze-open: false;
 
     width: 340px;
     height: col.preferred-height;
-    border-radius: 8px;
+    border-radius: MessageToastStore.square ? 0px : 8px;
     background: Theme.accent-strong;
-    drop-shadow-blur: 24px;
+    drop-shadow-blur: MessageToastStore.square ? 0px : 24px;
     drop-shadow-color: #000000b0;
     accessible-role: groupbox;
-    accessible-label: @tr("New message") + ": " + root.card.title;
+    accessible-label: (root.is-call ? @tr("Incoming call") : root.is-calendar ? @tr("Reminder") : @tr("New message")) + ": " + root.card.title;
 
-    // Gone after eight seconds, unless the pointer is on it or a reply is being written.
+    // A message goes after eight seconds, a reminder after a minute, unless the pointer is on it
+    // or a reply is being written. A call stays until it stops ringing.
     Timer {
-        interval: 8s;
-        running: !root.hovered && !root.busy && !root.menu-open;
+        interval: root.is-calendar ? 60s : 8s;
+        running: !root.is-call && !root.hovered && !root.busy && !root.menu-open && !root.snooze-open;
         triggered => { MessageToastStore.dismiss(root.card.id); }
     }
 
@@ -167,16 +220,17 @@ export component MessageToast inherits Rectangle {
                     horizontal-stretch: 1;
                     accessible-role: none;
                 }
-                if root.card.can-mute: HeaderButton {
+                if root.is-message && root.card.can-mute: HeaderButton {
                     icon: @image-url("../icons/more.svg");
                     label: @tr("More notification options");
                     clicked => { root.menu-open = !root.menu-open; }
                 }
-                HeaderButton {
+                if !root.is-call: HeaderButton {
                     icon: @image-url("../icons/notification-settings.svg");
                     label: @tr("Notification settings");
                     clicked => {
                         SettingsStore.show("notifications");
+                        MessageToastStore.act(root.card.id, "settings");
                         MessageToastStore.dismiss(root.card.id);
                     }
                 }
@@ -191,24 +245,29 @@ export component MessageToast inherits Rectangle {
             msg := Rectangle {
                 height: row.preferred-height;
                 msg-touch := TouchArea {
-                    mouse-cursor: pointer;
+                    mouse-cursor: root.is-call ? MouseCursor.default : MouseCursor.pointer;
                     clicked => {
-                        MessageToastStore.open(root.card.conversation);
-                        MessageToastStore.dismiss(root.card.id);
+                        if root.is-message {
+                            MessageToastStore.open(root.card.conversation);
+                            MessageToastStore.dismiss(root.card.id);
+                        } else if root.is-calendar {
+                            MessageToastStore.act(root.card.id, "open");
+                            MessageToastStore.dismiss(root.card.id);
+                        }
                     }
                 }
                 row := HorizontalLayout {
                     spacing: 10px;
                     VerticalLayout {
                         alignment: start;
-                        if !root.card.meeting: Avatar {
+                        if !root.card.meeting && !root.is-calendar: Avatar {
                             initials: root.card.initials;
                             tone: root.card.color;
                             img: root.card.avatar;
                             has-img: root.card.has-avatar;
                             size: 40px;
                         }
-                        if root.card.meeting: Rectangle {
+                        if root.card.meeting || root.is-calendar: Rectangle {
                             width: 40px;
                             height: 40px;
                             border-radius: 20px;
@@ -261,7 +320,7 @@ export component MessageToast inherits Rectangle {
                     }
                 }
                 pill := Rectangle {
-                    visible: root.card.can-reply && (msg-touch.has-hover || root.pill-hover);
+                    visible: root.is-message && root.card.can-reply && (msg-touch.has-hover || root.pill-hover);
                     x: parent.width - self.width + 4px;
                     y: -4px;
                     width: pill-row.preferred-width + 8px;
@@ -298,8 +357,61 @@ export component MessageToast inherits Rectangle {
                 }
             }
 
+            // A reminder: Join (a Teams meeting), Snooze and Dismiss; Snooze offers the minutes.
+            if root.is-calendar && !root.snooze-open: HorizontalLayout {
+                spacing: 8px;
+                if root.card.can-join: CardButton {
+                    label: @tr("Join");
+                    tone: #ffffff;
+                    fg: Theme.accent-strong;
+                    clicked => { root.act("join"); }
+                }
+                CardButton {
+                    label: @tr("Snooze");
+                    text: @tr("Snooze") + " ▾";
+                    clicked => { root.snooze-open = true; }
+                }
+                CardButton {
+                    label: @tr("Dismiss");
+                    clicked => { root.act("dismiss"); }
+                }
+            }
+            if root.is-calendar && root.snooze-open: HorizontalLayout {
+                spacing: 8px;
+                CardButton {
+                    label: @tr("Snooze for 5 minutes");
+                    text: @tr("5 min");
+                    clicked => { root.act("snooze:5"); }
+                }
+                CardButton {
+                    label: @tr("Snooze for 10 minutes");
+                    text: @tr("10 min");
+                    clicked => { root.act("snooze:10"); }
+                }
+                CardButton {
+                    label: @tr("Snooze for 15 minutes");
+                    text: @tr("15 min");
+                    clicked => { root.act("snooze:15"); }
+                }
+            }
+
+            // A call: Accept and Decline.
+            if root.is-call: HorizontalLayout {
+                spacing: 8px;
+                CardButton {
+                    label: @tr("Accept");
+                    tone: #237b4b;
+                    clicked => { root.act("accept"); }
+                }
+                CardButton {
+                    label: @tr("Decline");
+                    tone: #a4262c;
+                    clicked => { root.act("decline"); }
+                }
+            }
+
             // Answer without opening the chat.
-            if root.card.can-reply: reply-box := Rectangle {
+            if root.is-message && root.card.can-reply: reply-box := Rectangle {
                 height: 36px;
                 border-radius: 6px;
                 background: #ffffff2e;
@@ -403,6 +515,10 @@ export component MessageToast inherits Rectangle {
         MessageToastStore.mute(root.card.conversation);
         MessageToastStore.dismiss(root.card.id);
     }
+    function act(action: string) {
+        MessageToastStore.act(root.card.id, action);
+        MessageToastStore.dismiss(root.card.id);
+    }
 }
 
 // The stack in the bottom-right corner: the oldest on top, the newest at the bottom.
@@ -410,9 +526,28 @@ export component MessageToasts inherits Rectangle {
     width: 340px;
     height: stack.preferred-height;
     stack := VerticalLayout {
-        spacing: 8px;
+        spacing: MessageToastStore.square ? 1px : 8px;
         for card in MessageToastStore.toasts: MessageToast {
             card: card;
         }
+    }
+}
+
+// The card host's window on the desktop (`src/desktop_cards/host.rs`): the stack and, with a
+// transparent background, room around it for the cards' shadow. The host sizes the window to
+// `wanted-height` and places it in the bottom-right corner of the screen.
+export component CardHost inherits Window {
+    // Around the stack, for the shadow; none for square cards in an opaque window.
+    out property <length> pad: MessageToastStore.square ? 0px : 16px;
+    out property <length> wanted-width: 340px + 2 * root.pad;
+    out property <length> wanted-height: MessageToastStore.toasts.length == 0 ? 0px : cards.height + 2 * root.pad;
+    title: "IronTeams notifications";
+    no-frame: true;
+    always-on-top: true;
+    background: MessageToastStore.square ? #1f1f1f : transparent;
+    default-font-size: 14px * Theme.font-scale;
+    cards := MessageToasts {
+        x: root.pad;
+        y: root.pad;
     }
 }

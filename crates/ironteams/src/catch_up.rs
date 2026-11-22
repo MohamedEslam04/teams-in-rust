@@ -2,7 +2,7 @@
 //! the counts behind the chip and the "While you were away" card. The rows are the chat list in
 //! the order it is drawn; the effects (opening the chat, the banner) live in `ui/app.slint`.
 
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 use crate::{AppWindow, ChatRow, SectionRow, ShortcutApi};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 

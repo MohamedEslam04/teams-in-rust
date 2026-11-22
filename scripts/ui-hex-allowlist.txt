@@ -149,7 +149,10 @@ organisms/message_row.slint #ffffff
 organisms/message_toast.slint #00000080
 organisms/message_toast.slint #00000090
 organisms/message_toast.slint #000000b0
+organisms/message_toast.slint #1f1f1f
+organisms/message_toast.slint #237b4b
 organisms/message_toast.slint #2b2b2b
+organisms/message_toast.slint #a4262c
 organisms/message_toast.slint #e8e9fa
 organisms/message_toast.slint #ffffff
 organisms/message_toast.slint #ffffff2e

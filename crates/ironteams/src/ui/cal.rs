@@ -324,6 +324,14 @@ pub fn read_form(w: &AppWindow) -> FormFields {
     }
 }
 
+#[cfg(test)]
+impl UiHandle {
+    /// Tests: the event form as `read_form` reads it back.
+    pub fn read_form_for_test(&self) -> FormFields {
+        read_form(&self.weak.upgrade().expect("the window is open"))
+    }
+}
+
 fn open_form(w: &AppWindow, f: FormOpen) {
     let g = w.global::<CalForm>();
     write_form(w, &f.fields);

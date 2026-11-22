@@ -3,7 +3,8 @@
 
 use super::responsive::{WIDTHS, assert_fits, on_screen, resize};
 use super::*;
-use crate::backend::{ClipCamera, ClipCmd, ClipDevices, Picture, RecordedClip};
+use crate::backend::{ClipCamera, ClipCmd, ClipDevices, RecordedClip};
+use crate::ui_api::Picture;
 use crate::{ClipStore, LoopStore};
 use futures_util::future::BoxFuture;
 use std::sync::Mutex;

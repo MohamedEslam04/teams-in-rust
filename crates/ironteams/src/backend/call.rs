@@ -17,7 +17,7 @@ use super::Engine;
 use super::call_feedback::{self, Feedback};
 use super::in_order::{self, Rest};
 use crate::data::Pixels;
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 #[cfg(any(test, feature = "calls"))]
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
