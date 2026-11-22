@@ -82,7 +82,7 @@ fn carry_bold(open: &mut bool, carry: bool, s: &str) -> String {
 }
 
 fn text_block(text: &str, emphasize: bool) -> String {
-    let carry = text.matches("**").count() % 2 == 0;
+    let carry = text.matches("**").count().is_multiple_of(2);
     let mut open = false;
     let mut html = String::new();
     let mut list: Vec<String> = vec![];
