@@ -1,0 +1,150 @@
+// The window's keyboard shortcuts (Teams' chords, see src/shortcuts.rs) and Esc. It holds the
+// focus when no input has it, and wraps the window's content (`@children`).
+import { AppsStore } from "../stores/apps_store.slint";
+import { ChannelStore } from "channel_posts.slint";
+import { DirectCallStore } from "call_incoming.slint";
+import { FindStore } from "../stores/find_store.slint";
+import { ListStore } from "lists.slint";
+import { PaletteStore } from "../stores/palette_store.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { ShortcutApi } from "shortcuts.slint";
+import { TopBarStore } from "topbar.slint";
+import { WebParityStore } from "web_parity.slint";
+
+export component AppKeys inherits FocusScope {
+    callback attach-file;
+    callback cancel-reply;
+    callback catch-up(int);
+    callback close-thread;
+    in-out property <bool> composer-expanded;
+    in property <bool> composer-focused;
+    in property <string> current-id;
+    in-out property <string> filter;
+    in-out property <int> focus-tick;
+    callback mark-all-read;
+    in-out property <bool> menu-open;
+    in-out property <int> msg-focus-tick;
+    in property <bool> posts-mode;
+    in property <string> reply-preview;
+    callback set-filter(string);
+    in-out property <bool> shortcuts-open;
+    in property <bool> teams-no-channel;
+    in property <string> thread-root;
+    in-out property <string> view;
+    callback focus-search;
+    callback start-command;
+    // The command palette closed: take the keys back (a chat hands them to the composer).
+    property <int> palette-restore: PaletteStore.restore-tick;
+    changed palette-restore => { if root.view != "chat" { self.focus(); } }
+    // The page's own input (the composer, the search box) is gone on the pages that have
+    // none, which would leave the keyboard shortcuts, Alt+Left among them, without a focus.
+    // An open command palette keeps its own input (it hands the keys back when it closes).
+    property <string> page: root.view;
+    changed page => {
+        if !PaletteStore.open && self.page != "chat" && self.page != "teams" && self.page != "search" { self.focus(); }
+    }
+    // The Teams page with no channel picked drops the conversation (and its composer, which
+    // may hold the focus): take the keys so Alt+Down and the other shortcuts still work.
+    property <bool> no-channel: root.teams-no-channel;
+    changed no-channel => {
+        if self.no-channel && !PaletteStore.open { self.focus(); }
+    }
+    // Shift+Esc marks every chat read, wherever the focus is. The Activity view handles it
+    // itself (marks every Activity item read).
+    capture-key-pressed(event) => {
+        if (event.text == Key.Escape && event.modifiers.shift && root.view != "activity") {
+            root.mark-all-read();
+            return accept;
+        }
+        // Alt+Down / Alt+Up: the next / previous unread chat or channel in the list.
+        if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
+            root.catch-up(event.text == Key.DownArrow ? 1 : -1);
+            return accept;
+        }
+        // Alt+Q: collapse every section of the chat list.
+        if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
+            ListStore.command("collapse-all", "");
+            return accept;
+        }
+        // Alt+Left and Alt+Right: Back and Forward.
+        if event.text == Key.LeftArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
+            TopBarStore.command("back", "");
+            return accept;
+        }
+        if event.text == Key.RightArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
+            TopBarStore.command("forward", "");
+            return accept;
+        }
+        // Ctrl+Alt+E: Search.
+        if ((event.text == "E" || event.text == "e") && event.modifiers.control && event.modifiers.alt) {
+            root.view = "search";
+            FindStore.focus-tick += 1;
+            return accept;
+        }
+        if (event.text == "," || event.text == "<") && event.modifiers.control && event.modifiers.shift { SettingsStore.show("general"); return accept; } // Ctrl+Shift+,: Settings.
+        // Alt+Shift+N: New chat.
+        if ((event.text == "N" || event.text == "n") && event.modifiers.alt && event.modifiers.shift) {
+            root.view = "chat";
+            PeopleStore.new-chat-open = true;
+            PeopleStore.command("new-chat-open", "");
+            return accept;
+        }
+        // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
+        // are the numbered and bullet list (Teams), so they stay with the composer there.
+        if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
+            AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
+            return accept;
+        }
+        // The other Teams chords (plan chat 5.9); the mapping is in src/shortcuts.rs.
+        if ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift) != "" {
+            root.run-shortcut(ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift));
+            return accept;
+        }
+        reject
+    }
+    // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
+    key-pressed(event) => {
+        if event.text == Key.Escape && !event.modifiers.shift {
+            if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
+            if root.shortcuts-open { root.shortcuts-open = false; return accept; }
+            if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
+            if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
+            if root.thread-root != "" { root.close-thread(); return accept; }
+            if root.reply-preview != "" { root.cancel-reply(); return accept; }
+        }
+        reject
+    }
+    function run-shortcut(a: string) {
+        // Alt+Shift+A and Alt+Shift+V: the call button's Audio call and Video call.
+        if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
+            DirectCallStore.command("dial", root.current-id);
+        }
+        if a == "video-call" && root.view == "chat" && DirectCallStore.is-direct(root.current-id) {
+            WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet. Alt+Shift+A starts an audio call.");
+        }
+        if a == "shortcuts" { root.shortcuts-open = !root.shortcuts-open; }
+        if a == "palette" { PaletteStore.open = !PaletteStore.open; }
+        if a == "goto" {
+            root.view = "search";
+            FindStore.command("search-tab", "chats");
+            FindStore.focus-tick += 1;
+        }
+        if a == "filter-box" { root.view = "chat"; root.focus-search(); }
+        // Ctrl+E: the top search box. Ctrl+/: the box with a "/" in it, which lists the commands.
+        if a == "search-box" { root.focus-search(); }
+        if a == "commands" { root.start-command(); }
+        if a == "filter-unread" { root.filter = root.filter == "unread" ? "all" : "unread"; root.set-filter(root.filter); }
+        if a == "filter-chats" { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); }
+        if a == "filter-channels" { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); }
+        if a == "filter-clear" { root.filter = "all"; root.set-filter("all"); }
+        if a == "focus-composer" { root.focus-tick += 1; }
+        if a == "focus-messages" { root.msg-focus-tick += 1; }
+        if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }
+        if a == "attach-file" { root.attach-file(); }
+        if a == "share-screen" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
+            DirectCallStore.command("share-screen", root.current-id);
+        }
+    }
+    @children
+}

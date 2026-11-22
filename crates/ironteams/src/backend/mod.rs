@@ -36,6 +36,7 @@ mod channel_tabs;
 mod channels;
 mod clip_capture;
 pub(crate) mod composer_apps;
+mod dirty_stats;
 mod drafts;
 pub(crate) mod drive;
 pub(crate) mod engage;
@@ -50,6 +51,7 @@ mod manage;
 mod media;
 pub(crate) mod meeting_cards;
 mod mentions;
+mod msg_memo;
 mod my_presence;
 mod outbox;
 pub(crate) mod outsider;
@@ -299,6 +301,33 @@ struct Dirty {
     activity: bool,
 }
 
+impl Dirty {
+    /// Sets every part `other` sets.
+    fn merge(&mut self, other: &Dirty) {
+        self.chats |= other.chats;
+        self.messages |= other.messages;
+        self.teams |= other.teams;
+        self.header |= other.header;
+        self.scroll |= other.scroll;
+        self.activity |= other.activity;
+    }
+
+    /// The parts set, as bits in the order of `dirty_stats::PARTS`.
+    fn mask(&self) -> u8 {
+        [
+            self.chats,
+            self.messages,
+            self.teams,
+            self.header,
+            self.scroll,
+            self.activity,
+        ]
+        .iter()
+        .enumerate()
+        .fold(0, |m, (i, on)| if *on { m | 1 << i } else { m })
+    }
+}
+
 /// Shared engine state.
 pub struct Engine {
     client: Client,
@@ -310,6 +339,12 @@ pub struct Engine {
     my_name: String,
     view: Mutex<View>,
     dirty: Mutex<Dirty>,
+    /// The dirty marks of the last minute, by the line that made them (debug log only).
+    mark_stats: Mutex<dirty_stats::MarkStats>,
+    /// Signalled on every dirty mark and typing change: the render loop sleeps until then.
+    render_wake: tokio::sync::Notify,
+    /// The parsed text of the message rows last built (`build_msgs`).
+    msg_memo: Mutex<msg_memo::MsgMemo>,
     activity: Mutex<activity::State>,
     people: Mutex<people::State>,
     find: Mutex<find::State>,
@@ -367,6 +402,11 @@ const PAGE: usize = 60;
 /// Emoji kept in the panel's recent row.
 const RECENT_EMOJI: usize = 16;
 
+/// Today in the chosen time zone (`chat_time` counts days in it).
+fn local_day() -> Option<chrono::NaiveDate> {
+    appearance::formats::local_now().map(|t| t.date())
+}
+
 impl Engine {
     pub fn new(
         client: Client,
@@ -404,6 +444,9 @@ impl Engine {
                 teams: true,
                 ..Default::default()
             }),
+            mark_stats: Mutex::new(dirty_stats::MarkStats::new(Instant::now())),
+            render_wake: tokio::sync::Notify::new(),
+            msg_memo: Mutex::default(),
             activity: Mutex::new(activity::State::default()),
             people: Mutex::new(people::State::default()),
             find: Mutex::new(find::State::default()),
@@ -453,8 +496,28 @@ impl Engine {
         engine
     }
 
+    /// Marks parts of the view for the next render. With debug logging on, the mark is counted
+    /// by its caller's line (`dirty_stats`).
+    #[track_caller]
     fn mark(&self, f: impl FnOnce(&mut Dirty)) {
-        f(&mut self.dirty.lock().unwrap());
+        // The closure only ever sets parts, so running it on a blank set tells which ones.
+        let mut set = Dirty::default();
+        f(&mut set);
+        self.dirty.lock().unwrap().merge(&set);
+        self.wake_render();
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let mut stats = self.mark_stats.lock().unwrap();
+            stats.record(std::panic::Location::caller(), set.mask());
+            if let Some(summary) = stats.take_due(Instant::now()) {
+                tracing::debug!("dirty marks, last minute: {summary}");
+            }
+        }
+    }
+
+    /// Wakes the render loop for a render after its short debounce (a permit is kept when the
+    /// loop is busy, so no wake is lost).
+    fn wake_render(&self) {
+        self.render_wake.notify_one();
     }
 
     /// The delivery option for the next message: `level` when `on`, else Standard.
@@ -528,6 +591,7 @@ impl Engine {
         self.start_calendar();
         let e = self.clone();
         tokio::spawn(async move {
+            let mut day = local_day();
             loop {
                 // Shorter than the 300 s refresh margin, so tokens never lapse while idle.
                 tokio::time::sleep(Duration::from_secs(240)).await;
@@ -535,7 +599,13 @@ impl Engine {
                     let cfg = e.cfg.lock().unwrap().clone();
                     let _ = session::persist(&cfg, &e.client).await;
                 }
-                e.mark(|d| d.chats = true);
+                // The chat list and the Activity feed name the day of a row ("Yesterday", a
+                // weekday): they are drawn again when the day turns, not on every tick.
+                let today = local_day();
+                if today != day {
+                    day = today;
+                    e.mark(|d| d.chats = true);
+                }
             }
         });
         let e = self.clone();

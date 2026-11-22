@@ -15,17 +15,12 @@ import { SettingsStore } from "../stores/settings_store.slint";
 import { ClipStore, ClipRecorderPanel } from "video_clip.slint";
 import { LoopStore, LoopEditor } from "../molecules/loop_editor.slint";
 import { EmojiGrid } from "../molecules/emoji_grid.slint";
-
-// Emoji search, `:name` completion and cursor-aware insertion live in Rust (src/composer.rs).
-export global EmojiApi {
-    // category index, search text, skin tone -> what the panel shows
-    pure callback list(int, string, int) -> [ComposerEmoji];
-    // text, cursor byte offset, skin tone -> emoji for the `:xx` before the cursor
-    pure callback suggest(string, int, int) -> [ComposerEmoji];
-    pure callback insert(string, int, string) -> Edited;
-    // like insert, but replaces the `:xx` before the cursor
-    pure callback complete(string, int, string) -> Edited;
-}
+import { ComposerAttachments } from "composer_attachments.slint";
+import { ImportanceTag } from "composer_importance.slint";
+import { EmojiSuggestions, EmojiPanel, ComposerMoreMenu, AttachMenu } from "composer_popups.slint";
+import { EmojiApi } from "../stores/emoji_api.slint";
+import { ComposerToolbar } from "composer_toolbar.slint";
+export { EmojiApi } from "../stores/emoji_api.slint";
 
 export component Composer inherits Rectangle {
     in property <bool> current-is-channel;
@@ -280,90 +275,14 @@ export component Composer inherits Rectangle {
                         IconButton { icon: @image-url("../icons/close.svg"); size: 24px; clicked => { root.cancel-reply(); } }
                     }
                 }
-                if root.pending-attachments.length > 0: Flickable {
-                    height: 62px;
-                    content-width: root.pending-attachments.length * 208px + 16px;
-                    for a[i] in root.pending-attachments: chip := Rectangle {
-                        x: 8px + i * 208px;
-                        y: 8px;
-                        width: 200px;
-                        height: 48px;
-                        border-radius: 6px;
-                        background: Theme.sidebar;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        HorizontalLayout {
-                            padding: 6px;
-                            spacing: 8px;
-                            Rectangle {
-                                width: 36px;
-                                border-radius: 4px;
-                                background: a.has-preview ? transparent : Theme.surface-hover;
-                                clip: true;
-                                if a.has-preview: Image { source: a.preview; image-fit: cover; width: parent.width; height: parent.height; }
-                                if !a.has-preview: Icon { source: @image-url("../icons/file.svg"); width: 18px; height: 18px; x: 9px; y: 9px; }
-                            }
-                            VerticalLayout {
-                                alignment: center;
-                                Text { text: a.name; color: Theme.fg; font-size: 12px * Theme.font-scale; font-weight: 600; overflow: elide; }
-                                Text { text: a.detail; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
-                            }
-                            Rectangle {
-                                width: 22px;
-                                height: 22px;
-                                y: 0px;
-                                border-radius: 4px;
-                                background: chip-x.has-hover ? Theme.surface-hover : transparent;
-                                Icon { source: @image-url("../icons/close.svg"); width: 12px; height: 12px; x: 5px; y: 5px; }
-                                chip-x := TouchArea {
-                                    mouse-cursor: pointer;
-                                    clicked => { root.remove-attachment(i); }
-                                }
-                            }
-                        }
-                    }
+                if root.pending-attachments.length > 0: ComposerAttachments {
+                    pending-attachments: root.pending-attachments;
+                    remove-attachment(a0) => { root.remove-attachment(a0); }
                 }
                 if SendStore.schedule-at != "" && root.can-schedule: ScheduleBanner { }
-                if root.important || root.urgent: HorizontalLayout {
-                    padding-left: 10px;
-                    padding-top: 6px;
-                    alignment: start;
-                    Rectangle {
-                        height: 24px;
-                        width: important-text.preferred-width + 34px;
-                        border-radius: 12px;
-                        background: #4d2024;
-                        border-width: 1px;
-                        border-color: Theme.danger;
-                        accessible-role: groupbox;
-                        accessible-label: root.urgent ? @tr("Urgent message") : @tr("Important message");
-                        important-text := Text {
-                            x: 10px;
-                            text: root.urgent ? @tr("URGENT!") : @tr("IMPORTANT!");
-                            color: #ff7e83;
-                            font-size: 11px;
-                            font-weight: 800;
-                            vertical-alignment: center;
-                        }
-                        Rectangle {
-                            x: parent.width - 22px;
-                            width: 18px;
-                            height: 18px;
-                            y: 3px;
-                            border-radius: 9px;
-                            background: important-x.has-hover ? #6b2f33 : transparent;
-                            accessible-role: button;
-                            accessible-label: root.urgent ? @tr("Remove urgent") : @tr("Remove important");
-                            Text { text: "✕"; color: #ff7e83; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
-                            important-x := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => {
-                                    root.important = false;
-                                    root.urgent = false;
-                                }
-                            }
-                        }
-                    }
+                if root.important || root.urgent: ImportanceTag {
+                    important <=> root.important;
+                    urgent <=> root.urgent;
                 }
                 if root.current-is-channel && root.thread-root == "": HorizontalLayout {
                     padding-left: 14px;
@@ -524,39 +443,18 @@ export component Composer inherits Rectangle {
                         color: Theme.fg-subtle;
                     }
                 }
-                HorizontalLayout {
-                    padding-left: 8px;
-                    padding-right: 8px;
-                    padding-bottom: 6px;
-                    spacing: 2px;
-                    alignment: end;
-                    FormatToggle { on: root.format-open; clicked => { root.format-open = !root.format-open; } }
-                    IconButton { icon: @image-url("../icons/emoji.svg"); clicked => { root.emoji-query = ""; emoji-popup.show(); } }
-                    IconButton { icon: @image-url("../icons/attach.svg"); tooltip: @tr("Attach file"); clicked => { attach-popup.show(); } }
-                    IconButton { icon: @image-url("../icons/more.svg"); clicked => { more-popup.show(); } }
-                    if !root.narrow-bar: IconButton {
-                        icon: @image-url("../icons/gif.svg");
-                        tooltip: @tr("GIF");
-                        clicked => { root.open-gifs(); }
-                    }
-                    if !root.narrow-bar: IconButton {
-                        icon: @image-url("../icons/loop.svg");
-                        tooltip: @tr("Loop paragraph");
-                        active: LoopStore.open;
-                        clicked => { LoopStore.open = true; }
-                    }
-                    ComposerAppsButton { }
-                    IconButton {
-                        icon: @image-url("../icons/mic.svg");
-                        tooltip: @tr("Record a voice message (Ctrl+Shift+R)");
-                        clicked => { VoiceRecStore.start(); }
-                    }
-                    Rectangle { width: 1px; background: Theme.border; }
-                    SendButton {
-                        ready: composer-input.text != "" || root.pending-attachments.length > 0 || LoopStore.open;
-                        send => { root.submit(); }
-                        options => { send-popup.show(); }
-                    }
+                ComposerToolbar {
+                    emoji-query <=> root.emoji-query;
+                    format-open <=> root.format-open;
+                    narrow-bar: root.narrow-bar;
+                    open-gifs => { root.open-gifs(); }
+                    pending-attachments: root.pending-attachments;
+                    submit => { root.submit(); }
+                    has-text: composer-input.text != "";
+                    show-emoji => { emoji-popup.show(); }
+                    show-attach => { attach-popup.show(); }
+                    show-more => { more-popup.show(); }
+                    show-send-options => { send-popup.show(); }
                 }
             }
             Rectangle {
@@ -596,37 +494,11 @@ export component Composer inherits Rectangle {
         picked(i) => { root.pick-mention(i); }
     }
 
-    if root.sug-open: Rectangle {
+    if root.sug-open: EmojiSuggestions {
         z: 100;
-        x: 20px;
-        y: -self.height - 4px;
-        width: 300px;
-        height: root.suggestions.length * 32px + 8px;
-        background: Theme.surface;
-        border-radius: 6px;
-        border-width: 1px;
-        border-color: Theme.border;
-        VerticalLayout {
-            padding: 4px;
-            for s[i] in root.suggestions: Rectangle {
-                height: 32px;
-                border-radius: 4px;
-                background: i == root.sug-index || sug-area.has-hover ? Theme.surface-hover : transparent;
-                HorizontalLayout {
-                    padding-left: 8px;
-                    spacing: 10px;
-                    Text { text: s.ch; font-size: 18px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; width: 30px; }
-                    Text { text: ":" + s.name; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
-                }
-                sug-area := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => {
-                        root.sug-index = i;
-                        root.accept-suggestion();
-                    }
-                }
-            }
-        }
+        accept-suggestion => { root.accept-suggestion(); }
+        sug-index <=> root.sug-index;
+        suggestions: root.suggestions;
     }
 
     send-popup := PopupWindow {
@@ -683,94 +555,14 @@ export component Composer inherits Rectangle {
         width: 360px;
         height: 440px;
         close-policy: close-on-click-outside;
-        Rectangle {
-            background: Theme.surface;
-            border-radius: 6px;
-            border-width: 1px;
-            border-color: Theme.border;
-            VerticalLayout {
-                padding: 10px;
-                spacing: 8px;
-                Rectangle {
-                    height: 32px;
-                    border-radius: 4px;
-                    background: Theme.sidebar;
-                    border-width: 1px;
-                    border-color: emoji-search.has-focus ? Theme.accent : Theme.border;
-                    emoji-search := TextInput {
-                        x: 10px;
-                        width: parent.width - 20px;
-                        text <=> root.emoji-query;
-                        color: Theme.fg;
-                        font-size: 13px * Theme.font-scale;
-                        single-line: true;
-                        vertical-alignment: center;
-                    }
-                    if root.emoji-query == "": Text {
-                        x: 10px;
-                        text: @tr("Find something fun");
-                        color: Theme.fg-subtle;
-                        font-size: 13px * Theme.font-scale;
-                        vertical-alignment: center;
-                    }
-                }
-                if root.emoji-query == "": HorizontalLayout {
-                    height: 32px;
-                    spacing: 2px;
-                    for glyph[i] in ["😀", "🧑", "🐻", "🍔", "🚗", "⚽", "💡", "❤️", "🏁"]: Rectangle {
-                        width: 36px;
-                        border-radius: 4px;
-                        background: root.emoji-tab == i ? Theme.surface-hover : (emoji-tab-area.has-hover ? Theme.surface-hover : transparent);
-                        Rectangle {
-                            y: parent.height - 2px;
-                            height: 2px;
-                            background: root.emoji-tab == i ? Theme.accent : transparent;
-                        }
-                        Text { text: glyph; font-size: 16px * Theme.font-scale; }
-                        emoji-tab-area := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.emoji-tab = i; }
-                        }
-                    }
-                }
-                if root.emoji-query == "" && root.recent-emoji.length > 0: VerticalLayout {
-                    vertical-stretch: 0;
-                    alignment: start;
-                    Text { text: @tr("Recent"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; font-weight: 600; }
-                    EmojiGrid {
-                        items: root.recent-emoji;
-                        picked(ch) => { root.pick-emoji(ch); emoji-popup.close(); }
-                    }
-                }
-                ScrollView {
-                    vertical-stretch: 1;
-                    VerticalLayout {
-                        alignment: start;
-                        EmojiGrid {
-                            items: EmojiApi.list(root.emoji-tab, root.emoji-query, root.skin-tone);
-                            picked(ch) => { root.pick-emoji(ch); emoji-popup.close(); }
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    height: 32px;
-                    spacing: 2px;
-                    Text { text: @tr("Skin tone"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; vertical-alignment: center; width: 70px; }
-                    for tone-glyph[i] in ["👍", "👍🏻", "👍🏼", "👍🏽", "👍🏾", "👍🏿"]: Rectangle {
-                        width: 36px;
-                        border-radius: 4px;
-                        background: root.skin-tone == i ? Theme.surface-hover : (tone.has-hover ? Theme.surface-hover : transparent);
-                        Text { text: tone-glyph; font-size: 16px * Theme.font-scale; }
-                        tone := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => {
-                                root.skin-tone = i;
-                                root.skin-tone-changed(i);
-                            }
-                        }
-                    }
-                }
-            }
+        EmojiPanel {
+            emoji-query <=> root.emoji-query;
+            emoji-tab <=> root.emoji-tab;
+            pick-emoji(a0) => { root.pick-emoji(a0); }
+            recent-emoji: root.recent-emoji;
+            skin-tone <=> root.skin-tone;
+            skin-tone-changed(a0) => { root.skin-tone-changed(a0); }
+            close-popup => { emoji-popup.close(); }
         }
     }
 
@@ -779,73 +571,11 @@ export component Composer inherits Rectangle {
         y: parent.height - 190px - root.more-extra;
         width: 260px;
         height: 150px + root.more-extra;
-        Rectangle {
-            background: Theme.surface;
-            border-radius: 6px;
-            border-width: 1px;
-            border-color: Theme.border;
-            VerticalLayout {
-                padding: 8px;
-                spacing: 2px;
-                Text { text: @tr("When writing a message, press Enter to"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; wrap: word-wrap; }
-                for opt[i] in [@tr("Send the message"), @tr("Start a new line")]: Rectangle {
-                    height: 32px;
-                    border-radius: 4px;
-                    background: enter-opt.has-hover ? Theme.surface-hover : transparent;
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        spacing: 8px;
-                        Text { text: (i == 0) == root.enter-sends ? "●" : "○"; color: Theme.accent; vertical-alignment: center; horizontal-stretch: 0; }
-                        enter-label := Text { text: opt; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
-                    }
-                    enter-opt := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => {
-                            root.enter-sends = i == 0;
-                            root.set-enter-sends(i == 0);
-                        }
-                    }
-                }
-                Rectangle { height: 1px; background: Theme.border; }
-                receipts-opt := Rectangle {
-                    height: 32px;
-                    border-radius: 4px;
-                    background: receipts-touch.has-hover ? Theme.surface-hover : transparent;
-                    accessible-role: checkbox;
-                    accessible-label: @tr("Read receipts");
-                    accessible-checkable: true;
-                    accessible-checked: PeopleStore.receipts-on;
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        spacing: 8px;
-                        Text { text: PeopleStore.receipts-on ? "☑" : "☐"; color: Theme.accent; vertical-alignment: center; horizontal-stretch: 0; }
-                        receipts-label := Text { text: @tr("Read receipts"); color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
-                    }
-                    receipts-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { PeopleStore.command("receipts", PeopleStore.receipts-on ? "off" : "on"); }
-                    }
-                }
-                Rectangle { height: 1px; background: Theme.border; }
-                for opt in root.more-actions: Rectangle {
-                    height: 32px;
-                    border-radius: 4px;
-                    background: more-action.has-hover ? Theme.surface-hover : transparent;
-                    accessible-role: button;
-                    accessible-label: opt.label;
-                    accessible-action-default => { root.more-action(opt.id); }
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        spacing: 8px;
-                        Icon { source: opt.icon; width: 16px; height: 16px; y: 8px; tint: Theme.accent; }
-                        Text { text: opt.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
-                    }
-                    more-action := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.more-action(opt.id); }
-                    }
-                }
-            }
+        ComposerMoreMenu {
+            enter-sends <=> root.enter-sends;
+            more-action(a0) => { root.more-action(a0); }
+            more-actions: root.more-actions;
+            set-enter-sends(a0) => { root.set-enter-sends(a0); }
         }
     }
 
@@ -872,45 +602,10 @@ export component Composer inherits Rectangle {
         width: 260px;
         height: 82px;
         close-policy: close-on-click-outside;
-        Rectangle {
-            background: Theme.surface;
-            border-radius: 6px;
-            border-width: 1px;
-            border-color: Theme.border;
-            accessible-role: list;
-            accessible-label: @tr("Attach");
-            VerticalLayout {
-                padding: 8px;
-                spacing: 2px;
-                for opt[i] in [
-                    { icon: @image-url("../icons/cloud.svg"), label: @tr("Attach cloud files") },
-                    { icon: @image-url("../icons/upload.svg"), label: @tr("Upload from this device") },
-                ]: Rectangle {
-                    height: 32px;
-                    border-radius: 4px;
-                    background: attach-touch.has-hover ? Theme.surface-hover : transparent;
-                    accessible-role: button;
-                    accessible-label: opt.label;
-                    accessible-action-default => {
-                        if i == 0 { root.attach-cloud(); } else { root.attach-file(); }
-                        attach-popup.close();
-                    }
-                    HorizontalLayout {
-                        padding-left: 8px;
-                        spacing: 8px;
-                        Icon { source: opt.icon; width: 16px; height: 16px; y: 8px; tint: Theme.accent; }
-                        Text { text: opt.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
-                    }
-                    attach-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => {
-                            // Before closing: closing drops this row and its `i`.
-                            if i == 0 { root.attach-cloud(); } else { root.attach-file(); }
-                            attach-popup.close();
-                        }
-                    }
-                }
-            }
+        AttachMenu {
+            attach-cloud => { root.attach-cloud(); }
+            attach-file => { root.attach-file(); }
+            close-popup => { attach-popup.close(); }
         }
     }
 }

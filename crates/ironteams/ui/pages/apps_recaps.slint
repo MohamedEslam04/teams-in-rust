@@ -13,13 +13,7 @@ import { RecordingMenu } from "../organisms/meeting_card.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
 import { SearchBox } from "../atoms/search_box.slint";
-
-component Heading inherits Text {
-    color: Theme.fg;
-    font-size: 14px * Theme.font-scale;
-    font-weight: 700;
-    overflow: elide;
-}
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 // A button whose screen-reader label names what it acts on ("Recap: Weekly sync").
 component RecapButton inherits Rectangle {
@@ -224,7 +218,7 @@ component FileRow inherits Rectangle {
     }
 }
 
-component TabButton inherits Rectangle {
+component RecapsTabButton inherits Rectangle {
     in property <string> label;
     in property <string> key;
     property <bool> active: RecapsStore.tab == root.key;
@@ -244,15 +238,15 @@ component RecapSide inherits Rectangle {
     VerticalLayout {
         spacing: 10px;
         alignment: start;
-        Heading { text: "Shared files"; }
+        Heading { variant: HeadingVariant.title; text: "Shared files"; }
         if RecapsStore.files-note != "": Text { text: RecapsStore.files-note; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
         for f in RecapsStore.files: FileRow { f: f; }
         Rectangle { height: 1px; background: Theme.border; }
         HorizontalLayout {
             spacing: 4px;
             alignment: start;
-            TabButton { label: "Notes"; key: "notes"; }
-            TabButton { label: "Transcript"; key: "transcript"; }
+            RecapsTabButton { label: "Notes"; key: "notes"; }
+            RecapsTabButton { label: "Transcript"; key: "transcript"; }
         }
         if RecapsStore.tab == "notes": VerticalLayout {
             spacing: 8px;
@@ -385,29 +379,6 @@ export component RecapsView inherits Rectangle {
     init => { RecapsStore.command("recaps-enter", ""); }
     if RecapsStore.page != "detail": RecapsHome { width: parent.width; height: parent.height; }
     if RecapsStore.page == "detail": RecapDetailPage { width: parent.width; height: parent.height; }
-}
-
-// The "Recap" entry of a meeting chat's header tabs (next to Chat and Shared). `tab` is bound to
-// the header's `FindStore.chat-tab`, which is `recap` while it shows.
-export component RecapTab inherits Rectangle {
-    in property <string> chat-id;
-    in-out property <string> tab;
-    property <bool> active: root.tab == "recap";
-    width: min(tab-label.preferred-width, 200px);
-    accessible-role: AccessibleRole.tab;
-    accessible-label: "Recap";
-    accessible-checked: root.active;
-    accessible-action-default => { root.open(); }
-    function open() {
-        root.tab = "recap";
-        RecapsStore.command("recaps-chat", root.chat-id);
-    }
-    VerticalLayout {
-        alignment: center;
-        tab-label := Text { text: "Recap"; color: root.active ? Theme.fg : Theme.fg-muted; font-size: 14px * Theme.font-scale; font-weight: root.active ? 600 : 400; overflow: elide; accessible-role: none; }
-        Rectangle { height: 3px; border-radius: 1px; background: root.active ? Theme.accent : transparent; }
-    }
-    TouchArea { mouse-cursor: pointer; clicked => { root.open(); } }
 }
 
 // A meeting chat's Recap tab: the same recap page, without the way back to the home.

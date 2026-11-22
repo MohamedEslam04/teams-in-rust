@@ -9,7 +9,7 @@ import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
 import { EventPeek, EventFull } from "../organisms/calendar_event.slint";
 import { EventForm } from "../organisms/calendar_form.slint";
 import { Skeleton } from "../tokens/motion.slint";
-import { AddCalendarMenu, FiltersPanel, MeetLinkDialog, MoreMenu, NewMenu, PromptDialog, RangePicker, SettingsDialog, ShareDialog, ViewsPanel, WorkLocationMenu } from "../organisms/calendar_dialogs.slint";
+import { AddCalendarMenu, FiltersPanel, MeetLinkDialog, CalendarMoreMenu, NewMenu, PromptDialog, RangePicker, SettingsDialog, CalendarShareDialog, ViewsPanel, WorkLocationMenu } from "../organisms/calendar_dialogs.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
 import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
@@ -747,7 +747,7 @@ export component CalendarView inherits Rectangle {
     if CalStore.popup == "range": RangePicker { z: 41; x: 248px; y: 52px; }
     if CalStore.popup == "filters": FiltersPanel { z: 41; x: root.width - self.width - 16px; y: 52px; }
     if CalStore.popup == "views": ViewsPanel { z: 41; x: root.width - self.width - 16px; y: 52px; }
-    if CalStore.popup == "more": MoreMenu { meet: !root.wide; z: 41; x: root.width - self.width - 16px; y: 52px; }
+    if CalStore.popup == "more": CalendarMoreMenu { meet: !root.wide; z: 41; x: root.width - self.width - 16px; y: 52px; }
     if CalStore.popup == "view-pick": MenuFrame { variant: MenuFrameVariant.card;
         z: 41;
         x: root.width - self.width - 16px;
@@ -791,7 +791,7 @@ export component CalendarView inherits Rectangle {
     }
     if CalStore.modal == "prompt": PromptDialog { z: 60; }
     if CalStore.modal == "settings": SettingsDialog { z: 60; }
-    if CalStore.modal == "share": ShareDialog { z: 60; }
+    if CalStore.modal == "share": CalendarShareDialog { z: 60; }
     if CalStore.modal == "meet-link": MeetLinkDialog { z: 60; }
 }
 

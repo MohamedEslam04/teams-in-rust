@@ -122,17 +122,44 @@ list `MenuRow`). The row carries the accessible name; its texts are hidden from 
 - `atoms/file_kind.slint`: `KindBadge` and `DriveLook` (a file kind's tag and colour).
 - `atoms/widgets.slint`: `Icon`, `IconButton`, `SectionHeader`, `ReactionChip`,
   `AddReactionChip`. `atoms/reaction_hover.slint`: the `ReactionHover` global.
+- `atoms/heading.slint`: `Heading` (`.title` was Recaps' `Heading`, `.section` the App store's
+  shelf title, `.group` the shortcut list's `Heading`, `.caption` the video effects' `Heading` and
+  the call's More panel `SectionTitle`).
+
+## The window and the composer
+
+`app.slint` declares what Rust binds (the `AppWindow` properties, callbacks and functions) and
+composes the window from organisms; their state goes in through properties (`<=>` when they
+write it) and callbacks:
+
+- `AppKeys` (`organisms/app_keys.slint`): the keyboard shortcuts and Esc, around the content.
+- `AppTopBar`, `AppRail`: the top bar and the app bar.
+- `ChatPaneHeader`, `MessagePane`, `NoticeBanner`: the conversation's header, messages and notice.
+- `organisms/chat_overlays.slint`: the message menu, Seen by, reaction picker, Forward,
+  participants and person-card layers.
+- `organisms/app_dialogs.slint`: the small dialogs over a scrim (leave, remove history, add a
+  tab, leave a channel, reminders, section name, the OneDrive picker).
+
+`Composer` keeps the text box, its keys and the popups' state; `ComposerToolbar`,
+`ComposerAttachments`, `ImportanceTag` and `organisms/composer_popups.slint` (emoji suggestions,
+the emoji panel, the "…" menu, the Attach menu) draw the rest.
+
+Element ids the UI tests use are `Component::id`: an element that moves into an organism is
+found as `Organism::id` (for example `MessagePane::msg-list`).
 
 ## Not merged yet
 
-Copies that still have their own component, because merging them would change how they look or
-behave, or because they carry screen logic:
+Copies that keep their own component, because merging them would change how they look or
+behave, or because they carry screen logic. Each has a name of its own:
 
-- Chips with screen logic: Find's filter `Chip` (with a clear button), the send menu's quick
-  `Chip`, the video effects' `FilterChip`, Settings' `SChoicePill` and `DayChip`, `TChoice`.
+- Chips with screen logic: Find's `SearchFilterChip` (with a clear button), the send menu's
+  `QuickChip`, the video effects' `FilterChip`, Settings' `SChoicePill` and `DayChip`, `TChoice`.
+- Tabs: the Teams page's `TabButton` and Recaps' `RecapsTabButton` (different sizes, and the
+  Teams tab's label is a text for screen readers).
 - Menu rows with their own behaviour: the profile menu's `StatusMenuRow` (keyboard focus,
   presence glyph), the call window's `TileMenuRow` (list items with a focus ring), the send
-  menu's and the chat list's `OptionRow`, the activity menu's `MenuEntry`.
+  menu's `SendOptionRow`, the chat list's `OptionRow`, the activity menu's `MenuEntry`.
+- Screen pieces that only shared a name: `CalendarMoreMenu` and the top bar's `MoreMenu`,
+  `CalendarShareDialog` and `DriveShareDialog`, the Teams dialogs' `MemberLine` and the Calls
+  page's `PersonLine`, Viva Engage's `EngagePostCard` and the channel's `PostCard`.
 - The desktop notification card's `CardButton` (`organisms/message_toast.slint`).
-- `app.slint` (the `AppWindow`, one component) and `Composer` are still large single
-  components: splitting them means passing their state through new properties.

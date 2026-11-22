@@ -14,73 +14,8 @@ import { PersonHover } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
-
-export struct CallHistoryItem {
-    id: string,
-    mri: string,
-    name: string,
-    initials: string,
-    color: color,
-    avatar: image,
-    has-avatar: bool,
-    direction: string,
-    outcome: string,
-    missed: bool,
-    when: string,
-    duration: string,
-    group: bool,
-    speed: bool,
-    // The other party's phone number (a PSTN call), "" for a person.
-    number: string,
-}
-
-export struct CallPersonItem {
-    mri: string,
-    name: string,
-    detail: string,
-    initials: string,
-    color: color,
-    avatar: image,
-    has-avatar: bool,
-    speed: bool,
-}
-
-export struct VoicemailItem {
-    id: string,
-    name: string,
-    initials: string,
-    color: color,
-    when: string,
-    duration: string,
-    transcript: string,
-    unread: bool,
-}
-
-export global CallsPageStore {
-    // True when IronTeams was built with calls; the rail shows the Calls item only then.
-    in property <bool> available;
-    in property <string> filter: "all";
-    in property <[CallHistoryItem]> history;
-    in property <[VoicemailItem]> voicemails;
-    in property <[CallPersonItem]> results;
-    in property <[CallPersonItem]> speed;
-    in property <bool> loading;
-    in property <string> error;
-    in property <string> voicemail-error;
-    // The search box holds a phone number (tidied); IronTeams cannot place that call yet.
-    in property <string> dial;
-    callback command(string, string);
-
-    // The second line of a history row: what happened to the call.
-    public pure function outcome-label(outcome: string, direction: string) -> string {
-        if outcome == "missed" {
-            return direction == "incoming" ? @tr("Missed") : @tr("No answer");
-        }
-        if outcome == "declined" { return @tr("Declined"); }
-        if outcome == "voicemail" { return @tr("Voicemail"); }
-        return direction == "incoming" ? @tr("Incoming") : @tr("Outgoing");
-    }
-}
+import { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "../stores/calls_page_store.slint";
+export { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "../stores/calls_page_store.slint";
 
 // A person with a Call button and the speed-dial star; on the speed dial also up and down.
 component PersonLine inherits Rectangle {

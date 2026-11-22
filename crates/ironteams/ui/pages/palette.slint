@@ -7,7 +7,9 @@ import { ChatRow } from "../tokens/types.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { ListStore, SectionRow } from "../organisms/lists.slint";
-import { CallsPageStore } from "calls_page.slint";
+import { CallsPageStore } from "../stores/calls_page_store.slint";
+import { PaletteStore } from "../stores/palette_store.slint";
+export { PaletteStore } from "../stores/palette_store.slint";
 
 // One action of the catalog. `cmd` and `arg` tell `run-palette` what to do (the id is the key of
 // the recent-actions list), `keys` is the chord shown on the right, `hidden` drops the entry.
@@ -15,16 +17,6 @@ export struct PaletteAction { id: string, cmd: string, arg: string, label: strin
 // A row of the result list. `kind` is action | chat; `section` is recent | actions | chats.
 // `head`: a section heading sits above the row; `top` and `height` (px) place the row in the list.
 export struct PaletteItem { id: string, cmd: string, arg: string, label: string, keys: string, kind: string, section: string, icon: image, has-icon: bool, initials: string, color: color, head: bool, top: int, height: int }
-
-export global PaletteStore {
-    in-out property <bool> open: false;
-    in-out property <string> query;
-    in-out property <int> selected: 0;
-    // The ids of the actions used last (newest first, comma separated), kept while IronTeams runs.
-    in-out property <string> recents;
-    // Bumped when the palette closes, so the window can take the keyboard focus back.
-    in-out property <int> restore-tick: 0;
-}
 
 export global PaletteApi {
     // query, the catalog, the chat list (favorites, chats, channels, custom sections), recents -> rows

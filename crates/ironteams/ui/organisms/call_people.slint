@@ -11,6 +11,7 @@ import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { VideoEffectsPanel } from "video_effects.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 component PersonRow inherits Rectangle {
     in property <CallPerson> p;
@@ -211,13 +212,6 @@ export component PeoplePanel inherits Rectangle {
     }
 }
 
-// A section title of the More panel.
-component SectionTitle inherits Text {
-    color: Theme.fg-muted;
-    font-size: 12px * Theme.font-scale;
-    font-weight: 600;
-}
-
 // More, as Teams' "..." menu: Record and transcribe, Language and speech, Video effects and the
 // devices. The
 // service decides who may record; a refusal shows as the call's error banner.
@@ -288,7 +282,7 @@ export component MorePanel inherits Rectangle {
                 }
             }
         }
-        SectionTitle { text: "Record and transcribe"; }
+        Heading { variant: HeadingVariant.caption; text: "Record and transcribe"; }
         HorizontalLayout {
             alignment: start;
             spacing: 8px;
@@ -301,13 +295,13 @@ export component MorePanel inherits Rectangle {
                 clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
             }
         }
-        SectionTitle { text: "Language and speech"; }
+        Heading { variant: HeadingVariant.caption; text: "Language and speech"; }
         Switch { variant: SwitchVariant.row;
             label: "Show live captions";
             checked: CallStore.captions;
             toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }
         }
-        SectionTitle { text: "Video"; }
+        Heading { variant: HeadingVariant.caption; text: "Video"; }
         HorizontalLayout {
             alignment: start;
             Button { variant: ButtonVariant.action;
@@ -315,7 +309,7 @@ export component MorePanel inherits Rectangle {
                 clicked => { VideoFxStore.open = true; }
             }
         }
-        SectionTitle { text: "Device settings"; }
+        Heading { variant: HeadingVariant.caption; text: "Device settings"; }
         DeviceSettings { prefix: "more"; }
         Text {
             text: "Echo cancellation, noise suppression and automatic gain are on.";
