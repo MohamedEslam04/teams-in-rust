@@ -1,4 +1,4 @@
-//! The card host's window (`CardHost` in `ui/message_toast.slint`, driven by
+//! The card host's window (`CardHost` in `ui/organisms/message_toast.slint`, driven by
 //! `desktop_cards::host`) on Slint's testing backend: what a meeting, a reminder, a call and a
 //! message card show, the actions their buttons send back to the app, the timeouts and the
 //! stack. The compositor side (layer shell, X11 placement) is not here: it needs a live desktop.
