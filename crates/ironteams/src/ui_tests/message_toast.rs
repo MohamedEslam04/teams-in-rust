@@ -1,4 +1,4 @@
-//! The message card shown inside the window (`ui/message_toast.slint`), driven through the real
+//! The message card shown inside the window (`ui/organisms/message_toast.slint`), driven through the real
 //! window: what it shows, the reply box (Enter sends to the card's chat, Escape closes), the quick
 //! reactions on hover, the header's buttons and the stack of three.
 

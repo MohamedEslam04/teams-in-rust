@@ -7,7 +7,7 @@
 //!
 //! Settings calls [`apply`] with the saved general preferences at start and on every change.
 //! `Theme.rtl` needs no extra wiring: the Arabic catalogue answers "rtl" to the "text direction"
-//! message in `ui/theme.slint`, so it flips together with the translation.
+//! message in `ui/tokens/theme.slint`, so it flips together with the translation.
 
 use appearance::{GeneralPrefs, Language};
 
