@@ -1,0 +1,120 @@
+// Live meeting reactions, as Teams shows them: the React button's menu of five reactions, and the
+// reactions (ours and everyone's) rising from the bottom of the stage and fading out over 2.5 s,
+// each at a slightly different place. With reduced motion a reaction stands still for 2 s instead.
+// The backend sends ours (at most one a second) and drops each once it has floated
+// (`backend/call.rs` `REACTION_SHOWN`).
+import { Theme } from "../tokens/theme.slint";
+import { CallStore, CallReaction } from "../stores/call_store.slint";
+
+// The React button's menu: a click sends the reaction and closes the menu.
+export component ReactionMenu inherits Rectangle {
+    height: 52px;
+    width: row.preferred-width;
+    border-radius: 26px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000080;
+    accessible-role: groupbox;
+    accessible-label: "Reactions";
+
+    function pick(key: string) {
+        CallStore.command("react", key);
+        CallStore.menu = "";
+    }
+
+    row := HorizontalLayout {
+        padding: 6px;
+        spacing: 2px;
+        for k in [
+            { key: "like", emoji: "👍", name: "Like" },
+            { key: "heart", emoji: "❤️", name: "Heart" },
+            { key: "laugh", emoji: "😂", name: "Laugh" },
+            { key: "surprised", emoji: "😮", name: "Surprised" },
+            { key: "applause", emoji: "👏", name: "Applause" },
+        ]: Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            background: touch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: button;
+            accessible-label: k.name + " reaction";
+            accessible-action-default => { root.pick(k.key); }
+            Text {
+                text: k.emoji;
+                font-size: 24px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.pick(k.key); }
+            }
+        }
+    }
+}
+
+// One reaction rising over the stage (`area-w` by `area-h`). Its age counts from when it appeared,
+// so a reaction keeps its place in the rise while the list around it changes.
+component ReactionFloat inherits Rectangle {
+    in property <CallReaction> r;
+    in property <length> area-w;
+    in property <length> area-h;
+    property <duration> born;
+    property <duration> age: animation-tick() - root.born;
+    property <bool> still: Theme.reduced-motion;
+    property <duration> life: root.still ? 2000ms : 2500ms;
+    // How far through the rise, 0..1.
+    property <float> t: Math.clamp(root.age / 2500ms, 0, 1);
+    init => { root.born = animation-tick(); }
+    width: 96px;
+    height: 72px;
+    // Its lane across the left part of the stage, and a slight sway while it rises.
+    x: 16px + root.r.lane * Math.max(0px, root.area-w * 0.6 - self.width)
+        + (root.still ? 0px : 8px * Math.sin(root.t * 540deg));
+    y: root.area-h - self.height - 16px - (root.still ? 0px : root.t * root.area-h * 0.55);
+    // Fully shown for the first 60 % of the rise, then fading out.
+    opacity: root.still ? 1 : Math.min(1, (1 - root.t) / 0.4);
+    if root.age < root.life: Rectangle {
+        accessible-role: text;
+        accessible-label: root.r.who + " reacted " + root.r.name;
+        VerticalLayout {
+            spacing: 2px;
+            Text {
+                text: root.r.emoji;
+                font-size: 36px;
+                horizontal-alignment: center;
+                accessible-role: none;
+            }
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: Math.min(root.width, who.preferred-width + 12px);
+                    height: 18px;
+                    border-radius: 9px;
+                    background: #000000a0;
+                    who := Text {
+                        text: root.r.who;
+                        color: #ffffff;
+                        font-size: 11px * Theme.font-scale;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Every reaction floating now, over the stage. It takes no clicks: the stage under it does.
+export component ReactionsOverlay inherits Rectangle {
+    for r in CallStore.reactions: ReactionFloat {
+        r: r;
+        area-w: root.width;
+        area-h: root.height;
+    }
+}

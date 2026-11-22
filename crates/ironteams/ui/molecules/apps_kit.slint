@@ -1,0 +1,313 @@
+// Small pieces the app screens share: the app tile, buttons, the search box, menu rows,
+// navigation entries, status badges and the app card.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { AppCard } from "../stores/apps_store.slint";
+import { Spinner } from "../tokens/motion.slint";
+
+// An app's icon, or its first letter on a colored square when the icon is not loaded.
+export component AppTile inherits Rectangle {
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> letter;
+    in property <color> tone: Theme.accent-strong;
+    in property <length> size: 40px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size * 0.2;
+    clip: true;
+    background: root.has-icon ? #ffffff10 : root.tone;
+    if !root.has-icon: Text {
+        text: root.letter;
+        color: #ffffff;
+        font-size: root.size * 0.46;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if root.has-icon: Image {
+        source: root.icon;
+        width: root.size;
+        height: root.size;
+        image-fit: contain;
+    }
+}
+
+export component KitButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    in property <bool> chevron: false;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> active: false;
+    out property <bool> has-hover: touch.has-hover;
+    callback clicked();
+    height: 32px;
+    width: row.preferred-width;
+    border-radius: 4px;
+    opacity: root.enabled ? 1.0 : 0.4;
+    border-width: root.primary || root.active ? 0px : 1px;
+    border-color: Theme.border;
+    background: root.primary ? (touch.has-hover && root.enabled ? Theme.accent : Theme.accent-strong) : (root.active ? Theme.selected : (touch.has-hover && root.enabled ? Theme.surface-hover : transparent));
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        if root.icon.width > 0: Icon {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            y: 8px;
+            tint: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg-muted);
+        }
+        Text { text: root.label; color: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg); font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+        if root.chevron: Icon { source: @image-url("../icons/chevron-down.svg"); width: 12px; height: 12px; y: 10px; tint: root.primary ? #ffffff : Theme.fg-muted; }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component KitSearch inherits Rectangle {
+    in property <string> placeholder;
+    in-out property <string> text;
+    in property <string> label;
+    callback edited(string);
+    callback accepted(string);
+    out property <bool> has-focus: input.has-focus;
+    height: 32px;
+    border-radius: 4px;
+    background: Theme.sidebar;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 8px;
+        Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
+        input := TextInput {
+            text <=> root.text;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+            single-line: true;
+            accessible-role: text-input;
+            accessible-label: root.label;
+            edited => { root.edited(self.text); }
+            accepted => { root.accepted(self.text); }
+        }
+    }
+    if input.text == "": Text {
+        x: 36px;
+        text: root.placeholder;
+        color: Theme.fg-subtle;
+        font-size: 13px * Theme.font-scale;
+        vertical-alignment: center;
+    }
+    public function focus-input() { input.focus(); }
+}
+
+// A labelled single-line text field for the dialogs.
+export component KitField inherits Rectangle {
+    in property <string> label;
+    in-out property <string> text;
+    in property <bool> autofocus: false;
+    callback accepted();
+    height: 58px;
+    VerticalLayout {
+        spacing: 4px;
+        Text { text: root.label; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; overflow: elide; }
+        Rectangle {
+            height: 32px;
+            border-radius: 4px;
+            background: Theme.sidebar;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.accent : Theme.border;
+            input := TextInput {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                text <=> root.text;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-role: text-input;
+                accessible-label: root.label;
+                accepted => { root.accepted(); }
+            }
+        }
+    }
+    init => {
+        if root.autofocus {
+            input.focus();
+        }
+    }
+}
+
+export component KitMenuRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> danger: false;
+    in property <bool> checked: false;
+    in property <string> hint;
+    callback clicked();
+    height: 32px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 10px;
+        Text { text: root.label; color: root.danger ? Theme.danger : Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        Text { text: root.checked ? "✓" : root.hint; color: root.checked ? Theme.accent : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The frame of a popup menu.
+export component KitMenuFrame inherits Rectangle {
+    in property <length> menu-width: 220px;
+    width: root.menu-width;
+    height: inner.preferred-height + 12px;
+    border-radius: 6px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: #00000090;
+    TouchArea { }
+    inner := VerticalLayout {
+        padding: 6px;
+        @children
+    }
+}
+
+export component KitNavRow inherits Rectangle {
+    in property <string> label;
+    in property <string> hint;
+    in property <bool> active;
+    callback clicked();
+    height: 34px;
+    border-radius: 4px;
+    background: root.active ? Theme.selected : (touch.has-hover ? Theme.surface-hover : transparent);
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.active ? "Current" : "";
+    accessible-item-selected: root.active;
+    Rectangle { x: 0; y: 7px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 8px;
+        Text {
+            text: root.label;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            font-weight: root.active ? 700 : 400;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.hint != "": Text { text: root.hint; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A group title in a navigation list.
+export component KitNavHeader inherits Rectangle {
+    in property <string> label;
+    height: 32px;
+    Text { x: 10px; width: parent.width - 20px; text: root.label; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; }
+}
+
+// A line of explanation or status above a list.
+export component KitNote inherits Rectangle {
+    in property <string> text;
+    in property <color> tone: Theme.fg-subtle;
+    in property <length> text-size: 13px;
+    // Work is going on: a small spinner leads the line.
+    in property <bool> busy: false;
+    height: note.preferred-height + 10px;
+    if root.busy: Spinner { x: 20px; y: 5px + (note.preferred-height > 18px ? 0px : (note.preferred-height - 14px) / 2); }
+    note := Text { x: root.busy ? 40px : 20px; y: 5px; width: parent.width - (root.busy ? 60px : 40px); text: root.text; color: root.tone; font-size: root.text-size; wrap: word-wrap; }
+}
+
+// A small status chip: On, Failed, Completed, …
+export component KitBadge inherits Rectangle {
+    in property <string> text;
+    in property <string> tone; // "" | ok | bad | warn
+    height: 20px;
+    width: lbl.preferred-width + 16px;
+    border-radius: 10px;
+    background: root.tone == "ok" ? #1d3a2a : (root.tone == "bad" ? #4a1f24 : (root.tone == "warn" ? #4a3b14 : Theme.surface-hover));
+    lbl := Text {
+        text: root.text;
+        color: root.tone == "ok" ? #6bd69b : (root.tone == "bad" ? #ff8a8f : (root.tone == "warn" ? #ffd166 : Theme.fg-muted));
+        font-size: 11px * Theme.font-scale;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component KitPill inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    width: t-text.preferred-width + 24px;
+    border-radius: 13px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.border;
+    background: root.active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : transparent);
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checked: root.active;
+    t-text := Text { text: root.label; color: Theme.fg; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// A Store card: icon, name, publisher, short description and a line of facts.
+export component AppCardView inherits Rectangle {
+    in property <AppCard> app;
+    callback clicked();
+    height: 112px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.border;
+    background: touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    accessible-role: button;
+    accessible-label: root.app.name;
+    accessible-description: root.app.developer + ". " + root.app.blurb;
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 12px;
+        AppTile { icon: root.app.icon; has-icon: root.app.has-icon; letter: root.app.letter; tone: root.app.color; size: 48px; y: 0px; }
+        VerticalLayout {
+            spacing: 2px;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: root.app.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                if root.app.update: KitBadge { text: "Update"; tone: "warn"; }
+                if root.app.installed && !root.app.update: KitBadge { text: "Installed"; tone: "ok"; }
+            }
+            Text { text: root.app.developer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            Text { text: root.app.blurb; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; overflow: elide; max-height: 34px; }
+            Text { text: root.app.meta; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+    }
+}

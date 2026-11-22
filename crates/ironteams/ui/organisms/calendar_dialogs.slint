@@ -1,0 +1,392 @@
+// The calendar's menus and dialogs: New menu, date range picker, filters, saved views, More
+// menu, work location, add calendar, settings, sharing and the one generic prompt.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { CalStore, CalFmt } from "../stores/calendar_store.slint";
+import { CalButton, CalCard, CalCheck, CalField, CalMenuItem } from "../molecules/calendar_widgets.slint";
+
+// The New ▾ menu. Types that need Graph VirtualEvent.* open in the web (marked ↗).
+export component NewMenu inherits CalCard {
+    width: 220px;
+    height: 6 * 30px + 8px;
+    VerticalLayout {
+        padding: 4px;
+        for t in [{key: "event", label: "Event", hint: ""}, {key: "channel", label: "Channel meeting", hint: ""}, {key: "webinar", label: "Webinar", hint: "↗"}, {key: "townhall", label: "Town hall", hint: "↗"}, {key: "appointment", label: "Virtual appointment", hint: "↗"}, {key: "live", label: "Live event", hint: "↗"}]: CalMenuItem {
+            label: t.label;
+            hint: t.hint;
+            clicked => { CalStore.popup = ""; CalStore.command("new", t.key); }
+        }
+    }
+}
+
+// Pick the first and the last day on the mini calendar's month; the view becomes those days.
+export component RangePicker inherits CalCard {
+    width: 280px;
+    height: 36px + 20px + max(1, Math.round(CalStore.mini.length / 7)) * 30px + 40px;
+    VerticalLayout {
+        padding: 10px;
+        HorizontalLayout {
+            height: 30px;
+            Text { text: CalStore.mini-title; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            IconButton { icon: @image-url("../icons/chevron-left.svg"); size: 26px; tooltip: "Previous month"; clicked => { CalStore.command("mini", "-1"); } }
+            IconButton { icon: @image-url("../icons/chevron-right.svg"); size: 26px; tooltip: "Next month"; clicked => { CalStore.command("mini", "1"); } }
+        }
+        Rectangle {
+            height: 20px + Math.round(CalStore.mini.length / 7) * 30px;
+            for l[i] in CalStore.mini-heads: Text {
+                x: i * (parent.width / 7);
+                width: parent.width / 7;
+                height: 20px;
+                text: l;
+                color: Theme.fg-subtle;
+                font-size: 11px * Theme.font-scale;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            for c[i] in CalStore.mini: Rectangle {
+                x: Math.mod(i, 7) * (parent.width / 7);
+                y: 20px + Math.floor(i / 7) * 30px;
+                width: parent.width / 7;
+                height: 30px;
+                background: c.iso == CalStore.range-start ? Theme.accent-strong : (rt.has-hover ? Theme.surface-hover : transparent);
+                border-radius: 4px;
+                accessible-role: button;
+                accessible-label: "Pick " + c.iso;
+                Text { text: c.number; color: c.in-month ? Theme.fg : Theme.fg-subtle; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                rt := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if CalStore.range-start == "" {
+                            CalStore.range-start = c.iso;
+                        } else {
+                            CalStore.command("range", CalStore.range-start + "|" + c.iso);
+                            CalStore.range-start = "";
+                            CalStore.popup = "";
+                        }
+                    }
+                }
+            }
+        }
+        Text { text: CalStore.range-start == "" ? "Pick the first day, then the last (up to 7 days)." : "Now pick the last day."; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
+    }
+}
+
+export component FiltersPanel inherits CalCard {
+    width: 260px;
+    height: min(560px, 90px + CalStore.filter-opts.length * 26px + 5 * 22px);
+    VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        HorizontalLayout {
+            height: 28px;
+            Text { text: "Filter"; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+            CalButton { label: "Clear filters"; enabled: CalStore.filtered; clicked => { CalStore.command("filter-clear", ""); } }
+        }
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                width: parent.width - 12px;
+                for g in [{key: "kind", label: "Type"}, {key: "show", label: "Show as"}, {key: "rec", label: "Recurrence"}, {key: "place", label: "Place"}, {key: "cat", label: "Categories"}]: VerticalLayout {
+                    if g.key != "cat" || CalStore.categories.length > 0: Text { text: g.label; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; height: 22px; vertical-alignment: bottom; }
+                    for o in CalStore.filter-opts: VerticalLayout {
+                        if o.group == g.key: CalCheck {
+                            label: o.label;
+                            checked: o.on;
+                            accessible-label: g.label + ": " + o.label;
+                            toggled(on) => { CalStore.command("filter", o.group + ":" + o.key); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ViewsPanel inherits CalCard {
+    width: 260px;
+    height: 44px + max(1, CalStore.saved-views.length) * 30px + 44px;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 2px;
+        Text { text: "Saved views"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; height: 24px; vertical-alignment: center; }
+        if CalStore.saved-views.length == 0: Text { text: "No saved views yet."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; height: 28px; vertical-alignment: center; }
+        for v in CalStore.saved-views: HorizontalLayout {
+            height: 30px;
+            CalMenuItem { label: v.name; hint: v.summary; horizontal-stretch: 1; clicked => { CalStore.popup = ""; CalStore.command("saved-apply", v.name); } }
+            IconButton { icon: @image-url("../icons/close.svg"); size: 26px; y: 2px; tooltip: "Delete view " + v.name; clicked => { CalStore.command("saved-delete", v.name); } }
+        }
+        CalMenuItem { label: "Save current view…"; clicked => { CalStore.ask("saved-save", "Save this view", "Saves the view (" + CalStore.view-kind + ") and the time scale under a name.", "Name", "", "", "Save"); } }
+    }
+}
+
+export component MoreMenu inherits CalCard {
+    // The toolbar has no room for its Meet now button: its two choices are here.
+    in property <bool> meet: false;
+    width: 240px;
+    height: (7 + (root.meet ? 2 : 0)) * 30px + 8px;
+    VerticalLayout {
+        padding: 4px;
+        if root.meet: CalMenuItem { label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
+        if root.meet: CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
+        CalMenuItem { label: "Share calendar…"; clicked => { CalStore.popup = ""; CalStore.command("share-open", ""); } }
+        CalMenuItem { label: "Print to PDF"; clicked => { CalStore.popup = ""; CalStore.command("print-pdf", ""); } }
+        CalMenuItem { label: "Export visible range (.ics)"; clicked => { CalStore.popup = ""; CalStore.command("export-ics", ""); } }
+        CalMenuItem { label: "Calendar settings…"; clicked => { CalStore.popup = ""; CalStore.modal = "settings"; } }
+        CalMenuItem { label: "Today: work from office"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|office"); } }
+        CalMenuItem { label: "Today: work remotely"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|remote"); } }
+        CalMenuItem { label: "Today: clear work location"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|unset"); } }
+    }
+}
+
+// Opens from a day header: where am I working that day.
+export component WorkLocationMenu inherits CalCard {
+    width: 230px;
+    height: 3 * 30px + 40px;
+    VerticalLayout {
+        padding: 4px;
+        Text { text: "Work location, " + CalStore.range-start; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; height: 28px; vertical-alignment: center; }
+        CalMenuItem { label: "Office"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|office"); } }
+        CalMenuItem { label: "Remote"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|remote"); } }
+        CalMenuItem { label: "Clear"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|unset"); } }
+    }
+}
+
+export component AddCalendarMenu inherits CalCard {
+    width: 250px;
+    height: 7 * 30px + 8px;
+    VerticalLayout {
+        padding: 4px;
+        CalMenuItem { label: "Create blank calendar"; clicked => { CalStore.ask("create-calendar", "Create blank calendar", "A new calendar in your mailbox.", "Name", "", "", "Create"); } }
+        CalMenuItem { label: "Add from directory"; clicked => { CalStore.ask("add-person", "Add a calendar from the directory", "Shows a colleague's events, or when they are busy if they only share free/busy.", "Email address", "", "", "Add"); } }
+        CalMenuItem { label: "Subscribe from web"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "subscribe"); } }
+        CalMenuItem { label: "Upload from file"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "upload"); } }
+        CalMenuItem { label: "Holidays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "holidays"); } }
+        CalMenuItem { label: "Birthdays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "birthdays"); } }
+        CalMenuItem { label: "Edit my calendars"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "edit"); } }
+    }
+}
+
+// A dim layer and a centered card, for dialogs.
+component Modal inherits Rectangle {
+    callback dismissed();
+    background: #00000099;
+    TouchArea { clicked => { root.dismissed(); } }
+    @children
+}
+
+export component PromptDialog inherits Modal {
+    dismissed => { CalStore.modal = ""; }
+    CalCard {
+        width: 440px;
+        height: body.preferred-height + 32px;
+        x: (parent.width - self.width) / 2;
+        y: max(24px, (parent.height - self.height) / 3);
+        accessible-role: groupbox;
+        accessible-label: CalStore.prompt-title;
+        TouchArea { }
+        body := VerticalLayout {
+            x: 16px;
+            y: 16px;
+            width: parent.width - 32px;
+            spacing: 10px;
+            alignment: start;
+            Text { text: CalStore.prompt-title; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; wrap: word-wrap; }
+            if CalStore.prompt-message != "": Text { text: CalStore.prompt-message; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            if CalStore.prompt-label1 != "": CalField { placeholder: CalStore.prompt-label1; text <=> CalStore.prompt-text1; accepted => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); } }
+            if CalStore.prompt-label2 != "": CalField { placeholder: CalStore.prompt-label2; text <=> CalStore.prompt-text2; }
+            if CalStore.prompt-check-label != "": CalCheck { label: CalStore.prompt-check-label; checked <=> CalStore.prompt-check; }
+            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                CalButton { label: "Not now"; clicked => { CalStore.modal = ""; } }
+                CalButton {
+                    label: CalStore.prompt-confirm;
+                    primary: true;
+                    danger: CalStore.prompt-kind == "delete" || CalStore.prompt-kind == "cancel";
+                    clicked => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); }
+                }
+            }
+        }
+    }
+}
+
+// The link of a Meet now meeting.
+export component MeetLinkDialog inherits Modal {
+    dismissed => { CalStore.modal = ""; }
+    // The link has no spaces, so it wraps by character; the card grows with it, which keeps the
+    // link text clear of the button row (Copy link must never sit under, or act as, the link).
+    property <bool> copied;
+    CalCard {
+        width: 460px;
+        height: body.preferred-height + 32px;
+        x: (parent.width - self.width) / 2;
+        y: max(24px, (parent.height - self.height) / 3);
+        accessible-role: groupbox;
+        accessible-label: "Meeting ready";
+        TouchArea { }
+        body := VerticalLayout {
+            x: 16px;
+            y: 16px;
+            width: parent.width - 32px;
+            spacing: 12px;
+            alignment: start;
+            Text { text: "Your meeting is ready"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; }
+            Text { text: CalStore.meet-link; color: Theme.accent; font-size: 13px * Theme.font-scale; wrap: char-wrap; accessible-role: text; }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: end;
+                CalButton { label: "Close"; clicked => { CalStore.modal = ""; } }
+                // Only copies: the dialog stays open and nothing is opened.
+                CalButton { label: root.copied ? "Link copied" : "Copy link"; clicked => { root.copied = true; CalStore.command("copy-meet-link", ""); } }
+                CalButton { label: "Join now"; primary: true; clicked => { CalStore.modal = ""; CalStore.command("join", CalStore.meet-link); } }
+            }
+        }
+    }
+}
+
+export component SettingsDialog inherits Modal {
+    // Copies of the saved settings; the dialog is created when it opens, so they start fresh.
+    property <int> first-day: CalStore.settings.first-day;
+    property <bool> weekends: CalStore.settings.weekends;
+    property <bool> week-numbers: CalStore.settings.week-numbers;
+    property <bool> tz-on: CalStore.settings.second-tz != "";
+    // A zone name (or the old fixed offset in minutes) as it is sent back on Save.
+    property <string> tz-value: CalStore.settings.second-tz;
+    property <string> tz-label: CalStore.second-tz-label;
+    property <string> tz-query;
+    property <string> work-start: CalStore.settings.work-start;
+    property <string> work-end: CalStore.settings.work-end;
+    dismissed => { CalStore.modal = ""; }
+    init => { CalStore.command("zone-search", ""); }
+    CalCard {
+        width: 480px;
+        height: 560px;
+        x: (parent.width - self.width) / 2;
+        y: max(24px, (parent.height - self.height) / 3);
+        accessible-role: groupbox;
+        accessible-label: "Calendar settings";
+        TouchArea { }
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            Text { text: "Calendar settings"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; }
+            Text { text: "First day of the week"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                for d[i] in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]: CalButton { label: d; active: root.first-day == i; clicked => { root.first-day = i; } }
+            }
+            Text { text: "Work hours"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                CalField { width: 90px; placeholder: "09:00"; text <=> root.work-start; }
+                Text { text: "to"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
+                CalField { width: 90px; placeholder: "17:00"; text <=> root.work-end; }
+            }
+            CalCheck { label: "Show weekends in the week and month views"; checked <=> root.weekends; }
+            CalCheck { label: "Show week numbers"; checked <=> root.week-numbers; }
+            CalCheck { label: "Show a second time zone"; checked <=> root.tz-on; }
+            if root.tz-on: VerticalLayout {
+                spacing: 4px;
+                Text { text: root.tz-label != "" ? root.tz-label : "No time zone picked yet"; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+                CalField {
+                    placeholder: "Search time zones, like Cairo or Eastern";
+                    text <=> root.tz-query;
+                    edited(t) => { CalStore.command("zone-search", t); }
+                }
+                for z in CalStore.zone-matches: CalMenuItem {
+                    label: z.label;
+                    clicked => {
+                        root.tz-value = z.name;
+                        root.tz-label = z.label;
+                        root.tz-query = "";
+                        CalStore.command("zone-search", "");
+                    }
+                }
+            }
+            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                CalButton { label: "Cancel"; clicked => { CalStore.modal = ""; } }
+                CalButton {
+                    label: "Save";
+                    primary: true;
+                    clicked => {
+                        CalStore.command("settings", root.first-day + "|" + root.work-start + "|" + root.work-end + "|" + (root.weekends ? "1" : "0") + "|" + (root.week-numbers ? "1" : "0") + "|" + (root.tz-on ? root.tz-value : ""));
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ShareDialog inherits Modal {
+    property <string> email;
+    property <string> role: "read";
+    dismissed => { CalStore.modal = ""; }
+    CalCard {
+        width: 560px;
+        height: 560px;
+        x: (parent.width - self.width) / 2;
+        y: 24px;
+        accessible-role: groupbox;
+        accessible-label: "Share calendar";
+        TouchArea { }
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                height: 28px;
+                Text { text: "Share your calendar"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+                IconButton { icon: @image-url("../icons/close.svg"); size: 28px; tooltip: "Close"; clicked => { CalStore.modal = ""; } }
+            }
+            if CalStore.share-note != "": Text { text: CalStore.share-note; color: #ffb900; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 6px;
+                    width: parent.width - 12px;
+                    for p in CalStore.perms: Rectangle {
+                        height: 62px;
+                        VerticalLayout {
+                            spacing: 4px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text { text: p.email == "" ? p.name : (p.name == "" ? p.email : p.name + " (" + p.email + ")"); color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                if p.removable: CalButton { label: "Remove"; danger: true; clicked => { CalStore.command("share-remove", p.id); } }
+                            }
+                            HorizontalLayout {
+                                spacing: 4px;
+                                alignment: start;
+                                for k in p.roles: CalButton {
+                                    label: CalFmt.role-label(k);
+                                    active: p.role == k;
+                                    enabled: p.removable;
+                                    clicked => { CalStore.command("share-role", p.id + "|" + k); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Text { text: "Share with"; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; }
+            CalField { placeholder: "name@company.com"; text <=> root.email; }
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                for k in CalStore.share-roles: CalButton {
+                    label: CalFmt.role-label(k);
+                    active: root.role == k;
+                    clicked => { root.role = k; }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                CalButton { label: "Share"; primary: true; clicked => { CalStore.command("share-add", root.email + "|" + root.role); root.email = ""; } }
+            }
+        }
+    }
+}

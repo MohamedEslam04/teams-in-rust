@@ -1,0 +1,80 @@
+// The pre-join preview: how we will look (the camera through the effects) while the camera switch
+// is on, else our avatar; and the Video effects button over its corner.
+import { Theme } from "../tokens/theme.slint";
+import { Avatar, Icon } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { VideoFxStore } from "../stores/video_fx_store.slint";
+
+// Opens or closes the effects panel.
+export component VideoEffectsButton inherits Rectangle {
+    width: row.preferred-width + 20px;
+    height: 32px;
+    border-radius: 16px;
+    background: touch.has-hover || VideoFxStore.open ? #000000cc : #00000099;
+    accessible-role: button;
+    accessible-label: "Video effects";
+    accessible-checkable: true;
+    accessible-checked: VideoFxStore.open;
+    accessible-action-default => { VideoFxStore.open = !VideoFxStore.open; }
+    row := HorizontalLayout {
+        x: 10px;
+        spacing: 6px;
+        alignment: center;
+        Icon {
+            source: @image-url("../icons/effects.svg");
+            tint: #ffffff;
+            width: 16px;
+            height: 16px;
+            y: 8px;
+        }
+        Text {
+            text: "Video effects";
+            color: #ffffff;
+            font-size: 12px * Theme.font-scale;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { VideoFxStore.open = !VideoFxStore.open; }
+    }
+}
+
+export component VideoPreview inherits Rectangle {
+    property <bool> live: CallStore.prejoin-camera && VideoFxStore.has-preview;
+    height: 220px;
+    border-radius: Theme.radius;
+    clip: true;
+    background: Theme.rail;
+    if root.live: Image {
+        width: root.width;
+        height: root.height;
+        source: VideoFxStore.preview;
+        image-fit: cover;
+        accessible-role: image;
+        accessible-label: "Your camera preview";
+    }
+    if !root.live: VerticalLayout {
+        alignment: center;
+        spacing: 10px;
+        padding-left: 16px;
+        padding-right: 16px;
+        HorizontalLayout {
+            alignment: center;
+            Avatar { initials: CallStore.my-initials; size: 72px; }
+        }
+        Text {
+            text: !CallStore.prejoin-camera ? "Your camera is off"
+                : VideoFxStore.preview-status != "" ? VideoFxStore.preview-status
+                : "Your camera turns on when you join";
+            color: Theme.fg-subtle;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if CallStore.camera-available: VideoEffectsButton {
+        x: root.width - self.width - 10px;
+        y: root.height - self.height - 10px;
+    }
+}

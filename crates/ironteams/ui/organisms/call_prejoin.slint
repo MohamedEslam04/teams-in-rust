@@ -1,0 +1,130 @@
+// The pre-join screen: the meeting, who joins, camera and mic, the audio devices, Join now.
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { CallButton, CallAction, DeviceSettings } from "../molecules/call_widgets.slint";
+import { VideoPreview } from "video_preview.slint";
+import { VideoEffectsPanel } from "video_effects.slint";
+import { VideoFxStore } from "../stores/video_fx_store.slint";
+
+// The pre-join microphone switch.
+component MicSwitch inherits Rectangle {
+    width: row.preferred-width + 20px;
+    height: 50px;
+    border-radius: 6px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: switch;
+    accessible-label: "Microphone";
+    accessible-checkable: true;
+    accessible-checked: CallStore.prejoin-mic;
+    accessible-action-default => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); }
+    row := HorizontalLayout {
+        x: 10px;
+        spacing: 8px;
+        alignment: center;
+        Icon {
+            source: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg");
+            tint: Theme.fg;
+            y: 15px;
+        }
+        Rectangle {
+            width: 34px;
+            height: 18px;
+            y: 16px;
+            border-radius: 9px;
+            background: CallStore.prejoin-mic ? Theme.accent-strong : Theme.surface-hover;
+            border-width: 1px;
+            border-color: CallStore.prejoin-mic ? Theme.accent-strong : Theme.border;
+            Rectangle {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                x: CallStore.prejoin-mic ? parent.width - 15px : 3px;
+                background: #ffffff;
+            }
+        }
+        Text {
+            text: CallStore.prejoin-mic ? "Mic on" : "Mic off";
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            vertical-alignment: center;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); }
+    }
+}
+
+export component PreJoin inherits Rectangle {
+    background: Theme.main;
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: min(560px, root.width - 32px);
+                spacing: 14px;
+                Text {
+                    text: "Choose your video and audio options";
+                    color: Theme.fg-muted;
+                    font-size: 13px * Theme.font-scale;
+                }
+                Text {
+                    text: CallStore.title;
+                    color: Theme.fg;
+                    font-size: 20px * Theme.font-scale;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                VideoPreview { }
+                Text {
+                    text: "Join as " + CallStore.my-name;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    CallButton {
+                        icon: CallStore.prejoin-camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
+                        label: "Camera";
+                        checkable: true;
+                        active: CallStore.prejoin-camera;
+                        enabled: CallStore.camera-available;
+                        tip: CallStore.camera-available ? "" : "Video isn't available yet";
+                        clicked => { CallStore.command("prejoin-camera", CallStore.prejoin-camera ? "off" : "on"); }
+                    }
+                    MicSwitch { }
+                }
+                DeviceSettings { prefix: "prejoin"; }
+                if CallStore.error != "": Text {
+                    text: CallStore.error;
+                    color: Theme.danger;
+                    font-size: 13px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    CallAction {
+                        label: "Cancel";
+                        clicked => { CallStore.command("cancel", ""); }
+                    }
+                    CallAction {
+                        label: "Join now";
+                        primary: true;
+                        clicked => { CallStore.command("join-now", ""); }
+                    }
+                }
+            }
+        }
+    }
+    // The effects panel, at the right (over the column when the window is narrow).
+    if VideoFxStore.open: VideoEffectsPanel {
+        width: min(340px, root.width);
+        x: root.width - self.width;
+        height: root.height;
+    }
+}
