@@ -29,20 +29,6 @@ export component TChoice inherits Rectangle {
     }
 }
 
-export component TMenuItem inherits Rectangle {
-    in property <string> label;
-    in property <bool> danger: false;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: t.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    Text { x: 10px; text: root.label; color: root.danger ? #ff7b7e : Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-    t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 // A modal dialog: dimmed backdrop, a titled panel, and its content in `@children`.
 export component TFrame inherits Rectangle {
     in property <string> title;

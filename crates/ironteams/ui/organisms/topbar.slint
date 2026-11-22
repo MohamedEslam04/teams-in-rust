@@ -10,6 +10,7 @@ import { SettingsStore } from "../stores/settings_store.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { ZoomRow } from "../molecules/settings_widgets.slint";
 import { SkeletonRow } from "../tokens/motion.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 // One row of the dropdown. `kind`: command | person | chat | channel | message | search | recent
 // | clear. A message hit has `title` (its sender), `subtitle` (its chat), a one-line `snippet` with
@@ -438,26 +439,6 @@ export component SearchDropdown inherits Rectangle {
     }
 }
 
-// A line of the "Settings and more" menu.
-component MenuItem inherits Rectangle {
-    in property <string> label;
-    in property <image> icon;
-    callback clicked();
-    height: 36px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    HorizontalLayout {
-        padding-left: 12px;
-        spacing: 10px;
-        Icon { source: root.icon; width: 16px; height: 16px; y: 10px; }
-        Text { text: root.label; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; overflow: elide; }
-    }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 // The "…" button next to the avatar.
 export component MoreButton inherits Rectangle {
     width: 30px;
@@ -509,43 +490,43 @@ export component MoreMenu inherits Rectangle {
         items := VerticalLayout {
             padding: 6px;
             spacing: 2px;
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Settings");
                 icon: @image-url("../icons/settings.svg");
                 clicked => { TopBarStore.more-open = false; SettingsStore.show("general"); }
             }
             ZoomRow { }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Saved");
                 icon: @image-url("../icons/star.svg");
                 clicked => { TopBarStore.more-open = false; root.open-saved(); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Keyboard shortcuts");
                 icon: @image-url("../icons/shortcut.svg");
                 clicked => { TopBarStore.more-open = false; root.show-shortcuts(); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Check for updates");
                 icon: @image-url("../icons/sync.svg");
                 clicked => { TopBarStore.more-open = false; SettingsStore.command("check-updates-menu", ""); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("About");
                 icon: @image-url("../icons/info.svg");
                 clicked => { TopBarStore.more-open = false; SettingsStore.show("about"); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Help");
                 icon: @image-url("../icons/open.svg");
                 clicked => { TopBarStore.more-open = false; TopBarStore.command("help", ""); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Feedback");
                 icon: @image-url("../icons/reply.svg");
                 clicked => { TopBarStore.more-open = false; TopBarStore.command("feedback", ""); }
             }
-            MenuItem {
+            MenuItem { variant: MenuItemVariant.icon;
                 label: @tr("Get the mobile app");
                 icon: @image-url("../icons/open.svg");
                 clicked => { TopBarStore.more-open = false; TopBarStore.command("mobile-app", ""); }

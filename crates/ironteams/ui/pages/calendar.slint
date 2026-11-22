@@ -5,13 +5,14 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalMenuItem, CalScrim } from "../molecules/calendar_widgets.slint";
+import { CalScrim } from "../molecules/calendar_widgets.slint";
 import { EventPeek, EventFull } from "../organisms/calendar_event.slint";
 import { EventForm } from "../organisms/calendar_form.slint";
 import { Skeleton } from "../tokens/motion.slint";
 import { AddCalendarMenu, FiltersPanel, MeetLinkDialog, MoreMenu, NewMenu, PromptDialog, RangePicker, SettingsDialog, ShareDialog, ViewsPanel, WorkLocationMenu } from "../organisms/calendar_dialogs.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../molecules/menu.slint";
 
 export { CalStore, CalForm, CalDay, CalBlock, CalAllDay, CalMonthItem, CalMonthCell, CalMiniCell, CalFilterOpt, CalCalendarRow, CalSavedView, CalSettingsData, CalPerm, CalPeek, CalAttendeeRow, CalAttachmentRow, CalProposalRow, CalZone, CalDetail, CalSchedRow, CalSuggest, CalRoomList, CalRoom } from "../stores/calendar_store.slint";
 
@@ -729,7 +730,7 @@ export component CalendarView inherits Rectangle {
         dismissed => { CalStore.popup = ""; }
     }
     if CalStore.popup == "new": NewMenu { z: 41; x: 12px; y: 48px; }
-    if CalStore.popup == "meet": CalCard {
+    if CalStore.popup == "meet": MenuFrame { variant: MenuFrameVariant.card;
         z: 41;
         x: root.width - self.width - 56px;
         y: 52px;
@@ -737,8 +738,8 @@ export component CalendarView inherits Rectangle {
         height: 2 * 30px + 8px;
         VerticalLayout {
             padding: 4px;
-            CalMenuItem { label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-            CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
         }
     }
     if CalStore.popup == "add-calendar": AddCalendarMenu { z: 41; x: 12px; y: 240px; }
@@ -746,7 +747,7 @@ export component CalendarView inherits Rectangle {
     if CalStore.popup == "filters": FiltersPanel { z: 41; x: root.width - self.width - 16px; y: 52px; }
     if CalStore.popup == "views": ViewsPanel { z: 41; x: root.width - self.width - 16px; y: 52px; }
     if CalStore.popup == "more": MoreMenu { meet: !root.wide; z: 41; x: root.width - self.width - 16px; y: 52px; }
-    if CalStore.popup == "view-pick": CalCard {
+    if CalStore.popup == "view-pick": MenuFrame { variant: MenuFrameVariant.card;
         z: 41;
         x: root.width - self.width - 16px;
         y: 52px;
@@ -754,12 +755,12 @@ export component CalendarView inherits Rectangle {
         height: (root.views.length + 1) * 30px + 8px;
         VerticalLayout {
             padding: 4px;
-            for v in root.views: CalMenuItem {
+            for v in root.views: MenuItem { variant: MenuItemVariant.calendar;
                 label: v.label;
                 checked: CalStore.view-kind == v.key;
                 clicked => { CalStore.popup = ""; CalStore.command("view", v.key); }
             }
-            CalMenuItem { label: "Saved views…"; clicked => { CalStore.popup = "views"; } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Saved views…"; clicked => { CalStore.popup = "views"; } }
         }
     }
     if CalStore.popup == "work-location": WorkLocationMenu { z: 41; x: 340px; y: 56px; }

@@ -3,20 +3,7 @@ import { Theme } from "../tokens/theme.slint";
 import { FileItem } from "../tokens/types.slint";
 import { Motion } from "../tokens/motion.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
-
-component CardMenuRow inherits Rectangle {
-    in property <string> label;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    animate background { duration: Motion.quick; }
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    Text { x: 10px; width: parent.width - 20px; text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
+import { MenuItem, MenuItemVariant } from "menu.slint";
 
 export component FileCard inherits Rectangle {
     in property <FileItem> f;
@@ -76,11 +63,11 @@ export component FileCard inherits Rectangle {
             drop-shadow-color: #00000080;
             file-items := VerticalLayout {
                 padding: 4px;
-                CardMenuRow { label: @tr("Open"); clicked => { file-menu.close(); root.open(); } }
-                CardMenuRow { label: @tr("Download"); clicked => { file-menu.close(); root.action("download"); } }
-                CardMenuRow { label: @tr("Copy link"); clicked => { file-menu.close(); root.action("copy"); } }
-                CardMenuRow { label: @tr("Share"); clicked => { file-menu.close(); root.action("share"); } }
-                CardMenuRow {
+                MenuItem { variant: MenuItemVariant.card; label: @tr("Open"); clicked => { file-menu.close(); root.open(); } }
+                MenuItem { variant: MenuItemVariant.card; label: @tr("Download"); clicked => { file-menu.close(); root.action("download"); } }
+                MenuItem { variant: MenuItemVariant.card; label: @tr("Copy link"); clicked => { file-menu.close(); root.action("copy"); } }
+                MenuItem { variant: MenuItemVariant.card; label: @tr("Share"); clicked => { file-menu.close(); root.action("share"); } }
+                MenuItem { variant: MenuItemVariant.card;
                     visible: root.f.place != "";
                     height: root.f.place != "" ? 32px : 0px;
                     label: @tr("Open in {}", root.f.place);

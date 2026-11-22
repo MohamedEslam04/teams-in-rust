@@ -18,6 +18,7 @@ import { HeldBar } from "../molecules/call_held.slint";
 import { CallFeedback } from "../organisms/call_feedback.slint";
 import { ReactionMenu, ReactionsOverlay } from "../molecules/call_reactions.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 export { CallStore, CallPerson, CallCaption, CallFound, CallVideo }
 
@@ -301,30 +302,6 @@ component ControlBanner inherits Rectangle {
     }
 }
 
-component ShareMenuItem inherits Rectangle {
-    in property <string> label;
-    callback clicked();
-    height: 32px;
-    border-radius: 3px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    Text {
-        x: 8px;
-        text: root.label;
-        color: Theme.fg;
-        font-size: 13px * Theme.font-scale;
-        vertical-alignment: center;
-        overflow: elide;
-        width: parent.width - 16px;
-    }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 // The Share chevron's dropdown: give control of our screen to someone in the call, or take it
 // back.
 component ShareMenu inherits Rectangle {
@@ -341,7 +318,7 @@ component ShareMenu inherits Rectangle {
     card := VerticalLayout {
         padding: 6px;
         spacing: 2px;
-        if CallStore.control-mode == "controlled": ShareMenuItem {
+        if CallStore.control-mode == "controlled": MenuItem { variant: MenuItemVariant.share;
             label: "Take back control";
             clicked => {
                 CallStore.command("control-take-back", "");
@@ -355,7 +332,7 @@ component ShareMenu inherits Rectangle {
             height: 24px;
             vertical-alignment: center;
         }
-        for p in CallStore.people: ShareMenuItem {
+        for p in CallStore.people: MenuItem { variant: MenuItemVariant.share;
             visible: !p.me && !p.lobby && p.id != "";
             height: self.visible ? 32px : 0px;
             label: p.name;

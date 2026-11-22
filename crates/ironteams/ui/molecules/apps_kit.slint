@@ -72,45 +72,6 @@ export component KitSearch inherits Rectangle {
     public function focus-input() { input.focus(); }
 }
 
-export component KitMenuRow inherits Rectangle {
-    in property <string> label;
-    in property <bool> danger: false;
-    in property <bool> checked: false;
-    in property <string> hint;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        spacing: 10px;
-        Text { text: root.label; color: root.danger ? Theme.danger : Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-        Text { text: root.checked ? "✓" : root.hint; color: root.checked ? Theme.accent : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-    }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
-// The frame of a popup menu.
-export component KitMenuFrame inherits Rectangle {
-    in property <length> menu-width: 220px;
-    width: root.menu-width;
-    height: inner.preferred-height + 12px;
-    border-radius: 6px;
-    background: Theme.surface;
-    border-width: 1px;
-    border-color: Theme.border;
-    drop-shadow-blur: 12px;
-    drop-shadow-color: #00000090;
-    TouchArea { }
-    inner := VerticalLayout {
-        padding: 6px;
-        @children
-    }
-}
-
 export component KitNavRow inherits Rectangle {
     in property <string> label;
     in property <string> hint;

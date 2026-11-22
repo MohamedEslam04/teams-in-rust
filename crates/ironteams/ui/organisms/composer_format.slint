@@ -7,6 +7,7 @@
 // text and the selection. The preview strip shows the converted message before it is sent.
 import { Theme } from "../tokens/theme.slint";
 import { ScrollView } from "std-widgets.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 // The result of an action: the new text and selection (byte offsets). `ok` false: nothing changed.
 export struct FormatEdit { ok: bool, text: string, anchor: int, cursor: int }
@@ -68,22 +69,6 @@ component FmtButton inherits Rectangle {
     if root.underline: Rectangle { x: 9px; y: 20px; width: parent.width - 18px; height: 1px; background: Theme.fg-muted; }
     if root.strike: Rectangle { x: 8px; y: 14px; width: parent.width - 16px; height: 1px; background: Theme.fg-muted; }
     Rectangle { x: 7px; y: parent.height - 5px; width: parent.width - 14px; height: 3px; background: root.swatch; }
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
-component FmtItem inherits Rectangle {
-    in property <string> label;
-    in property <string> hint;
-    callback clicked();
-    height: 30px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.hint != "" ? root.hint : root.label;
-    Text { x: 10px; text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -280,7 +265,7 @@ export component FormatBar inherits Rectangle {
                         }
                     }
                 }
-                FmtItem { label: @tr("No color"); clicked => { root.fire-kept("color:none"); color-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("No color"); clicked => { root.fire-kept("color:none"); color-popup.close(); } }
             }
         }
     }
@@ -317,7 +302,7 @@ export component FormatBar inherits Rectangle {
                         }
                     }
                 }
-                FmtItem { label: @tr("No highlight"); clicked => { root.fire-kept("bg:none"); highlight-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("No highlight"); clicked => { root.fire-kept("bg:none"); highlight-popup.close(); } }
             }
         }
     }
@@ -335,9 +320,9 @@ export component FormatBar inherits Rectangle {
             VerticalLayout {
                 padding: 6px;
                 spacing: 2px;
-                FmtItem { label: @tr("Large"); hint: @tr("Large text"); clicked => { root.fire-kept("size:large"); size-popup.close(); } }
-                FmtItem { label: @tr("Small"); hint: @tr("Small text"); clicked => { root.fire-kept("size:small"); size-popup.close(); } }
-                FmtItem { label: @tr("Normal"); hint: @tr("Normal size"); clicked => { root.fire-kept("size:none"); size-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Large"); hint: @tr("Large text"); clicked => { root.fire-kept("size:large"); size-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Small"); hint: @tr("Small text"); clicked => { root.fire-kept("size:small"); size-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Normal"); hint: @tr("Normal size"); clicked => { root.fire-kept("size:none"); size-popup.close(); } }
             }
         }
     }
@@ -359,7 +344,7 @@ export component FormatBar inherits Rectangle {
                 ScrollView {
                     VerticalLayout {
                         spacing: 1px;
-                        for lang in ["plaintext", "bash", "c", "cpp", "csharp", "css", "go", "html", "java", "javascript", "json", "python", "rust", "sql"]: FmtItem {
+                        for lang in ["plaintext", "bash", "c", "cpp", "csharp", "css", "go", "html", "java", "javascript", "json", "python", "rust", "sql"]: MenuItem { variant: MenuItemVariant.format;
                             label: lang;
                             hint: @tr("Code block {}", lang);
                             clicked => { root.fire-kept("codeblock:" + lang); code-popup.close(); }
@@ -383,23 +368,23 @@ export component FormatBar inherits Rectangle {
             VerticalLayout {
                 padding: 6px;
                 spacing: 1px;
-                FmtItem { label: @tr("Paragraph"); clicked => { root.fire-kept("para"); more-popup.close(); } }
-                FmtItem { label: @tr("Heading 1"); clicked => { root.fire-kept("h1"); more-popup.close(); } }
-                FmtItem { label: @tr("Heading 2"); clicked => { root.fire-kept("h2"); more-popup.close(); } }
-                FmtItem { label: @tr("Heading 3"); clicked => { root.fire-kept("h3"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Paragraph"); clicked => { root.fire-kept("para"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Heading 1"); clicked => { root.fire-kept("h1"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Heading 2"); clicked => { root.fire-kept("h2"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Heading 3"); clicked => { root.fire-kept("h3"); more-popup.close(); } }
                 Rectangle { height: 1px; background: Theme.border; }
-                FmtItem { label: @tr("Code"); hint: @tr("Inline code"); clicked => { root.fire-kept("code"); more-popup.close(); } }
-                FmtItem { label: @tr("Clear formatting"); clicked => { root.fire-kept("clear"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Code"); hint: @tr("Inline code"); clicked => { root.fire-kept("code"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Clear formatting"); clicked => { root.fire-kept("clear"); more-popup.close(); } }
                 Rectangle { height: 1px; background: Theme.border; }
-                FmtItem { label: @tr("Increase indent"); clicked => { root.fire-kept("indent"); more-popup.close(); } }
-                FmtItem { label: @tr("Decrease indent"); clicked => { root.fire-kept("outdent"); more-popup.close(); } }
-                FmtItem { label: @tr("Horizontal rule"); clicked => { root.fire-kept("hr"); more-popup.close(); } }
-                FmtItem { label: @tr("Table…"); hint: @tr("Insert table"); clicked => { more-popup.close(); table-popup.show(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Increase indent"); clicked => { root.fire-kept("indent"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Decrease indent"); clicked => { root.fire-kept("outdent"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Horizontal rule"); clicked => { root.fire-kept("hr"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Table…"); hint: @tr("Insert table"); clicked => { more-popup.close(); table-popup.show(); } }
                 Rectangle { height: 1px; background: Theme.border; }
-                FmtItem { label: @tr("Mark as important"); clicked => { root.fire-kept("important"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Mark as important"); clicked => { root.fire-kept("important"); more-popup.close(); } }
                 Rectangle { height: 1px; background: Theme.border; }
-                FmtItem { label: @tr("Undo"); clicked => { root.fire-kept("undo"); more-popup.close(); } }
-                FmtItem { label: @tr("Redo"); clicked => { root.fire-kept("redo"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Undo"); clicked => { root.fire-kept("undo"); more-popup.close(); } }
+                MenuItem { variant: MenuItemVariant.format; label: @tr("Redo"); clicked => { root.fire-kept("redo"); more-popup.close(); } }
             }
         }
     }

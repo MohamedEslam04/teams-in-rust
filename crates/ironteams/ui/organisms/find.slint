@@ -9,6 +9,7 @@ import { PeopleStore, PersonHover } from "../molecules/people.slint";
 import { ComposerApps } from "composer_apps.slint";
 import { KindBadge } from "onedrive.slint";
 import { Motion, SkeletonList } from "../tokens/motion.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 // One row of the Search page or a quick view.
 export struct HitRow {
@@ -626,30 +627,6 @@ component SharedLine inherits Rectangle {
     }
 }
 
-// One entry of a small menu (the file menu, the tab menu, the call history menu).
-export component FileMenuItem inherits Rectangle {
-    in property <string> label;
-    in property <bool> danger: false;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: item-touch.has-hover ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { root.clicked(); }
-    Text {
-        x: 10px;
-        width: parent.width - 20px;
-        text: root.label;
-        color: root.danger ? Theme.danger : Theme.fg;
-        font-size: 13px * Theme.font-scale;
-        vertical-alignment: center;
-        overflow: elide;
-        accessible-role: none;
-    }
-    item-touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 // A small button of the Files toolbar.
 component FileToolButton inherits Rectangle {
     in property <string> label;
@@ -825,16 +802,16 @@ export component SharedView inherits Rectangle {
             TouchArea { }
             menu-col := VerticalLayout {
                 padding: 6px;
-                if root.menu == "new": FileMenuItem { label: @tr("Word document"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "word"); } }
-                if root.menu == "new": FileMenuItem { label: @tr("Excel workbook"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "excel"); } }
-                if root.menu == "new": FileMenuItem { label: @tr("PowerPoint presentation"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "powerpoint"); } }
-                if root.menu == "row": FileMenuItem { label: @tr("Open"); clicked => { root.menu = ""; FindStore.command("shared-open", root.file.url); } }
-                if root.menu == "row" && root.file.editable: FileMenuItem { label: @tr("Download"); clicked => { root.menu = ""; FindStore.command("shared-download", root.file.url); } }
-                if root.menu == "row": FileMenuItem { label: @tr("Copy link"); clicked => { root.menu = ""; FindStore.command("shared-copy-link", root.file.url); } }
-                if root.menu == "row" && root.file.editable: FileMenuItem { label: @tr("Share"); clicked => { root.menu = ""; FindStore.command("shared-share", root.file.url); } }
-                if root.menu == "row" && root.file.editable: FileMenuItem { label: @tr("Rename"); clicked => { root.menu = ""; root.prompt-text = root.file.name; root.prompt = "rename"; } }
-                if root.menu == "row" && root.file.editable: FileMenuItem { label: @tr("Delete"); danger: true; clicked => { root.menu = ""; root.prompt = "delete"; } }
-                if root.menu == "row" && root.file.sharepoint: FileMenuItem { label: @tr("Open in SharePoint"); clicked => { root.menu = ""; FindStore.command("shared-open", root.file.url); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.file; label: @tr("Word document"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "word"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.file; label: @tr("Excel workbook"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "excel"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.file; label: @tr("PowerPoint presentation"); clicked => { root.menu = ""; FindStore.command("shared-new-doc", "powerpoint"); } }
+                if root.menu == "row": MenuItem { variant: MenuItemVariant.file; label: @tr("Open"); clicked => { root.menu = ""; FindStore.command("shared-open", root.file.url); } }
+                if root.menu == "row" && root.file.editable: MenuItem { variant: MenuItemVariant.file; label: @tr("Download"); clicked => { root.menu = ""; FindStore.command("shared-download", root.file.url); } }
+                if root.menu == "row": MenuItem { variant: MenuItemVariant.file; label: @tr("Copy link"); clicked => { root.menu = ""; FindStore.command("shared-copy-link", root.file.url); } }
+                if root.menu == "row" && root.file.editable: MenuItem { variant: MenuItemVariant.file; label: @tr("Share"); clicked => { root.menu = ""; FindStore.command("shared-share", root.file.url); } }
+                if root.menu == "row" && root.file.editable: MenuItem { variant: MenuItemVariant.file; label: @tr("Rename"); clicked => { root.menu = ""; root.prompt-text = root.file.name; root.prompt = "rename"; } }
+                if root.menu == "row" && root.file.editable: MenuItem { variant: MenuItemVariant.file; label: @tr("Delete"); danger: true; clicked => { root.menu = ""; root.prompt = "delete"; } }
+                if root.menu == "row" && root.file.sharepoint: MenuItem { variant: MenuItemVariant.file; label: @tr("Open in SharePoint"); clicked => { root.menu = ""; FindStore.command("shared-open", root.file.url); } }
             }
         }
     }
@@ -948,7 +925,7 @@ export component DetailsPane inherits Rectangle {
         VerticalLayout {
             padding-left: 8px;
             padding-right: 8px;
-            FileMenuItem {
+            MenuItem { variant: MenuItemVariant.file;
                 label: @tr("Find in chat");
                 clicked => {
                     FindStore.chat-find-open = true;
@@ -965,8 +942,8 @@ export component DetailsPane inherits Rectangle {
                 accessible-role: text;
                 accessible-label: self.text;
             }
-            for p in PeopleStore.pinned: FileMenuItem { label: p.sender + ": " + p.preview; clicked => { PeopleStore.command("pin-jump", p.id); } }
-            FileMenuItem {
+            for p in PeopleStore.pinned: MenuItem { variant: MenuItemVariant.file; label: p.sender + ": " + p.preview; clicked => { PeopleStore.command("pin-jump", p.id); } }
+            MenuItem { variant: MenuItemVariant.file;
                 label: @tr("Create and share content");
                 clicked => {
                     ComposerApps.open = true;
@@ -1218,8 +1195,8 @@ export component ChannelTabOverlays inherits Rectangle {
             TouchArea { }
             tab-menu-col := VerticalLayout {
                 padding: 6px;
-                FileMenuItem { label: @tr("Rename tab"); clicked => { FindStore.tab-dialog = "rename"; } }
-                FileMenuItem { label: @tr("Remove tab"); danger: true; clicked => { FindStore.tab-dialog = "remove"; } }
+                MenuItem { variant: MenuItemVariant.file; label: @tr("Rename tab"); clicked => { FindStore.tab-dialog = "rename"; } }
+                MenuItem { variant: MenuItemVariant.file; label: @tr("Remove tab"); danger: true; clicked => { FindStore.tab-dialog = "remove"; } }
             }
         }
     }

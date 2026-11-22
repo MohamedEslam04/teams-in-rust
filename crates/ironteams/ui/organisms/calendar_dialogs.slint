@@ -4,18 +4,18 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../molecules/menu.slint";
 
 // The New ▾ menu. Types that need Graph VirtualEvent.* open in the web (marked ↗).
-export component NewMenu inherits CalCard {
+export component NewMenu inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 220px;
     height: 6 * 30px + 8px;
     VerticalLayout {
         padding: 4px;
-        for t in [{key: "event", label: "Event", hint: ""}, {key: "channel", label: "Channel meeting", hint: ""}, {key: "webinar", label: "Webinar", hint: "↗"}, {key: "townhall", label: "Town hall", hint: "↗"}, {key: "appointment", label: "Virtual appointment", hint: "↗"}, {key: "live", label: "Live event", hint: "↗"}]: CalMenuItem {
+        for t in [{key: "event", label: "Event", hint: ""}, {key: "channel", label: "Channel meeting", hint: ""}, {key: "webinar", label: "Webinar", hint: "↗"}, {key: "townhall", label: "Town hall", hint: "↗"}, {key: "appointment", label: "Virtual appointment", hint: "↗"}, {key: "live", label: "Live event", hint: "↗"}]: MenuItem { variant: MenuItemVariant.calendar;
             label: t.label;
             hint: t.hint;
             clicked => { CalStore.popup = ""; CalStore.command("new", t.key); }
@@ -24,7 +24,7 @@ export component NewMenu inherits CalCard {
 }
 
 // Pick the first and the last day on the mini calendar's month; the view becomes those days.
-export component RangePicker inherits CalCard {
+export component RangePicker inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 280px;
     height: 36px + 20px + max(1, Math.round(CalStore.mini.length / 7)) * 30px + 40px;
     VerticalLayout {
@@ -75,7 +75,7 @@ export component RangePicker inherits CalCard {
     }
 }
 
-export component FiltersPanel inherits CalCard {
+export component FiltersPanel inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 260px;
     height: min(560px, 90px + CalStore.filter-opts.length * 26px + 5 * 22px);
     VerticalLayout {
@@ -106,7 +106,7 @@ export component FiltersPanel inherits CalCard {
     }
 }
 
-export component ViewsPanel inherits CalCard {
+export component ViewsPanel inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 260px;
     height: 44px + max(1, CalStore.saved-views.length) * 30px + 44px;
     VerticalLayout {
@@ -116,57 +116,57 @@ export component ViewsPanel inherits CalCard {
         if CalStore.saved-views.length == 0: Text { text: "No saved views yet."; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; height: 28px; vertical-alignment: center; }
         for v in CalStore.saved-views: HorizontalLayout {
             height: 30px;
-            CalMenuItem { label: v.name; hint: v.summary; horizontal-stretch: 1; clicked => { CalStore.popup = ""; CalStore.command("saved-apply", v.name); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: v.name; hint: v.summary; horizontal-stretch: 1; clicked => { CalStore.popup = ""; CalStore.command("saved-apply", v.name); } }
             IconButton { icon: @image-url("../icons/close.svg"); size: 26px; y: 2px; tooltip: "Delete view " + v.name; clicked => { CalStore.command("saved-delete", v.name); } }
         }
-        CalMenuItem { label: "Save current view…"; clicked => { CalStore.ask("saved-save", "Save this view", "Saves the view (" + CalStore.view-kind + ") and the time scale under a name.", "Name", "", "", "Save"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Save current view…"; clicked => { CalStore.ask("saved-save", "Save this view", "Saves the view (" + CalStore.view-kind + ") and the time scale under a name.", "Name", "", "", "Save"); } }
     }
 }
 
-export component MoreMenu inherits CalCard {
+export component MoreMenu inherits MenuFrame { variant: MenuFrameVariant.card;
     // The toolbar has no room for its Meet now button: its two choices are here.
     in property <bool> meet: false;
     width: 240px;
     height: (7 + (root.meet ? 2 : 0)) * 30px + 8px;
     VerticalLayout {
         padding: 4px;
-        if root.meet: CalMenuItem { label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
-        if root.meet: CalMenuItem { label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
-        CalMenuItem { label: "Share calendar…"; clicked => { CalStore.popup = ""; CalStore.command("share-open", ""); } }
-        CalMenuItem { label: "Print to PDF"; clicked => { CalStore.popup = ""; CalStore.command("print-pdf", ""); } }
-        CalMenuItem { label: "Export visible range (.ics)"; clicked => { CalStore.popup = ""; CalStore.command("export-ics", ""); } }
-        CalMenuItem { label: "Calendar settings…"; clicked => { CalStore.popup = ""; CalStore.modal = "settings"; } }
-        CalMenuItem { label: "Today: work from office"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|office"); } }
-        CalMenuItem { label: "Today: work remotely"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|remote"); } }
-        CalMenuItem { label: "Today: clear work location"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|unset"); } }
+        if root.meet: MenuItem { variant: MenuItemVariant.calendar; label: "Meet now"; clicked => { CalStore.popup = ""; CalStore.ask("meet-now", "Meet now", "Starts a Teams meeting right away and gives you the link.", "Meeting title (optional)", "", "", "Start meeting"); } }
+        if root.meet: MenuItem { variant: MenuItemVariant.calendar; label: "Join with a meeting ID"; clicked => { CalStore.popup = ""; CalStore.ask("join-id", "Join with a meeting ID", "Type the meeting ID and the passcode from the invitation, or paste a meeting link.", "Meeting ID or link", "Passcode", "", "Join"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Share calendar…"; clicked => { CalStore.popup = ""; CalStore.command("share-open", ""); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Print to PDF"; clicked => { CalStore.popup = ""; CalStore.command("print-pdf", ""); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Export visible range (.ics)"; clicked => { CalStore.popup = ""; CalStore.command("export-ics", ""); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Calendar settings…"; clicked => { CalStore.popup = ""; CalStore.modal = "settings"; } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Today: work from office"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|office"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Today: work remotely"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|remote"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Today: clear work location"; hint: "unverified"; clicked => { CalStore.popup = ""; CalStore.command("work-location", "today|unset"); } }
     }
 }
 
 // Opens from a day header: where am I working that day.
-export component WorkLocationMenu inherits CalCard {
+export component WorkLocationMenu inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 230px;
     height: 3 * 30px + 40px;
     VerticalLayout {
         padding: 4px;
         Text { text: "Work location, " + CalStore.range-start; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; height: 28px; vertical-alignment: center; }
-        CalMenuItem { label: "Office"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|office"); } }
-        CalMenuItem { label: "Remote"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|remote"); } }
-        CalMenuItem { label: "Clear"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|unset"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Office"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|office"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Remote"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|remote"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Clear"; clicked => { CalStore.popup = ""; CalStore.command("work-location", CalStore.range-start + "|unset"); } }
     }
 }
 
-export component AddCalendarMenu inherits CalCard {
+export component AddCalendarMenu inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 250px;
     height: 7 * 30px + 8px;
     VerticalLayout {
         padding: 4px;
-        CalMenuItem { label: "Create blank calendar"; clicked => { CalStore.ask("create-calendar", "Create blank calendar", "A new calendar in your mailbox.", "Name", "", "", "Create"); } }
-        CalMenuItem { label: "Add from directory"; clicked => { CalStore.ask("add-person", "Add a calendar from the directory", "Shows a colleague's events, or when they are busy if they only share free/busy.", "Email address", "", "", "Add"); } }
-        CalMenuItem { label: "Subscribe from web"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "subscribe"); } }
-        CalMenuItem { label: "Upload from file"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "upload"); } }
-        CalMenuItem { label: "Holidays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "holidays"); } }
-        CalMenuItem { label: "Birthdays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "birthdays"); } }
-        CalMenuItem { label: "Edit my calendars"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "edit"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Create blank calendar"; clicked => { CalStore.ask("create-calendar", "Create blank calendar", "A new calendar in your mailbox.", "Name", "", "", "Create"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Add from directory"; clicked => { CalStore.ask("add-person", "Add a calendar from the directory", "Shows a colleague's events, or when they are busy if they only share free/busy.", "Email address", "", "", "Add"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Subscribe from web"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "subscribe"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Upload from file"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "upload"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Holidays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "holidays"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Birthdays"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "birthdays"); } }
+        MenuItem { variant: MenuItemVariant.calendar; label: "Edit my calendars"; hint: "↗"; clicked => { CalStore.popup = ""; CalStore.command("calendar-web", "edit"); } }
     }
 }
 
@@ -180,7 +180,7 @@ component Modal inherits Rectangle {
 
 export component PromptDialog inherits Modal {
     dismissed => { CalStore.modal = ""; }
-    CalCard {
+    MenuFrame { variant: MenuFrameVariant.card;
         width: 440px;
         height: body.preferred-height + 32px;
         x: (parent.width - self.width) / 2;
@@ -221,7 +221,7 @@ export component MeetLinkDialog inherits Modal {
     // The link has no spaces, so it wraps by character; the card grows with it, which keeps the
     // link text clear of the button row (Copy link must never sit under, or act as, the link).
     property <bool> copied;
-    CalCard {
+    MenuFrame { variant: MenuFrameVariant.card;
         width: 460px;
         height: body.preferred-height + 32px;
         x: (parent.width - self.width) / 2;
@@ -263,7 +263,7 @@ export component SettingsDialog inherits Modal {
     property <string> work-end: CalStore.settings.work-end;
     dismissed => { CalStore.modal = ""; }
     init => { CalStore.command("zone-search", ""); }
-    CalCard {
+    MenuFrame { variant: MenuFrameVariant.card;
         width: 480px;
         height: 560px;
         x: (parent.width - self.width) / 2;
@@ -300,7 +300,7 @@ export component SettingsDialog inherits Modal {
                     text <=> root.tz-query;
                     edited(t) => { CalStore.command("zone-search", t); }
                 }
-                for z in CalStore.zone-matches: CalMenuItem {
+                for z in CalStore.zone-matches: MenuItem { variant: MenuItemVariant.calendar;
                     label: z.label;
                     clicked => {
                         root.tz-value = z.name;
@@ -332,7 +332,7 @@ export component ShareDialog inherits Modal {
     property <string> email;
     property <string> role: "read";
     dismissed => { CalStore.modal = ""; }
-    CalCard {
+    MenuFrame { variant: MenuFrameVariant.card;
         width: 560px;
         height: 560px;
         x: (parent.width - self.width) / 2;

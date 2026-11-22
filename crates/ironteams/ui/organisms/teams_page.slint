@@ -4,10 +4,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
 import { TChannel, TTeam, TeamsStore, TeamsActions } from "../stores/teams_store.slint";
-import { TMenuItem } from "../molecules/teams_widgets.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Avatar } from "../atoms/avatar.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 component Chip inherits Rectangle {
     in property <string> label;
@@ -347,17 +347,17 @@ export component TeamMenuItems inherits VerticalLayout {
     callback go(string, string);
     // Closes the menu; called after each action.
     callback done();
-    TMenuItem { label: "Go to team"; clicked => { root.go(root.t.id, root.t.name); root.done(); } }
-    TMenuItem { label: "New channel"; clicked => { TeamsActions.open-dialog("new-channel", root.t.id, ""); root.done(); } }
-    TMenuItem { label: "Add members"; clicked => { TeamsActions.open-dialog("members", root.t.id, ""); root.done(); } }
-    TMenuItem { label: "Manage team"; clicked => { TeamsActions.open-dialog("manage-team", root.t.id, ""); root.done(); } }
-    TMenuItem { label: "Manage team tags"; clicked => { TeamsActions.open-dialog("tags", root.t.id, ""); root.done(); } }
-    TMenuItem { label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", root.t.id, ""); root.done(); } }
-    TMenuItem { label: root.t.shown ? "Hide team" : "Show team"; clicked => { TeamsStore.command("team-show", root.t.id + "\u{1f}" + (root.t.shown ? "0" : "1")); root.done(); } }
-    TMenuItem { label: "Get link to team"; clicked => { TeamsStore.command("team-link", root.t.id); root.done(); } }
-    TMenuItem { label: "Leave the team"; danger: true; clicked => { TeamsActions.confirm("Leave " + root.t.name + "?", "leave-team", root.t.id); root.done(); } }
-    if root.t.owner: TMenuItem { label: root.t.archived ? "Restore team from the archive" : "Archive team"; clicked => { TeamsActions.confirm((root.t.archived ? "Restore " : "Archive ") + root.t.name + "?", "team-archive", root.t.id + "\u{1f}" + (root.t.archived ? "0" : "1")); root.done(); } }
-    if root.t.owner: TMenuItem { label: "Delete the team"; danger: true; clicked => { TeamsActions.confirm("Delete " + root.t.name + "? Its group stays in the recycle bin for 30 days.", "team-delete", root.t.id); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Go to team"; clicked => { root.go(root.t.id, root.t.name); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "New channel"; clicked => { TeamsActions.open-dialog("new-channel", root.t.id, ""); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Add members"; clicked => { TeamsActions.open-dialog("members", root.t.id, ""); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Manage team"; clicked => { TeamsActions.open-dialog("manage-team", root.t.id, ""); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Manage team tags"; clicked => { TeamsActions.open-dialog("tags", root.t.id, ""); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", root.t.id, ""); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: root.t.shown ? "Hide team" : "Show team"; clicked => { TeamsStore.command("team-show", root.t.id + "\u{1f}" + (root.t.shown ? "0" : "1")); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Get link to team"; clicked => { TeamsStore.command("team-link", root.t.id); root.done(); } }
+    MenuItem { variant: MenuItemVariant.dialog; label: "Leave the team"; danger: true; clicked => { TeamsActions.confirm("Leave " + root.t.name + "?", "leave-team", root.t.id); root.done(); } }
+    if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: root.t.archived ? "Restore team from the archive" : "Archive team"; clicked => { TeamsActions.confirm((root.t.archived ? "Restore " : "Archive ") + root.t.name + "?", "team-archive", root.t.id + "\u{1f}" + (root.t.archived ? "0" : "1")); root.done(); } }
+    if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: "Delete the team"; danger: true; clicked => { TeamsActions.confirm("Delete " + root.t.name + "? Its group stays in the recycle bin for 30 days.", "team-delete", root.t.id); root.done(); } }
 }
 
 export component TeamsPage inherits Rectangle {
@@ -503,10 +503,10 @@ export component TeamsPage inherits Rectangle {
             menu-items := VerticalLayout {
                 padding: 4px;
                 if root.menu == "new": VerticalLayout {
-                    TMenuItem { label: "New team"; clicked => { root.open-and-close("new-team", "", ""); } }
-                    TMenuItem { label: "Join a team with a code"; clicked => { root.open-and-close("join", "", ""); } }
-                    TMenuItem { label: "Discover public teams"; clicked => { root.menu = ""; root.set-tab("discover"); } }
-                    TMenuItem { label: "Join communities"; clicked => { root.menu = ""; root.set-tab("communities"); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "New team"; clicked => { root.open-and-close("new-team", "", ""); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Join a team with a code"; clicked => { root.open-and-close("join", "", ""); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Discover public teams"; clicked => { root.menu = ""; root.set-tab("discover"); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Join communities"; clicked => { root.menu = ""; root.set-tab("communities"); } }
                 }
                 if root.menu == "team": TeamMenuItems {
                     t: root.menu-team;
@@ -514,21 +514,21 @@ export component TeamsPage inherits Rectangle {
                     done => { root.menu = ""; }
                 }
                 if root.menu == "channel": VerticalLayout {
-                    TMenuItem { label: "Go to channel"; clicked => { root.menu = ""; root.go(root.menu-channel.id, root.menu-team.name + " › " + root.menu-channel.name); } }
-                    TMenuItem { label: "Manage notifications"; clicked => { root.open-and-close("notify", root.menu-team.id, root.menu-channel.id); } }
-                    TMenuItem { label: root.menu-channel.shown ? "Hide" : "Show"; clicked => { root.run-and-close("chan-show", root.menu-channel.id + "\u{1f}" + (root.menu-channel.shown ? "0" : "1")); } }
-                    TMenuItem { label: root.menu-channel.pinned ? "Unpin" : "Pin"; clicked => { root.run-and-close("chan-pin", root.menu-channel.id + "\u{1f}" + (root.menu-channel.pinned ? "0" : "1")); } }
-                    if root.menu-channel.kind != "standard": TMenuItem { label: "Add members"; clicked => { root.open-and-close("members", root.menu-team.id, root.menu-channel.id); } }
-                    if !root.menu-channel.general: TMenuItem { label: "Edit channel"; clicked => { root.open-and-close("edit-channel", root.menu-team.id, root.menu-channel.id); } }
-                    TMenuItem { label: "Manage channel"; clicked => { root.open-and-close("moderation", root.menu-team.id, root.menu-channel.id); } }
-                    TMenuItem { label: "Manage channel tags"; clicked => { root.open-and-close("tags", root.menu-team.id, root.menu-channel.id); } }
-                    TMenuItem { label: "Copy link"; clicked => { root.run-and-close("chan-link", root.menu-channel.id); } }
-                    TMenuItem { label: "Get email address"; clicked => { root.open-and-close("email", root.menu-team.id, root.menu-channel.id); } }
-                    if root.menu-channel.kind == "standard": TMenuItem { label: "Show for everyone automatically"; clicked => { root.run-and-close("chan-default", root.menu-channel.id + "\u{1f}1"); } }
-                    if root.menu-channel.kind == "standard": TMenuItem { label: "Stop showing for everyone"; clicked => { root.run-and-close("chan-default", root.menu-channel.id + "\u{1f}0"); } }
-                    if root.menu-channel.kind != "standard": TMenuItem { label: "Leave channel"; danger: true; clicked => { root.ask("Leave " + root.menu-channel.name + "?", "leave-channel", root.menu-channel.id); } }
-                    if !root.menu-channel.general: TMenuItem { label: root.menu-channel.archived ? "Restore from the archive" : "Archive channel"; clicked => { root.ask((root.menu-channel.archived ? "Restore " : "Archive ") + root.menu-channel.name + "?", "channel-archive", root.menu-channel.id + "\u{1f}" + (root.menu-channel.archived ? "0" : "1")); } }
-                    if !root.menu-channel.general: TMenuItem { label: "Delete channel"; danger: true; clicked => { root.ask("Delete " + root.menu-channel.name + "? You can restore it for 21 days.", "channel-delete", root.menu-team.id + "\u{1f}" + root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Go to channel"; clicked => { root.menu = ""; root.go(root.menu-channel.id, root.menu-team.name + " › " + root.menu-channel.name); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Manage notifications"; clicked => { root.open-and-close("notify", root.menu-team.id, root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: root.menu-channel.shown ? "Hide" : "Show"; clicked => { root.run-and-close("chan-show", root.menu-channel.id + "\u{1f}" + (root.menu-channel.shown ? "0" : "1")); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: root.menu-channel.pinned ? "Unpin" : "Pin"; clicked => { root.run-and-close("chan-pin", root.menu-channel.id + "\u{1f}" + (root.menu-channel.pinned ? "0" : "1")); } }
+                    if root.menu-channel.kind != "standard": MenuItem { variant: MenuItemVariant.dialog; label: "Add members"; clicked => { root.open-and-close("members", root.menu-team.id, root.menu-channel.id); } }
+                    if !root.menu-channel.general: MenuItem { variant: MenuItemVariant.dialog; label: "Edit channel"; clicked => { root.open-and-close("edit-channel", root.menu-team.id, root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Manage channel"; clicked => { root.open-and-close("moderation", root.menu-team.id, root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Manage channel tags"; clicked => { root.open-and-close("tags", root.menu-team.id, root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Copy link"; clicked => { root.run-and-close("chan-link", root.menu-channel.id); } }
+                    MenuItem { variant: MenuItemVariant.dialog; label: "Get email address"; clicked => { root.open-and-close("email", root.menu-team.id, root.menu-channel.id); } }
+                    if root.menu-channel.kind == "standard": MenuItem { variant: MenuItemVariant.dialog; label: "Show for everyone automatically"; clicked => { root.run-and-close("chan-default", root.menu-channel.id + "\u{1f}1"); } }
+                    if root.menu-channel.kind == "standard": MenuItem { variant: MenuItemVariant.dialog; label: "Stop showing for everyone"; clicked => { root.run-and-close("chan-default", root.menu-channel.id + "\u{1f}0"); } }
+                    if root.menu-channel.kind != "standard": MenuItem { variant: MenuItemVariant.dialog; label: "Leave channel"; danger: true; clicked => { root.ask("Leave " + root.menu-channel.name + "?", "leave-channel", root.menu-channel.id); } }
+                    if !root.menu-channel.general: MenuItem { variant: MenuItemVariant.dialog; label: root.menu-channel.archived ? "Restore from the archive" : "Archive channel"; clicked => { root.ask((root.menu-channel.archived ? "Restore " : "Archive ") + root.menu-channel.name + "?", "channel-archive", root.menu-channel.id + "\u{1f}" + (root.menu-channel.archived ? "0" : "1")); } }
+                    if !root.menu-channel.general: MenuItem { variant: MenuItemVariant.dialog; label: "Delete channel"; danger: true; clicked => { root.ask("Delete " + root.menu-channel.name + "? You can restore it for 21 days.", "channel-delete", root.menu-team.id + "\u{1f}" + root.menu-channel.id); } }
                 }
             }
         }

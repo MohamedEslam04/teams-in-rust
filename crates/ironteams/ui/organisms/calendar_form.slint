@@ -3,10 +3,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalForm, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuFrame, MenuFrameVariant } from "../molecules/menu.slint";
 
 
 
@@ -192,7 +192,7 @@ component RoomPicker inherits Rectangle {
     }
 }
 
-export component EventForm inherits CalCard {
+export component EventForm inherits MenuFrame { variant: MenuFrameVariant.card;
     accessible-role: groupbox;
     accessible-label: CalForm.heading;
     VerticalLayout {

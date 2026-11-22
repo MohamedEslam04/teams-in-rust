@@ -4,10 +4,10 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { CalStore, CalFmt } from "../stores/calendar_store.slint";
-import { CalCard, CalMenuItem } from "../molecules/calendar_widgets.slint";
 import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
+import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../molecules/menu.slint";
 
 // Colors of the answers in the attendee list and the response buttons.
 
@@ -26,12 +26,12 @@ component EventActions inherits VerticalLayout {
         FlexButton { variant: ButtonVariant.toolbar; label: "▾"; active: CalStore.peek-menu == "join"; preferred-width: 34px; min-width: 34px; clicked => { CalStore.peek-menu = CalStore.peek-menu == "join" ? "" : "join"; } }
         FlexButton { variant: ButtonVariant.toolbar; label: "Chat"; clicked => { CalStore.command("chat", ""); } }
     }
-    if CalStore.peek-menu == "join": CalCard {
+    if CalStore.peek-menu == "join": MenuFrame { variant: MenuFrameVariant.card;
         height: 66px;
         VerticalLayout {
             padding: 4px;
-            CalMenuItem { label: "Join Teams meeting"; clicked => { CalStore.peek-menu = ""; CalStore.command("join-event", ""); } }
-            CalMenuItem { label: "Copy join link"; clicked => { CalStore.peek-menu = ""; CalStore.command("copy-link", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Join Teams meeting"; clicked => { CalStore.peek-menu = ""; CalStore.command("join-event", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Copy join link"; clicked => { CalStore.peek-menu = ""; CalStore.command("copy-link", ""); } }
         }
     }
 
@@ -57,38 +57,38 @@ component EventActions inherits VerticalLayout {
         FlexButton { variant: ButtonVariant.toolbar; label: "…"; preferred-width: 40px; min-width: 40px; active: CalStore.peek-menu == "more"; clicked => { CalStore.peek-menu = CalStore.peek-menu == "more" ? "" : "more"; } }
         if !root.full: FlexButton { variant: ButtonVariant.toolbar; label: "Open"; clicked => { CalStore.command("full", ""); } }
     }
-    if CalStore.peek-menu == "showas": CalCard {
+    if CalStore.peek-menu == "showas": MenuFrame { variant: MenuFrameVariant.card;
         height: 5 * 30px + 8px;
         VerticalLayout {
             padding: 4px;
-            for s in [{key: "busy", label: "Busy"}, {key: "tentative", label: "Tentative"}, {key: "free", label: "Free"}, {key: "oof", label: "Out of office"}, {key: "elsewhere", label: "Working elsewhere"}]: CalMenuItem {
+            for s in [{key: "busy", label: "Busy"}, {key: "tentative", label: "Tentative"}, {key: "free", label: "Free"}, {key: "oof", label: "Out of office"}, {key: "elsewhere", label: "Working elsewhere"}]: MenuItem { variant: MenuItemVariant.calendar;
                 label: s.label;
                 checked: CalStore.peek.show-as == s.key;
                 clicked => { CalStore.peek-menu = ""; CalStore.command("show-as", s.key); }
             }
         }
     }
-    if CalStore.peek-menu == "category": CalCard {
+    if CalStore.peek-menu == "category": MenuFrame { variant: MenuFrameVariant.card;
         height: min(CalStore.categories.length, 6) * 30px + 38px;
         VerticalLayout {
             padding: 4px;
-            CalMenuItem { label: "No category"; checked: CalStore.peek.category == ""; clicked => { CalStore.peek-menu = ""; CalStore.command("category", ""); } }
-            for c in CalStore.categories: CalMenuItem { label: c; checked: CalStore.peek.category == c; clicked => { CalStore.peek-menu = ""; CalStore.command("category", c); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "No category"; checked: CalStore.peek.category == ""; clicked => { CalStore.peek-menu = ""; CalStore.command("category", ""); } }
+            for c in CalStore.categories: MenuItem { variant: MenuItemVariant.calendar; label: c; checked: CalStore.peek.category == c; clicked => { CalStore.peek-menu = ""; CalStore.command("category", c); } }
         }
     }
-    if CalStore.peek-menu == "more": CalCard {
+    if CalStore.peek-menu == "more": MenuFrame { variant: MenuFrameVariant.card;
         VerticalLayout {
             padding: 4px;
-            if CalStore.peek.can-edit: CalMenuItem { label: CalStore.peek.recurring ? "Edit this occurrence" : "Edit"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit", ""); } }
-            if CalStore.peek.can-edit && CalStore.peek.recurring: CalMenuItem { label: "Edit series"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit-series", ""); } }
-            CalMenuItem { label: "Duplicate"; clicked => { CalStore.peek-menu = ""; CalStore.command("duplicate", ""); } }
-            CalMenuItem { label: "Forward"; clicked => { CalStore.ask("forward", "Forward", "Send this event to people who are not invited yet. Separate addresses with commas.", "To", "Message (optional)", "", "Forward"); } }
-            CalMenuItem { label: "Export as .ics"; clicked => { CalStore.peek-menu = ""; CalStore.command("export-event", ""); } }
-            if CalStore.peek.notes-url != "": CalMenuItem { label: "Meeting notes"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "notes"); } }
-            if CalStore.peek.recap-url != "": CalMenuItem { label: "Recap"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "recap"); } }
-            if CalStore.peek.options-url != "": CalMenuItem { label: "Meeting options"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "options"); } }
-            if CalStore.peek.can-cancel: CalMenuItem { label: "Cancel meeting"; tone: #ff8a8d; clicked => { CalStore.ask("cancel", "Cancel meeting", "Everyone invited gets a cancellation.", "Message to attendees (optional)", "", CalStore.peek.recurring ? "Cancel the whole series" : "", "Cancel meeting"); } }
-            if CalStore.peek.can-delete: CalMenuItem { label: "Delete"; tone: #ff8a8d; clicked => { CalStore.ask("delete", "Delete event", "Delete \"" + CalStore.peek.title + "\"? This can't be undone.", "", "", "", "Delete"); } }
+            if CalStore.peek.can-edit: MenuItem { variant: MenuItemVariant.calendar; label: CalStore.peek.recurring ? "Edit this occurrence" : "Edit"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit", ""); } }
+            if CalStore.peek.can-edit && CalStore.peek.recurring: MenuItem { variant: MenuItemVariant.calendar; label: "Edit series"; clicked => { CalStore.peek-menu = ""; CalStore.command("edit-series", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Duplicate"; clicked => { CalStore.peek-menu = ""; CalStore.command("duplicate", ""); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Forward"; clicked => { CalStore.ask("forward", "Forward", "Send this event to people who are not invited yet. Separate addresses with commas.", "To", "Message (optional)", "", "Forward"); } }
+            MenuItem { variant: MenuItemVariant.calendar; label: "Export as .ics"; clicked => { CalStore.peek-menu = ""; CalStore.command("export-event", ""); } }
+            if CalStore.peek.notes-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting notes"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "notes"); } }
+            if CalStore.peek.recap-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Recap"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "recap"); } }
+            if CalStore.peek.options-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting options"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "options"); } }
+            if CalStore.peek.can-cancel: MenuItem { variant: MenuItemVariant.calendar; label: "Cancel meeting"; tone: #ff8a8d; clicked => { CalStore.ask("cancel", "Cancel meeting", "Everyone invited gets a cancellation.", "Message to attendees (optional)", "", CalStore.peek.recurring ? "Cancel the whole series" : "", "Cancel meeting"); } }
+            if CalStore.peek.can-delete: MenuItem { variant: MenuItemVariant.calendar; label: "Delete"; tone: #ff8a8d; clicked => { CalStore.ask("delete", "Delete event", "Delete \"" + CalStore.peek.title + "\"? This can't be undone.", "", "", "", "Delete"); } }
         }
     }
 }
@@ -109,7 +109,7 @@ component EventSummary inherits VerticalLayout {
     if CalStore.peek.cancelled: Text { text: "This event was cancelled."; color: #ff8a8d; font-size: 13px * Theme.font-scale; }
 }
 
-export component EventPeek inherits CalCard {
+export component EventPeek inherits MenuFrame { variant: MenuFrameVariant.card;
     width: 380px;
     height: body.preferred-height + 32px;
     accessible-role: groupbox;
@@ -130,7 +130,7 @@ export component EventPeek inherits CalCard {
     }
 }
 
-export component EventFull inherits CalCard {
+export component EventFull inherits MenuFrame { variant: MenuFrameVariant.card;
     accessible-role: groupbox;
     accessible-label: "Event details " + CalStore.peek.title;
     VerticalLayout {

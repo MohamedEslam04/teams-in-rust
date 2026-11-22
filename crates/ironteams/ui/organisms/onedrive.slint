@@ -6,6 +6,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton, Pill } from "../atoms/widgets.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 export struct DriveRow {
     id: string,
@@ -163,34 +164,6 @@ export component KindBadge inherits Rectangle {
             horizontal-alignment: center;
             vertical-alignment: center;
         }
-    }
-}
-
-component MenuRow inherits Rectangle {
-    in property <string> label;
-    in property <image> icon;
-    in property <bool> checked: false;
-    in property <bool> danger: false;
-    in property <bool> enabled: true;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    opacity: root.enabled ? 1.0 : 0.4;
-    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
-    accessible-role: button;
-    accessible-label: root.label;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 10px;
-        Icon { source: root.icon; width: 16px; height: 16px; y: 8px; tint: root.danger ? Theme.danger : Theme.fg-muted; }
-        Text { text: root.label; color: root.danger ? Theme.danger : Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
-        Text { text: root.checked ? "✓" : ""; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-    }
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
     }
 }
 
@@ -1173,49 +1146,49 @@ export component OneDriveView inherits Rectangle {
             TouchArea { }
             items := VerticalLayout {
                 padding: 6px;
-                if root.menu == "new": MenuRow { label: "Folder"; icon: @image-url("../icons/folder.svg"); clicked => { root.ask-name("new-folder", "New folder", "Untitled folder"); } }
-                if root.menu == "new": MenuRow { label: "Word document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "word"); root.menu = ""; } }
-                if root.menu == "new": MenuRow { label: "Excel workbook"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "excel"); root.menu = ""; } }
-                if root.menu == "new": MenuRow { label: "PowerPoint presentation"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "powerpoint"); root.menu = ""; } }
-                if root.menu == "new": MenuRow { label: "Visio drawing"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "visio"); root.menu = ""; } }
-                if root.menu == "new": MenuRow { label: "OneNote notebook"; icon: @image-url("../icons/file.svg"); clicked => { root.ask-name("new-notebook", "New OneNote notebook", "Untitled notebook"); } }
-                if root.menu == "new": MenuRow { label: "Forms survey"; icon: @image-url("../icons/link.svg"); clicked => { root.run("new-forms"); } }
-                if root.menu == "new": MenuRow { label: "Link"; icon: @image-url("../icons/link.svg"); clicked => { root.ask-link(); } }
-                if root.menu == "new": MenuRow { label: "Markdown document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "markdown"); root.menu = ""; } }
-                if root.menu == "new": MenuRow { label: "Text document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "text"); root.menu = ""; } }
-                if root.menu == "upload": MenuRow { label: "Files upload"; icon: @image-url("../icons/upload.svg"); clicked => { root.run("upload-files"); } }
-                if root.menu == "upload": MenuRow { label: "Folder upload"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("upload-folder"); } }
-                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuRow { label: "Open in IronTeams"; icon: @image-url("../icons/open.svg"); clicked => { root.run("open-ironteams"); } }
-                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuRow { label: "Open in browser"; icon: @image-url("../icons/link.svg"); clicked => { root.run("open-browser"); } }
-                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuRow { label: "Open in desktop app"; icon: @image-url("../icons/file.svg"); clicked => { root.run("open-desktop"); } }
-                if root.menu == "open" || root.menu == "more": MenuRow { label: "Open location"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("open-location"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Share"; icon: @image-url("../icons/share.svg"); clicked => { root.run("share"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Copy link"; icon: @image-url("../icons/link.svg"); clicked => { root.run("copy-link"); } }
-                if root.menu == "more" && !root.bin: MenuRow { label: "Add shortcut"; icon: @image-url("../icons/shortcut.svg"); clicked => { root.run("shortcut"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
-                if root.menu == "more" && root.menu-full && !root.bin: MenuRow { label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
-                if root.menu == "more": MenuRow { label: "Version history"; icon: @image-url("../icons/history.svg"); enabled: root.one; clicked => { root.run("versions"); } }
-                if root.menu == "more": MenuRow { label: "Details"; icon: @image-url("../icons/info.svg"); enabled: root.one; clicked => { root.run("details"); } }
-                if root.menu == "sort": VerticalLayout { for k in [{key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuRow {
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Folder"; icon: @image-url("../icons/folder.svg"); clicked => { root.ask-name("new-folder", "New folder", "Untitled folder"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Word document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "word"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Excel workbook"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "excel"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "PowerPoint presentation"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "powerpoint"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Visio drawing"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "visio"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "OneNote notebook"; icon: @image-url("../icons/file.svg"); clicked => { root.ask-name("new-notebook", "New OneNote notebook", "Untitled notebook"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Forms survey"; icon: @image-url("../icons/link.svg"); clicked => { root.run("new-forms"); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Link"; icon: @image-url("../icons/link.svg"); clicked => { root.ask-link(); } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Markdown document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "markdown"); root.menu = ""; } }
+                if root.menu == "new": MenuItem { variant: MenuItemVariant.drive; label: "Text document"; icon: @image-url("../icons/file.svg"); clicked => { DriveStore.command("new-doc", "text"); root.menu = ""; } }
+                if root.menu == "upload": MenuItem { variant: MenuItemVariant.drive; label: "Files upload"; icon: @image-url("../icons/upload.svg"); clicked => { root.run("upload-files"); } }
+                if root.menu == "upload": MenuItem { variant: MenuItemVariant.drive; label: "Folder upload"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("upload-folder"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in IronTeams"; icon: @image-url("../icons/open.svg"); clicked => { root.run("open-ironteams"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in browser"; icon: @image-url("../icons/link.svg"); clicked => { root.run("open-browser"); } }
+                if root.menu == "open" || (root.menu == "more" && root.menu-full): MenuItem { variant: MenuItemVariant.drive; label: "Open in desktop app"; icon: @image-url("../icons/file.svg"); clicked => { root.run("open-desktop"); } }
+                if root.menu == "open" || root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Open location"; icon: @image-url("../icons/folder.svg"); clicked => { root.run("open-location"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Share"; icon: @image-url("../icons/share.svg"); clicked => { root.run("share"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Copy link"; icon: @image-url("../icons/link.svg"); clicked => { root.run("copy-link"); } }
+                if root.menu == "more" && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Add shortcut"; icon: @image-url("../icons/shortcut.svg"); clicked => { root.run("shortcut"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Rename"; icon: @image-url("../icons/rename.svg"); enabled: root.one; clicked => { root.ask-name("rename", "Rename", DriveStore.sel-name); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Move to"; icon: @image-url("../icons/move.svg"); clicked => { root.run("move-to"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Copy to"; icon: @image-url("../icons/copy.svg"); clicked => { root.run("copy-to"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Download"; icon: @image-url("../icons/download.svg"); clicked => { root.run("download"); } }
+                if root.menu == "more" && root.menu-full && !root.bin: MenuItem { variant: MenuItemVariant.drive; label: "Delete"; icon: @image-url("../icons/trash.svg"); danger: true; clicked => { root.run("delete"); } }
+                if root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Version history"; icon: @image-url("../icons/history.svg"); enabled: root.one; clicked => { root.run("versions"); } }
+                if root.menu == "more": MenuItem { variant: MenuItemVariant.drive; label: "Details"; icon: @image-url("../icons/info.svg"); enabled: root.one; clicked => { root.run("details"); } }
+                if root.menu == "sort": VerticalLayout { for k in [{key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuItem { variant: MenuItemVariant.drive;
                     label: "Sort by " + k.label + (DriveStore.sort == k.key ? (DriveStore.ascending ? " (ascending)" : " (descending)") : "");
                     icon: @image-url("../icons/sort.svg");
                     checked: DriveStore.sort == k.key;
                     clicked => { DriveStore.command("sort", k.key); root.menu = ""; }
                 } }
-                if root.menu == "group": VerticalLayout { for k in [{key: "none", label: "None"}, {key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuRow {
+                if root.menu == "group": VerticalLayout { for k in [{key: "none", label: "None"}, {key: "name", label: "Name"}, {key: "modified", label: "Modified"}, {key: "modified-by", label: "Modified by"}, {key: "size", label: "Size"}]: MenuItem { variant: MenuItemVariant.drive;
                     label: "Group by " + k.label;
                     icon: @image-url("../icons/list.svg");
                     checked: DriveStore.group == k.key;
                     clicked => { DriveStore.command("group", k.key); root.menu = ""; }
                 } }
-                if root.menu == "columns": MenuRow { label: "Modified"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified; clicked => { DriveStore.command("column", "modified"); } }
-                if root.menu == "columns": MenuRow { label: "Modified by"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified-by; clicked => { DriveStore.command("column", "modified-by"); } }
-                if root.menu == "columns": MenuRow { label: "Size"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-size; clicked => { DriveStore.command("column", "size"); } }
-                if root.menu == "columns": MenuRow { label: "Location"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-location; clicked => { DriveStore.command("column", "location"); } }
-                if root.menu == "columns": MenuRow { label: "Activity"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-activity; clicked => { DriveStore.command("column", "activity"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Modified"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified; clicked => { DriveStore.command("column", "modified"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Modified by"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-modified-by; clicked => { DriveStore.command("column", "modified-by"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Size"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-size; clicked => { DriveStore.command("column", "size"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Location"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-location; clicked => { DriveStore.command("column", "location"); } }
+                if root.menu == "columns": MenuItem { variant: MenuItemVariant.drive; label: "Activity"; icon: @image-url("../icons/columns.svg"); checked: DriveStore.col-activity; clicked => { DriveStore.command("column", "activity"); } }
             }
         }
     }

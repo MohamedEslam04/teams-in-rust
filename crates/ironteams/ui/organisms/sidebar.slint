@@ -10,20 +10,10 @@ import { PeopleStore, PersonHover } from "../molecules/people.slint";
 import { RemindStore } from "remind.slint";
 import { ChatTipLayer, ChatTipStore, QuickViewsSection } from "chat_list_extras.slint";
 import { FindStore } from "find.slint";
-import { NewChatSplit, PMenuItem } from "web_parity.slint";
+import { NewChatSplit } from "web_parity.slint";
 import { ChatHeaderStore } from "chat_header.slint";
 import { Motion, PopIn, Reveal, SkeletonList, TypingDots, TypingStore } from "../tokens/motion.slint";
-
-component MenuItem inherits Rectangle {
-    in property <string> label;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    animate background { duration: Motion.quick; }
-    Text { x: 10px; text: root.label; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 // "See all" / "Show less" under the Meetings section.
 component MoreRow inherits Rectangle {
@@ -694,17 +684,17 @@ export component Sidebar inherits Rectangle {
             border-color: Theme.border;
             list-items := VerticalLayout {
                 padding: 4px;
-                MenuItem { label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
-                MenuItem { label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
-                MenuItem { label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
                 // Teams' "Customize view": the list's display options, behind a chevron.
-                PMenuItem { label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }
+                MenuItem { variant: MenuItemVariant.parity; label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }
                 if root.customize-open: OptionRow { label: @tr("Show message previews"); checked: ListStore.show-previews; clicked => { ListStore.command("option", "previews\u{9}" + (ListStore.show-previews ? "off" : "on")); } }
                 if root.customize-open: OptionRow { label: @tr("Show time stamps"); checked: ListStore.show-times; clicked => { ListStore.command("option", "times\u{9}" + (ListStore.show-times ? "off" : "on")); } }
                 if root.customize-open: OptionRow { label: @tr("Chats and channels together"); checked: ListStore.combined; clicked => { ListStore.command("option", "combined\u{9}" + (ListStore.combined ? "off" : "on")); } }
                 Rectangle { height: 1px; background: Theme.border; }
-                PMenuItem { label: @tr("Your teams and channels"); clicked => { list-menu.close(); root.manage-teams(); } }
-                PMenuItem {
+                MenuItem { variant: MenuItemVariant.parity; label: @tr("Your teams and channels"); clicked => { list-menu.close(); root.manage-teams(); } }
+                MenuItem { variant: MenuItemVariant.parity;
                     label: @tr("Your communities");
                     clicked => {
                         list-menu.close();
@@ -719,10 +709,10 @@ export component Sidebar inherits Rectangle {
                     padding-left: 10px;
                     Text { text: @tr("Quick views"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
                 }
-                MenuItem { label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
-                MenuItem { label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
-                MenuItem { label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }
-                MenuItem { label: @tr("Reminders"); clicked => { list-menu.close(); RemindStore.open = true; RemindStore.command("refresh", ""); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Reminders"); clicked => { list-menu.close(); RemindStore.open = true; RemindStore.command("refresh", ""); } }
             }
         }
     }

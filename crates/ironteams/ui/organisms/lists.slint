@@ -9,6 +9,7 @@ import { TeamsStore } from "../stores/teams_store.slint";
 import { MediaStore } from "media.slint";
 import { FlowsStore } from "../stores/apps_store.slint";
 import { Motion } from "../tokens/motion.slint";
+import { MenuItem, MenuItemVariant } from "../molecules/menu.slint";
 
 // A section of the list: sections made in Teams (read from the account) and local ones.
 export struct SectionRow {
@@ -57,48 +58,13 @@ export global ListStore {
     callback command(string, string);
 }
 
-component MenuRow inherits Rectangle {
-    in property <string> label;
-    in property <bool> danger: false;
-    in property <bool> chevron: false;
-    in property <bool> checked: false;
-    in property <bool> dim: false;
-    callback clicked();
-    height: 32px;
-    border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
-    animate background { duration: Motion.quick; }
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-checkable: root.checked;
-    accessible-checked: root.checked;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 8px;
-        Text {
-            text: root.label;
-            color: root.danger ? Theme.danger : (root.dim ? Theme.fg-subtle : Theme.fg);
-            font-size: 13px * Theme.font-scale;
-            vertical-alignment: center;
-            horizontal-alignment: Theme.start-align;
-            horizontal-stretch: 1;
-            overflow: elide;
-            accessible-role: none;
-        }
-        if root.checked: Text { text: "✓"; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; }
-        if root.chevron: Icon { source: @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 9px; }
-    }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
-}
-
 // The notification choices of a channel, shared by both channel menus.
 component NotifyChoices inherits VerticalLayout {
     in property <string> channel;
     callback done();
-    MenuRow { label: @tr("All activity"); checked: ListStore.channel-level == "all"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}all"); root.done(); } }
-    MenuRow { label: @tr("Only show in the feed"); checked: ListStore.channel-level == "feed"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}feed"); root.done(); } }
-    MenuRow { label: @tr("Off"); checked: ListStore.channel-level == "off"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}off"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("All activity"); checked: ListStore.channel-level == "all"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}all"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Only show in the feed"); checked: ListStore.channel-level == "feed"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}feed"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Off"); checked: ListStore.channel-level == "off"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}off"); root.done(); } }
 }
 
 // Contents of the right-click menu of a chat or channel in the list (plan 8.2 and 8.5).
@@ -138,42 +104,42 @@ export component ItemMenu inherits Rectangle {
     VerticalLayout {
         padding: 4px;
         if root.view == "main": VerticalLayout {
-            MenuRow { label: @tr("Mark as unread"); clicked => { root.mark-unread(); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Mark as unread"); clicked => { root.mark-unread(); root.done(); } }
             // New Teams keeps pinned chats in Favorites (`migratedPinnedToFavorites`): one list.
-            MenuRow { label: root.data.favorite ? @tr("Unfavorite") : @tr("Favorite"); clicked => { root.toggle-favorite(); root.done(); } }
-            if root.data.channel: MenuRow {
+            MenuItem { variant: MenuItemVariant.list; label: root.data.favorite ? @tr("Unfavorite") : @tr("Favorite"); clicked => { root.toggle-favorite(); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list;
                 label: ListStore.channel-pinned ? @tr("Unpin") : @tr("Pin");
                 clicked => { TeamsStore.command("chan-pin", root.data.id + "\u{1f}" + (ListStore.channel-pinned ? "0" : "1")); root.done(); }
             }
-            if !root.data.channel: MenuRow { label: @tr("Pop out chat"); clicked => { MediaStore.command("popout", root.data.id); root.done(); } }
-            MenuRow { label: @tr("Move to section"); chevron: true; clicked => { root.view = "sections"; } }
-            MenuRow { label: @tr("Snooze"); chevron: true; clicked => { root.view = "snooze"; } }
-            if root.in-section: MenuRow { label: @tr("Remove from section"); clicked => { ListStore.command("remove-section", root.data.id); root.done(); } }
-            if !root.data.channel: MenuRow {
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Pop out chat"); clicked => { MediaStore.command("popout", root.data.id); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Move to section"); chevron: true; clicked => { root.view = "sections"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Snooze"); chevron: true; clicked => { root.view = "snooze"; } }
+            if root.in-section: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove from section"); clicked => { ListStore.command("remove-section", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list;
                 label: root.data.muted ? @tr("Unmute") : @tr("Mute");
                 clicked => { ListStore.command(root.data.muted ? "unmute" : "mute", root.data.id); root.done(); }
             }
             // A chat's apps (no read of them is known, so the engine says so) and its Workflows.
-            if !root.data.channel: MenuRow { label: @tr("Manage apps"); clicked => { ListStore.command("manage-apps", root.data.id); root.done(); } }
-            if !root.data.channel: MenuRow { label: @tr("Set workflows"); clicked => { FlowsStore.command("flows-enter", ""); root.done(); } }
-            if root.data.channel: MenuRow { label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
-            MenuRow { label: @tr("Copy link"); clicked => { ListStore.command(root.data.channel ? "channel-link" : "copy-link", root.data.id); root.done(); } }
-            if !root.data.channel: MenuRow { label: @tr("Remove chat history"); danger: true; clicked => { root.remove-history(); root.done(); } }
-            if root.data.group: MenuRow { label: @tr("Leave"); clicked => { root.leave(); root.done(); } }
-            if root.data.channel: MenuRow { label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.data.id); root.done(); } }
-            if root.data.channel && ListStore.channel-private: MenuRow { label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.data.id; ListStore.dialog = "leave-channel"; root.done(); } }
-            MenuRow {
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Manage apps"); clicked => { ListStore.command("manage-apps", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Set workflows"); clicked => { FlowsStore.command("flows-enter", ""); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command(root.data.channel ? "channel-link" : "copy-link", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove chat history"); danger: true; clicked => { root.remove-history(); root.done(); } }
+            if root.data.group: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave"); clicked => { root.leave(); root.done(); } }
+            if root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.data.id); root.done(); } }
+            if root.data.channel && ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.data.id; ListStore.dialog = "leave-channel"; root.done(); } }
+            MenuItem { variant: MenuItemVariant.list;
                 label: root.data.channel ? @tr("Hide channel") : @tr("Hide");
                 clicked => { ListStore.command(root.data.channel ? "channel-hide" : "hide", root.data.id); root.done(); }
             }
         }
         if root.view == "sections": VerticalLayout {
-            MenuRow { label: @tr("‹ Move to section"); dim: true; clicked => { root.view = "main"; } }
-            for c in ListStore.choices: MenuRow {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Move to section"); dim: true; clicked => { root.view = "main"; } }
+            for c in ListStore.choices: MenuItem { variant: MenuItemVariant.list;
                 label: c.name;
                 clicked => { ListStore.command("move", root.data.id + "\u{9}" + c.id); root.done(); }
             }
-            MenuRow {
+            MenuItem { variant: MenuItemVariant.list;
                 label: @tr("New section");
                 clicked => {
                     ListStore.dialog-target = root.data.id;
@@ -184,13 +150,13 @@ export component ItemMenu inherits Rectangle {
             }
         }
         if root.view == "snooze": VerticalLayout {
-            MenuRow { label: @tr("‹ Snooze"); dim: true; clicked => { root.view = "main"; } }
-            MenuRow { label: @tr("For 1 hour"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}1h"); root.done(); } }
-            MenuRow { label: @tr("Until tomorrow 9:00"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}tomorrow"); root.done(); } }
-            MenuRow { label: @tr("Until next week (Monday 9:00)"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}week"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Snooze"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}1h"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until tomorrow 9:00"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}tomorrow"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until next week (Monday 9:00)"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}week"); root.done(); } }
         }
         if root.view == "notify": VerticalLayout {
-            MenuRow { label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
             NotifyChoices { channel: root.data.id; done => { root.done(); } }
         }
     }
@@ -209,22 +175,22 @@ export component ChannelMenu inherits Rectangle {
     VerticalLayout {
         padding: 4px;
         if root.view == "main": VerticalLayout {
-            MenuRow { label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
-            MenuRow {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
+            MenuItem { variant: MenuItemVariant.list;
                 label: ListStore.channel-hidden ? @tr("Show channel") : @tr("Hide channel");
                 clicked => { ListStore.command(ListStore.channel-hidden ? "channel-show" : "channel-hide", root.channel); root.done(); }
             }
             // The same pin as the channel menu of "Your teams and channels".
-            MenuRow {
+            MenuItem { variant: MenuItemVariant.list;
                 label: ListStore.channel-pinned ? @tr("Unpin") : @tr("Pin");
                 clicked => { TeamsStore.command("chan-pin", root.channel + "\u{1f}" + (ListStore.channel-pinned ? "0" : "1")); root.done(); }
             }
-            MenuRow { label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
-            MenuRow { label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.channel); root.done(); } }
-            if ListStore.channel-private: MenuRow { label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.channel; ListStore.dialog = "leave-channel"; root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.channel); root.done(); } }
+            if ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.channel; ListStore.dialog = "leave-channel"; root.done(); } }
         }
         if root.view == "notify": VerticalLayout {
-            MenuRow { label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
             NotifyChoices { channel: root.channel; done => { root.done(); } }
         }
     }
@@ -287,7 +253,7 @@ export component SectionHead inherits Rectangle {
             border-color: Theme.border;
             VerticalLayout {
                 padding: 4px;
-                MenuRow {
+                MenuItem { variant: MenuItemVariant.list;
                     label: @tr("Rename section");
                     clicked => {
                         ListStore.dialog-target = root.section.id;
@@ -295,7 +261,7 @@ export component SectionHead inherits Rectangle {
                         ListStore.dialog = "rename-section";
                     }
                 }
-                MenuRow { label: @tr("Delete section"); danger: true; clicked => { ListStore.command("delete-section", root.section.id); } }
+                MenuItem { variant: MenuItemVariant.list; label: @tr("Delete section"); danger: true; clicked => { ListStore.command("delete-section", root.section.id); } }
             }
         }
     }
@@ -425,4 +391,4 @@ export component LeaveChannelDialog inherits Rectangle {
 }
 
 // One entry of the "…" list menu: a label with a check when the option is on.
-export component OptionRow inherits MenuRow { }
+export component OptionRow inherits MenuItem { variant: MenuItemVariant.list; }

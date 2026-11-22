@@ -6,9 +6,10 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { AppsStore, RailApp } from "../stores/apps_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ScrollView } from "std-widgets.slint";
-import { AppTile, KitSearch, KitMenuRow, KitMenuFrame } from "../molecules/apps_kit.slint";
+import { AppTile, KitSearch } from "../molecules/apps_kit.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { MenuItem, MenuItemVariant, MenuColumn } from "../molecules/menu.slint";
 
 // One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
 component RailEntry inherits Rectangle {
@@ -227,24 +228,24 @@ export component AppsOverlays inherits Rectangle {
                 }
             }
         }
-        KitMenuFrame {
+        MenuColumn {
             x: AppsStore.rail-width + 4px;
             y: max(8px, min(AppsStore.menu-y, parent.height - self.height - 8px));
             menu-width: 200px;
             for a[i] in AppsStore.rail: VerticalLayout {
-                if a.id == AppsStore.menu-app: KitMenuRow {
+                if a.id == AppsStore.menu-app: MenuItem { variant: MenuItemVariant.kit;
                     label: "Open";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("open-app", a.id); }
                 }
-                if a.id == AppsStore.menu-app && !a.locked: KitMenuRow {
+                if a.id == AppsStore.menu-app && !a.locked: MenuItem { variant: MenuItemVariant.kit;
                     label: "Unpin";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("unpin", a.id); }
                 }
-                if a.id == AppsStore.menu-app && i > 0: KitMenuRow {
+                if a.id == AppsStore.menu-app && i > 0: MenuItem { variant: MenuItemVariant.kit;
                     label: "Move up";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i - 1)); }
                 }
-                if a.id == AppsStore.menu-app && i < AppsStore.rail.length - 1: KitMenuRow {
+                if a.id == AppsStore.menu-app && i < AppsStore.rail.length - 1: MenuItem { variant: MenuItemVariant.kit;
                     label: "Move down";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i + 1)); }
                 }
