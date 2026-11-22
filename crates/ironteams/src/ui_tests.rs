@@ -692,7 +692,7 @@ fn the_first_messages_hover_bar_sits_inside_the_top_edge() {
 
 /// A rail entry by its place (0 is Activity).
 fn rail_entry(app: &AppWindow, i: usize) -> ElementHandle {
-    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "AppWindow::rt").collect();
+    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "AppRail::rt").collect();
     v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     v.remove(i)
 }
@@ -757,7 +757,7 @@ fn a_click_outside_the_message_menu_closes_it_and_reaches_the_rail() {
 #[test]
 fn a_click_outside_the_profile_menu_closes_it_and_reaches_the_rail() {
     let app = app_with_messages(vec![msg("m1", "theirs", false)]);
-    let me = ElementHandle::find_by_element_id(&app, "AppWindow::me-photo")
+    let me = ElementHandle::find_by_element_id(&app, "AppTopBar::me-photo")
         .next()
         .expect("my photo");
     click(&me);
@@ -785,7 +785,7 @@ fn a_click_outside_the_profile_menu_closes_it_and_reaches_the_rail() {
 fn a_right_click_opens_only_the_hovered_messages_menu() {
     let app = app_with_messages(vec![msg("m1", "some words from someone else", false)]);
     let settings = app.global::<crate::SettingsStore>();
-    let me = ElementHandle::find_by_element_id(&app, "AppWindow::me-photo")
+    let me = ElementHandle::find_by_element_id(&app, "AppTopBar::me-photo")
         .next()
         .expect("my photo");
 
@@ -1670,11 +1670,12 @@ fn composer_more_menu_switches_the_enter_behavior() {
     }
     let more = &toolbar(&app)[2];
     assert_eq!(
-        ElementHandle::find_by_element_id(&app, "Composer::enter-opt").count(),
+        ElementHandle::find_by_element_id(&app, "ComposerMoreMenu::enter-opt").count(),
         0
     );
     more.mock_single_click(PointerEventButton::Left);
-    let opts: Vec<_> = ElementHandle::find_by_element_id(&app, "Composer::enter-opt").collect();
+    let opts: Vec<_> =
+        ElementHandle::find_by_element_id(&app, "ComposerMoreMenu::enter-opt").collect();
     assert_eq!(opts.len(), 2, "send the message, start a new line");
 
     opts[1].mock_single_click(PointerEventButton::Left);
@@ -1688,15 +1689,15 @@ fn composer_more_menu_labels_sit_next_to_their_radio_and_check() {
     toolbar(&app)[2].mock_single_click(PointerEventButton::Left);
     let find =
         |id: &str| -> Vec<ElementHandle> { ElementHandle::find_by_element_id(&app, id).collect() };
-    let rows = find("Composer::enter-opt");
-    let labels = find("Composer::enter-label");
+    let rows = find("ComposerMoreMenu::enter-opt");
+    let labels = find("ComposerMoreMenu::enter-label");
     assert_eq!(labels.len(), 2);
     for (row, label) in rows.iter().zip(&labels) {
         let gap = label.absolute_position().x - row.absolute_position().x;
         assert!(gap < 40.0, "radio label starts {gap}px into its row");
     }
-    let row = find("Composer::receipts-opt");
-    let label = find("Composer::receipts-label");
+    let row = find("ComposerMoreMenu::receipts-opt");
+    let label = find("ComposerMoreMenu::receipts-label");
     let gap = label[0].absolute_position().x - row[0].absolute_position().x;
     assert!(gap < 40.0, "check label starts {gap}px into its row");
 }
@@ -1912,7 +1913,7 @@ fn emoji_panel_has_tabs_and_lists_a_category() {
     let app = app_with_messages(vec![]);
     open_emoji_panel(&app);
     assert_eq!(
-        ids(&app, "Composer::emoji-tab-area").len(),
+        ids(&app, "EmojiPanel::emoji-tab-area").len(),
         9,
         "one tab per category"
     );
@@ -1925,7 +1926,7 @@ fn emoji_panel_has_tabs_and_lists_a_category() {
     );
 
     // The last tab is flags: its first cell inserts the first flag.
-    ids(&app, "Composer::emoji-tab-area")[8].mock_single_click(PointerEventButton::Left);
+    ids(&app, "EmojiPanel::emoji-tab-area")[8].mock_single_click(PointerEventButton::Left);
     ids(&app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
     let flag = emoji::all()
         .iter()
@@ -1947,14 +1948,14 @@ fn emoji_search_then_pick_inserts_at_the_cursor() {
     left(&app, 5);
 
     open_emoji_panel(&app);
-    let search = ids(&app, "Composer::emoji-search");
+    let search = ids(&app, "EmojiPanel::emoji-search");
     assert_eq!(search.len(), 1);
     search[0].mock_single_click(PointerEventButton::Left);
     type_text(&app, "heart");
     let cells = ids(&app, "EmojiGrid::cell");
     assert_eq!(cells.len(), emoji::search("heart", 120).len());
     assert_eq!(
-        ids(&app, "Composer::emoji-tab-area").len(),
+        ids(&app, "EmojiPanel::emoji-tab-area").len(),
         0,
         "tabs give way to results"
     );
@@ -1980,21 +1981,21 @@ fn colon_autocomplete_offers_emoji_and_tab_inserts_the_first() {
     composer(&app).mock_single_click(PointerEventButton::Left);
     type_text(&app, "at 12:30 and :h");
     assert_eq!(
-        ids(&app, "Composer::sug-area").len(),
+        ids(&app, "EmojiSuggestions::sug-area").len(),
         0,
         "needs two letters after the colon"
     );
     type_text(&app, "ea");
     assert_eq!(
-        ids(&app, "Composer::sug-area").len(),
+        ids(&app, "EmojiSuggestions::sug-area").len(),
         suggestions("at 12:30 and :hea").len()
     );
-    assert!(!ids(&app, "Composer::sug-area").is_empty());
+    assert!(!ids(&app, "EmojiSuggestions::sug-area").is_empty());
 
     key(&app, Key::Tab, true);
     key(&app, Key::Tab, false);
     assert_eq!(app.get_draft(), "at 12:30 and ❤\u{fe0f}");
-    assert_eq!(ids(&app, "Composer::sug-area").len(), 0);
+    assert_eq!(ids(&app, "EmojiSuggestions::sug-area").len(), 0);
 }
 
 #[test]
@@ -2004,7 +2005,7 @@ fn autocomplete_replaces_the_word_before_the_cursor_and_enter_does_not_send() {
     composer(&app).mock_single_click(PointerEventButton::Left);
     type_text(&app, "see :heart and more");
     left(&app, " and more".len());
-    assert!(!ids(&app, "Composer::sug-area").is_empty());
+    assert!(!ids(&app, "EmojiSuggestions::sug-area").is_empty());
 
     enter(&app);
     assert!(
@@ -2021,18 +2022,18 @@ fn autocomplete_arrows_click_and_escape() {
     let app = app_with_messages(vec![]);
     composer(&app).mock_single_click(PointerEventButton::Left);
     type_text(&app, ":sm");
-    assert!(!ids(&app, "Composer::sug-area").is_empty());
+    assert!(!ids(&app, "EmojiSuggestions::sug-area").is_empty());
 
     key(&app, Key::Escape, true);
     key(&app, Key::Escape, false);
     assert_eq!(
-        ids(&app, "Composer::sug-area").len(),
+        ids(&app, "EmojiSuggestions::sug-area").len(),
         0,
         "Escape closes the popup"
     );
     type_text(&app, "i");
     assert!(
-        !ids(&app, "Composer::sug-area").is_empty(),
+        !ids(&app, "EmojiSuggestions::sug-area").is_empty(),
         "more typing brings it back"
     );
 
@@ -2045,7 +2046,7 @@ fn autocomplete_arrows_click_and_escape() {
     // Clicking a suggestion works too.
     app.set_draft("".into());
     type_text(&app, " :smile");
-    ids(&app, "Composer::sug-area")[2].mock_single_click(PointerEventButton::Left);
+    ids(&app, "EmojiSuggestions::sug-area")[2].mock_single_click(PointerEventButton::Left);
     assert_eq!(
         app.get_draft(),
         format!(" {}", suggestions(" :smile")[2].ch)
@@ -2062,13 +2063,13 @@ fn skin_tone_choice_applies_to_the_panel_and_is_reported() {
     }
     composer(&app).mock_single_click(PointerEventButton::Left);
     open_emoji_panel(&app);
-    let tones = ids(&app, "Composer::tone");
+    let tones = ids(&app, "EmojiPanel::tone");
     assert_eq!(tones.len(), 6, "default plus five tones");
     tones[2].mock_single_click(PointerEventButton::Left);
     assert_eq!(*log.borrow(), vec!["tone 2"]);
     assert_eq!(app.get_skin_tone(), 2);
 
-    ids(&app, "Composer::emoji-search")[0].mock_single_click(PointerEventButton::Left);
+    ids(&app, "EmojiPanel::emoji-search")[0].mock_single_click(PointerEventButton::Left);
     type_text(&app, "thumbs up");
     ids(&app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
     let thumbs = emoji::by_shortcode("thumbs_up").unwrap();
@@ -2101,7 +2102,7 @@ fn recent_emoji_get_their_own_row_above_the_category() {
     assert_eq!(app.get_draft(), "🔥");
 
     open_emoji_panel(&app);
-    ids(&app, "Composer::emoji-search")[0].mock_single_click(PointerEventButton::Left);
+    ids(&app, "EmojiPanel::emoji-search")[0].mock_single_click(PointerEventButton::Left);
     type_text(&app, "party");
     ids(&app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
     assert_eq!(
@@ -2179,7 +2180,7 @@ fn chip_row_has_a_remove_button_per_attachment() {
         app.on_remove_attachment(move |i| l.borrow_mut().push(format!("remove {i}")));
     }
     assert_eq!(
-        ids(&app, "Composer::chip").len(),
+        ids(&app, "ComposerAttachments::chip").len(),
         0,
         "no row without attachments"
     );
@@ -2197,8 +2198,8 @@ fn chip_row_has_a_remove_button_per_attachment() {
             ..Default::default()
         },
     ])));
-    assert_eq!(ids(&app, "Composer::chip").len(), 2);
-    let xs = ids(&app, "Composer::chip-x");
+    assert_eq!(ids(&app, "ComposerAttachments::chip").len(), 2);
+    let xs = ids(&app, "ComposerAttachments::chip-x");
     assert_eq!(xs.len(), 2, "each chip has an X");
     xs[1].mock_single_click(PointerEventButton::Left);
     assert_eq!(*removed.borrow(), vec!["remove 1"]);
@@ -2262,7 +2263,7 @@ fn files_become_chips_per_chat_and_each_can_be_removed() {
     let second = model.row_data(1).unwrap();
     assert!(!second.is_image && !second.has_preview);
     assert_eq!(second.detail, "5 B");
-    assert_eq!(ids(&h.app, "Composer::chip").len(), 2);
+    assert_eq!(ids(&h.app, "ComposerAttachments::chip").len(), 2);
 
     h.select(BACKEND);
     assert!(chips(&h.app).is_empty(), "attachments belong to their chat");
@@ -2273,7 +2274,7 @@ fn files_become_chips_per_chat_and_each_can_be_removed() {
         let run = run.clone();
         move |i| run(Cmd::RemoveAttachment(i as usize))
     });
-    ids(&h.app, "Composer::chip-x")[0].mock_single_click(PointerEventButton::Left);
+    ids(&h.app, "ComposerAttachments::chip-x")[0].mock_single_click(PointerEventButton::Left);
     assert_eq!(chips(&h.app), vec!["notes.txt"]);
 }
 

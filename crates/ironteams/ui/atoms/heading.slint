@@ -1,0 +1,24 @@
+// A heading over a group of controls: one text style per variant.
+import { Theme } from "../tokens/theme.slint";
+
+export enum HeadingVariant {
+    // A section of a page (Recaps' "Shared files"): 14px bold, elided.
+    title,
+    // An App store shelf title: 16px bold.
+    section,
+    // A group of a list (the keyboard shortcuts): 11px bold, muted.
+    group,
+    // A group of a panel (video effects, the call's More panel): 12px semibold, muted.
+    caption,
+}
+
+export component Heading inherits Text {
+    in property <HeadingVariant> variant: HeadingVariant.title;
+    color: root.variant == HeadingVariant.title || root.variant == HeadingVariant.section ? Theme.fg : Theme.fg-muted;
+    font-size: (root.variant == HeadingVariant.section ? 16px
+        : root.variant == HeadingVariant.title ? 14px
+        : root.variant == HeadingVariant.caption ? 12px
+        : 11px) * Theme.font-scale;
+    font-weight: root.variant == HeadingVariant.caption ? 600 : 700;
+    overflow: root.variant == HeadingVariant.title ? TextOverflow.elide : TextOverflow.clip;
+}

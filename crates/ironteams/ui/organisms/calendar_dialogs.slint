@@ -124,7 +124,7 @@ export component ViewsPanel inherits MenuFrame { variant: MenuFrameVariant.card;
     }
 }
 
-export component MoreMenu inherits MenuFrame { variant: MenuFrameVariant.card;
+export component CalendarMoreMenu inherits MenuFrame { variant: MenuFrameVariant.card;
     // The toolbar has no room for its Meet now button: its two choices are here.
     in property <bool> meet: false;
     width: 240px;
@@ -324,7 +324,7 @@ export component SettingsDialog inherits Scrim {
     }
 }
 
-export component ShareDialog inherits Scrim {
+export component CalendarShareDialog inherits Scrim {
     variant: ScrimVariant.dim;
     property <string> email;
     property <string> role: "read";

@@ -544,13 +544,13 @@ fn the_pencil_renames_a_group_and_is_not_offered_elsewhere() {
     let h = Harness::new();
     let log = wire(&h);
     h.select(NOTES);
-    assert!(ids(&h.app, "AppWindow::rename-btn").is_empty());
+    assert!(ids(&h.app, "ChatPaneHeader::rename-btn").is_empty());
     h.select(ONE_ON_ONE);
-    assert!(ids(&h.app, "AppWindow::rename-btn").is_empty());
+    assert!(ids(&h.app, "ChatPaneHeader::rename-btn").is_empty());
 
     h.select(BACKEND);
     assert!(ps(&h.app).get_header_group());
-    click(&touch(&h.app, "AppWindow::rename-btn"));
+    click(&touch(&h.app, "ChatPaneHeader::rename-btn"));
     assert!(h.app.get_renaming());
     assert_eq!(
         h.app.get_rename_text(),
@@ -572,7 +572,7 @@ fn escape_cancels_a_rename() {
     let h = Harness::new();
     let log = wire(&h);
     h.select(BACKEND);
-    click(&touch(&h.app, "AppWindow::rename-btn"));
+    click(&touch(&h.app, "ChatPaneHeader::rename-btn"));
     type_text(&h.app, "x");
     key(&h.app, Key::Escape, true);
     key(&h.app, Key::Escape, false);
@@ -589,7 +589,7 @@ fn the_participants_popover_lists_members_and_adds_people_with_or_without_histor
     h.select(BACKEND);
     assert_eq!(ps(&h.app).get_member_count(), 3);
 
-    click(&touch(&h.app, "AppWindow::people-touch"));
+    click(&touch(&h.app, "ChatPaneHeader::people-touch"));
     assert!(ps(&h.app).get_participants_open());
     assert!(log.borrow().contains(&"participants-open ".to_string()));
     assert_eq!(
@@ -617,7 +617,7 @@ fn clicking_a_participant_opens_their_profile_card() {
     h.engine
         .test_set_members(BACKEND, &[demo::ME, &mri(3), &mri(4)]);
     h.select(BACKEND);
-    click(&touch(&h.app, "AppWindow::people-touch"));
+    click(&touch(&h.app, "ChatPaneHeader::people-touch"));
     click(&ids(&h.app, "ParticipantsPanel::member-hit")[1]);
     assert!(!ps(&h.app).get_participants_open());
     assert_eq!(log.borrow().last().unwrap(), &format!("profile {}", mri(3)));
@@ -629,7 +629,7 @@ fn leave_asks_first_and_then_leaves() {
     let h = Harness::new();
     let log = wire(&h);
     h.select(BACKEND);
-    click(&touch(&h.app, "AppWindow::people-touch"));
+    click(&touch(&h.app, "ChatPaneHeader::people-touch"));
     click(&touch(&h.app, "ParticipantsPanel::leave-touch"));
     assert_eq!(ps(&h.app).get_leave_confirm(), BACKEND);
     assert!(!find_label(&h.app, "Leave this chat?").is_empty());
@@ -642,7 +642,7 @@ fn leave_asks_first_and_then_leaves() {
     assert_eq!(ps(&h.app).get_leave_confirm(), "");
     assert!(!log.borrow().iter().any(|c| c.starts_with("leave ")));
 
-    click(&touch(&h.app, "AppWindow::people-touch"));
+    click(&touch(&h.app, "ChatPaneHeader::people-touch"));
     click(&touch(&h.app, "ParticipantsPanel::leave-touch"));
     click(&touch(&h.app, "LeaveConfirm::confirm-touch"));
     assert_eq!(log.borrow().last().unwrap(), &format!("leave {BACKEND}"));

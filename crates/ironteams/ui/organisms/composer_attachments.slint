@@ -1,0 +1,51 @@
+// The files waiting to be sent, above the composer's text: a row of chips, each with its preview
+// (or a file icon), name, size and a remove button.
+import { Icon } from "../atoms/widgets.slint";
+import { PendingAttachment } from "../tokens/types.slint";
+import { Theme } from "../tokens/theme.slint";
+
+export component ComposerAttachments inherits Flickable {
+    in property <[PendingAttachment]> pending-attachments;
+    callback remove-attachment(int);
+    height: 62px;
+    content-width: root.pending-attachments.length * 208px + 16px;
+    for a[i] in root.pending-attachments: chip := Rectangle {
+        x: 8px + i * 208px;
+        y: 8px;
+        width: 200px;
+        height: 48px;
+        border-radius: 6px;
+        background: Theme.sidebar;
+        border-width: 1px;
+        border-color: Theme.border;
+        HorizontalLayout {
+            padding: 6px;
+            spacing: 8px;
+            Rectangle {
+                width: 36px;
+                border-radius: 4px;
+                background: a.has-preview ? transparent : Theme.surface-hover;
+                clip: true;
+                if a.has-preview: Image { source: a.preview; image-fit: cover; width: parent.width; height: parent.height; }
+                if !a.has-preview: Icon { source: @image-url("../icons/file.svg"); width: 18px; height: 18px; x: 9px; y: 9px; }
+            }
+            VerticalLayout {
+                alignment: center;
+                Text { text: a.name; color: Theme.fg; font-size: 12px * Theme.font-scale; font-weight: 600; overflow: elide; }
+                Text { text: a.detail; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
+            }
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                y: 0px;
+                border-radius: 4px;
+                background: chip-x.has-hover ? Theme.surface-hover : transparent;
+                Icon { source: @image-url("../icons/close.svg"); width: 12px; height: 12px; x: 5px; y: 5px; }
+                chip-x := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.remove-attachment(i); }
+                }
+            }
+        }
+    }
+}

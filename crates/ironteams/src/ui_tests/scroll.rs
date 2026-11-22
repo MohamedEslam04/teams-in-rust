@@ -20,7 +20,7 @@ fn tall(id: &str, subject: &str) -> Msg {
 }
 
 fn list(app: &AppWindow) -> ElementHandle {
-    ElementHandle::find_by_element_id(app, "AppWindow::msg-list")
+    ElementHandle::find_by_element_id(app, "MessagePane::msg-list")
         .next()
         .expect("the message list")
 }
