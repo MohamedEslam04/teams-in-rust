@@ -29,7 +29,7 @@ jobs:
           fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
           chmod 600 /mnt/swapfile
           mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
-          free -h
+          cat /proc/swaps
       - name: Tools
         run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
       - uses: actions/checkout@v5
@@ -65,7 +65,7 @@ jobs:
           fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
           chmod 600 /mnt/swapfile
           mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
-          free -h
+          cat /proc/swaps
       - uses: actions/checkout@v5
       - name: Generate cargo-sources.json
         run: |
