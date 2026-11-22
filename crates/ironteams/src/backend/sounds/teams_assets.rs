@@ -13,7 +13,8 @@
 //! and what the sound is for. The three defaults are fetched first, the rest follow one at a time
 //! with a pause between them, and a sound the user picks that is not there yet is fetched at once.
 //!
-//! Every file is checked before it is kept (HTTP 200, `audio/*`, at most 2 MB, and it decodes),
+//! Every file is checked before it is kept (HTTP 200, `audio/*` or a generic binary type, at
+//! most 2 MB, and it decodes),
 //! written through a temporary file and renamed, and fetched again once it is 30 days old. A
 //! failed download leaves nothing behind and is tried again at the next start.
 
@@ -242,7 +243,9 @@ fn need_of(path: &Path) -> Need {
     need(modified, SystemTime::now())
 }
 
-/// The reply is usable: status 200, an `audio/*` type, and (when it says) a size within the cap.
+/// The reply is usable: status 200, an `audio/*` type or a generic binary one (the CDN sends
+/// `beep.mp3` as `application/octet-stream`; the body still has to decode), and (when it says)
+/// a size within the cap.
 pub fn check_reply(
     status: u16,
     content_type: Option<&str>,
@@ -255,7 +258,11 @@ pub fn check_reply(
         .and_then(|t| t.split(';').next())
         .map(|t| t.trim().to_ascii_lowercase())
         .unwrap_or_default();
-    if !kind.starts_with("audio/") {
+    let binary = matches!(
+        kind.as_str(),
+        "application/octet-stream" | "binary/octet-stream"
+    );
+    if !kind.starts_with("audio/") && !binary {
         return Err(format!("not audio (content-type {kind:?})"));
     }
     if content_length.is_some_and(|n| n > MAX_BYTES as u64) {
@@ -636,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn only_a_200_audio_reply_within_the_size_cap_is_accepted() {
+    fn only_a_200_sound_reply_within_the_size_cap_is_accepted() {
         assert_eq!(check_reply(200, Some("audio/mpeg"), Some(14_927)), Ok(()));
         assert_eq!(
             check_reply(200, Some("Audio/MPEG; charset=x"), None),
@@ -653,7 +660,12 @@ mod tests {
         );
         assert!(check_reply(304, Some("audio/mpeg"), None).is_err());
         assert!(check_reply(200, Some("text/html"), Some(10)).is_err());
-        assert!(check_reply(200, Some("application/octet-stream"), Some(10)).is_err());
+        assert_eq!(
+            check_reply(200, Some("application/octet-stream"), Some(10)),
+            Ok(()),
+            "beep.mp3 comes as a generic binary; check_body decides"
+        );
+        assert!(check_reply(200, Some("application/json"), Some(10)).is_err());
         assert!(check_reply(200, None, Some(10)).is_err(), "no content-type");
         assert!(
             check_reply(200, Some("audio/mpeg"), Some(MAX_BYTES as u64 + 1))
