@@ -246,7 +246,7 @@ pub fn wire(host: &CardHost, core: &Rc<Core>) {
 
 /// The host's language follows the app's (Settings › Language).
 pub(super) fn apply_language() {
-    crate::language::apply(&crate::backend::quiet::load_prefs());
+    crate::language::apply(&crate::support::quiet::load_prefs());
 }
 
 /// Runs the host until the app closes its stdin. Called from `main` for `--toast-host`.

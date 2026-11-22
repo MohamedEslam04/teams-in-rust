@@ -209,7 +209,7 @@ impl Engine {
     }
 
     fn notify(self: &Arc<Self>, st: &Store, m: &Message) {
-        use super::quiet::{self, Decision, Incoming};
+        use crate::support::quiet::{self, Decision, Incoming};
         use teams_proto::user_settings::Kind;
         // Muted chats and channels set to "Off" are not routed to a banner, like in Teams; the
         // notification settings from Teams (type switches, previews) route the rest.

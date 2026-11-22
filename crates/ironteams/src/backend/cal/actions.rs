@@ -1929,7 +1929,7 @@ mod tests {
 
     // ---- the engine end to end, offline (nothing is sent; the cache changes locally) ----
 
-    use crate::ui::UiHandle;
+    use crate::ui_api::UiHandle;
     use crate::{AppWindow, CalForm, CalStore};
     use i_slint_backend_testing as testing;
     use slint::{ComponentHandle, Model};
@@ -2226,7 +2226,7 @@ mod tests {
         assert_eq!(g.get_heading(), "Edit event");
         assert_eq!(g.get_subject(), "Subject A1");
         assert_eq!(g.get_location(), "Room 4");
-        let mut f = crate::ui::read_form_for_test(&r.app);
+        let mut f = UiHandle::new(r.app.as_weak()).read_form_for_test();
         f.subject = "Renamed".into();
         r.run(CalCmd::Submit(Box::new(f)));
         assert_eq!(r.ids(), ["A1"], "the same event, not a copy");
@@ -2244,7 +2244,7 @@ mod tests {
         let g = r.app.global::<CalForm>();
         assert!(g.get_open() && !g.get_editing());
         assert_eq!(g.get_subject(), "Subject A1");
-        let f = crate::ui::read_form_for_test(&r.app);
+        let f = UiHandle::new(r.app.as_weak()).read_form_for_test();
         r.run(CalCmd::Submit(Box::new(f)));
         assert_eq!(r.ids().len(), 2, "the original and its copy");
     }

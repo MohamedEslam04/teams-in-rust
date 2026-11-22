@@ -154,7 +154,7 @@ impl SettingsEnv {
                     // A Teams card when the cards are on, like the notifications it stands for.
                     std::thread::spawn(|| {
                         use crate::desktop_cards::{client, protocol};
-                        let cards = crate::backend::quiet::load_prefs().notification_style
+                        let cards = crate::support::quiet::load_prefs().notification_style
                             == appearance::NotificationStyle::Cards;
                         let card = protocol::Card {
                             id: client::next_id(),
@@ -603,7 +603,7 @@ fn push_local(w: &AppWindow, c: &Ctl) {
     if gp.check_spelling {
         crate::spell::ensure_loaded(w);
     }
-    show_focus(w, crate::backend::quiet::focus_until(gp));
+    show_focus(w, crate::support::quiet::focus_until(gp));
     let q = &gp.quiet_hours;
     g.set_quiet_on(q.enabled);
     g.set_quiet_days(model(q.days.to_vec()));
@@ -1754,13 +1754,13 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let mut c = shared.borrow_mut();
             let now = chrono::Local::now();
             let until = bit(arg).then(|| {
-                crate::backend::quiet::focus_end(
+                crate::support::quiet::focus_end(
                     c.local.general.focus_duration,
                     now.naive_local(),
                     now.timestamp_millis(),
                 )
             });
-            crate::backend::quiet::set_focus(until);
+            crate::support::quiet::set_focus(until);
             c.local.general.focus_until_ms = until;
             let r = c.local.save_general();
             push_local(w, &c);
@@ -1787,7 +1787,7 @@ fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let word = arg.split_whitespace().collect::<Vec<_>>().join(" ");
             if name == "keyword-add" {
                 let known = words.iter().any(|k| {
-                    crate::backend::quiet::normalise(k) == crate::backend::quiet::normalise(&word)
+                    crate::support::quiet::normalise(k) == crate::support::quiet::normalise(&word)
                 });
                 if word.is_empty() || known {
                     return;

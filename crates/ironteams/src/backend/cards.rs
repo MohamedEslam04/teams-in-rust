@@ -8,7 +8,7 @@
 //! cards.
 
 use super::banner::{self, Pending, Route, Source, Where};
-use super::quiet::Decision;
+use crate::support::quiet::Decision;
 use super::{CalCmd, Cmd, Engine, ListsCmd};
 use crate::desktop_cards::client::{self, Handler};
 use crate::desktop_cards::protocol::{Action, Card, Kind};

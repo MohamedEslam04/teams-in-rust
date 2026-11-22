@@ -5,7 +5,7 @@
 //! the UI. This keeps memory small: only the current conversation window is materialized.
 
 use crate::data::Pixels;
-use crate::ui::UiHandle;
+use crate::ui_api::UiHandle;
 use drafts::reply_preview;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -59,7 +59,6 @@ mod people_card;
 mod people_live;
 pub(crate) mod people_presence;
 mod photo;
-pub(crate) mod quiet;
 mod remind;
 mod render;
 pub(crate) mod ringtone;
@@ -114,10 +113,10 @@ pub use media::MediaCmd;
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
 pub use remind::{RemindCmd, ReminderData, SnoozedData};
-pub use scheduled::{ScheduledCmd, ScheduledData};
+pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
-pub use video_clips::{ClipCamera, ClipCmd, ClipDevices, Picture};
+pub use video_clips::{ClipCamera, ClipCmd, ClipDevices};
 pub use voice_messages::VoiceCmd;
 
 /// Commands sent by the UI.
@@ -569,7 +568,8 @@ impl Engine {
     fn command_failed(&self, err: anyhow::Error) {
         tracing::warn!(%err, "command failed");
         if !self.offline.load(Ordering::Relaxed) {
-            self.ui.banner(util::shown_error(&err));
+            self.ui
+                .banner(crate::support::error_text::shown_error(&err));
         }
     }
 

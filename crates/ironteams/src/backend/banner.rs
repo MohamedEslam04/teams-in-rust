@@ -14,7 +14,7 @@
 //! to the chat by [`Engine::quick_reply`], the same path the cards use.
 
 use super::Engine;
-use super::quiet::Decision;
+use crate::support::quiet::Decision;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -297,7 +297,7 @@ impl Engine {
         } else {
             None
         };
-        self.ui.message_toast(crate::ui::message_toast::Toast {
+        self.ui.message_toast(crate::ui_api::Toast {
             rtl_title: render::base_direction(&title) == render::Dir::Rtl,
             rtl_text: render::base_direction(&text) == render::Dir::Rtl,
             conversation: p.conversation,
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn muted_paused_and_focused_out_notifications_show_nowhere() {
-        use super::super::quiet::Why;
+        use crate::support::quiet::Why;
         for why in [Why::Paused, Why::QuietHours, Why::Focus, Why::Routing] {
             for source in [Source::Message, Source::Calendar, Source::Call] {
                 for active in [true, false] {
