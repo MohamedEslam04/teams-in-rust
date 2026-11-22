@@ -171,6 +171,23 @@ fn the_chats_page_is_listed_after_general_and_its_settings_are_found() {
 }
 
 #[test]
+fn the_storage_page_is_listed_and_its_settings_are_found() {
+    assert_eq!(page_title("storage"), "Storage");
+    assert!(PAGES.iter().any(|(k, _)| *k == "storage"));
+    let on_storage = |q: &str| {
+        find(q)
+            .into_iter()
+            .filter(|f| f.page == "storage")
+            .map(|f| f.label)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(on_storage("media cache limit"), ["Media cache limit"]);
+    assert_eq!(on_storage("backup"), ["Delete old update backups"]);
+    assert!(on_storage("free up space").contains(&"Clear all cached data"));
+    assert!(on_storage("disk").len() >= 4);
+}
+
+#[test]
 fn raw_alsa_entries_hide_unless_asked_or_chosen() {
     let d = |id: &str, def: bool| devices::AudioDevice {
         id: id.into(),

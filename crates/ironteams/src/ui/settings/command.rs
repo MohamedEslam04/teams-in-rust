@@ -21,6 +21,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             if arg == "devices" {
                 list_devices(w, shared);
             }
+            if arg == "storage" {
+                open_storage(w, shared);
+            }
         }
         "close" => {
             let mut c = shared.borrow_mut();
@@ -351,6 +354,40 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             let r = c.local.save_files();
             push_local(w, &c);
             saved(w, r);
+        }
+        // --- Storage (the engine measures and clears; it answers with a notice and the sizes) ---
+        "media-cache-limit" => {
+            let Some(mb) = limit_from_slug(arg) else {
+                return;
+            };
+            let c = shared.borrow();
+            let r = c.env.paths.update_config(|cfg| {
+                cfg.media_cache_mb = mb;
+                Ok(())
+            });
+            if r.is_ok()
+                && let Some(tx) = &c.tx
+            {
+                let _ = tx.send(Cmd::Settings(SettingsCmd::ApplyMediaLimit));
+            }
+            saved(w, r.map_err(|e| anyhow::anyhow!(e.to_string())));
+        }
+        "clear-media-cache" | "clear-all-cache" | "delete-update-backups" => {
+            let c = shared.borrow();
+            let Some(tx) = &c.tx else {
+                notice(w, "Not signed in, so there is nothing to clear.");
+                return;
+            };
+            let (cmd, text) = match name {
+                "clear-media-cache" => (Cmd::ClearMediaCache, "Clearing the media cache…"),
+                "clear-all-cache" => (Cmd::ClearAllCache, "Clearing the cached data…"),
+                _ => (
+                    Cmd::Settings(SettingsCmd::DeleteUpdateBackups),
+                    "Deleting the old update backups…",
+                ),
+            };
+            let _ = tx.send(cmd);
+            notice(w, text);
         }
         "perm" => {
             let mut c = shared.borrow_mut();

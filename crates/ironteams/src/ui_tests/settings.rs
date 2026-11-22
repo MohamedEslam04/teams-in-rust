@@ -1742,6 +1742,7 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         "accessibility",
         "devices",
         "files",
+        "storage",
         "permissions",
         "about",
     ] {
@@ -1757,6 +1758,100 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
             }
         }
     }
+}
+
+#[test]
+fn the_storage_page_shows_the_sizes_and_the_limit_choice_writes_the_config() {
+    use crate::backend::CacheSizes;
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let home = Home::new("storage");
+    let paths = home.paths();
+    let ui = window_with(home, Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "general");
+    while rx.try_recv().is_ok() {}
+
+    // The page is in the list; opening it asks the engine for the sizes.
+    press(app, "Storage");
+    assert_eq!(value_of(app, "Settings page"), "Storage");
+    assert!(checked(app, "Storage"), "Storage is the selected tab");
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(Cmd::Settings(SettingsCmd::LoadStorage))
+    ));
+    tall_window(app);
+    assert_eq!(value_of(app, "Messages database size"), "Calculating…");
+    assert!(
+        checked(app, "Media cache limit: 500 MB (default)"),
+        "the default limit"
+    );
+
+    // The engine's answer shows as text.
+    UiHandle::new(app.as_weak()).settings_storage(CacheSizes {
+        db_bytes: 1_572_864,
+        media_bytes: 1_073_741_824,
+        temp_bytes: 2048,
+        backups_bytes: 0,
+    });
+    assert_eq!(value_of(app, "Messages database size"), "1.5 MB");
+    assert_eq!(
+        value_of(app, "Media (pictures, voice, video) size"),
+        "1.0 GB"
+    );
+    assert_eq!(value_of(app, "Temporary files size"), "2 KB");
+    assert_eq!(value_of(app, "Update backups size"), "0 B");
+    assert_eq!(value_of(app, "Total size"), "1.0 GB");
+
+    // A limit is written to the config, and the engine sweeps to it.
+    press(app, "Media cache limit: 250 MB");
+    assert_eq!(paths.load_config().unwrap().media_cache_mb, Some(250));
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(Cmd::Settings(SettingsCmd::ApplyMediaLimit))
+    ));
+    press(app, "Media cache limit: No limit");
+    assert_eq!(paths.load_config().unwrap().media_cache_mb, None);
+    assert!(checked(app, "Media cache limit: No limit"));
+    // The saved limit shows again when the page is opened later.
+    open_page(app, "general");
+    open_page(app, "storage");
+    assert_eq!(store(app).get_media_cache_limit(), "none");
+    assert!(!store(app).get_storage_loaded(), "measured again");
+}
+
+#[test]
+fn the_storage_buttons_send_the_clear_commands_and_clearing_everything_asks_first() {
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("storage-clear"), Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "storage");
+    tall_window(app);
+    while rx.try_recv().is_ok() {}
+
+    press(app, "Clear media cache");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::ClearMediaCache)));
+    assert_eq!(store(app).get_notice(), "Clearing the media cache…");
+    press(app, "Delete old update backups");
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(Cmd::Settings(SettingsCmd::DeleteUpdateBackups))
+    ));
+
+    // Clearing everything asks first; Cancel changes nothing.
+    press(app, "Clear all cached data");
+    assert!(store(app).get_confirm_clear_all());
+    assert!(rx.try_recv().is_err(), "nothing was sent yet");
+    press(app, "Cancel clearing");
+    assert!(!store(app).get_confirm_clear_all());
+    assert!(rx.try_recv().is_err());
+
+    press(app, "Clear all cached data");
+    press(app, "Yes, clear all cached data");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::ClearAllCache)));
+    assert!(!store(app).get_confirm_clear_all());
+    assert_eq!(store(app).get_notice(), "Clearing the cached data…");
 }
 
 // --- Self-updates (Velopack installs), with a fake source: never the network ---

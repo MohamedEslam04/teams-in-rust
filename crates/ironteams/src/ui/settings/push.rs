@@ -447,6 +447,28 @@ impl UiHandle {
         self.run(move |w| license_done(&w, r));
     }
 
+    /// How much disk each kind of data takes, read by the engine for the Storage page.
+    pub fn settings_storage(&self, sizes: crate::backend::CacheSizes) {
+        use crate::backend::drive::state::size_label;
+        self.run(move |w| {
+            let g = w.global::<SettingsStore>();
+            g.set_storage_db(s(size_label(sizes.db_bytes)));
+            g.set_storage_media(s(size_label(sizes.media_bytes)));
+            g.set_storage_temp(s(size_label(sizes.temp_bytes)));
+            g.set_storage_backups(s(size_label(sizes.backups_bytes)));
+            let total = [
+                sizes.db_bytes,
+                sizes.media_bytes,
+                sizes.temp_bytes,
+                sizes.backups_bytes,
+            ]
+            .iter()
+            .fold(0u64, |a, b| a.saturating_add(*b));
+            g.set_storage_total(s(size_label(total)));
+            g.set_storage_loaded(true);
+        });
+    }
+
     /// The Teams side of Settings, read by the engine.
     pub fn settings_server(&self, data: ServerData) {
         self.run(move |w| {

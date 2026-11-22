@@ -2249,3 +2249,89 @@ msgstr "إشعارات النظام"
 
 msgid "Teams cards show in the corner of the screen, above other windows."
 msgstr "تظهر بطاقات Teams في زاوية الشاشة فوق النوافذ الأخرى."
+
+# Settings > Storage.
+
+msgid "Storage"
+msgstr "التخزين"
+
+msgid "size"
+msgstr "الحجم"
+
+msgid "Calculating…"
+msgstr "جارٍ الحساب…"
+
+msgid "Disk space"
+msgstr "مساحة القرص"
+
+msgid "What IronTeams keeps on this computer."
+msgstr "ما يحتفظ به IronTeams على هذا الكمبيوتر."
+
+msgid "Messages database"
+msgstr "قاعدة بيانات الرسائل"
+
+msgid "Media (pictures, voice, video)"
+msgstr "الوسائط (الصور والصوت والفيديو)"
+
+msgid "Temporary files"
+msgstr "الملفات المؤقتة"
+
+msgid "Update backups"
+msgstr "النسخ الاحتياطية للتحديثات"
+
+msgid "Total"
+msgstr "الإجمالي"
+
+msgid "Media cache"
+msgstr "ذاكرة الوسائط المؤقتة"
+
+msgid "Pictures and media download again when needed. Messages stay."
+msgstr "تُنزَّل الصور والوسائط مرة أخرى عند الحاجة. تبقى الرسائل."
+
+msgid "Media cache limit"
+msgstr "حد ذاكرة الوسائط المؤقتة"
+
+msgid "When the media cache grows past this, the oldest files are deleted."
+msgstr "عندما تتجاوز ذاكرة الوسائط هذا الحد، تُحذف أقدم الملفات."
+
+msgid "250 MB"
+msgstr "250 ميغابايت"
+
+msgid "500 MB (default)"
+msgstr "500 ميغابايت (الافتراضي)"
+
+msgid "1 GB"
+msgstr "1 غيغابايت"
+
+msgid "2 GB"
+msgstr "2 غيغابايت"
+
+msgid "No limit"
+msgstr "بلا حد"
+
+msgid "Clear media cache"
+msgstr "مسح ذاكرة الوسائط المؤقتة"
+
+msgid "Before a new version starts, IronTeams keeps a copy of your saved chats and settings from the version before. Deleting the copies frees space. Your current chats are not touched."
+msgstr "قبل أن يبدأ إصدار جديد، يحتفظ IronTeams بنسخة من محادثاتك المحفوظة وإعداداتك من الإصدار السابق. يؤدي حذف النسخ إلى تحرير مساحة. لا تتأثر محادثاتك الحالية."
+
+msgid "Delete old update backups"
+msgstr "حذف النسخ الاحتياطية القديمة للتحديثات"
+
+msgid "All cached data"
+msgstr "كل البيانات المخزنة مؤقتًا"
+
+msgid "Removes saved messages and media from this computer; they download again. Drafts, unsent messages, saved items and favourites stay."
+msgstr "يزيل الرسائل والوسائط المحفوظة من هذا الكمبيوتر، وتُنزَّل مرة أخرى. تبقى المسودات والرسائل غير المرسلة والعناصر المحفوظة والمفضلة."
+
+msgid "Clear all cached data"
+msgstr "مسح كل البيانات المخزنة مؤقتًا"
+
+msgid "Clear all saved messages and media from this computer? They download again when needed."
+msgstr "هل تريد مسح كل الرسائل والوسائط المحفوظة من هذا الكمبيوتر؟ ستُنزَّل مرة أخرى عند الحاجة."
+
+msgid "Cancel clearing"
+msgstr "إلغاء المسح"
+
+msgid "Yes, clear all cached data"
+msgstr "نعم، امسح كل البيانات المخزنة مؤقتًا"

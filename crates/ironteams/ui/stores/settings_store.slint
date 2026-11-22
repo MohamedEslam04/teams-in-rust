@@ -20,7 +20,7 @@ export global SettingsStore {
     // --- the page ---
     in-out property <bool> open: false;
     // general | accounts | privacy | notifications | appearance | accessibility | devices | files
-    // | permissions | about
+    // | storage | permissions | about
     in-out property <string> page: "general";
     in-out property <string> query;
     // The setting a Find result opened (its label), and where its row is once the page is up
@@ -131,6 +131,20 @@ export global SettingsStore {
     // --- Files and links (X1.6) ---
     in-out property <string> open-files: "browser"; // ironteams | browser | desktop
     in-out property <string> open-links: "default"; // default | ask
+
+    // --- Storage ---
+    // The sizes are read by the engine when the page opens (`storage-loaded` is false until
+    // they arrive) and are text such as "1.2 GB".
+    in-out property <bool> storage-loaded: false;
+    in-out property <string> storage-db;
+    in-out property <string> storage-media;
+    in-out property <string> storage-temp;
+    in-out property <string> storage-backups;
+    in-out property <string> storage-total;
+    // The media cache limit in MB: 250 | 500 | 1024 | 2048 | none.
+    in-out property <string> media-cache-limit: "500";
+    // "Clear all cached data" waits for its confirmation.
+    in-out property <bool> confirm-clear-all: false;
 
     // --- App permissions (X1.7) ---
     in-out property <[SAppPerm]> app-perms;

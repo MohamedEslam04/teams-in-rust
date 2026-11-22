@@ -167,7 +167,6 @@ impl Engine {
 
     /// How much disk the message cache, the media cache, the temporary copies and the update
     /// backups take.
-    #[allow(dead_code)] // The Settings page shows it.
     pub(crate) async fn cache_sizes(self: &Arc<Self>) -> CacheSizes {
         let Some(paths) = self.cache_paths() else {
             return CacheSizes::default();
@@ -176,6 +175,62 @@ impl Engine {
         tokio::task::spawn_blocking(move || cache::sizes(&paths, &db))
             .await
             .unwrap_or_default()
+    }
+
+    /// `SettingsCmd::LoadStorage`: reads the sizes and shows them on the Storage page.
+    pub(super) async fn push_storage(self: &Arc<Self>) {
+        let sizes = self.cache_sizes().await;
+        self.ui.settings_storage(sizes);
+    }
+
+    /// What the Storage page does after a clear: the result as the page's notice, and the sizes
+    /// read again.
+    pub(super) async fn storage_done(self: &Arc<Self>, result: &anyhow::Result<String>) {
+        let text = match result {
+            Ok(done) => done.clone(),
+            Err(err) => format!("Could not clear it: {err}"),
+        };
+        self.ui.settings_notice(text);
+        self.push_storage().await;
+    }
+
+    /// `Cmd::ClearMediaCache`, then the page's notice and sizes.
+    pub(super) async fn clear_media_cache_cmd(self: &Arc<Self>) -> anyhow::Result<()> {
+        let result = self
+            .clear_media_cache()
+            .await
+            .map(|()| "Cleared the media cache. Messages stay.".to_string());
+        self.storage_done(&result).await;
+        result.map(|_| ())
+    }
+
+    /// `Cmd::ClearAllCache`, then the page's notice and sizes.
+    pub(super) async fn clear_all_cache_cmd(self: &Arc<Self>) -> anyhow::Result<()> {
+        let result = self
+            .clear_all_cache()
+            .await
+            .map(|()| "Cleared the cached data. Messages and media download again.".to_string());
+        self.storage_done(&result).await;
+        result.map(|_| ())
+    }
+
+    /// `SettingsCmd::DeleteUpdateBackups`: deletes the updater's `backup-*` folders (not the
+    /// live message cache), then the page's notice and sizes.
+    pub(super) async fn delete_update_backups(self: &Arc<Self>) -> anyhow::Result<()> {
+        let result = match self.cache_paths().map(|p| p.data_dir) {
+            Some(data_dir) => tokio::task::spawn_blocking(move || cache::clear_backups(&data_dir))
+                .await
+                .map(|freed| {
+                    format!(
+                        "Deleted the old update backups ({}).",
+                        super::drive::state::size_label(freed)
+                    )
+                })
+                .map_err(anyhow::Error::from),
+            None => Ok("There are no update backups.".to_string()),
+        };
+        self.storage_done(&result).await;
+        result.map(|_| ())
     }
 
     /// `Cmd::ClearMediaCache`: empties the pictures in memory, the media files on disk and the

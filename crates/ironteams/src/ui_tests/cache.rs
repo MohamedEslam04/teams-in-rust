@@ -3,6 +3,8 @@
 //! network: the engine is offline, so the re-read after clearing is skipped.
 
 use super::*;
+use crate::SettingsStore;
+use crate::backend::settings::SettingsCmd;
 use std::time::{Duration, SystemTime};
 use store::SavedMessage;
 
@@ -23,6 +25,7 @@ struct Setup {
     h: Harness,
     _tmp: tempfile::TempDir,
     cache: std::path::PathBuf,
+    paths: session::Paths,
 }
 
 fn setup() -> Setup {
@@ -32,15 +35,17 @@ fn setup() -> Setup {
         .store(true, std::sync::atomic::Ordering::Relaxed);
     let tmp = tempfile::tempdir().unwrap();
     let cache = tmp.path().join("cache");
-    h.engine.test_set_cache_paths(session::Paths {
+    let paths = session::Paths {
         config_dir: tmp.path().join("config"),
         data_dir: tmp.path().join("data"),
         cache_dir: cache.clone(),
-    });
+    };
+    h.engine.test_set_cache_paths(paths.clone());
     Setup {
         h,
         _tmp: tmp,
         cache,
+        paths,
     }
 }
 
@@ -134,4 +139,61 @@ fn clearing_all_cached_data_keeps_what_is_the_users_own() {
         assert!(st.is_saved(BACKEND, &kept_msg).unwrap());
         assert_eq!(st.get_kv(PLACEHOLDERS_KEY).unwrap(), None);
     });
+}
+
+#[test]
+fn the_storage_page_gets_the_sizes_and_a_notice_after_every_clear() {
+    let Setup {
+        h, cache, paths, ..
+    } = setup();
+    let page = || h.app.global::<SettingsStore>();
+    put(&cache, "media/img/a", 100);
+    put(&cache, "media/v.m4a", 200);
+    put(&cache, "notify/n", 10);
+    let live = put(&paths.data_dir, "cache.sqlite", 70);
+    put(&paths.data_dir, "backup-1.0.0/data/cache.sqlite", 50);
+    assert!(!page().get_storage_loaded());
+
+    run(&h, Cmd::Settings(SettingsCmd::LoadStorage));
+    assert!(page().get_storage_loaded());
+    assert_eq!(page().get_storage_db(), "70 B");
+    assert_eq!(page().get_storage_media(), "300 B");
+    assert_eq!(page().get_storage_temp(), "10 B");
+    assert_eq!(page().get_storage_backups(), "50 B");
+    assert_eq!(page().get_storage_total(), "430 B");
+
+    run(&h, Cmd::ClearMediaCache);
+    assert!(page().get_notice().starts_with("Cleared the media cache"));
+    assert_eq!(page().get_storage_media(), "0 B");
+
+    run(&h, Cmd::Settings(SettingsCmd::DeleteUpdateBackups));
+    assert_eq!(
+        page().get_notice(),
+        "Deleted the old update backups (50 B)."
+    );
+    assert_eq!(page().get_storage_backups(), "0 B");
+    assert!(!paths.data_dir.join("backup-1.0.0").exists());
+    assert!(live.exists(), "the live database is not a backup");
+
+    run(&h, Cmd::ClearAllCache);
+    assert!(page().get_notice().starts_with("Cleared the cached data"));
+}
+
+#[test]
+fn a_new_media_limit_sweeps_the_cache_at_once() {
+    let Setup {
+        h, cache, paths, ..
+    } = setup();
+    let img = put(&cache, "media/img/a", 100);
+    let cfg = session::Config {
+        media_cache_mb: Some(0),
+        ..Default::default()
+    };
+    paths.save_config(&cfg).unwrap();
+
+    run(&h, Cmd::Settings(SettingsCmd::ApplyMediaLimit));
+    assert!(!img.exists());
+    let page = h.app.global::<SettingsStore>();
+    assert!(page.get_storage_loaded());
+    assert_eq!(page.get_storage_media(), "0 B");
 }
