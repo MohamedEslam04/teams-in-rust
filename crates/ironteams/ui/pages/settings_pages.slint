@@ -456,6 +456,23 @@ export component NotificationsPage inherits VerticalLayout {
             picked(v) => { SettingsStore.meeting-chat = v; SettingsStore.command("meeting-chat", v); }
         }
     }
+    SSection {
+        title: @tr("Message sound");
+        hint: @tr("The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above.");
+        SChoiceRow {
+            label: @tr("Message sound");
+            options: [{v: "default", l: @tr("Default")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+            value: SettingsStore.message-sound;
+            picked(v) => { SettingsStore.message-sound = v; SettingsStore.command("message-sound", v); }
+        }
+        if SettingsStore.message-sound-file != "": Para { text: SettingsStore.message-sound-file; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            SButton { label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
+            SButton { label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
+        }
+    }
     for n in SettingsStore.notify: VerticalLayout {
         spacing: 4px;
         padding-bottom: 10px;
@@ -676,11 +693,17 @@ export component CallsSettingsPage inherits VerticalLayout {
         hint: @tr("The sound IronTeams plays for an incoming call. It is kept on this computer.");
         SChoiceRow {
             label: @tr("Ringtone");
-            options: [{v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}];
+            options: [{v: "default", l: @tr("Default")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
             value: SettingsStore.ringtone;
             picked(v) => { SettingsStore.ringtone = v; SettingsStore.command("ringtone", v); }
         }
-        SButton { label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
+        if SettingsStore.ringtone-file != "": Para { text: SettingsStore.ringtone-file; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            SButton { label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
+            SButton { label: @tr("Choose a file…"); clicked => { SettingsStore.command("ringtone-file", ""); } }
+        }
     }
     SSection {
         title: @tr("Call forwarding");

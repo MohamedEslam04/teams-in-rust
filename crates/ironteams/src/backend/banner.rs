@@ -295,7 +295,9 @@ impl Engine {
                 .icon(tray::APP_ID);
             #[cfg(target_os = "linux")]
             n.hint(notify_rust::Hint::DesktopEntry(tray::APP_ID.into()))
-                .hint(notify_rust::Hint::Category("im.received".into()));
+                .hint(notify_rust::Hint::Category("im.received".into()))
+                // The message sound is IronTeams's own (`sounds`), so the server stays silent.
+                .hint(notify_rust::Hint::SuppressSound(true));
             if prefs.banner_photo
                 && let Some(path) = p
                     .photo
