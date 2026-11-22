@@ -60,7 +60,30 @@ fn md_inline(s: &str) -> String {
     b
 }
 
+/// Keeps a `**bold**` span that runs over several lines bold on each of them, the way Teams
+/// shows it: a line that ends inside the span is closed there and the next one reopens it.
+/// `carry` is off when the whole text has an unpaired `**`, which then stays literal.
+fn carry_bold(open: &mut bool, carry: bool, s: &str) -> String {
+    if !carry {
+        return s.to_owned();
+    }
+    let mut out = String::new();
+    if *open {
+        out.push_str("**");
+    }
+    out.push_str(s);
+    if s.matches("**").count() % 2 == 1 {
+        *open = !*open;
+    }
+    if *open {
+        out.push_str("**");
+    }
+    out
+}
+
 fn text_block(text: &str, emphasize: bool) -> String {
+    let carry = text.matches("**").count().is_multiple_of(2);
+    let mut open = false;
     let mut html = String::new();
     let mut list: Vec<String> = vec![];
     let flush = |html: &mut String, list: &mut Vec<String>| {
@@ -79,14 +102,14 @@ fn text_block(text: &str, emphasize: bool) -> String {
             .or_else(|| t.strip_prefix("* "))
             .or_else(|| t.strip_prefix("• "))
         {
-            list.push(md_inline(item));
+            list.push(md_inline(&carry_bold(&mut open, carry, item)));
             continue;
         }
         flush(&mut html, &mut list);
         if t.is_empty() {
             continue;
         }
-        let inner = md_inline(t);
+        let inner = md_inline(&carry_bold(&mut open, carry, t));
         html.push_str(&if emphasize {
             format!("<p><b>{inner}</b></p>")
         } else {
@@ -407,6 +430,24 @@ mod tests {
     fn markdown_lists_in_text_blocks() {
         let html = swift_html(&swift(json!({"type": "AdaptiveCard", "body": [{"type": "TextBlock", "text": "Changes:\n- one\n- two"}]}))).unwrap();
         assert_eq!(html, "<p>Changes:</p><ul><li>one</li><li>two</li></ul>");
+    }
+
+    #[test]
+    fn a_bold_span_over_two_lines_is_bold_on_both() {
+        let html = swift_html(&swift(json!({"type": "AdaptiveCard", "body": [{"type": "TextBlock", "text": "**Docs fell behind the code\n1 project · 4 pages outdated**"}]}))).unwrap();
+        assert_eq!(
+            html,
+            "<p><b>Docs fell behind the code</b></p><p><b>1 project · 4 pages outdated</b></p>"
+        );
+    }
+
+    #[test]
+    fn an_unpaired_bold_marker_stays_literal() {
+        let html = swift_html(&swift(
+            json!({"type": "AdaptiveCard", "body": [{"type": "TextBlock", "text": "a **b\nc"}]}),
+        ))
+        .unwrap();
+        assert_eq!(html, "<p>a **b</p><p>c</p>");
     }
 
     #[test]
