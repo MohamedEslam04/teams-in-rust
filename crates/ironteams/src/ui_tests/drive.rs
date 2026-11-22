@@ -173,7 +173,7 @@ fn the_rail_opens_onedrive_on_home_with_recent_files() {
         }
     });
     let mut rail: Vec<ElementHandle> =
-        ElementHandle::find_by_element_id(&h.app, "AppWindow::ri").collect();
+        ElementHandle::find_by_element_id(&h.app, "AppRail::ri").collect();
     rail.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     assert_eq!(rail.len(), 5, "Activity, Chat, Teams, Calendar, OneDrive");
     rail[4].mock_single_click(PointerEventButton::Left);

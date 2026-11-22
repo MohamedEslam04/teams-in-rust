@@ -691,7 +691,7 @@ fn the_first_messages_hover_bar_sits_inside_the_top_edge() {
 
 /// A rail entry by its place (0 is Activity).
 fn rail_entry(app: &AppWindow, i: usize) -> ElementHandle {
-    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "AppWindow::rt").collect();
+    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "AppRail::rt").collect();
     v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     v.remove(i)
 }
@@ -756,7 +756,7 @@ fn a_click_outside_the_message_menu_closes_it_and_reaches_the_rail() {
 #[test]
 fn a_click_outside_the_profile_menu_closes_it_and_reaches_the_rail() {
     let app = app_with_messages(vec![msg("m1", "theirs", false)]);
-    let me = ElementHandle::find_by_element_id(&app, "AppWindow::me-photo")
+    let me = ElementHandle::find_by_element_id(&app, "AppTopBar::me-photo")
         .next()
         .expect("my photo");
     click(&me);
@@ -784,7 +784,7 @@ fn a_click_outside_the_profile_menu_closes_it_and_reaches_the_rail() {
 fn a_right_click_opens_only_the_hovered_messages_menu() {
     let app = app_with_messages(vec![msg("m1", "some words from someone else", false)]);
     let settings = app.global::<crate::SettingsStore>();
-    let me = ElementHandle::find_by_element_id(&app, "AppWindow::me-photo")
+    let me = ElementHandle::find_by_element_id(&app, "AppTopBar::me-photo")
         .next()
         .expect("my photo");
 

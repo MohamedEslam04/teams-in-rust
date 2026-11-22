@@ -1,0 +1,325 @@
+// The window-wide layers over a conversation: the message menu, the Seen by list and the reaction
+// picker (they close on a press outside them), the Forward dialog, the participants panel and a
+// person's card. `app.slint` shows each one while its state says so.
+import { MediaStore } from "media.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { ProfileCard } from "profile_card.slint";
+import { TopBarStore } from "topbar.slint";
+import { WebParityStore } from "web_parity.slint";
+import { ParticipantsPanel } from "participants.slint";
+import { ForwardDialog } from "forward_dialog.slint";
+import { Recipient, EmojiItem, Msg } from "../tokens/types.slint";
+import { Theme } from "../tokens/theme.slint";
+import { ReactionPicker } from "../molecules/reaction_picker.slint";
+import { SeenByList } from "../molecules/seen_by.slint";
+import { ChannelStore } from "channel_posts.slint";
+import { FindStore } from "../stores/find_store.slint";
+import { MessageMenu } from "../molecules/message_menu.slint";
+import { RemindStore } from "remind.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { TasksStore } from "../stores/apps_store.slint";
+
+// A person's card, over everything, where its photo or name was.
+export component ProfileCardLayer inherits Rectangle {
+    in-out property <length> card-h;
+    in-out property <length> card-left;
+    in-out property <length> card-top;
+    in-out property <length> card-w;
+    callback open-url(string);
+    // Above the call window too (its roster photos open cards), and above the search
+    // dropdown (z 65) for a hover card opened from one of its rows.
+    z: PeopleStore.card-by-hover && TopBarStore.search-open ? 66 : 50;
+    // A clicked card closes on a click anywhere else; a hover card when the pointer leaves
+    // it and its photo (so the photo under it keeps its hover).
+    if !PeopleStore.card-by-hover: TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                PeopleStore.card-open = false;
+            }
+        }
+    }
+    profile-card := ProfileCard {
+        // Next to the photo it belongs to: on its right (on its left when that does not
+        // fit), top-aligned with it or, near the bottom, bottom-aligned (flipped above),
+        // and always inside the window. Without a photo, in the middle as before.
+        property <bool> anchored: PeopleStore.anchor-w > 0;
+        property <length> right-x: PeopleStore.anchor-x + PeopleStore.anchor-w + 8px;
+        property <length> side-x: self.right-x + self.width <= root.width - 8px ? self.right-x : PeopleStore.anchor-x - self.width - 8px;
+        property <length> side-y: PeopleStore.anchor-y + self.height <= root.height - 8px ? PeopleStore.anchor-y : PeopleStore.anchor-y + PeopleStore.anchor-h - self.height;
+        x: self.anchored ? max(8px, min(self.side-x, root.width - self.width - 8px)) : (root.width - self.width) / 2;
+        y: self.anchored ? max(8px, min(self.side-y, root.height - self.height - 8px)) : max(8px, min(160px, root.height - self.height - 8px));
+        init => {
+            root.card-left = self.x;
+            root.card-top = self.y;
+            root.card-w = self.width;
+            root.card-h = self.height;
+        }
+        changed x => { root.card-left = self.x; }
+        changed y => { root.card-top = self.y; }
+        changed width => { root.card-w = self.width; }
+        changed height => { root.card-h = self.height; }
+        anchor-hovered: PeopleStore.hover-id != "" && PeopleStore.hover-id == PeopleStore.card.id;
+        limit: root.height - 16px;
+        hover-mode: PeopleStore.card-by-hover;
+        quick-message(t) => {
+            PeopleStore.card-open = false;
+            PeopleStore.command("profile-message", t);
+        }
+        copy-email => { PeopleStore.command("profile-copy-email", ""); }
+        chat(id) => {
+            PeopleStore.card-open = false;
+            PeopleStore.command("profile-chat", id);
+        }
+        video(id) => {
+            WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet.");
+        }
+        call-number(n) => { root.open-url("tel:" + n); }
+        open-photo(id) => {
+            PeopleStore.card-open = false;
+            MediaStore.command("photo", id);
+        }
+        close => { PeopleStore.card-open = false; }
+    }
+}
+
+// The participants panel under the header; a press outside closes it.
+export component ParticipantsLayer inherits Rectangle {
+    in property <string> current-id;
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                PeopleStore.participants-open = false;
+            }
+        }
+    }
+    ParticipantsPanel {
+        x: root.width - self.width - 16px;
+        y: 108px;
+        // A 1:1 chat can't be left; its "Add people" starts a group chat.
+        can-leave: PeopleStore.header-group;
+        members: PeopleStore.members;
+        add-results: PeopleStore.add-results;
+        open-profile(id) => {
+            PeopleStore.participants-open = false;
+            PeopleStore.command("profile", id);
+        }
+        add-query(q) => { PeopleStore.command("add-query", q); }
+        add-pick(id) => { PeopleStore.command("add-pick", id); }
+        history-changed(on) => { PeopleStore.command("add-history", on ? "on" : "off"); }
+        leave => {
+            PeopleStore.participants-open = false;
+            PeopleStore.leave-confirm = root.current-id;
+        }
+        close => { PeopleStore.participants-open = false; }
+    }
+}
+
+// The Forward dialog, centred over a scrim.
+export component ForwardLayer inherits Rectangle {
+    callback forward-cancel;
+    in property <int> forward-count;
+    in-out property <bool> forward-open;
+    in property <[Recipient]> forward-picked;
+    in property <string> forward-preview-author;
+    in property <string> forward-preview-text;
+    in property <[Recipient]> forward-results;
+    callback forward-search(string);
+    callback forward-send(string);
+    callback forward-toggle(string);
+    background: Theme.scrim;
+    TouchArea { }
+    ForwardDialog {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+        results: root.forward-results;
+        picked: root.forward-picked;
+        count: root.forward-count;
+        preview-author: root.forward-preview-author;
+        preview-text: root.forward-preview-text;
+        search(q) => { root.forward-search(q); }
+        toggle(id) => { root.forward-toggle(id); }
+        send(note) => { root.forward-send(note); }
+        cancel => {
+            root.forward-open = false;
+            root.forward-cancel();
+        }
+    }
+}
+
+// The full reaction picker where "…" was pressed; a press outside closes it.
+export component ReactionPickerLayer inherits Rectangle {
+    in property <[EmojiItem]> picker-items;
+    in property <string> picker-msg-id;
+    in-out property <bool> picker-open;
+    callback picker-search(string);
+    in property <length> picker-x;
+    in property <length> picker-y;
+    callback react(string, string);
+    z: 46;
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.picker-open = false;
+            }
+        }
+    }
+    ReactionPicker {
+        x: max(8px, min(root.picker-x, root.width - self.width - 8px));
+        y: max(8px, min(root.picker-y, root.height - self.height - 8px));
+        items: root.picker-items;
+        search(q) => { root.picker-search(q); }
+        pick(key) => {
+            root.picker-open = false;
+            root.react(root.picker-msg-id, key);
+        }
+    }
+}
+
+// The Seen by list beside its message; a press outside closes it.
+export component SeenByLayer inherits Rectangle {
+    in-out property <int> focus-tick;
+    in-out property <length> readers-h;
+    in property <length> readers-left;
+    in property <Msg> readers-msg;
+    in-out property <bool> readers-open;
+    in property <length> readers-y;
+    z: 46;
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.readers-open = false;
+            }
+        }
+    }
+    SeenByList {
+        x: root.readers-left;
+        y: root.readers-y;
+        readers: root.readers-msg.reader-list;
+        init => { root.readers-h = self.height; }
+        changed height => { root.readers-h = self.height; }
+        // Esc: the window's keys do not see it (the popup is not inside them).
+        close => { root.readers-open = false; root.focus-tick += 1; }
+    }
+}
+
+// A message's menu where it was opened; a press outside closes it.
+export component MessageMenuLayer inherits Rectangle {
+    callback copy-link(string);
+    in property <bool> current-is-channel;
+    callback delete(string);
+    callback edit(string);
+    in-out property <int> focus-tick;
+    callback forward-begin(string);
+    in-out property <int> forward-count;
+    in-out property <bool> forward-open;
+    in-out property <string> forward-preview-author;
+    in-out property <string> forward-preview-text;
+    callback mark-unread(string);
+    in-out property <length> menu-h;
+    in property <length> menu-left;
+    in property <Msg> menu-msg;
+    in-out property <bool> menu-open;
+    in property <bool> menu-preview;
+    in property <length> menu-top;
+    in-out property <length> menu-w;
+    callback open-url(string);
+    callback pin(string);
+    in property <bool> posts-mode;
+    in-out property <Msg> reader-msg;
+    in-out property <bool> reader-open;
+    in-out property <length> readers-bottom;
+    in-out property <Msg> readers-msg;
+    in-out property <bool> readers-open;
+    in-out property <length> readers-top;
+    in-out property <length> readers-x;
+    callback reply(string);
+    callback select-begin(string);
+    in-out property <bool> select-mode;
+    in property <string> thread-root;
+    callback toggle-save(string);
+    z: 46;
+    TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
+                root.menu-open = false;
+            }
+        }
+    }
+    msg-menu := MessageMenu {
+        x: root.menu-left;
+        y: root.menu-top;
+        init => {
+            root.menu-w = self.width;
+            root.menu-h = self.height;
+        }
+        changed height => { root.menu-h = self.height; }
+        // Esc: the window's keys do not see it (the menu is not inside them).
+        close => { root.menu-open = false; root.focus-tick += 1; }
+        mine: root.menu-msg.mine;
+        saved: root.menu-msg.saved;
+        translate: root.menu-msg.translate;
+        translate-message => { root.menu-open = false; MediaStore.command("translate", root.menu-msg.id); }
+        see-original => { root.menu-open = false; MediaStore.command("original", root.menu-msg.id); }
+        // Channel posts offer it too; that write is not known yet and says so (actions.rs).
+        can-pin: true;
+        can-follow: !root.menu-preview && root.current-is-channel && root.thread-root == "";
+        pinned: root.menu-msg.pinned;
+        urls: root.menu-msg.urls;
+        reader-count: root.menu-msg.reader-list.length;
+        show-readers => {
+            root.menu-open = false;
+            root.readers-msg = root.menu-msg;
+            root.readers-x = root.menu-left + root.menu-w;
+            root.readers-top = root.menu-top;
+            root.readers-bottom = root.menu-top - 4px;
+            root.readers-open = true;
+        }
+        preview: root.menu-preview;
+        unpin => { root.menu-open = false; PeopleStore.command("pin-unpin", root.menu-msg.id); }
+        open-link(u) => { root.menu-open = false; root.open-url(u); }
+        copy-link-url(u) => { root.menu-open = false; MediaStore.command("link-copy", u); }
+        immersive-reader => { root.menu-open = false; root.reader-msg = root.menu-msg; root.reader-open = true; }
+        share-outlook => { root.menu-open = false; MediaStore.command("outlook", root.menu-msg.id); }
+        report => { root.menu-open = false; MediaStore.command("report", root.menu-msg.id); }
+        translation-settings => { root.menu-open = false; SettingsStore.show("general"); }
+        create-task => { root.menu-open = false; TasksStore.command("task-from-message", root.menu-msg.plain); }
+        following: FindStore.menu-following;
+        // One follow path for channel posts: the same call as the post card's menu.
+        toggle-follow => {
+            root.menu-open = false;
+            ChannelStore.command(FindStore.menu-following ? "unfollow" : "follow-msg", root.menu-msg.id);
+            FindStore.menu-following = !FindStore.menu-following;
+        }
+        reply => {
+            root.menu-open = false;
+            // On the Posts tab a reply goes into the thread: the panel's composer.
+            if root.posts-mode && ChannelStore.thread-id != "" {
+                ChannelStore.thread-focus-tick += 1;
+            } else if root.posts-mode {
+                ChannelStore.open-thread(root.menu-msg.id, true);
+            } else {
+                root.reply(root.menu-msg.id);
+            }
+        }
+        forward-one => {
+            root.menu-open = false;
+            root.forward-count = 1;
+            root.forward-preview-author = root.menu-msg.sender;
+            root.forward-preview-text = root.menu-msg.plain;
+            root.forward-open = true;
+            root.forward-begin(root.menu-msg.id);
+        }
+        forward-many => {
+            root.menu-open = false;
+            root.select-mode = true;
+            root.select-begin(root.menu-msg.id);
+        }
+        copy-link => { root.menu-open = false; root.copy-link(root.menu-msg.id); }
+        toggle-save => { root.menu-open = false; root.toggle-save(root.menu-msg.id); }
+        pin => { root.menu-open = false; root.pin(root.menu-msg.id); }
+        mark-unread => { root.menu-open = false; root.mark-unread(root.menu-msg.id); }
+        remind(delay) => { root.menu-open = false; RemindStore.command("remind", root.menu-msg.id + "\u{9}" + delay); }
+        edit => { root.menu-open = false; root.edit(root.menu-msg.id); }
+        delete => { root.menu-open = false; root.delete(root.menu-msg.id); }
+    }
+}

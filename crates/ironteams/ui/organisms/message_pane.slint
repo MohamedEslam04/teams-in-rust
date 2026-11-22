@@ -1,0 +1,353 @@
+// The conversation's messages: the list (pinned to the newest message, jumps to the unread
+// divider and to a found message), a channel's posts, the jump-to-newest button and the loading
+// and unavailable notices.
+import { ChannelPosts } from "channel_posts.slint";
+import { FindStore } from "../stores/find_store.slint";
+import { ListView } from "std-widgets.slint";
+import { MessageRow } from "message_row.slint";
+import { Msg } from "../tokens/types.slint";
+import { PeopleStore } from "../molecules/people.slint";
+import { SkeletonMessages, Spinner } from "../tokens/motion.slint";
+import { Theme } from "../tokens/theme.slint";
+
+export component MessagePane inherits Rectangle {
+    in property <int> anchor-index;
+    in property <int> anchor-tick;
+    in-out property <bool> at-bottom;
+    callback at-bottom-changed(bool);
+    in property <bool> current-is-channel;
+    in property <string> current-title;
+    callback discard-send(string);
+    in property <int> divider-index;
+    in property <int> divider-tick;
+    callback edit(string);
+    in-out property <int> focus-tick;
+    callback jump-to-newest;
+    callback load-older;
+    in property <bool> loading-latest;
+    in property <bool> loading-older;
+    in-out property <Msg> menu-msg;
+    in-out property <bool> menu-open;
+    in-out property <bool> menu-preview;
+    in-out property <length> menu-x;
+    in-out property <length> menu-y;
+    in property <[Msg]> messages;
+    in property <int> msg-focus-tick;
+    in property <int> new-count;
+    callback open-thread(string);
+    callback open-url(string);
+    in-out property <string> picker-msg-id;
+    in-out property <bool> picker-open;
+    callback picker-search(string);
+    in-out property <length> picker-x;
+    in-out property <length> picker-y;
+    in property <bool> posts-mode;
+    callback react(string, string);
+    in-out property <length> readers-bottom;
+    in-out property <Msg> readers-msg;
+    in-out property <bool> readers-open;
+    in-out property <length> readers-top;
+    in-out property <length> readers-x;
+    callback reply(string);
+    callback retry-send(string);
+    in-out property <int> scroll-tick;
+    in property <bool> select-mode;
+    in property <string> thread-root;
+    callback toggle-select(string);
+    in property <bool> unavailable;
+    in property <string> unavailable-text;
+    vertical-stretch: 1;
+    // Sees every pointer move over the list and passes it on. The list rebuilds
+    // its rows when it jumps (a new message scrolls it down), and a photo
+    // rebuilt under the pointer never hears that the pointer left: this tells
+    // the hover card instead.
+    msg-pointer := TouchArea {
+        // The hovered photo is in the list (its middle is inside the list) and
+        // the pointer is no longer on it.
+        function check() {
+            if PeopleStore.hover-id != ""
+                && PeopleStore.hover-x + PeopleStore.hover-w / 2 > msg-pointer.absolute-position.x
+                && PeopleStore.hover-x + PeopleStore.hover-w / 2 < msg-pointer.absolute-position.x + msg-pointer.width
+                && PeopleStore.hover-y + PeopleStore.hover-h / 2 > msg-pointer.absolute-position.y
+                && PeopleStore.hover-y + PeopleStore.hover-h / 2 < msg-pointer.absolute-position.y + msg-pointer.height
+                && (!msg-pointer.has-hover
+                    || msg-pointer.absolute-position.x + msg-pointer.mouse-x < PeopleStore.hover-x
+                    || msg-pointer.absolute-position.x + msg-pointer.mouse-x > PeopleStore.hover-x + PeopleStore.hover-w
+                    || msg-pointer.absolute-position.y + msg-pointer.mouse-y < PeopleStore.hover-y
+                    || msg-pointer.absolute-position.y + msg-pointer.mouse-y > PeopleStore.hover-y + PeopleStore.hover-h) {
+                PeopleStore.hover-leave(PeopleStore.hover-id);
+            }
+        }
+        changed mouse-x => { msg-pointer.check(); }
+        changed mouse-y => { msg-pointer.check(); }
+        changed has-hover => { msg-pointer.check(); }
+    msg-list := ListView {
+        visible: !root.posts-mode;
+        property <int> tick: root.scroll-tick;
+        property <int> d-tick: root.divider-tick;
+        property <int> a-tick: root.anchor-tick;
+        property <bool> anchoring: false;
+        // Stay pinned to the newest message while content grows (images loading).
+        property <bool> pinned: true;
+        // After a jump to the divider its real position corrects the estimate
+        // (rows that are not on screen only have an estimated height).
+        property <bool> aligning: false;
+        changed pinned => {
+            root.at-bottom = self.pinned;
+            root.at-bottom-changed(self.pinned);
+        }
+        changed tick => {
+            self.pinned = true;
+            self.content-y = min(0px, self.visible-height - self.content-height);
+        }
+        changed a-tick => {
+            self.aligning = true;
+            self.anchoring = true;
+            self.pinned = false;
+        }
+        changed d-tick => {
+            self.aligning = true;
+            self.content-y = min(0px, 24px - self.content-height * root.divider-index / max(1, root.messages.length));
+        }
+        // The content height the last `changed content-height` saw. A content-y change
+        // that arrives with a different height is the content growing under the
+        // view (a card, an image or a voice bubble got its real height), not the
+        // user scrolling up, so it must not unpin the list from the newest message.
+        property <length> seen-height: 0px;
+        // Whether the view is at the very bottom, as the user left it.
+        function recheck() {
+            self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
+        }
+        // The user scrolled (wheel, drag, scrollbar): that is never growth.
+        scrolled => { self.recheck(); }
+        changed content-height => {
+            self.seen-height = self.content-height;
+            if self.pinned && !self.aligning {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+        }
+        changed content-y => {
+            // Pinned only at the very bottom: rows that get their real height while
+            // scrolling up change the content height, and a looser margin pulled the
+            // list back down (the list shook when scrolling up).
+            if self.content-height == self.seen-height {
+                self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
+            }
+            if self.content-y > -40px && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
+                // Until the older page lands: one request per arrival at the top.
+                self.aligning = true;
+                root.load-older();
+            }
+        }
+            for m in root.messages: MessageRow {
+                m: m;
+                max-bubble: min(720px, msg-list.width * 0.75);
+                pane-top: msg-list.absolute-position.y;
+                in-channel: root.current-is-channel && root.thread-root == "";
+                select-mode: root.select-mode;
+                changed y => {
+                    if msg-list.aligning && !msg-list.anchoring && (m.new-above || m.flash) {
+                        msg-list.content-y = min(0px, 24px - self.y);
+                    }
+                }
+                react(k) => { root.react(m.id, k); }
+                reply => { root.reply(m.id); }
+                edit => { root.edit(m.id); }
+                more-reactions(x, y) => {
+                    root.picker-msg-id = m.id;
+                    root.picker-x = x;
+                    root.picker-y = y;
+                    root.picker-open = true;
+                    root.picker-search("");
+                }
+                menu(x, y) => {
+                    root.menu-msg = m;
+                    root.menu-preview = false;
+                    root.menu-x = x;
+                    root.menu-y = y;
+                    root.menu-open = true;
+                    if root.current-is-channel { FindStore.command("menu-follow", m.id); }
+                }
+                show-readers(x, top, bottom) => {
+                    root.readers-msg = m;
+                    root.readers-x = x;
+                    root.readers-top = top;
+                    root.readers-bottom = bottom;
+                    root.readers-open = true;
+                }
+                toggle-select => { root.toggle-select(m.id); }
+                retry-send => { root.retry-send(m.id); }
+                discard-send => { root.discard-send(m.id); }
+                open-url(u) => { root.open-url(u); }
+                open-thread => { root.open-thread(m.id); }
+                profile(id) => {
+                    if id != "" {
+                        PeopleStore.card-by-hover = false;
+                        PeopleStore.anchor-w = 0;
+                        PeopleStore.command("profile", id);
+                    }
+                }
+                profile-at(id, x, y, w, h) => { PeopleStore.open-card(id, x, y, w, h, false); }
+                photo-hover(id, on, x, y, w, h) => {
+                    if on {
+                        PeopleStore.hover-enter(id, x, y, w, h);
+                    } else {
+                        PeopleStore.hover-leave(id);
+                    }
+                }
+            }
+    }
+    }
+    if root.posts-mode: ChannelPosts {
+        width: parent.width;
+        height: parent.height;
+        z: 4;
+        scroll-tick: root.scroll-tick;
+        loading-older: root.loading-older;
+        channel: root.current-title;
+        load-older => { root.load-older(); }
+        react(id, k) => { root.react(id, k); }
+        edit(id) => { root.edit(id); }
+        more-reactions(id, x, y) => {
+            root.picker-msg-id = id;
+            root.picker-x = x;
+            root.picker-y = y;
+            root.picker-open = true;
+            root.picker-search("");
+        }
+        menu(m, x, y) => {
+            root.menu-msg = m;
+            root.menu-preview = false;
+            root.menu-x = x;
+            root.menu-y = y;
+            root.menu-open = true;
+            FindStore.command("menu-follow", m.id);
+        }
+        open-url(u) => { root.open-url(u); }
+        profile(id) => { if id != "" { PeopleStore.command("profile", id); } }
+        retry-send(id) => { root.retry-send(id); }
+        discard-send(id) => { root.discard-send(id); }
+    }
+    // Alt+Shift+M lands here: the arrow keys, Page Up/Down, Home and End scroll the list.
+    msg-scope := FocusScope {
+        width: 0px;
+        height: 0px;
+        property <int> tick: root.msg-focus-tick;
+        changed tick => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.UpArrow { msg-list.content-y = min(0px, msg-list.content-y + 48px); msg-list.recheck(); return accept; }
+            if event.text == Key.DownArrow { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - 48px)); msg-list.recheck(); return accept; }
+            if event.text == Key.PageUp { msg-list.content-y = min(0px, msg-list.content-y + msg-list.visible-height * 0.9); msg-list.recheck(); return accept; }
+            if event.text == Key.PageDown { msg-list.content-y = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y - msg-list.visible-height * 0.9)); msg-list.recheck(); return accept; }
+            if event.text == Key.Home { msg-list.content-y = 0px; msg-list.recheck(); return accept; }
+            if event.text == Key.End { root.scroll-tick += 1; return accept; }
+            if event.text == Key.Escape { root.focus-tick += 1; return accept; }
+            reject
+        }
+    }
+    // Once the bigger list is laid out, the row that was first goes back to the
+    // top of the view: from below, ensure-row-visible puts it there, measured
+    // (rows that were never drawn only have an estimated height).
+    Timer {
+        interval: 30ms;
+        running: msg-list.anchoring;
+        triggered => {
+            msg-list.anchoring = false;
+            msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
+            msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+        }
+    }
+    Timer {
+        interval: 700ms;
+        running: msg-list.aligning;
+        triggered => { msg-list.aligning = false; }
+    }
+    if !root.at-bottom && root.messages.length > 0 && !root.posts-mode: Rectangle {
+        z: 5;
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 12px;
+        width: jump-text.preferred-width + 28px;
+        height: 32px;
+        border-radius: 16px;
+        background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: #00000080;
+        jump-text := Text {
+            text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
+            color: #ffffff;
+            font-size: 12px * Theme.font-scale;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        jump-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.scroll-tick += 1;
+                root.jump-to-newest();
+            }
+        }
+    }
+    if root.unavailable: Rectangle {
+        z: 7;
+        background: Theme.main;
+        VerticalLayout {
+            alignment: center;
+            spacing: 12px;
+            padding-left: 24px;
+            padding-right: 24px;
+            Image { source: @image-url("../icons/chat.svg"); colorize: Theme.border; width: 72px; height: 72px; }
+            Text {
+                text: root.unavailable-text;
+                color: Theme.fg-subtle;
+                font-size: 14px * Theme.font-scale;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+    }
+    // The Posts tab shows its own line (posts load at the top or the bottom).
+    if root.loading-older && !root.posts-mode: Rectangle {
+        y: 8px;
+        height: 24px;
+        width: 200px;
+        x: (parent.width - 200px) / 2;
+        border-radius: 12px;
+        background: Theme.surface;
+        Spinner { x: 12px; y: 5px; }
+        Text {
+            x: 30px;
+            width: parent.width - 38px;
+            text: @tr("Loading older messages…");
+            color: Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: center;
+        }
+    }
+    // Opening a chat or channel that has nothing stored yet: grey bubbles with a
+    // highlight passing over them until its newest page arrives.
+    if root.loading-latest && root.messages.length == 0 && !root.unavailable && root.thread-root == "": SkeletonMessages {
+        z: 4;
+        label: root.posts-mode ? @tr("Loading posts") : @tr("Loading messages");
+    }
+    if root.loading-latest && !root.loading-older: Rectangle {
+        z: 6;
+        // Below the Posts tab's "Post in channel" bar.
+        y: root.posts-mode ? 52px : 8px;
+        height: 24px;
+        width: latest-text.preferred-width + 52px;
+        x: (parent.width - self.width) / 2;
+        border-radius: 12px;
+        background: Theme.surface;
+        Spinner { x: 12px; y: 5px; }
+        latest-text := Text {
+            x: 30px;
+            width: parent.width - 42px;
+            text: root.posts-mode ? @tr("Loading new posts…") : @tr("Loading new messages…");
+            color: Theme.fg-muted;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

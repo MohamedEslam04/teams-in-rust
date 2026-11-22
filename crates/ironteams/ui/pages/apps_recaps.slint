@@ -381,29 +381,6 @@ export component RecapsView inherits Rectangle {
     if RecapsStore.page == "detail": RecapDetailPage { width: parent.width; height: parent.height; }
 }
 
-// The "Recap" entry of a meeting chat's header tabs (next to Chat and Shared). `tab` is bound to
-// the header's `FindStore.chat-tab`, which is `recap` while it shows.
-export component RecapTab inherits Rectangle {
-    in property <string> chat-id;
-    in-out property <string> tab;
-    property <bool> active: root.tab == "recap";
-    width: min(tab-label.preferred-width, 200px);
-    accessible-role: AccessibleRole.tab;
-    accessible-label: "Recap";
-    accessible-checked: root.active;
-    accessible-action-default => { root.open(); }
-    function open() {
-        root.tab = "recap";
-        RecapsStore.command("recaps-chat", root.chat-id);
-    }
-    VerticalLayout {
-        alignment: center;
-        tab-label := Text { text: "Recap"; color: root.active ? Theme.fg : Theme.fg-muted; font-size: 14px * Theme.font-scale; font-weight: root.active ? 600 : 400; overflow: elide; accessible-role: none; }
-        Rectangle { height: 3px; border-radius: 1px; background: root.active ? Theme.accent : transparent; }
-    }
-    TouchArea { mouse-cursor: pointer; clicked => { root.open(); } }
-}
-
 // A meeting chat's Recap tab: the same recap page, without the way back to the home.
 export component RecapsChatPane inherits Rectangle {
     background: Theme.main;
