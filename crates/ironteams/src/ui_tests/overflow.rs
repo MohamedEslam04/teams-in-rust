@@ -3,7 +3,7 @@
 //! past the edge of its list.
 
 use super::*;
-use crate::{ChannelRow, ChatRow, TeamRow};
+use crate::{ChannelRow, ChatRow, QuoteItem, TeamRow};
 
 /// A long Latin line, longer than any row is wide.
 pub(crate) const LONG: &str = "Quarterly planning and roadmap review with the whole platform \
@@ -159,8 +159,13 @@ fn message_rows_keep_a_long_sender_a_system_line_and_a_quote_inside_the_row() {
     system.system = true;
     let mut quoting = msg("m3", "I agree", false);
     quoting.sender = LONG_AR.into();
-    quoting.quote_author = LONG.into();
-    quoting.quote_text = LONG.into();
+    quoting.quotes = ModelRc::new(VecModel::from(vec![QuoteItem {
+        author: LONG.into(),
+        text: LONG.into(),
+        id: SharedString::default(),
+        time: "11/23/2026 11:54 AM".into(),
+        rtl: false,
+    }]));
     let app = app_with_messages(vec![long_sender, system, quoting]);
     let all = rows(&app);
     assert_eq!(all.len(), 3);

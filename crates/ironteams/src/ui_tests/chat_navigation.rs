@@ -281,7 +281,8 @@ fn a_reply_quote_jumps_to_the_original_or_says_it_is_gone() {
         .iter()
         .find(|m| m.id == "9500")
         .unwrap();
-    assert_eq!(reply.quote_id, "9000");
+    assert_eq!(reply.quotes.row_count(), 1);
+    assert_eq!(reply.quotes.row_data(0).unwrap().id, "9000");
 
     click(&the_button(&h.app, "Go to the original message"));
     assert_eq!(log.borrow().last().unwrap(), "quote-jump 9000");

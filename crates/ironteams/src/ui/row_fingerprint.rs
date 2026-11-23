@@ -203,9 +203,7 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         deleted,
         system,
         subject,
-        quote_author,
-        quote_text,
-        quote_id,
+        quotes,
         markdown,
         segments,
         plain,
@@ -260,18 +258,7 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         system,
     )
         .hash(h);
-    (
-        subject,
-        quote_author,
-        quote_text,
-        quote_id,
-        markdown,
-        segments,
-        plain,
-        rtl,
-        reply_count,
-    )
-        .hash(h);
+    (subject, quotes, markdown, segments, plain, rtl, reply_count).hash(h);
     (
         pending,
         saved,
@@ -345,9 +332,7 @@ pub(crate) fn sample_row(id: &str, text: &str) -> MsgData {
         deleted: false,
         system: false,
         subject: String::new(),
-        quote_author: String::new(),
-        quote_text: String::new(),
-        quote_id: String::new(),
+        quotes: vec![],
         markdown: text.into(),
         segments: vec![],
         plain: text.into(),

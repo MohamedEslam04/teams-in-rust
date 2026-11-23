@@ -13,13 +13,24 @@ pub enum Segment {
     Code(String),
 }
 
+/// One message a reply quotes, drawn as a card above the text.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct QuoteCard {
+    pub author: String,
+    /// The quoted text; a line break of the original is a `'\n'`.
+    pub text: String,
+    /// The quoted message (`""`: none), for the jump to it.
+    pub id: String,
+    /// When the quoted message was sent, epoch ms.
+    pub time_ms: Option<i64>,
+    pub rtl: bool,
+}
+
 /// What a message bubble needs to draw its content.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Rendered {
-    pub quote_author: String,
-    pub quote_text: String,
-    /// The id of the message the reply quote points to (`""`: none, or not a reply).
-    pub quote_id: String,
+    /// The messages this one quotes, in order (a message can quote several).
+    pub quotes: Vec<QuoteCard>,
     /// The whole body as Markdown; a code block is flattened to inline code here.
     pub markdown: String,
     /// The body as text and code blocks, in order. Empty when it has no code block (then
@@ -207,18 +218,32 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
     let mut first_dir: Option<Dir> = None;
     for b in &rt.blocks {
         match b {
+            // A Teams reply quote is a card wherever it stands; a plain blockquote only when it
+            // opens the message.
             Block::Quote {
                 message_id,
                 author,
+                time_ms,
                 preview,
+                dir,
                 ..
-            } if r.quote_text.is_empty() && md.is_empty() => {
-                r.quote_author = author.clone().unwrap_or_default();
-                r.quote_text = preview.clone();
-                r.quote_id = message_id.clone().unwrap_or_default();
+            } if message_id.is_some()
+                || author.is_some()
+                || (r.quotes.is_empty() && md.is_empty()) =>
+            {
+                r.quotes.push(QuoteCard {
+                    author: author.clone().unwrap_or_default(),
+                    text: preview.clone(),
+                    id: message_id.clone().unwrap_or_default(),
+                    time_ms: *time_ms,
+                    rtl: *dir == Dir::Rtl,
+                });
             }
             Block::Quote { preview, .. } => {
-                md.push(Piece::text(format!("> {}", escape(preview))));
+                md.push(Piece::text(format!(
+                    "> {}",
+                    escape(&preview.replace('\n', " "))
+                )));
                 plain.push(preview.clone());
             }
             Block::Paragraph { dir, spans } => {
@@ -362,10 +387,11 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
     }
     render::linkify_doc(&mut doc);
     let mut md: Vec<Piece> = Vec::new();
-    for (i, b) in doc.blocks.iter().enumerate() {
+    // The reply quotes are drawn as cards: leave out as many quote blocks as there are cards.
+    let mut cards = r.quotes.len();
+    for b in &doc.blocks {
         match b {
-            // The reply quote is drawn above the bubble.
-            RichBlock::Quote(_) if i == 0 && !r.quote_text.is_empty() => {}
+            RichBlock::Quote(_) if cards > 0 => cards -= 1,
             RichBlock::Paragraph(spans) => md.push(Piece::text(spans_md(spans))),
             RichBlock::Heading { spans, .. } => {
                 let bold: Vec<Span> = spans
@@ -578,9 +604,17 @@ mod tests {
     fn reply_quote_is_extracted() {
         let html = render::reply_html("1", "8:orgid:a", "Sara", 1, "original text", "my reply");
         let x = r(&html);
-        assert_eq!(x.quote_author, "Sara");
-        assert_eq!(x.quote_text, "original text");
-        assert_eq!(x.quote_id, "1", "the quoted message, for the jump to it");
+        assert_eq!(
+            x.quotes,
+            vec![QuoteCard {
+                author: "Sara".into(),
+                text: "original text".into(),
+                id: "1".into(),
+                time_ms: Some(1),
+                rtl: false,
+            }],
+            "id is the quoted message, for the jump to it"
+        );
         assert_eq!(x.markdown, "my reply");
     }
 
@@ -689,8 +723,42 @@ mod tests {
             render::reply_quote_html("1", "8:orgid:a", "Sara", 1, "original")
         );
         let x = rich(&html);
-        assert_eq!(x.quote_text, "original");
+        assert_eq!(x.quotes.len(), 1);
+        assert_eq!(x.quotes[0].text, "original");
         assert_eq!(x.markdown, "**Title**");
+    }
+
+    #[test]
+    fn every_reply_quote_is_a_card_and_none_leaks_into_the_text() {
+        let quote = |id: &str, name: &str, text: &str| {
+            render::reply_quote_html(id, &format!("8:orgid:{id}"), name, 1731234000000, text)
+        };
+        let html = format!(
+            "{}{}{}<p>my answer</p>",
+            quote("11", "Sara", "one\ntwo"),
+            quote("22", "Omar", "بص انا غلطت"),
+            quote("33", "Sara", "three"),
+        );
+        let x = r(&html);
+        let cards: Vec<_> = x
+            .quotes
+            .iter()
+            .map(|q| (q.author.as_str(), q.text.as_str(), q.id.as_str(), q.rtl))
+            .collect();
+        assert_eq!(
+            cards,
+            vec![
+                ("Sara", "one two", "11", false),
+                ("Omar", "بص انا غلطت", "22", true),
+                ("Sara", "three", "33", false),
+            ]
+        );
+        assert_eq!(x.markdown, "my answer");
+        assert!(!x.markdown.contains('>') && !x.markdown.contains('<'));
+        // A message with a heading takes the rich path: still three cards and no quote text.
+        let y = rich(&format!("{html}<h2>Title</h2>"));
+        assert_eq!(y.quotes.len(), 3);
+        assert_eq!(y.markdown, "my answer\n\n**Title**");
     }
 
     #[test]

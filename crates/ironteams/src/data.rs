@@ -194,6 +194,19 @@ pub struct ReactData {
     pub people: Vec<ReactorData>,
 }
 
+/// One quoted message of a reply, drawn as a card above the text.
+#[derive(Clone, Hash)]
+pub struct QuoteData {
+    pub author: String,
+    /// The quoted text; a line break of the original is a `'\n'`.
+    pub text: String,
+    /// The quoted message (`""`: none): a click on the card jumps there.
+    pub id: String,
+    /// When the quoted message was sent, as the bubble shows it (`""`: unknown).
+    pub time: String,
+    pub rtl: bool,
+}
+
 #[derive(Clone)]
 pub struct MsgData {
     pub id: String,
@@ -209,10 +222,8 @@ pub struct MsgData {
     pub deleted: bool,
     pub system: bool,
     pub subject: String,
-    pub quote_author: String,
-    pub quote_text: String,
-    /// The message the reply quote points to (`""`: none): a click on the quote jumps there.
-    pub quote_id: String,
+    /// The messages this one quotes, one card each.
+    pub quotes: Vec<QuoteData>,
     pub markdown: String,
     /// The text and code blocks of the body, in order; empty when it has no code block.
     pub segments: Vec<crate::markdown::Segment>,

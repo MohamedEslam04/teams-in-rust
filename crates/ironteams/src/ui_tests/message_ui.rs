@@ -3,7 +3,7 @@
 //! (Mentions in the message's color are `markdown::tests`: `StyledText` has no element to find.)
 
 use super::*;
-use crate::{BodyPart, MediaStore};
+use crate::{BodyPart, MediaStore, QuoteItem};
 
 /// Records the `MediaStore` commands as `"media <name> <argument>"`.
 fn media_log(app: &AppWindow) -> Log {
@@ -187,4 +187,55 @@ fn the_drop_zone_stays_hidden_where_a_drop_is_not_an_attachment() {
     assert!(drop_zone_shown(&app), "back on the chat");
     app.set_current_id("".into());
     assert!(!drop_zone_shown(&app), "no chat is open");
+}
+
+fn quote_item(author: &str, text: &str, time: &str, rtl: bool) -> QuoteItem {
+    QuoteItem {
+        author: author.into(),
+        text: text.into(),
+        id: "1731234100000".into(),
+        time: time.into(),
+        rtl,
+    }
+}
+
+#[test]
+fn a_message_that_quotes_three_messages_draws_three_cards() {
+    let mut m = msg("m1", "my answer", false);
+    m.quotes = ModelRc::new(VecModel::from(vec![
+        quote_item(
+            "Sara Hassan",
+            "first line\nsecond line",
+            "11/23/2026 11:50 AM",
+            false,
+        ),
+        quote_item("Omar Ali", "بص انا غلطت\nخلاص", "11/23/2026 11:52 AM", true),
+        quote_item("Sara Hassan", "third", "11/23/2026 11:54 AM", false),
+    ]));
+    let app = app_with_messages(vec![m]);
+    let row = rows(&app).remove(0);
+    let all = super::overflow::texts(&row);
+    let find = |text: &str| -> ElementHandle {
+        let mut hits = all.iter().filter(|t| label(t) == text);
+        let hit = hits.next().unwrap_or_else(|| panic!("no text {text:?}"));
+        assert!(hits.next().is_none(), "{text:?} drawn once");
+        hit.clone()
+    };
+    let bodies = [
+        find("first line\nsecond line"),
+        find("بص انا غلطت\nخلاص"),
+        find("third"),
+    ];
+    // Each card has its author and its time.
+    find("Omar Ali");
+    find("11/23/2026 11:52 AM");
+    find("11/23/2026 11:54 AM");
+    // The cards stack in order.
+    let tops: Vec<f32> = bodies.iter().map(|b| b.absolute_position().y).collect();
+    assert!(tops[0] < tops[1] && tops[1] < tops[2], "{tops:?}");
+    // The quoted lines keep their break: two lines are taller than one.
+    assert!(bodies[0].size().height > bodies[2].size().height + 5.);
+    super::overflow::assert_texts_inside(&row, "row with three quote cards");
+    // No raw markup or quote marks leak as text.
+    assert!(all.iter().all(|t| !label(t).contains(['<', '>'])));
 }
