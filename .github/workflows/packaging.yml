@@ -70,6 +70,10 @@ jobs:
           # Versioned dirs: a vendored crate named `xml` (velopack's) would otherwise sit at vendor/xml,
           # where atspi-common's build-time D-Bus checks look for their XML files.
           cargo vendor --locked --versioned-dirs vendor-dir/vendor
+          # cargo vendor writes the files with the current time, newer than the cached build: the
+          # build scripts that watch their own files (ring, sqlite...) would run again and their
+          # dependents rebuild. An old fixed time keeps them current.
+          find vendor-dir/vendor -exec touch -h -d @315532800 {} +
           # Only an input of this build (never shipped): fast compression.
           tar -C vendor-dir -c vendor | xz -T0 -0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
           # The build reads the crates from vendor-dir/vendor, a path that stays the same from one
