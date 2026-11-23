@@ -5,12 +5,13 @@
 //! Where it comes from (see `teams_proto::live_call` for the payload shapes):
 //! - the conversation's messages: an `Event/Call` `callStarted` with no `callEnded` of the same
 //!   call after it (`teams_proto::meeting_events`). The started message's time is the start of
-//!   the call; it is the only start time known (the live state has none).
+//!   the call when the live state gives none.
 //! - the conversation's live state (`awareness_conversationLiveState*`), read for the open
 //!   conversation when it opens, when its messages start or end a call, and every
 //!   [`POLL_EVERY`] while it stays open and the window is shown. An ended or lapsed state hides
 //!   the strip even when the messages missed the call's end; a missing state leaves it to the
-//!   messages.
+//!   messages. Its `callStartTime` is the strip's start (and the in-call timer's,
+//!   [`Engine::live_call_start`]).
 //!
 //! Who is in the call: no request is known that lists a running call's participants without
 //! joining it, so the strip shows only who the live state names (the call's initiator, when it
@@ -104,8 +105,12 @@ pub(crate) fn merge(row: Option<&RowCall>, polled: &Polled, now_ms: i64) -> Opti
     match polled {
         // The service's word on an ended call wins over a start whose end was missed.
         Polled::Known(Some(state)) if !state.is_live(now_ms) => None,
+        // The service's `callStartTime` first, the "started" message second.
         Polled::Known(Some(state)) => Some(Ongoing {
-            started_ms,
+            started_ms: state
+                .started_ms
+                .filter(|s| now_ms - s < LONGEST_CALL_MS)
+                .or(started_ms),
             initiator: state.initiator.clone(),
         }),
         Polled::Known(None) | Polled::Unknown => row.map(|r| Ongoing {
@@ -297,6 +302,16 @@ impl State {
         false
     }
 
+    /// The live state's start of `chat`'s call, when it was read for `chat` and is live.
+    fn live_start(&self, chat: &str, now_ms: i64) -> Option<i64> {
+        match &self.polled {
+            Polled::Known(Some(state)) if self.conv == chat && state.is_live(now_ms) => {
+                state.started_ms
+            }
+            _ => None,
+        }
+    }
+
     fn due(&self, now: Instant) -> bool {
         !self.polling
             && self
@@ -478,6 +493,13 @@ impl Engine {
         });
     }
 
+    /// When `chat`'s call started by its live state (`callStartTime`, unix ms), when that state
+    /// was read for it (the open conversation) and says the call goes on. The in-call header
+    /// timer takes it before the "Meeting started" message.
+    pub(super) fn live_call_start(&self, chat: &str) -> Option<i64> {
+        self.ongoing.lock().unwrap().live_start(chat, now_ms())
+    }
+
     /// The strip's Join: the pre-join screen of the conversation's call.
     pub(super) fn join_ongoing(self: &Arc<Self>, conv: &str) -> anyhow::Result<()> {
         let state = {
@@ -608,6 +630,36 @@ mod tests {
         assert_eq!(
             merge(None, &Polled::Known(Some(Box::new(live(true)))), now).map(|o| o.started_ms),
             Some(None)
+        );
+        // The live state's `callStartTime` wins over the message's time; a start older than
+        // the longest call is left for the message's.
+        let timed = |started| LiveCall {
+            started_ms: Some(started),
+            ..live(true)
+        };
+        let earlier = T0 - 30_000;
+        assert_eq!(
+            merge(
+                Some(&row),
+                &Polled::Known(Some(Box::new(timed(earlier)))),
+                now
+            )
+            .and_then(|o| o.started_ms),
+            Some(earlier)
+        );
+        assert_eq!(
+            merge(None, &Polled::Known(Some(Box::new(timed(earlier)))), now)
+                .and_then(|o| o.started_ms),
+            Some(earlier)
+        );
+        assert_eq!(
+            merge(
+                Some(&row),
+                &Polled::Known(Some(Box::new(timed(now - LONGEST_CALL_MS)))),
+                now
+            )
+            .and_then(|o| o.started_ms),
+            Some(T0)
         );
         // An ended or lapsed state hides a start whose end was missed.
         assert_eq!(
@@ -815,6 +867,32 @@ mod tests {
             Some("(none)")
         );
         assert_eq!(capture_change(&mut last, a, &read(&[])), None);
+    }
+
+    #[test]
+    fn the_in_call_timer_gets_the_live_start_only_for_the_read_conversation_while_live() {
+        let mut s = State::default();
+        s.rows("19:meeting_a@thread.v2", None);
+        assert_eq!(
+            s.live_start("19:meeting_a@thread.v2", T0),
+            None,
+            "not read yet"
+        );
+        let state = LiveCall {
+            started_ms: Some(T0 - 60_000),
+            ..live(true)
+        };
+        s.polled = Polled::Known(Some(Box::new(state.clone())));
+        assert_eq!(
+            s.live_start("19:meeting_a@thread.v2", T0),
+            Some(T0 - 60_000)
+        );
+        assert_eq!(s.live_start("19:meeting_b@thread.v2", T0), None);
+        s.polled = Polled::Known(Some(Box::new(LiveCall {
+            active: false,
+            ..state
+        })));
+        assert_eq!(s.live_start("19:meeting_a@thread.v2", T0), None, "ended");
     }
 
     #[test]

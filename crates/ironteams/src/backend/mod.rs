@@ -541,11 +541,15 @@ impl Engine {
                 e.avatars.lock().unwrap().get(&*key).cloned().flatten()
             }
         });
-        // A meeting's header timer counts from its "Meeting started" message, which the chat's
-        // cached rows hold.
+        // A meeting's header timer counts from the call's `callStartTime` in its chat's live
+        // state (read while the chat is open, `ongoing_call`), else from its "Meeting started"
+        // message, which the chat's cached rows hold.
         let weak = Arc::downgrade(&engine);
         engine.calls.set_meeting_start(move |chat| {
             let e = weak.upgrade()?;
+            if let Some(start) = e.live_call_start(chat) {
+                return Some(start);
+            }
             let rows = e
                 .store
                 .lock()
