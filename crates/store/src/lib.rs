@@ -147,7 +147,8 @@ fn insert_conversation(conn: &Connection, c: &ConversationRow) -> Result<()> {
              last_activity_ms, last_preview, unread, favorite, read_horizon_ms) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) \
          ON CONFLICT(id) DO UPDATE SET \
-             kind = excluded.kind, title = excluded.title, \
+             kind = excluded.kind, \
+             title = CASE WHEN trim(excluded.title) = '' THEN title ELSE excluded.title END, \
              team_id = excluded.team_id, team_name = excluded.team_name, \
              last_activity_ms = excluded.last_activity_ms, \
              last_preview = excluded.last_preview, unread = excluded.unread, \
@@ -260,6 +261,21 @@ impl Store {
             .prepare_cached("DELETE FROM kv WHERE key = ?1")?
             .execute([unread_mark_key(id)])?;
         Ok(())
+    }
+
+    /// Writes the real names of channels (from the aggregator's team list) over the stored
+    /// titles, so a title that was a stand-in is corrected. Blank names and unknown or
+    /// non-channel ids are skipped.
+    pub fn set_channel_titles(&mut self, names: &[(String, String)]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        for (id, name) in names.iter().filter(|(_, n)| !n.trim().is_empty()) {
+            tx.prepare_cached(
+                "UPDATE conversations SET title = ?2 \
+                 WHERE id = ?1 AND kind = 'channel' AND title <> ?2",
+            )?
+            .execute(params![id, name])?;
+        }
+        Ok(tx.commit()?)
     }
 
     pub fn set_favorite(&self, id: &str, fav: bool) -> Result<()> {

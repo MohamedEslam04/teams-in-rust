@@ -8,6 +8,7 @@ use store::{ConvKind, ConversationRow, UserRow};
 const GROUP: &str = "19:unnamed@thread.v2";
 const BARE_GROUP: &str = "19:bare@thread.v2";
 const CHANNEL: &str = "19:nameless@thread.tacv2";
+const PRIVATE: &str = "19:private_leads@thread.tacv2";
 const MEETING: &str = "19:meeting_sprint@thread.v2";
 const TITLED_GROUP: &str = "19:design_review@thread.v2";
 // A guest whose stored profile has no `#EXT#` sign-in name: only a profile lookup says guest.
@@ -100,6 +101,8 @@ fn harness() -> Harness {
         row(GROUP, ConvKind::Group, ""),
         row(BARE_GROUP, ConvKind::Group, "  "),
         row(CHANNEL, ConvKind::Channel, ""),
+        // A private channel the sync stored under the stand-in "General".
+        row(PRIVATE, ConvKind::Channel, "General"),
         row(MEETING, ConvKind::Meeting, "Sprint review"),
     ] {
         store.upsert_conversation(&r).unwrap();
@@ -199,6 +202,18 @@ fn the_header_title_and_member_count_switch_together() {
 fn a_channel_without_a_name_is_general() {
     let h = harness();
     assert_eq!(titles(&h.app)[CHANNEL], "General");
+}
+
+#[test]
+fn a_private_channel_stored_as_general_is_corrected_by_the_team_list() {
+    let h = harness();
+    let teams = teams_proto::teams::parse_teams(&serde_json::json!({"teams": [{
+        "id": "19:team1@thread.tacv2", "displayName": "Orchid",
+        "channels": [{"id": PRIVATE, "displayName": "Leads", "channelType": 1, "isFavorite": true}]
+    }]}));
+    h.engine.test_set_teams(&teams);
+    h.runner()(Cmd::SetFilter("all".into()));
+    assert_eq!(titles(&h.app)[PRIVATE], "Leads");
 }
 
 /// How many elements carry the accessible `label`: the list's rows (the Meetings section may be
