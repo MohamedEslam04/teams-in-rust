@@ -151,9 +151,9 @@ pub(super) fn waves(w: usize, h: usize) -> Canvas {
 pub(super) fn dots(w: usize, h: usize) -> Canvas {
     let (ground, dot) = (hex(0x1f2a44), hex(0x7f9cf5));
     Canvas::new(w, h, |x, y| {
-        let (gx, gy) = (x * 32.0, y * 18.0);
+        let (gx, gy) = (x * 16.0, y * 9.0);
         let (fx, fy) = (gx.fract() - 0.5, gy.fract() - 0.5);
-        if (fx * fx + fy * fy).sqrt() < 0.22 {
+        if (fx * fx + fy * fy).sqrt() < 0.3 {
             mix(ground, dot, 0.35 + 0.65 * noise(gy as u32 * 64 + gx as u32))
         } else {
             ground

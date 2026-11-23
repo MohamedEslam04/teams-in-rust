@@ -313,8 +313,6 @@ pub fn check_body(bytes: &[u8], kind: Kind) -> Result<(), String> {
 /// Called when something arrived (a few thumbnails, or a full picture): the panel redraws.
 pub type Notify = Arc<dyn Fn() + Send + Sync>;
 
-/// How long one request may take.
-const TIMEOUT: Duration = Duration::from_secs(30);
 /// The pause after each thumbnail, so the rest trickle in behind everything else.
 const PAUSE: Duration = Duration::from_millis(150);
 /// The panel redraws after this many new thumbnails (and at the end).

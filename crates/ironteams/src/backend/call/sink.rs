@@ -174,7 +174,7 @@ impl Shared {
 
     /// Something arrived from Teams' background CDN: the panel's tiles are listed again, and a
     /// chosen picture that was missing goes on the camera.
-    #[cfg(feature = "calls")]
+    #[cfg(all(feature = "calls", not(test)))]
     pub(super) fn teams_changed(&self) {
         self.fx.lock().unwrap().teams_changed();
         self.push_fx();
