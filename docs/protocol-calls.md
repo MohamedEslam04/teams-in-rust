@@ -55,6 +55,7 @@ their meetings. Command: `ironteams-cli call join --secs 60 --out <wav> --dump <
 10. **Remote tracks.**
    - Teams' SDP names no SSRCs, only `a=x-ssrc-range`, so a remote track can arrive with an unknown kind.
    - Every track must be drained. Otherwise webrtc-rs's queue fills and the packets are dropped.
+   - webrtc-rs routes an SSRC no `a=ssrc` declares only while the session has a single RTP line. With the camera or sharing line next to audio (the default since 2026-11-21), every remote audio packet was dropped (live on 6c725624: participants shown, nobody heard). The inbound rewrite now declares a one-SSRC range (`N-N`, the audio line's) as `a=ssrc:N`. A video line's 100-SSRC range is still undeclared.
 
 ## Live 2026-11-19: invitation without offer; offerer path unverified until next live test
 

@@ -348,8 +348,30 @@ pub fn from_teams_with_data(
         if !directed && m.port != "0" {
             out.push("a=sendrecv".to_owned());
         }
+        // webrtc-rs routes an SSRC that no `a=ssrc` declares only while the session has a single
+        // RTP line; with the camera or sharing line next to audio it dropped every packet of the
+        // other side's audio. Teams declares the SSRC as a one-SSRC range instead.
+        if let Some(ssrc) = single_ssrc(section).filter(|_| m.port != "0") {
+            out.push(format!("a=ssrc:{ssrc} cname:{ssrc}"));
+        }
     }
     Ok(join(out))
+}
+
+/// The SSRC a section sends from when it declares no `a=ssrc` of its own and its
+/// `a=x-ssrc-range` names exactly one (the audio line's `N-N`). A wider range (a video line's
+/// hundred) and the placeholder `1-1` of a line that sends nothing name none.
+fn single_ssrc(section: &[String]) -> Option<u32> {
+    if section.iter().any(|l| attr(l, "ssrc").is_some()) {
+        return None;
+    }
+    let range = section.iter().find_map(|l| attr(l, "x-ssrc-range"))?;
+    if range == NO_SSRC_RANGE {
+        return None;
+    }
+    let (first, last) = range.split_once('-')?;
+    let first: u32 = first.trim().parse().ok()?;
+    (last.trim().parse::<u32>().ok()? == first).then_some(first)
 }
 
 /// A Teams `x-data` section as the WebRTC SCTP section webrtc-rs reads: its transport lines
