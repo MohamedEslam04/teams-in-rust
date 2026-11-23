@@ -225,10 +225,11 @@ export component MorePanel inherits Rectangle {
         PanelHeader { title: "More"; }
         // Taller than a short window: the panel scrolls, and an open device list with it.
         ScrollView {
+            // As wide as the panel, not as wide as the widest row's natural width (that one is
+            // centred in a viewport of its own size and pushes the content out of the window).
+            viewport-width: self.width;
             VerticalLayout {
-                // The panel's width less the scrollbar, not the width of the longest unwrapped
-                // line: no sideways scroll.
-                width: parent.width - 12px;
+                width: parent.width;
                 spacing: 12px;
                 alignment: start;
                 if root.fold: HorizontalLayout {
