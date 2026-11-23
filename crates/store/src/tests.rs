@@ -1894,3 +1894,55 @@ fn mention_candidates_look_only_at_the_newest_window_of_messages() {
     assert!(s.mention_candidates("c", 0, "x", 3).unwrap().is_empty());
     assert_eq!(s.mention_candidates("c", 0, "x", 4).unwrap().len(), 1);
 }
+
+#[test]
+fn a_blank_title_does_not_overwrite_a_known_channel_name() {
+    let mut s = Store::open_in_memory().unwrap();
+    let mut row = conv("19:p@thread.tacv2", ConvKind::Channel, "frontend", 1);
+    s.upsert_conversation(&row).unwrap();
+    for blank in ["", "  "] {
+        row.title = blank.into();
+        row.last_activity_ms += 1;
+        s.upsert_conversations(std::slice::from_ref(&row)).unwrap();
+        let got = s.conversation("19:p@thread.tacv2").unwrap().unwrap();
+        assert_eq!(got.title, "frontend", "a blank title is no title");
+        assert_eq!(
+            got.last_activity_ms, row.last_activity_ms,
+            "the rest updates"
+        );
+    }
+    // A real name still replaces it (a rename).
+    row.title = "web".into();
+    s.upsert_conversations(&[row]).unwrap();
+    assert_eq!(
+        s.conversation("19:p@thread.tacv2").unwrap().unwrap().title,
+        "web"
+    );
+}
+
+#[test]
+fn channel_titles_are_corrected_from_the_team_list() {
+    let mut s = Store::open_in_memory().unwrap();
+    s.upsert_conversation(&conv("c1", ConvKind::Channel, "General", 1))
+        .unwrap();
+    s.upsert_conversation(&conv("c2", ConvKind::Channel, "keep", 1))
+        .unwrap();
+    s.upsert_conversation(&conv("g1", ConvKind::Group, "Planning", 1))
+        .unwrap();
+    s.set_channel_titles(&[
+        ("c1".into(), "Leads".into()),
+        ("c2".into(), " ".into()),
+        ("g1".into(), "Other".into()),
+        ("missing".into(), "Ghost".into()),
+    ])
+    .unwrap();
+    let title = |id: &str| s.conversation(id).unwrap().map(|c| c.title);
+    assert_eq!(title("c1").as_deref(), Some("Leads"));
+    assert_eq!(
+        title("c2").as_deref(),
+        Some("keep"),
+        "a blank name is skipped"
+    );
+    assert_eq!(title("g1").as_deref(), Some("Planning"), "only channels");
+    assert_eq!(title("missing"), None);
+}
