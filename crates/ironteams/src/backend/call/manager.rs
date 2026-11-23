@@ -93,6 +93,23 @@ impl CallManager {
         {
             self.hub.start();
             *MANAGER.lock().unwrap() = Some(Arc::new(self.clone()));
+            // Teams' background pictures: the thumbnails are fetched in the background, and the
+            // Video effects panel redraws as they arrive.
+            #[cfg(not(test))]
+            {
+                if let Ok(paths) = session::Paths::new() {
+                    let me = Arc::downgrade(&self.shared);
+                    self.shared.fx.lock().unwrap().use_teams(
+                        super::teams_backgrounds::dir(&paths.data_dir),
+                        Arc::new(move || {
+                            if let Some(shared) = me.upgrade() {
+                                shared.teams_changed();
+                            }
+                        }),
+                    );
+                    self.shared.push_fx();
+                }
+            }
         }
     }
 
@@ -235,6 +252,17 @@ impl CallManager {
                 .ui
                 .info("That picture can't be used as a background.".into());
         }
+        self.shared.push_fx();
+    }
+
+    /// A Teams background picture is in `dir` (tests): the panel lists and applies it.
+    #[cfg(all(test, feature = "calls"))]
+    pub fn keep_teams_in(&self, dir: std::path::PathBuf) {
+        self.shared
+            .fx
+            .lock()
+            .unwrap()
+            .use_teams(dir, Arc::new(|| {}));
         self.shared.push_fx();
     }
 

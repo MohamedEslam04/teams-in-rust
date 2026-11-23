@@ -235,7 +235,7 @@ pub fn need(modified: Option<SystemTime>, now: SystemTime) -> Need {
 }
 
 /// What the file at `path` needs now.
-fn need_of(path: &Path) -> Need {
+pub(crate) fn need_of(path: &Path) -> Need {
     let modified = std::fs::metadata(path)
         .ok()
         .filter(|m| m.is_file())
@@ -352,7 +352,7 @@ fn release(sound: &'static Original, ok: bool) {
 }
 
 /// A plain client for a public CDN: HTTPS only, a timeout, no cookies and no credentials.
-fn client() -> Result<reqwest::Client, String> {
+pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent("IronTeams")
         .timeout(TIMEOUT)
@@ -475,7 +475,7 @@ async fn sync_dir(dir: PathBuf) {
 }
 
 /// Runs `job` on a thread of its own with a small runtime of its own.
-fn spawn(name: &str, job: impl std::future::Future<Output = ()> + Send + 'static) -> bool {
+pub(crate) fn spawn(name: &str, job: impl std::future::Future<Output = ()> + Send + 'static) -> bool {
     std::thread::Builder::new()
         .name(name.into())
         .spawn(move || {

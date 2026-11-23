@@ -40,6 +40,8 @@ pub(crate) mod remote_video;
 #[cfg(feature = "calls")]
 pub(crate) mod share;
 pub(crate) mod video_fx;
+#[cfg(feature = "calls")]
+pub(crate) mod teams_backgrounds;
 
 mod roster;
 pub use roster::*;
