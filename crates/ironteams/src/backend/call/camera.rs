@@ -197,16 +197,16 @@ pub fn preview(sink: EventSink, camera: Option<String>) -> Option<Preview> {
         let (choice, fallback) = tokio::task::spawn_blocking(move || chosen(camera.as_deref()))
             .await
             .unwrap_or_default();
-        let mut capture =
-            match open_choice(&choice, fallback.as_deref(), capture_settings()).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let e = e.to_string();
-                    tracing::info!(%e, "no camera preview");
-                    sink.preview_status(&open_error_text(&e));
-                    return;
-                }
-            };
+        let mut capture = match open_choice(&choice, fallback.as_deref(), capture_settings()).await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let e = e.to_string();
+                tracing::info!(%e, "no camera preview");
+                sink.preview_status(&open_error_text(&e));
+                return;
+            }
+        };
         let mirror = sink.mirror();
         let mut frames = effects::process(capture.take_frames(), sink.effects());
         let mut first = true;

@@ -263,9 +263,11 @@ impl Refiner {
         }
         let scale = 1.0 / 255.0;
         self.guide.clear();
-        self.guide.extend(guide[..n].iter().map(|&v| f32::from(v) * scale));
+        self.guide
+            .extend(guide[..n].iter().map(|&v| f32::from(v) * scale));
         self.mask.clear();
-        self.mask.extend(mask[..n].iter().map(|&v| f32::from(v) * scale));
+        self.mask
+            .extend(mask[..n].iter().map(|&v| f32::from(v) * scale));
         let (g, m) = (&self.guide, &self.mask);
         // `scratch` holds the products to be averaged, in turn.
         self.scratch.clear();
@@ -413,7 +415,12 @@ pub fn cover_i420(img: &RgbFrame, w: usize, h: usize) -> I420Frame {
             let (fx0, fy0) = (cx.max(0.0).floor(), cy.max(0.0).floor());
             let (tx, ty) = ((cx.max(0.0) - fx0).min(1.0), (cy.max(0.0) - fy0).min(1.0));
             let (x0, y0) = (fx0 as usize, fy0 as usize);
-            let (a, b, c, d) = (px(x0, y0), px(x0 + 1, y0), px(x0, y0 + 1), px(x0 + 1, y0 + 1));
+            let (a, b, c, d) = (
+                px(x0, y0),
+                px(x0 + 1, y0),
+                px(x0, y0 + 1),
+                px(x0 + 1, y0 + 1),
+            );
             for k in 0..3 {
                 let top = a[k] * (1.0 - tx) + b[k] * tx;
                 let bottom = c[k] * (1.0 - tx) + d[k] * tx;
@@ -538,7 +545,10 @@ mod tests {
         assert!(u < 108 && v > 148, "more colour, not less: {u} {v}");
         assert_eq!(dim((128, 128), 60).1, 128, "grey stays grey");
         assert_eq!(dim((108, 148), 235), (235, 108, 148), "white is left alone");
-        assert!(i32::from(v) <= 128 + 20 * 14 / 10 + 1, "the gain is held: {v}");
+        assert!(
+            i32::from(v) <= 128 + 20 * 14 / 10 + 1,
+            "the gain is held: {v}"
+        );
     }
 
     #[test]

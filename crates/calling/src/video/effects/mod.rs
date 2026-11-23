@@ -290,8 +290,19 @@ impl Processor {
         // Scaled up to the working size and made to follow the picture's edges there (see
         // [`Refiner`]): a soft edge only where the picture has no edge of its own.
         let (w, h) = (frame.width, frame.height);
-        let (ww, wh) = if w > WORK_WIDTH { (w / 2, h / 2) } else { (w, h) };
-        scale_plane(&mask.data, mask.width, mask.height, ww, wh, &mut self.work_mask);
+        let (ww, wh) = if w > WORK_WIDTH {
+            (w / 2, h / 2)
+        } else {
+            (w, h)
+        };
+        scale_plane(
+            &mask.data,
+            mask.width,
+            mask.height,
+            ww,
+            wh,
+            &mut self.work_mask,
+        );
         let luma = frame.planes().0;
         if (ww, wh) == (w, h) {
             self.work_guide.clear();
@@ -300,7 +311,14 @@ impl Processor {
             halve_plane(luma, w, h, &mut self.work_guide);
         }
         let radius = (REFINE_RADIUS * ww).div_ceil(640).max(1);
-        self.refiner.refine(&self.work_mask, &self.work_guide, ww, wh, radius, &mut self.work_alpha);
+        self.refiner.refine(
+            &self.work_mask,
+            &self.work_guide,
+            ww,
+            wh,
+            radius,
+            &mut self.work_alpha,
+        );
         if (ww, wh) == (w, h) {
             self.alpha.clone_from(&self.work_alpha);
         } else {

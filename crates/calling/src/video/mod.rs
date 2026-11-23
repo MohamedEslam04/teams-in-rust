@@ -191,7 +191,8 @@ pub fn halve(frame: &I420Frame) -> I420Frame {
     ] {
         for row in 0..out_h {
             for col in 0..out_w {
-                let at = |dy: usize, dx: usize| u32::from(plane[(2 * row + dy) * src_w + 2 * col + dx]);
+                let at =
+                    |dy: usize, dx: usize| u32::from(plane[(2 * row + dy) * src_w + 2 * col + dx]);
                 data.push(((at(0, 0) + at(0, 1) + at(1, 0) + at(1, 1) + 2) / 4) as u8);
             }
         }
