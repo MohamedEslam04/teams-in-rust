@@ -127,7 +127,9 @@ pub(crate) enum Refused {
 /// A media restart (the other side's offer answered on a new session) while our re-offer is
 /// pending: that re-offer belonged to the old session, and its answer or rejection may still come.
 pub(crate) fn supersede(pending: &mut Option<Reoffer>, superseded: &mut Option<Reoffer>) {
-    let _ = (pending, superseded);
+    if let Some(r) = pending.take() {
+        *superseded = Some(r);
+    }
 }
 
 /// What a `call/rejection` refuses: the re-offer a media restart superseded first (it went out
@@ -136,8 +138,10 @@ pub(crate) fn refused_reoffer(
     superseded: &mut Option<Reoffer>,
     pending: &mut Option<Reoffer>,
 ) -> Option<Refused> {
-    let _ = superseded;
-    pending.take().map(Refused::Pending)
+    superseded
+        .take()
+        .map(Refused::Superseded)
+        .or_else(|| pending.take().map(Refused::Pending))
 }
 
 /// Our answer to the other side's 1:1 offer as the wire carries it: what each video line sends
@@ -149,8 +153,8 @@ pub(crate) fn direct_reanswer(
     sharing: bool,
     held: bool,
 ) -> String {
-    let _ = held;
-    calling::media::sdp::direct_answer(answer, offer, camera_on, sharing)
+    let ans = calling::media::sdp::direct_answer(answer, offer, camera_on, sharing);
+    if held { hold_offer(&ans) } else { ans }
 }
 
 /// One joined call.

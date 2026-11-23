@@ -44,8 +44,8 @@ use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 use webrtc::peer_connection::{
     MediaEngine, PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler,
-    RTCConfigurationBuilder, RTCIceGatheringState, RTCIceServer, RTCIceTransportPolicy,
-    RTCPeerConnectionState, RTCSessionDescription, SettingEngineBuilder,
+    RTCConfigurationBuilder, RTCIceConnectionState, RTCIceGatheringState, RTCIceServer,
+    RTCIceTransportPolicy, RTCPeerConnectionState, RTCSessionDescription, SettingEngineBuilder,
 };
 use webrtc::rtp_transceiver::{RtpSender, RtpTransceiver};
 
@@ -806,6 +806,11 @@ impl PeerConnectionEventHandler for Handler {
         if state == RTCIceGatheringState::Complete {
             self.gathered.send_replace(true);
         }
+    }
+
+    /// Logged so a session that never connects shows how far ICE got (checking, failed).
+    async fn on_ice_connection_state_change(&self, state: RTCIceConnectionState) {
+        tracing::info!(?state, "ice state");
     }
 
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {

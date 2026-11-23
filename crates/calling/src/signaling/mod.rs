@@ -260,7 +260,13 @@ impl NgcClient {
             .map(str::to_owned);
         let text = resp.text().await.map_err(teams_proto::Error::from)?;
         self.observe(op, &method, &target, body, status, &text);
-        tracing::debug!(op, %method, status, "ngc request");
+        // The media negotiation's requests are what a live log of hold, resume or a media restart
+        // needs; the rest stay at debug.
+        if op.starts_with("media_") {
+            tracing::info!(op, %method, status, "ngc request");
+        } else {
+            tracing::debug!(op, %method, status, "ngc request");
+        }
         if !(200..300).contains(&status) {
             return Err(status_error(op, status, &text));
         }

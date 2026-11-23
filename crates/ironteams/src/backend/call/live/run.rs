@@ -107,9 +107,13 @@ impl Call {
                 },
                 st = state_rx.recv() => match st {
                     Some(MediaState::Failed | MediaState::Closed) | None => {
+                        tracing::info!(state = ?st, "media lost");
                         break Some("The connection was lost.".into());
                     }
-                    Some(st) => self.link = link_of(st),
+                    Some(st) => {
+                        tracing::info!(state = ?st, "media state");
+                        self.link = link_of(st);
+                    }
                 },
                 p = pushes.recv() => {
                     let Some(p) = p else { break Some(self.ended_text()) };
@@ -127,6 +131,14 @@ impl Call {
                                 roster_changed |= self.apply_answer(&a).await;
                             }
                             self.start_keep_alive(keep_alive_interval_s);
+                        }
+                        // The answer to a re-offer their offer superseded: its session moved on.
+                        CallEvent::MediaAnswer { links, .. }
+                            if self.reoffer.is_none() && self.superseded.is_some() =>
+                        {
+                            let superseded = self.superseded.take();
+                            tracing::info!(?superseded, "answer to a superseded re-offer ignored");
+                            self.links.0.extend(links.0);
                         }
                         CallEvent::MediaAnswer { answer, links } => {
                             self.reoffer = None;
@@ -163,7 +175,9 @@ impl Call {
                         }
                         // Our re-offer refused (a browser that can't answer it: 488/3102
                         // `CallEndReasonMediaAnswerError`), not the call: it goes on, and the
-                        // other side's recovery offer comes as `call/mediaRenegotiation`.
+                        // other side's recovery offer comes as `call/mediaRenegotiation`. One their
+                        // offer superseded (live 2026-11-23: a resume met a media restart, then was
+                        // refused) puts nothing back: the answer to theirs said what it asked for.
                         CallEvent::Rejected(r) if self.reoffer.is_some() || self.superseded.is_some() => {
                             tracing::warn!(code = r.code, sub = r.sub_code, phrase = %r.phrase, "re-offer refused");
                             match refused_reoffer(&mut self.superseded, &mut self.reoffer) {

@@ -161,10 +161,19 @@ impl Call {
         let sent = async {
             let ours = self.media.create_offer().await?;
             let signaled = if on { hold_offer(&ours) } else { ours.clone() };
+            let offered = calling::media::sdp::directions(&signaled);
+            let transport = calling::media::sdp::transport_summary(&signaled);
             let inline = self
                 .ngc
                 .renegotiate(&self.s, &self.links, &MODALITIES, &SdpBlob::ngc(signaled))
                 .await?;
+            tracing::info!(
+                hold = on,
+                inline = inline.is_some(),
+                %offered,
+                %transport,
+                "1:1 hold re-offer sent"
+            );
             anyhow::Ok((ours, inline))
         }
         .await;
@@ -219,11 +228,17 @@ impl Call {
         sink: &EventSink,
     ) {
         let applied = match answer.decode() {
-            Ok(sdp) => self
-                .media
-                .set_answer(&keep_media_running(&sdp, ours))
-                .await
-                .map_err(anyhow::Error::from),
+            Ok(sdp) => {
+                tracing::info!(
+                    theirs = %calling::media::sdp::directions(&sdp),
+                    transport = %calling::media::sdp::transport_summary(&sdp),
+                    "1:1 hold answer"
+                );
+                self.media
+                    .set_answer(&keep_media_running(&sdp, ours))
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
             Err(e) => Err(anyhow::Error::from(e)),
         };
         if let Err(e) = applied {

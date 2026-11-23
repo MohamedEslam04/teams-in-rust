@@ -109,7 +109,9 @@ impl Call {
 
     /// Answers a re-offer. One that restarts ICE (the lobby's admission: new mids and ufrags) is
     /// refused by the connected session and answered on a fresh one, which replaces it; its
-    /// events are returned so the caller follows them.
+    /// events are returned so the caller follows them. It supersedes our pending re-offer (hold,
+    /// resume, camera, share): the answer says what that asked for, `held` included, and its own
+    /// answer or rejection, should one still come, changes nothing.
     pub(super) async fn renegotiate(
         &mut self,
         offer: &SdpBlob,
@@ -125,6 +127,23 @@ impl Call {
                 return None;
             }
         };
+        let restarts = self.media.offer_restarts(&sdp).await;
+        // Their offer met our pending re-offer (glare): theirs wins, and our answer says what
+        // ours asked for (the hold, camera and share as they are now). A restart leaves ours on
+        // the old session; otherwise ours is withdrawn so the session can answer.
+        if self.reoffer.is_some() {
+            if !restarts && let Err(e) = self.media.rollback_offer().await {
+                tracing::warn!(%e, "pending re-offer not rolled back");
+            }
+            self.pending_offer = None;
+            self.answered = true;
+            supersede(&mut self.reoffer, &mut self.superseded);
+            tracing::info!(
+                superseded = ?self.superseded,
+                restarts,
+                "their offer superseded our pending re-offer"
+            );
+        }
         let mut fresh_events = None;
         let answer = match self.media.accept_offer(&sdp).await {
             Ok(a) => Ok(a),
@@ -145,7 +164,11 @@ impl Call {
                             let _ = old.close().await;
                             sender.send_replace(self.media.audio_sender());
                             self.link = Link::New;
-                            supersede(&mut self.reoffer, &mut self.superseded);
+                            tracing::info!(
+                                theirs = %calling::media::sdp::transport_summary(&sdp),
+                                ours = %calling::media::sdp::transport_summary(&ans),
+                                "media restart answered on a new session"
+                            );
                             fresh_events = Some(ev);
                             Ok(ans)
                         }
@@ -166,6 +189,7 @@ impl Call {
             }
             let ans = direct_reanswer(&ans, &sdp, self.camera.on(), self.share.sharing(), held);
             tracing::info!(
+                held,
                 theirs = %calling::media::sdp::directions(&sdp),
                 ours = %calling::media::sdp::directions(&ans),
                 "1:1 re-offer answered"
