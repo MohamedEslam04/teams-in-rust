@@ -287,3 +287,30 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
         app.get_msg_top_cy()
     );
 }
+
+/// Paging far back and coming back to the newest message gives the older rows up again: the list
+/// does not keep hundreds of rows (every update rebuilds them) for the rest of the session.
+#[test]
+fn coming_back_to_the_newest_message_trims_a_list_paged_far_back() {
+    let h = seeded(400);
+    h.select(NOTES);
+    settle(&h.app);
+    for _ in 0..4 {
+        h.runner()(Cmd::LoadOlder);
+    }
+    settle(&h.app);
+    let paged = h.app.get_messages().row_count();
+    assert!(paged > 240, "paging back grew the list: {paged} rows");
+    h.runner()(Cmd::AtBottom(true));
+    settle(&h.app);
+    let trimmed = h.app.get_messages().row_count();
+    assert!(trimmed <= 60, "back at the newest, {trimmed} rows are kept");
+    // Scrolling up reads the older rows from the store again.
+    h.runner()(Cmd::AtBottom(false));
+    h.runner()(Cmd::LoadOlder);
+    settle(&h.app);
+    assert!(
+        h.app.get_messages().row_count() > trimmed,
+        "the older rows come back"
+    );
+}

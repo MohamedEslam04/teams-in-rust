@@ -422,6 +422,10 @@ pub struct Engine {
 }
 
 const PAGE: usize = 60;
+/// A chat paged further back than this many rows goes back to its newest page once the list is
+/// at the newest message again (the older rows come back from the store as the user scrolls up),
+/// so a long session in one chat does not keep rebuilding hundreds of rows on every update.
+const TRIM_ABOVE: usize = PAGE * 4;
 /// Emoji kept in the panel's recent row.
 const RECENT_EMOJI: usize = 16;
 
@@ -881,10 +885,23 @@ impl Engine {
             Cmd::AtBottom(at_bottom) => {
                 let mut v = self.view.lock().unwrap();
                 v.at_bottom = at_bottom;
-                if at_bottom && v.new_count > 0 {
+                // Back at the newest message after paging far back: the window shrinks to the
+                // newest page (the rows above the view go; the view does not move).
+                let trim = at_bottom && v.thread_root.is_none() && v.limit > TRIM_ABOVE;
+                if trim {
+                    v.limit = PAGE;
+                    v.older_done = false;
+                }
+                let new_count = at_bottom && v.new_count > 0;
+                if new_count {
                     v.new_count = 0;
-                    drop(v);
+                }
+                drop(v);
+                if new_count {
                     self.ui.new_count(0);
+                }
+                if trim {
+                    self.mark(|d| d.messages = true);
                 }
             }
             Cmd::RetrySend(id) => self.retry_send(&id).await?,
