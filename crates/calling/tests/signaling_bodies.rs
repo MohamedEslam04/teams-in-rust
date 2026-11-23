@@ -158,6 +158,27 @@ fn place_call_rings_one_person_directly() {
     assert_eq!(media["requiredFeatures"], "nonByPass");
 }
 
+/// A 1:1 video call names `Video` too: the other side rings it as "Incoming video call" (an
+/// invitation is a video call when its `callModalities` has `Video`).
+#[test]
+fn a_direct_video_call_names_video_among_the_modalities() {
+    let callee = Participant {
+        mri: "8:orgid:00000000-0000-0000-0000-0000000000a1".into(),
+        ..Default::default()
+    };
+    let b = place_call_body(
+        &session(),
+        &[callee],
+        None,
+        &offer(),
+        &[Modality::Audio, Modality::Video],
+    );
+    let inv = &b["callInvitation"];
+    assert_eq!(inv["callModalities"], json!(["Audio", "Video"]));
+    assert_eq!(inv["mediaContent"]["requiredFeatures"], "nonByPass");
+    assert_eq!(b["groupChat"], Value::Null);
+}
+
 #[test]
 fn place_call_to_a_bot_or_group_keeps_the_chat() {
     let bot = Participant {

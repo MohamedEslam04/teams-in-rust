@@ -20,7 +20,9 @@
 //!
 //! Outgoing: Call in a 1:1 chat's header (or on a profile card) places an audio call with
 //! `place_call`; the ringing screen follows the callbacks of our session until the far end
-//! accepts (adopt), declines, does not answer, or we cancel.
+//! accepts (adopt), declines, does not answer, or we cancel. The header's Video call (Alt+Shift+V)
+//! places the same call with `Video` among the `callModalities` and the camera line `sendrecv`,
+//! and the camera starts once the call connects, as after "Accept with video" (UNVERIFIED live).
 //!
 //! The signalling is ported from rusty-teams and mautrix-teams and is UNVERIFIED live. In demo
 //! mode and in tests (the engine is offline) a fake backend stands in: nothing leaves the process,
@@ -36,7 +38,9 @@ use calling::invitation::{CallEvent, NgcPush, classify};
 use calling::media::MediaSession;
 use calling::ngc_trouter::CallPush;
 use calling::signaling::bodies::reject_request;
+use calling::signaling::video::video_modalities;
 use calling::signaling::{CallSession, NgcClient};
+use calling::video::VideoRole;
 use calling::{CallInvitation, Modality, Participant, SdpBlob};
 use serde_json::Value;
 use std::future::Future;
@@ -233,6 +237,8 @@ pub enum CallCmd {
     Decline,
     /// Call the other person of this 1:1 chat.
     DialChat(String),
+    /// The chat header's Video call: call the other person of this 1:1 chat with the camera on.
+    DialVideo(String),
     /// The chat header's "Share screen": call the other person of this 1:1 chat and share once
     /// connected (the screen and window picker opens).
     ShareScreen(String),
@@ -253,6 +259,7 @@ impl CallCmd {
             "end-accept" => CallCmd::AcceptWaiting(CurrentCall::End),
             "decline" => CallCmd::Decline,
             "dial" if !arg.is_empty() => CallCmd::DialChat(arg.to_owned()),
+            "dial-video" if !arg.is_empty() => CallCmd::DialVideo(arg.to_owned()),
             "share-screen" if !arg.is_empty() => CallCmd::ShareScreen(arg.to_owned()),
             "dial-person" if !arg.is_empty() => CallCmd::DialPerson(arg.to_owned()),
             "cancel" => CallCmd::Cancel,
@@ -260,6 +267,44 @@ impl CallCmd {
             _ => return None,
         })
     }
+}
+
+/// What an outgoing call starts with besides audio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialWith {
+    Audio,
+    /// Video call: the camera line sends from the first offer and the camera starts once the
+    /// call connects.
+    Video,
+    /// Share screen: the screen and window picker opens once the call connects.
+    Share,
+}
+
+impl DialWith {
+    /// A Video call goes ahead as an audio call when the camera is switched off (`camera`:
+    /// [`call::camera::wanted`], false with `IRONTEAMS_CAMERA=0`).
+    pub fn or_audio(self, camera: bool) -> Self {
+        if self == DialWith::Video && !camera {
+            DialWith::Audio
+        } else {
+            self
+        }
+    }
+}
+
+/// What a Video call that goes ahead with audio alone says.
+pub const AUDIO_ONLY: &str = "Video isn't available: the call is audio only.";
+
+/// Our first offer of an outgoing call and its `callModalities`. `camera_line`: the media has a
+/// main-video line; `video`: a Video call. A Video call offers the camera line `sendrecv` and
+/// names `Video`, so the other side rings it as a video call; otherwise the camera line receives
+/// only and the call is `Audio` alone. The sharing line is inactive either way, as the web client
+/// offers them (webrtc-rs says every line sends).
+pub fn dial_offer(offer: &str, camera_line: bool, video: bool) -> (String, Vec<Modality>) {
+    let video = video && camera_line;
+    let offer = call::share::direct_offer(offer, false, camera_line.then_some(video));
+    let sending: &[VideoRole] = if video { &[call::camera::ROLE] } else { &[] };
+    (offer, video_modalities(sending))
 }
 
 /// What the toast or the ringing screen shows.
@@ -505,14 +550,15 @@ impl Engine {
             CallCmd::Accept { video } => self.accept_incoming(video, None),
             CallCmd::AcceptWaiting(current) => self.accept_incoming(false, Some(current)),
             CallCmd::Decline => self.decline_incoming(),
-            CallCmd::DialChat(chat) => self.dial_chat(&chat, false),
-            CallCmd::ShareScreen(chat) => self.dial_chat(&chat, true),
+            CallCmd::DialChat(chat) => self.dial_chat(&chat, DialWith::Audio),
+            CallCmd::DialVideo(chat) => self.dial_chat(&chat, DialWith::Video),
+            CallCmd::ShareScreen(chat) => self.dial_chat(&chat, DialWith::Share),
             CallCmd::DialPerson(mri) => {
                 if mri == self.me {
                     anyhow::bail!("You can't call yourself");
                 }
                 let name = self.person_name(&mri);
-                self.dial(mri, name, false)
+                self.dial(mri, name, DialWith::Audio)
             }
             CallCmd::Cancel => {
                 self.cancel_outgoing();
@@ -1002,8 +1048,8 @@ impl Engine {
 
     // --- outgoing ------------------------------------------------------------------------------
 
-    /// Calls the other person of the 1:1 chat `chat`; `share`: share the screen once connected.
-    fn dial_chat(self: &Arc<Self>, chat: &str, share: bool) -> anyhow::Result<()> {
+    /// Calls the other person of the 1:1 chat `chat`, with audio, video or a share (`with`).
+    fn dial_chat(self: &Arc<Self>, chat: &str, with: DialWith) -> anyhow::Result<()> {
         let peer = super::util::one_on_one_members(chat)
             .into_iter()
             .find(|m| *m != self.me)
@@ -1018,10 +1064,10 @@ impl Engine {
             .map(|c| c.title)
             .filter(|t| !t.is_empty());
         let name = title.unwrap_or_else(|| self.person_name(&peer));
-        self.dial(peer, name, share)
+        self.dial(peer, name, with)
     }
 
-    fn dial(self: &Arc<Self>, mri: String, name: String, share: bool) -> anyhow::Result<()> {
+    fn dial(self: &Arc<Self>, mri: String, name: String, with: DialWith) -> anyhow::Result<()> {
         let mut c = self.direct();
         let busy = c.incoming.as_ref().is_some_and(|i| !i.state.is_over())
             || c.outgoing.as_ref().is_some_and(|o| o.state.is_live());
@@ -1043,10 +1089,18 @@ impl Engine {
         });
         drop(c);
         self.push_outgoing(id);
+        // With the camera switched off a Video call still goes through, with audio.
+        let asked = with;
+        let with = with.or_audio(call::camera::wanted());
+        if with != asked {
+            self.ui.banner(AUDIO_ONLY.into());
+        }
         if self.offline.load(Ordering::Relaxed) {
             self.direct().log.push(format!("dial {mri}"));
-            if share {
-                self.direct().log.push("share when connected".into());
+            match with {
+                DialWith::Share => self.direct().log.push("share when connected".into()),
+                DialWith::Video => self.direct().log.push("camera on when connected".into()),
+                DialWith::Audio => {}
             }
             let e = self.clone();
             // Demo: rings, then connects (there is no in-call window without an account).
@@ -1064,7 +1118,7 @@ impl Engine {
         }
         let e = self.clone();
         later(async move {
-            if let Err(err) = e.dial_live(id, mri, name, share, cancel_rx, ev_rx).await {
+            if let Err(err) = e.dial_live(id, mri, name, with, cancel_rx, ev_rx).await {
                 tracing::warn!(%err, "placing a call failed");
                 e.outgoing_event(id, OutgoingEvent::Failed(err.to_string()));
             }
@@ -1079,7 +1133,7 @@ impl Engine {
         id: u64,
         mri: String,
         name: String,
-        share: bool,
+        with: DialWith,
         mut cancel: oneshot::Receiver<()>,
         mut events: mpsc::UnboundedReceiver<CallEvent>,
     ) -> anyhow::Result<()> {
@@ -1098,14 +1152,19 @@ impl Engine {
             };
         let (media, media_events) =
             MediaSession::with_options(ice, call::share::media_options()).await?;
-        // The camera is off and nothing is shared yet: the camera line receives only and the
-        // sharing line is inactive, as the web client offers them (webrtc-rs says both send).
-        let camera = media
-            .video_sender(calling::video::VideoRole::MainVideo)
-            .is_some()
-            .then_some(false);
-        let offer = call::share::direct_offer(&media.create_offer().await?, false, camera);
-        tracing::info!(ours = %calling::media::sdp::directions(&offer), "1:1 call offered");
+        // Nothing is shared yet: the sharing line is inactive. The camera line receives only,
+        // unless this is a Video call (see `dial_offer`).
+        let camera_line = media.video_sender(VideoRole::MainVideo).is_some();
+        let (offer, modalities) = dial_offer(
+            &media.create_offer().await?,
+            camera_line,
+            with == DialWith::Video,
+        );
+        let video = modalities.contains(&Modality::Video);
+        if with == DialWith::Video && !video {
+            self.ui.banner(AUDIO_ONLY.into());
+        }
+        tracing::info!(ours = %calling::media::sdp::directions(&offer), ?modalities, "1:1 call offered");
         let s = CallSession::new(&surl, &self.me, &self.my_name);
         // Callbacks under our session come to this call from now on.
         if let Some(o) = self.direct().outgoing.as_mut().filter(|o| o.id == id) {
@@ -1118,13 +1177,7 @@ impl Engine {
             ..Participant::default()
         };
         let conv = ngc
-            .place_call(
-                &s,
-                &[callee],
-                None,
-                &SdpBlob::ngc(offer),
-                &[Modality::Audio],
-            )
+            .place_call(&s, &[callee], None, &SdpBlob::ngc(offer), &modalities)
             .await?;
         let mut links = conv.links.clone();
         let ring = tokio::time::sleep(OUTGOING_RING);
@@ -1176,8 +1229,18 @@ impl Engine {
                     let Some(oe) = outgoing_event(&ev) else { continue };
                     match self.outgoing_event(id, oe) {
                         Some(OutgoingState::Connected) => {
-                            m.adopt(s, links, media, media_events, CallKind::Direct { peer_name: name, chat_id }, None)?;
-                            if share {
+                            // A Video call's camera starts once the call runs, as after "Accept
+                            // with video"; a camera that does not open says so and the call
+                            // goes on with audio.
+                            if video {
+                                call::camera::accept_with_video(true);
+                            }
+                            let adopted = m.adopt(s, links, media, media_events, CallKind::Direct { peer_name: name, chat_id }, None);
+                            if video && adopted.is_err() {
+                                call::camera::take_accept_with_video();
+                            }
+                            adopted?;
+                            if with == DialWith::Share {
                                 m.share_when_ready();
                             }
                             return Ok(());
@@ -1683,6 +1746,11 @@ mod tests {
         );
         assert_eq!(CallCmd::parse("dial", ""), None);
         assert_eq!(
+            CallCmd::parse("dial-video", "19:a_b@unq.gbl.spaces"),
+            Some(CallCmd::DialVideo("19:a_b@unq.gbl.spaces".into()))
+        );
+        assert_eq!(CallCmd::parse("dial-video", ""), None);
+        assert_eq!(
             CallCmd::parse("share-screen", "19:a_b@unq.gbl.spaces"),
             Some(CallCmd::ShareScreen("19:a_b@unq.gbl.spaces".into()))
         );
@@ -1702,6 +1770,55 @@ mod tests {
         assert_eq!(CallCmd::parse("cancel", ""), Some(CallCmd::Cancel));
         assert_eq!(CallCmd::parse("close", ""), Some(CallCmd::Close));
         assert_eq!(CallCmd::parse("video", ""), None);
+    }
+
+    /// webrtc-rs offers every line it has a track for as sending.
+    const OFFER: &str = "v=0\r\n\
+        m=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n\
+        m=video 9 RTP/SAVP 107\r\na=mid:1\r\na=sendrecv\r\na=label:main-video\r\n\
+        m=video 9 RTP/SAVP 107\r\na=mid:2\r\na=sendrecv\r\n\
+        a=label:applicationsharing-video\r\n";
+
+    fn directions(sdp: &str) -> Vec<&str> {
+        sdp.lines()
+            .filter(|l| ["a=sendrecv", "a=sendonly", "a=recvonly", "a=inactive"].contains(l))
+            .collect()
+    }
+
+    #[test]
+    fn an_audio_call_offers_the_camera_line_receive_only_and_names_audio() {
+        let (offer, modalities) = dial_offer(OFFER, true, false);
+        assert_eq!(
+            directions(&offer),
+            ["a=sendrecv", "a=recvonly", "a=inactive"]
+        );
+        assert_eq!(modalities, [Modality::Audio]);
+    }
+
+    #[test]
+    fn a_video_call_sends_on_the_camera_line_and_names_video() {
+        let (offer, modalities) = dial_offer(OFFER, true, true);
+        assert_eq!(
+            directions(&offer),
+            ["a=sendrecv", "a=sendrecv", "a=inactive"]
+        );
+        // The other side rings it as a video call (`on_invitation` reads the same modalities).
+        assert_eq!(modalities, [Modality::Audio, Modality::Video]);
+    }
+
+    #[test]
+    fn a_video_call_without_a_camera_goes_ahead_with_audio() {
+        // The camera switched off (`IRONTEAMS_CAMERA=0`): an audio call, and it says so.
+        assert_eq!(DialWith::Video.or_audio(false), DialWith::Audio);
+        assert_eq!(DialWith::Video.or_audio(true), DialWith::Video);
+        assert_eq!(DialWith::Audio.or_audio(true), DialWith::Audio);
+        assert_eq!(DialWith::Share.or_audio(false), DialWith::Share);
+        assert!(AUDIO_ONLY.contains("audio only"));
+        // No camera line in the media: nothing is sent and the call is audio alone.
+        let audio_only = "v=0\r\nm=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n";
+        let (offer, modalities) = dial_offer(audio_only, false, true);
+        assert_eq!(directions(&offer), ["a=sendrecv"]);
+        assert_eq!(modalities, [Modality::Audio]);
     }
 
     #[test]

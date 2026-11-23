@@ -597,6 +597,14 @@ What IronTeams does with this (`calling::video::{camera, receive}`, `ironteams/s
   in a meeting the person heard now, else the first other person.
 - "Accept with video" answers with audio (as mautrix-teams) and turns the camera on once the call
   runs. The pre-join Camera switch does the same for a meeting join.
+- Video call (a 1:1 chat header's call dropdown, Alt+Shift+V; built 2026-11-23, UNVERIFIED live):
+  `place_call` with `callModalities` `["Audio", "Video"]` and the first offer's main-video line
+  `sendrecv` (sharing line `inactive`), so the callee should ring it as "Incoming video call". Once
+  connected the camera opens as after "Accept with video" and the usual 1:1 camera re-offer
+  follows. With `IRONTEAMS_CAMERA=0` (or no main-video line) the call goes ahead as the audio
+  call, with a banner. Not yet checked live: how Teams shows our tile between the connect and the
+  camera's first frame, and what it shows when the camera then fails to open (the first offer
+  said `sendrecv`; no re-offer switches it to `recvonly`).
 
 UNVERIFIED (each needs a live run): that a meeting's media server accepts IronTeams's join offer with
 one sendrecv main-video line and no gallery lines; whether `applyChannelParameters`
