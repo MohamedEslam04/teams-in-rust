@@ -644,13 +644,13 @@ export component DevicesPage inherits VerticalLayout {
     SSection {
         title: @tr("Speaker");
         SRadio { group: @tr("Speaker"); label: @tr("System default"); checked: SettingsStore.speaker == ""; picked => { SettingsStore.command("speaker", ""); } }
-        for d in SettingsStore.speakers: SRadio { group: @tr("Speaker"); label: d.name; detail: d.id; checked: SettingsStore.speaker == d.id; picked => { SettingsStore.command("speaker", d.id); } }
+        for d in SettingsStore.speakers: SRadio { group: @tr("Speaker"); label: d.name; checked: SettingsStore.speaker == d.id; picked => { SettingsStore.command("speaker", d.id); } }
         Button { variant: ButtonVariant.settings; label: @tr("Play test sound"); clicked => { SettingsStore.command("test-sound", ""); } }
     }
     SSection {
         title: @tr("Microphone");
         SRadio { group: @tr("Microphone"); label: @tr("System default"); checked: SettingsStore.mic == ""; picked => { SettingsStore.command("mic", ""); } }
-        for d in SettingsStore.mics: SRadio { group: @tr("Microphone"); label: d.name; detail: d.id; checked: SettingsStore.mic == d.id; picked => { SettingsStore.command("mic", d.id); } }
+        for d in SettingsStore.mics: SRadio { group: @tr("Microphone"); label: d.name; checked: SettingsStore.mic == d.id; picked => { SettingsStore.command("mic", d.id); } }
         HorizontalLayout {
             spacing: 12px;
             alignment: start;

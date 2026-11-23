@@ -222,100 +222,106 @@ export component MorePanel inherits Rectangle {
     VerticalLayout {
         padding: 12px;
         spacing: 12px;
-        alignment: start;
         PanelHeader { title: "More"; }
-        if root.fold: HorizontalLayout {
-            alignment: start;
-            spacing: 4px;
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/people.svg");
-                label: "People";
-                checkable: true;
-                clicked => { CallStore.panel = "people"; }
-            }
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/hand.svg");
-                label: CallStore.hand ? "Lower" : "Raise";
-                checkable: true;
-                active: CallStore.hand;
-                clicked => { CallStore.command("hand", ""); }
-            }
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/grid.svg");
-                label: "View";
-                tip: "Gallery, speaker or focus on content";
-                active: CallStore.menu == "view";
-                clicked => { CallStore.menu = CallStore.menu == "view" ? "" : "view"; }
-            }
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/emoji.svg");
-                label: "React";
-                enabled: CallStore.phase == "connected";
-                tip: CallStore.phase == "connected" ? "Send a reaction" : "Reactions work once you're in the meeting";
-                active: CallStore.menu == "react";
-                clicked => { CallStore.menu = CallStore.menu == "react" ? "" : "react"; }
-            }
-        }
-        if root.fold && CallStore.kind == "direct": HorizontalLayout {
-            alignment: start;
-            spacing: 4px;
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/pause.svg");
-                label: CallStore.held ? "Resume" : "Hold";
-                checkable: true;
-                active: CallStore.held;
-                tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
-                clicked => { CallStore.command("hold", ""); }
-            }
-            Button { variant: ButtonVariant.call;
-                icon: @image-url("../icons/forward.svg");
-                label: "Transfer";
-                active: CallStore.menu == "transfer";
-                tip: "Transfer the call to someone else";
-                clicked => {
-                    if CallStore.menu == "transfer" {
-                        CallStore.menu = "";
-                    } else {
-                        CallStore.menu = "transfer";
-                        CallStore.command("transfer-open", "");
+        // Taller than a short window: the panel scrolls, and an open device list with it.
+        ScrollView {
+            VerticalLayout {
+                spacing: 12px;
+                alignment: start;
+                if root.fold: HorizontalLayout {
+                    alignment: start;
+                    spacing: 4px;
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/people.svg");
+                        label: "People";
+                        checkable: true;
+                        clicked => { CallStore.panel = "people"; }
+                    }
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/hand.svg");
+                        label: CallStore.hand ? "Lower" : "Raise";
+                        checkable: true;
+                        active: CallStore.hand;
+                        clicked => { CallStore.command("hand", ""); }
+                    }
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/grid.svg");
+                        label: "View";
+                        tip: "Gallery, speaker or focus on content";
+                        active: CallStore.menu == "view";
+                        clicked => { CallStore.menu = CallStore.menu == "view" ? "" : "view"; }
+                    }
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/emoji.svg");
+                        label: "React";
+                        enabled: CallStore.phase == "connected";
+                        tip: CallStore.phase == "connected" ? "Send a reaction" : "Reactions work once you're in the meeting";
+                        active: CallStore.menu == "react";
+                        clicked => { CallStore.menu = CallStore.menu == "react" ? "" : "react"; }
                     }
                 }
+                if root.fold && CallStore.kind == "direct": HorizontalLayout {
+                    alignment: start;
+                    spacing: 4px;
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/pause.svg");
+                        label: CallStore.held ? "Resume" : "Hold";
+                        checkable: true;
+                        active: CallStore.held;
+                        tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
+                        clicked => { CallStore.command("hold", ""); }
+                    }
+                    Button { variant: ButtonVariant.call;
+                        icon: @image-url("../icons/forward.svg");
+                        label: "Transfer";
+                        active: CallStore.menu == "transfer";
+                        tip: "Transfer the call to someone else";
+                        clicked => {
+                            if CallStore.menu == "transfer" {
+                                CallStore.menu = "";
+                            } else {
+                                CallStore.menu = "transfer";
+                                CallStore.command("transfer-open", "");
+                            }
+                        }
+                    }
+                }
+                Heading { variant: HeadingVariant.caption; text: "Record and transcribe"; }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 8px;
+                    Button { variant: ButtonVariant.action;
+                        label: CallStore.recording ? "Stop recording" : "Start recording";
+                        clicked => { CallStore.command("recording", CallStore.recording ? "stop" : "start"); }
+                    }
+                    Button { variant: ButtonVariant.action;
+                        label: CallStore.transcribing ? "Stop transcription" : "Start transcription";
+                        clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
+                    }
+                }
+                Heading { variant: HeadingVariant.caption; text: "Language and speech"; }
+                Switch { variant: SwitchVariant.row;
+                    label: "Show live captions";
+                    checked: CallStore.captions;
+                    toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }
+                }
+                Heading { variant: HeadingVariant.caption; text: "Video"; }
+                HorizontalLayout {
+                    alignment: start;
+                    Button { variant: ButtonVariant.action;
+                        label: "Video effects";
+                        clicked => { VideoFxStore.open = true; }
+                    }
+                }
+                Heading { variant: HeadingVariant.caption; text: "Device settings"; }
+                DeviceSettings { prefix: "more"; }
+                Text {
+                    text: "Echo cancellation, noise suppression and automatic gain are on.";
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
             }
-        }
-        Heading { variant: HeadingVariant.caption; text: "Record and transcribe"; }
-        HorizontalLayout {
-            alignment: start;
-            spacing: 8px;
-            Button { variant: ButtonVariant.action;
-                label: CallStore.recording ? "Stop recording" : "Start recording";
-                clicked => { CallStore.command("recording", CallStore.recording ? "stop" : "start"); }
-            }
-            Button { variant: ButtonVariant.action;
-                label: CallStore.transcribing ? "Stop transcription" : "Start transcription";
-                clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
-            }
-        }
-        Heading { variant: HeadingVariant.caption; text: "Language and speech"; }
-        Switch { variant: SwitchVariant.row;
-            label: "Show live captions";
-            checked: CallStore.captions;
-            toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }
-        }
-        Heading { variant: HeadingVariant.caption; text: "Video"; }
-        HorizontalLayout {
-            alignment: start;
-            Button { variant: ButtonVariant.action;
-                label: "Video effects";
-                clicked => { VideoFxStore.open = true; }
-            }
-        }
-        Heading { variant: HeadingVariant.caption; text: "Device settings"; }
-        DeviceSettings { prefix: "more"; }
-        Text {
-            text: "Echo cancellation, noise suppression and automatic gain are on.";
-            color: Theme.fg-subtle;
-            font-size: 12px * Theme.font-scale;
-            wrap: word-wrap;
         }
     }
     // Video effects: a page of the panel, over its content.
