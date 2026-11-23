@@ -1,0 +1,75 @@
+# The UI measurements (`page_switch_cost`, src/ui_tests/page_switch.rs) on a runner, where the GUI
+# crate's test build does not run out of memory: once on the pushed commit and once with the UI
+# files (crates/ironteams/ui) of a base commit, on the same machine, so a change to the .slint files
+# can be compared before and after. Push the branch as ci/bench-<name> (it must contain this file),
+# or run it by hand with another base; read the numbers with `gh run view <run> --log | grep -E
+# 'repaint|page_switch |scroll step'`.
+name: Bench UI
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit whose crates/ironteams/ui is the "before"
+        default: origin/dev
+  push:
+    branches: ['ci/bench-*']
+
+concurrency:
+  group: bench-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The same as ci.yml, so the cached dependencies of its `check` job match this build.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  # Named like the CI job so Swatinem/rust-cache restores that job's cache.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
+      BASE: ${{ inputs.base || 'origin/dev' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      # The GUI crate's test build can outgrow the runner's memory (GitHub then kills the runner,
+      # exit 143), as in ci.yml's clippy job.
+      - name: More swap
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
+          free -h
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold fonts-dejavu-core
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: After (this commit)
+        shell: bash
+        run: |
+          # Partial repaints (twice, for the spread), then a full repaint every frame.
+          for mode in reused reused new; do
+            echo "== repaint $mode"
+            IRONTEAMS_BENCH_REPAINT=$mode cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
+            grep -E '^(page_switch|scroll)|test result' out.txt
+            echo "slint long chain warnings: $(grep -c 'long changed callback chain' out.txt)"
+          done
+      - name: Before (the base's UI files)
+        shell: bash
+        run: |
+          git checkout "$BASE" -- crates/ironteams/ui
+          git status --short
+          # Partial repaints (twice, for the spread), then a full repaint every frame.
+          for mode in reused reused new; do
+            echo "== repaint $mode"
+            IRONTEAMS_BENCH_REPAINT=$mode cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
+            grep -E '^(page_switch|scroll)|test result' out.txt
+            echo "slint long chain warnings: $(grep -c 'long changed callback chain' out.txt)"
+          done

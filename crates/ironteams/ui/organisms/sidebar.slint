@@ -49,6 +49,11 @@ component ChatItem inherits Rectangle {
     in property <bool> selected;
     // Bottom of the list in window coordinates: the menu opens upwards when it would not fit.
     in property <length> limit: 100000px;
+    // Top of the list in window coordinates. A row outside the list (scrolled out) draws nothing:
+    // its content is hidden, so the renderer skips it on every frame instead of walking all of
+    // its items (the list is a plain `for` over every chat; docs/perf.md).
+    in property <length> view-top: -100000px;
+    property <bool> in-view: root.absolute-position.y + root.height > root.view-top && root.absolute-position.y < root.limit;
     // The open menu's height when it opens upwards (0 when it opens downwards).
     property <length> menu-up: 0px;
     property <bool> in-section: root.data.section != "favorites" && root.data.section != "chats" && root.data.section != "meetings" && root.data.section != "channels";
@@ -66,175 +71,178 @@ component ChatItem inherits Rectangle {
     border-radius: 4px;
     background: selected ? Theme.selected : (t.has-hover ? Theme.surface-hover : transparent);
     animate background { duration: Motion.quick; }
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 10px;
-        spacing: 10px;
-        alignment: stretch;
-        // Each kind of row has its own avatar, as in Teams: a person's photo (or initials) with
-        // presence, a people glyph for a group chat, a calendar for a meeting chat and the team's
-        // square picture with a "#" badge for a channel.
-        if !root.data.channel && root.data.kind != "meeting" && !(root.data.group && !root.data.has-avatar): Avatar {
-            initials: root.data.initials;
-            tone: root.data.color;
-            img: root.data.avatar;
-            has-img: root.data.has-avatar;
-            presence: root.data.presence;
-            size: 32px;
-            y: (parent.height - 32px) / 2;
-        }
-        if root.data.group && !root.data.has-avatar: GlyphAvatar {
-            y: (parent.height - 32px) / 2;
-            icon: @image-url("../icons/people.svg");
-            tone: Theme.surface-hover;
-            tint: Theme.fg-muted;
-            accessible-label: @tr("Group chat");
-        }
-        if !root.data.channel && root.data.kind == "meeting": GlyphAvatar {
-            y: (parent.height - 32px) / 2;
-            icon: @image-url("../icons/calendar.svg");
-            tone: Theme.accent.transparentize(0.8);
-            tint: Theme.accent;
-            accessible-label: @tr("Meeting chat");
-        }
-        if root.data.channel: Rectangle {
-            width: 32px;
-            height: 32px;
-            y: (parent.height - 32px) / 2;
-            accessible-role: image;
-            accessible-label: @tr("Channel");
-            // The team's picture, square like in Teams.
-            Avatar {
-                size: 32px;
-                corner: 6px;
-                tone: root.data.color;
+    Rectangle {
+        visible: root.in-view;
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 10px;
+            spacing: 10px;
+            alignment: stretch;
+            // Each kind of row has its own avatar, as in Teams: a person's photo (or initials) with
+            // presence, a people glyph for a group chat, a calendar for a meeting chat and the team's
+            // square picture with a "#" badge for a channel.
+            if !root.data.channel && root.data.kind != "meeting" && !(root.data.group && !root.data.has-avatar): Avatar {
                 initials: root.data.initials;
-                text-size: 12px;
+                tone: root.data.color;
                 img: root.data.avatar;
                 has-img: root.data.has-avatar;
-                photo-label: @tr("Team picture");
+                presence: root.data.presence;
+                size: 32px;
+                y: (parent.height - 32px) / 2;
             }
-            Rectangle {
-                x: 32px - 13px + 2px;
-                y: 32px - 13px + 2px;
-                width: 13px;
-                height: 13px;
-                border-radius: 4px;
-                background: Theme.sidebar;
-                Icon { source: @image-url("../icons/hash.svg"); width: 9px; height: 9px; tint: Theme.fg-muted; }
+            if root.data.group && !root.data.has-avatar: GlyphAvatar {
+                y: (parent.height - 32px) / 2;
+                icon: @image-url("../icons/people.svg");
+                tone: Theme.surface-hover;
+                tint: Theme.fg-muted;
+                accessible-label: @tr("Group chat");
             }
-        }
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
-            HorizontalLayout {
-                spacing: 6px;
-                Text {
-                    text: root.data.title;
-                    color: Theme.fg;
-                    font-size: 14px * Theme.font-scale;
-                    font-weight: root.data.unread ? 700 : 400;
-                    overflow: elide;
-                    // A private channel's lock follows the name.
-                    horizontal-stretch: root.data.private ? 0 : 1;
-                    horizontal-alignment: root.data.rtl-title ? right : left;
+            if !root.data.channel && root.data.kind == "meeting": GlyphAvatar {
+                y: (parent.height - 32px) / 2;
+                icon: @image-url("../icons/calendar.svg");
+                tone: Theme.accent.transparentize(0.8);
+                tint: Theme.accent;
+                accessible-label: @tr("Meeting chat");
+            }
+            if root.data.channel: Rectangle {
+                width: 32px;
+                height: 32px;
+                y: (parent.height - 32px) / 2;
+                accessible-role: image;
+                accessible-label: @tr("Channel");
+                // The team's picture, square like in Teams.
+                Avatar {
+                    size: 32px;
+                    corner: 6px;
+                    tone: root.data.color;
+                    initials: root.data.initials;
+                    text-size: 12px;
+                    img: root.data.avatar;
+                    has-img: root.data.has-avatar;
+                    photo-label: @tr("Team picture");
                 }
-                if root.data.private: Icon {
-                    source: @image-url("../icons/lock.svg");
-                    width: 12px;
-                    height: 12px;
-                    y: (parent.height - 12px) / 2;
-                    tint: Theme.fg-subtle;
-                    accessible-role: image;
-                    accessible-label: @tr("Private channel");
+                Rectangle {
+                    x: 32px - 13px + 2px;
+                    y: 32px - 13px + 2px;
+                    width: 13px;
+                    height: 13px;
+                    border-radius: 4px;
+                    background: Theme.sidebar;
+                    Icon { source: @image-url("../icons/hash.svg"); width: 9px; height: 9px; tint: Theme.fg-muted; }
                 }
-                if root.data.private: Rectangle { horizontal-stretch: 1; }
-                // Someone is typing in this chat: three dots, as in Teams.
-                for tc in TypingStore.chats: Rectangle {
-                    width: tc == root.data.id ? 18px : 0px;
-                    horizontal-stretch: 0;
-                    if tc == root.data.id: TypingDots {
-                        tint: Theme.accent;
-                        dot: 3px;
-                        y: (parent.height - self.height) / 2;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: root.data.title;
+                        color: Theme.fg;
+                        font-size: 14px * Theme.font-scale;
+                        font-weight: root.data.unread ? 700 : 400;
+                        overflow: elide;
+                        // A private channel's lock follows the name.
+                        horizontal-stretch: root.data.private ? 0 : 1;
+                        horizontal-alignment: root.data.rtl-title ? right : left;
+                    }
+                    if root.data.private: Icon {
+                        source: @image-url("../icons/lock.svg");
+                        width: 12px;
+                        height: 12px;
+                        y: (parent.height - 12px) / 2;
+                        tint: Theme.fg-subtle;
                         accessible-role: image;
-                        accessible-label: @tr("Typing");
+                        accessible-label: @tr("Private channel");
+                    }
+                    if root.data.private: Rectangle { horizontal-stretch: 1; }
+                    // Someone is typing in this chat: three dots, as in Teams.
+                    for tc in TypingStore.chats: Rectangle {
+                        width: tc == root.data.id ? 18px : 0px;
+                        horizontal-stretch: 0;
+                        if tc == root.data.id: TypingDots {
+                            tint: Theme.accent;
+                            dot: 3px;
+                            y: (parent.height - self.height) / 2;
+                            accessible-role: image;
+                            accessible-label: @tr("Typing");
+                        }
+                    }
+                    if root.data.mention: Text { text: "@"; color: Theme.accent; font-size: 13px * Theme.font-scale; font-weight: 700; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("You were mentioned"); }
+                    if ListStore.show-times: Text { text: root.data.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; }
+                    if root.data.muted: Text { text: "🔕"; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("Muted"); }
+                }
+                if ListStore.show-previews: HorizontalLayout {
+                    spacing: 4px;
+                    if root.data.draft: Text { text: @tr("Draft:"); color: #e97a5f; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
+                    Text {
+                        text: root.data.preview;
+                        color: root.data.unread ? Theme.fg : Theme.fg-subtle;
+                        font-weight: root.data.unread ? 600 : 400;
+                        font-size: 12px * Theme.font-scale;
+                        overflow: elide;
+                        horizontal-alignment: root.data.rtl-preview ? right : left;
                     }
                 }
-                if root.data.mention: Text { text: "@"; color: Theme.accent; font-size: 13px * Theme.font-scale; font-weight: 700; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("You were mentioned"); }
-                if ListStore.show-times: Text { text: root.data.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; }
-                if root.data.muted: Text { text: "🔕"; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("Muted"); }
             }
-            if ListStore.show-previews: HorizontalLayout {
-                spacing: 4px;
-                if root.data.draft: Text { text: @tr("Draft:"); color: #e97a5f; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
-                Text {
-                    text: root.data.preview;
-                    color: root.data.unread ? Theme.fg : Theme.fg-subtle;
-                    font-weight: root.data.unread ? 600 : 400;
-                    font-size: 12px * Theme.font-scale;
-                    overflow: elide;
-                    horizontal-alignment: root.data.rtl-preview ? right : left;
+            if root.data.unread: PopIn {
+                from-scale: Theme.reduced-motion ? 1.0 : 0.3;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: Theme.accent;
+                y: (parent.height - 8px) / 2;
+            }
+        }
+        t := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clicked(); }
+            changed has-hover => {
+                if self.has-hover && root.data.channel {
+                    ChatTipStore.title = root.data.title;
+                    ChatTipStore.private = root.data.private;
+                    ChatTipStore.row-bottom = root.absolute-position.y + root.height;
+                    ChatTipStore.id = root.data.id;
+                } else if ChatTipStore.id == root.data.id {
+                    ChatTipStore.id = "";
                 }
             }
-        }
-        if root.data.unread: PopIn {
-            from-scale: Theme.reduced-motion ? 1.0 : 0.3;
-            width: 8px;
-            height: 8px;
-            border-radius: 4px;
-            background: Theme.accent;
-            y: (parent.height - 8px) / 2;
-        }
-    }
-    t := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-        changed has-hover => {
-            if self.has-hover && root.data.channel {
-                ChatTipStore.title = root.data.title;
-                ChatTipStore.private = root.data.private;
-                ChatTipStore.row-bottom = root.absolute-position.y + root.height;
-                ChatTipStore.id = root.data.id;
-            } else if ChatTipStore.id == root.data.id {
-                ChatTipStore.id = "";
+            // Resting on a 1:1 chat's photo opens the person's hover card; a click opens the chat.
+            // (Inside the row's TouchArea, which would otherwise take the pointer from the photo.)
+            if root.data.person != "": photo-hover := PersonHover {
+                x: 12px;
+                y: (parent.height - 32px) / 2;
+                width: 32px;
+                height: 32px;
+                person: root.data.person;
+                click-opens: false;
+                activated => { root.clicked(); }
             }
-        }
-        // Resting on a 1:1 chat's photo opens the person's hover card; a click opens the chat.
-        // (Inside the row's TouchArea, which would otherwise take the pointer from the photo.)
-        if root.data.person != "": photo-hover := PersonHover {
-            x: 12px;
-            y: (parent.height - 32px) / 2;
-            width: 32px;
-            height: 32px;
-            person: root.data.person;
-            click-opens: false;
-            activated => { root.clicked(); }
-        }
-        pointer-event(e) => {
-            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
-                if root.data.channel { ListStore.command("channel-menu", root.data.id); }
-                root.open-menu();
+            pointer-event(e) => {
+                if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                    if root.data.channel { ListStore.command("channel-menu", root.data.id); }
+                    root.open-menu();
+                }
             }
-        }
-        if t.has-hover: IconButton {
-            x: parent.width - 30px;
-            y: 30px;
-            size: 22px;
-            icon: @image-url("../icons/star.svg");
-            tint: root.data.favorite ? #ffd335 : Theme.fg-subtle;
-            clicked => { root.toggle-favorite(); }
-        }
-        // The same menu as a right click.
-        if t.has-hover: IconButton {
-            x: parent.width - 54px;
-            y: 30px;
-            size: 22px;
-            icon: @image-url("../icons/more.svg");
-            tooltip: @tr("More options");
-            clicked => {
-                if root.data.channel { ListStore.command("channel-menu", root.data.id); }
-                root.open-menu();
+            if t.has-hover: IconButton {
+                x: parent.width - 30px;
+                y: 30px;
+                size: 22px;
+                icon: @image-url("../icons/star.svg");
+                tint: root.data.favorite ? #ffd335 : Theme.fg-subtle;
+                clicked => { root.toggle-favorite(); }
+            }
+            // The same menu as a right click.
+            if t.has-hover: IconButton {
+                x: parent.width - 54px;
+                y: 30px;
+                size: 22px;
+                icon: @image-url("../icons/more.svg");
+                tooltip: @tr("More options");
+                clicked => {
+                    if root.data.channel { ListStore.command("channel-menu", root.data.id); }
+                    root.open-menu();
+                }
             }
         }
     }
@@ -430,238 +438,270 @@ export component Sidebar inherits Rectangle {
             }
         }
 
-        if root.view == "chat": ScrollView {
-            VerticalLayout {
-                padding: 6px;
-                spacing: 1px;
-                alignment: start;
-                QuickViewsSection {
-                    mentions: root.catch-mentions;
-                    drafts-on: root.filter == "drafts";
-                    open(kind) => {
-                        if kind == "drafts" {
-                            FindStore.quick-open = false;
-                            root.filter = root.filter == "drafts" ? "all" : "drafts";
-                            root.set-filter(root.filter);
-                        } else {
-                            root.quick-view(kind);
-                        }
-                    }
-                }
-                // The chat being started in the New chat pane, as Teams lists it.
-                if PeopleStore.new-chat-open: NewMessageRow { }
-                if root.filter != "communities": SectionHeader { label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
-                if ListStore.favorites-open: Reveal { for c in root.chats-favorites: ChatItem {
-                    data: c;
-                    selected: c.id == root.current-id;
-                    limit: root.absolute-position.y + root.height;
-                    clicked => { root.select-chat(c.id); }
-                    toggle-favorite => { root.toggle-favorite(c.id); }
-                    mark-unread => { root.mark-unread(c.id); }
-                    leave => { root.leave-chat(c.id); }
-                } }
-                for sec in ListStore.sections: VerticalLayout {
-                    SectionHead { section: sec; toggle => { Motion.toggled = true; ListStore.command("section-toggle", sec.id); } }
-                    if sec.expanded: Reveal { for c in sec.items: ChatItem {
-                        data: c;
-                        selected: c.id == root.current-id;
-                        limit: root.absolute-position.y + root.height;
-                        clicked => { root.select-chat(c.id); }
-                        toggle-favorite => { root.toggle-favorite(c.id); }
-                        mark-unread => { root.mark-unread(c.id); }
-                        leave => { root.leave-chat(c.id); }
-                    } }
-                }
-                if root.filter != "communities": SectionHeader { label: @tr("Chats"); expanded <=> ListStore.chats-open; }
-                if ListStore.chats-open: Reveal { for c in root.chats-main: VerticalLayout {
-                    if c.section != "meetings": ChatItem {
-                        data: c;
-                        selected: c.id == root.current-id;
-                        limit: root.absolute-position.y + root.height;
-                        clicked => { root.select-chat(c.id); }
-                        toggle-favorite => { root.toggle-favorite(c.id); }
-                        mark-unread => { root.mark-unread(c.id); }
-                        leave => { root.leave-chat(c.id); }
-                    }
-                } }
-                // Meeting chats, collapsed by default: the newest five, then "See all".
-                if ListStore.meetings-count > 0: SectionHead {
-                    section: { id: "meetings", name: @tr("Meetings"), expanded: ListStore.meetings-open, unread: ListStore.meetings-unread, local: false };
-                    toggle => { Motion.toggled = true; ListStore.meetings-open = !ListStore.meetings-open; }
-                }
-                if ListStore.meetings-count > 0 && ListStore.meetings-open: Reveal { for c[i] in root.chats-main: VerticalLayout {
-                    if c.section == "meetings" && (ListStore.meetings-all || i < root.meetings-start + 5): ChatItem {
-                        data: c;
-                        selected: c.id == root.current-id;
-                        limit: root.absolute-position.y + root.height;
-                        clicked => { root.select-chat(c.id); }
-                        toggle-favorite => { root.toggle-favorite(c.id); }
-                        mark-unread => { root.mark-unread(c.id); }
-                        leave => { root.leave-chat(c.id); }
-                    }
-                } }
-                if ListStore.meetings-open && ListStore.meetings-count > 5: MoreRow {
-                    label: ListStore.meetings-all ? @tr("Show less") : @tr("See all ({})", ListStore.meetings-count);
-                    clicked => { ListStore.meetings-all = !ListStore.meetings-all; }
-                }
-                if !ListStore.combined && root.filter != "communities": SectionHeader { label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
-                if ListStore.channels-open && !ListStore.combined: Reveal { for c in root.chats-channels: ChatItem {
-                    data: c;
-                    selected: c.id == root.current-id;
-                    limit: root.absolute-position.y + root.height;
-                    clicked => { root.select-chat(c.id); }
-                    toggle-favorite => { root.toggle-favorite(c.id); }
-                    mark-unread => { root.mark-unread(c.id); }
-                    leave => { root.leave-chat(c.id); }
-                } }
-                if TeamsStore.communities.length > 0: SectionHeader { label: @tr("Communities"); expanded <=> root.communities-open; }
-                if TeamsStore.communities.length > 0 && root.communities-open: CommunitiesSection { open(id) => { root.open-community(id); } }
-                if TeamsStore.communities.length == 0 && root.filter == "communities": Text {
-                    text: @tr("You are not in any community.");
-                    color: Theme.fg-subtle;
-                    font-size: 13px * Theme.font-scale;
-                    horizontal-alignment: center;
-                    height: 40px;
-                    vertical-alignment: center;
-                }
-                // Under everything else, so it never moves a row.
-                if root.loading: SkeletonList { count: 8; label: @tr("Loading chats"); }
-            }
-        }
-
-        if root.view == "teams": ScrollView {
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                alignment: start;
-                for t[ti] in root.teams: VerticalLayout {
-                    Rectangle {
-                        height: 44px;
-                        border-radius: 4px;
-                        background: tt.has-hover ? Theme.surface-hover : transparent;
-                        HorizontalLayout {
-                            padding-left: 8px;
-                            spacing: 10px;
-                            Icon { source: t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 15px; }
-                            // The team's picture when it is known, else its initials.
-                            Avatar {
-                                size: 28px;
-                                y: 8px;
-                                corner: 4px;
-                                tone: t.color;
-                                tone-under-img: true;
-                                initials: t.initials;
-                                text-size: 12px * Theme.font-scale;
-                                text-weight: 700;
-                                img: t.avatar;
-                                has-img: t.has-avatar;
-                                photo-label: @tr("Team picture");
-                            }
-                            Text { text: t.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
-                            Rectangle { width: 30px; }
-                        }
-                        tt := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => { root.toggle-team(ti); }
-                            pointer-event(e) => {
-                                if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
-                                    team-menu.show();
+        // Both lists stay built and the other page's one is clipped to nothing: Chat to Teams and
+        // back (or a page of the rail, see app.slint) keeps the list's scroll place and does not
+        // build every row again.
+        lists := Rectangle {
+            vertical-stretch: 1;
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: root.view == "chat" ? parent.height : 0px;
+                clip: true;
+                ScrollView {
+                    x: 0px;
+                    y: 0px;
+                    width: lists.width;
+                    height: lists.height;
+                    VerticalLayout {
+                        padding: 6px;
+                        spacing: 1px;
+                        alignment: start;
+                        QuickViewsSection {
+                            mentions: root.catch-mentions;
+                            drafts-on: root.filter == "drafts";
+                            open(kind) => {
+                                if kind == "drafts" {
+                                    FindStore.quick-open = false;
+                                    root.filter = root.filter == "drafts" ? "all" : "drafts";
+                                    root.set-filter(root.filter);
+                                } else {
+                                    root.quick-view(kind);
                                 }
                             }
-                            if tt.has-hover: IconButton {
-                                x: parent.width - 30px;
-                                y: 11px;
-                                size: 22px;
-                                icon: @image-url("../icons/more.svg");
-                                tooltip: @tr("More options for {}", t.name);
-                                clicked => { team-menu.show(); }
-                            }
                         }
-                        // The team menu of "Your teams and channels".
-                        team-menu := PopupWindow {
-                            x: parent.width - 250px;
-                            y: parent.height - 4px;
-                            width: 250px;
-                            height: team-items.preferred-height + 10px;
-                            close-policy: close-on-click-outside;
+                        // The chat being started in the New chat pane, as Teams lists it.
+                        if PeopleStore.new-chat-open: NewMessageRow { }
+                        if root.filter != "communities": SectionHeader { label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
+                        if ListStore.favorites-open: Reveal { for c in root.chats-favorites: ChatItem {
+                            data: c;
+                            selected: c.id == root.current-id;
+                            limit: root.absolute-position.y + root.height;
+                            view-top: root.absolute-position.y;
+                            clicked => { root.select-chat(c.id); }
+                            toggle-favorite => { root.toggle-favorite(c.id); }
+                            mark-unread => { root.mark-unread(c.id); }
+                            leave => { root.leave-chat(c.id); }
+                        } }
+                        for sec in ListStore.sections: VerticalLayout {
+                            SectionHead { section: sec; toggle => { Motion.toggled = true; ListStore.command("section-toggle", sec.id); } }
+                            if sec.expanded: Reveal { for c in sec.items: ChatItem {
+                                data: c;
+                                selected: c.id == root.current-id;
+                                limit: root.absolute-position.y + root.height;
+                                view-top: root.absolute-position.y;
+                                clicked => { root.select-chat(c.id); }
+                                toggle-favorite => { root.toggle-favorite(c.id); }
+                                mark-unread => { root.mark-unread(c.id); }
+                                leave => { root.leave-chat(c.id); }
+                            } }
+                        }
+                        if root.filter != "communities": SectionHeader { label: @tr("Chats"); expanded <=> ListStore.chats-open; }
+                        if ListStore.chats-open: Reveal { for c in root.chats-main: VerticalLayout {
+                            if c.section != "meetings": ChatItem {
+                                data: c;
+                                selected: c.id == root.current-id;
+                                limit: root.absolute-position.y + root.height;
+                                view-top: root.absolute-position.y;
+                                clicked => { root.select-chat(c.id); }
+                                toggle-favorite => { root.toggle-favorite(c.id); }
+                                mark-unread => { root.mark-unread(c.id); }
+                                leave => { root.leave-chat(c.id); }
+                            }
+                        } }
+                        // Meeting chats, collapsed by default: the newest five, then "See all".
+                        if ListStore.meetings-count > 0: SectionHead {
+                            section: { id: "meetings", name: @tr("Meetings"), expanded: ListStore.meetings-open, unread: ListStore.meetings-unread, local: false };
+                            toggle => { Motion.toggled = true; ListStore.meetings-open = !ListStore.meetings-open; }
+                        }
+                        if ListStore.meetings-count > 0 && ListStore.meetings-open: Reveal { for c[i] in root.chats-main: VerticalLayout {
+                            if c.section == "meetings" && (ListStore.meetings-all || i < root.meetings-start + 5): ChatItem {
+                                data: c;
+                                selected: c.id == root.current-id;
+                                limit: root.absolute-position.y + root.height;
+                                view-top: root.absolute-position.y;
+                                clicked => { root.select-chat(c.id); }
+                                toggle-favorite => { root.toggle-favorite(c.id); }
+                                mark-unread => { root.mark-unread(c.id); }
+                                leave => { root.leave-chat(c.id); }
+                            }
+                        } }
+                        if ListStore.meetings-open && ListStore.meetings-count > 5: MoreRow {
+                            label: ListStore.meetings-all ? @tr("Show less") : @tr("See all ({})", ListStore.meetings-count);
+                            clicked => { ListStore.meetings-all = !ListStore.meetings-all; }
+                        }
+                        if !ListStore.combined && root.filter != "communities": SectionHeader { label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
+                        if ListStore.channels-open && !ListStore.combined: Reveal { for c in root.chats-channels: ChatItem {
+                            data: c;
+                            selected: c.id == root.current-id;
+                            limit: root.absolute-position.y + root.height;
+                            view-top: root.absolute-position.y;
+                            clicked => { root.select-chat(c.id); }
+                            toggle-favorite => { root.toggle-favorite(c.id); }
+                            mark-unread => { root.mark-unread(c.id); }
+                            leave => { root.leave-chat(c.id); }
+                        } }
+                        if TeamsStore.communities.length > 0: SectionHeader { label: @tr("Communities"); expanded <=> root.communities-open; }
+                        if TeamsStore.communities.length > 0 && root.communities-open: CommunitiesSection { open(id) => { root.open-community(id); } }
+                        if TeamsStore.communities.length == 0 && root.filter == "communities": Text {
+                            text: @tr("You are not in any community.");
+                            color: Theme.fg-subtle;
+                            font-size: 13px * Theme.font-scale;
+                            horizontal-alignment: center;
+                            height: 40px;
+                            vertical-alignment: center;
+                        }
+                        // Under everything else, so it never moves a row.
+                        if root.loading: SkeletonList { count: 8; label: @tr("Loading chats"); }
+                    }
+                }
+            }
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: root.view == "teams" ? parent.height : 0px;
+                clip: true;
+                ScrollView {
+                    x: 0px;
+                    y: 0px;
+                    width: lists.width;
+                    height: lists.height;
+                    VerticalLayout {
+                        padding: 6px;
+                        spacing: 2px;
+                        alignment: start;
+                        for t[ti] in root.teams: VerticalLayout {
                             Rectangle {
-                                background: Theme.surface;
-                                border-radius: 6px;
-                                border-width: 1px;
-                                border-color: Theme.border;
-                                team-items := VerticalLayout {
-                                    padding: 4px;
-                                    for full in TeamsStore.all-teams: VerticalLayout {
-                                        if full.id == t.id: TeamMenuItems {
-                                            t: full;
-                                            go(id, name) => { root.select-channel(id, name); }
-                                            done => { team-menu.close(); }
+                                height: 44px;
+                                border-radius: 4px;
+                                background: tt.has-hover ? Theme.surface-hover : transparent;
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    spacing: 10px;
+                                    Icon { source: t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 15px; }
+                                    // The team's picture when it is known, else its initials.
+                                    Avatar {
+                                        size: 28px;
+                                        y: 8px;
+                                        corner: 4px;
+                                        tone: t.color;
+                                        tone-under-img: true;
+                                        initials: t.initials;
+                                        text-size: 12px * Theme.font-scale;
+                                        text-weight: 700;
+                                        img: t.avatar;
+                                        has-img: t.has-avatar;
+                                        photo-label: @tr("Team picture");
+                                    }
+                                    Text { text: t.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
+                                    Rectangle { width: 30px; }
+                                }
+                                tt := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.toggle-team(ti); }
+                                    pointer-event(e) => {
+                                        if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                                            team-menu.show();
+                                        }
+                                    }
+                                    if tt.has-hover: IconButton {
+                                        x: parent.width - 30px;
+                                        y: 11px;
+                                        size: 22px;
+                                        icon: @image-url("../icons/more.svg");
+                                        tooltip: @tr("More options for {}", t.name);
+                                        clicked => { team-menu.show(); }
+                                    }
+                                }
+                                // The team menu of "Your teams and channels".
+                                team-menu := PopupWindow {
+                                    x: parent.width - 250px;
+                                    y: parent.height - 4px;
+                                    width: 250px;
+                                    height: team-items.preferred-height + 10px;
+                                    close-policy: close-on-click-outside;
+                                    Rectangle {
+                                        background: Theme.surface;
+                                        border-radius: 6px;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        team-items := VerticalLayout {
+                                            padding: 4px;
+                                            for full in TeamsStore.all-teams: VerticalLayout {
+                                                if full.id == t.id: TeamMenuItems {
+                                                    t: full;
+                                                    go(id, name) => { root.select-channel(id, name); }
+                                                    done => { team-menu.close(); }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                    }
-                    if t.expanded: VerticalLayout {
-                        for ch in t.channels: Rectangle {
-                            height: 34px;
-                            border-radius: 4px;
-                            background: ch.id == root.current-id ? Theme.selected : (ct.has-hover ? Theme.surface-hover : transparent);
-                            HorizontalLayout {
-                                padding-left: 50px;
-                                padding-right: 32px;
-                                spacing: 6px;
-                                Text {
-                                    text: ch.hidden ? @tr("{} (hidden)", ch.name) : ch.name;
-                                    color: ch.hidden ? Theme.fg-subtle : Theme.fg;
-                                    font-size: 13px * Theme.font-scale;
-                                    font-weight: ch.unread ? 700 : 400;
-                                    font-italic: ch.hidden;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    // A private channel's lock follows the name.
-                                    horizontal-stretch: ch.private ? 0 : 1;
-                                }
-                                if ch.private: Icon {
-                                    source: @image-url("../icons/lock.svg");
-                                    width: 12px;
-                                    height: 12px;
-                                    y: (parent.height - 12px) / 2;
-                                    tint: Theme.fg-subtle;
-                                    accessible-role: image;
-                                    accessible-label: @tr("Private channel");
-                                }
-                                if ch.private: Rectangle { horizontal-stretch: 1; }
-                            }
-                            ct := TouchArea {
-                                mouse-cursor: pointer;
-                                clicked => { root.select-channel(ch.id, t.name + " › " + ch.name); }
-                                pointer-event(e) => {
-                                    if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
-                                        ListStore.command("channel-menu", ch.id);
-                                        ch-menu.show();
+                            if t.expanded: VerticalLayout {
+                                for ch in t.channels: Rectangle {
+                                    height: 34px;
+                                    border-radius: 4px;
+                                    background: ch.id == root.current-id ? Theme.selected : (ct.has-hover ? Theme.surface-hover : transparent);
+                                    HorizontalLayout {
+                                        padding-left: 50px;
+                                        padding-right: 32px;
+                                        spacing: 6px;
+                                        Text {
+                                            text: ch.hidden ? @tr("{} (hidden)", ch.name) : ch.name;
+                                            color: ch.hidden ? Theme.fg-subtle : Theme.fg;
+                                            font-size: 13px * Theme.font-scale;
+                                            font-weight: ch.unread ? 700 : 400;
+                                            font-italic: ch.hidden;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                            // A private channel's lock follows the name.
+                                            horizontal-stretch: ch.private ? 0 : 1;
+                                        }
+                                        if ch.private: Icon {
+                                            source: @image-url("../icons/lock.svg");
+                                            width: 12px;
+                                            height: 12px;
+                                            y: (parent.height - 12px) / 2;
+                                            tint: Theme.fg-subtle;
+                                            accessible-role: image;
+                                            accessible-label: @tr("Private channel");
+                                        }
+                                        if ch.private: Rectangle { horizontal-stretch: 1; }
+                                    }
+                                    ct := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.select-channel(ch.id, t.name + " › " + ch.name); }
+                                        pointer-event(e) => {
+                                            if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                                                ListStore.command("channel-menu", ch.id);
+                                                ch-menu.show();
+                                            }
+                                        }
+                                        // The same menu as a right click.
+                                        if ct.has-hover: IconButton {
+                                            x: parent.width - 28px;
+                                            y: 6px;
+                                            size: 22px;
+                                            icon: @image-url("../icons/more.svg");
+                                            tooltip: @tr("More options for {}", ch.name);
+                                            clicked => {
+                                                ListStore.command("channel-menu", ch.id);
+                                                ch-menu.show();
+                                            }
+                                        }
+                                    }
+                                    ch-menu := PopupWindow {
+                                        x: parent.width - 200px;
+                                        y: parent.height - 4px;
+                                        width: 190px;
+                                        height: cm.menu-height;
+                                        close-policy: close-on-click-outside;
+                                        cm := ChannelMenu { channel: ch.id; done => { ch-menu.close(); } }
                                     }
                                 }
-                                // The same menu as a right click.
-                                if ct.has-hover: IconButton {
-                                    x: parent.width - 28px;
-                                    y: 6px;
-                                    size: 22px;
-                                    icon: @image-url("../icons/more.svg");
-                                    tooltip: @tr("More options for {}", ch.name);
-                                    clicked => {
-                                        ListStore.command("channel-menu", ch.id);
-                                        ch-menu.show();
-                                    }
-                                }
-                            }
-                            ch-menu := PopupWindow {
-                                x: parent.width - 200px;
-                                y: parent.height - 4px;
-                                width: 190px;
-                                height: cm.menu-height;
-                                close-policy: close-on-click-outside;
-                                cm := ChannelMenu { channel: ch.id; done => { ch-menu.close(); } }
                             }
                         }
                     }
