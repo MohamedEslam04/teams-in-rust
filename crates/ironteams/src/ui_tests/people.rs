@@ -1584,57 +1584,73 @@ fn receipts(app: &AppWindow) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The labels of the marks at the bubbles' right edge, top to bottom.
+fn side_marks(app: &AppWindow) -> Vec<String> {
+    ElementHandle::find_by_element_type_name(app, "DeliveryMark")
+        .map(|e| e.accessible_label().unwrap_or_default().to_string())
+        .collect()
+}
+
 #[test]
-fn my_newest_message_shows_a_check_then_an_eye_when_the_other_person_has_read_it() {
+fn a_one_on_one_marks_the_newest_read_message_seen_and_the_later_ones_sent() {
     let h = Harness::new();
     wire(&h);
     let now = teams_proto::time::now_ms();
+    let ids: Vec<String> = (1..=3)
+        .map(|i| (now - 4000 + i * 1000).to_string())
+        .collect();
     h.engine.test_store(|s| {
-        s.upsert_message(&my_message(
-            ONE_ON_ONE,
-            &(now - 2000).to_string(),
-            now - 2000,
-        ))
-        .unwrap();
-        s.upsert_message(&my_message(
-            ONE_ON_ONE,
-            &(now - 1000).to_string(),
-            now - 1000,
-        ))
-        .unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            s.upsert_message(&my_message(ONE_ON_ONE, id, now - 3000 + i as i64 * 1000))
+                .unwrap();
+        }
     });
     h.select(ONE_ON_ONE);
-    let newest = (now - 1000).to_string();
+    // Nobody has read anything: all three are sent, beside their bubbles (no line under).
+    assert_eq!(side_marks(&h.app), ["Sent", "Sent", "Sent"]);
+    assert_eq!(
+        ElementHandle::find_by_element_id(&h.app, "MessageRow::receipt-mark").count(),
+        0,
+        "a 1:1 chat has no line under the bubble"
+    );
+    assert!(h.app.get_messages().iter().all(|m| m.receipt_side));
+
+    // The other person read up to the second message: it is seen, the third is sent, and the
+    // first shows nothing.
+    h.engine
+        .test_set_horizons(ONE_ON_ONE, vec![horizon(&mri(2), &ids[1])]);
+    h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
     assert_eq!(
         receipts(&h.app),
-        vec![(newest.clone(), "sent".to_string())],
-        "only my newest message has a receipt"
+        vec![
+            (ids[1].clone(), "seen".to_string()),
+            (ids[2].clone(), "sent".to_string())
+        ]
     );
-    assert_eq!(
-        touch(&h.app, "MessageRow::receipt-mark")
-            .accessible_label()
-            .unwrap(),
-        "Sent"
-    );
+    assert_eq!(side_marks(&h.app), ["", "Seen", "Sent"]);
 
-    // The other person read up to an older message: still just sent.
-    h.engine.test_set_horizons(
-        ONE_ON_ONE,
-        vec![horizon(&mri(2), &(now - 2000).to_string())],
-    );
-    h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
-    assert_eq!(receipts(&h.app), vec![(newest.clone(), "sent".to_string())]);
-
+    // Read to the end: only the last is seen.
     h.engine
-        .test_set_horizons(ONE_ON_ONE, vec![horizon(&mri(2), &newest)]);
+        .test_set_horizons(ONE_ON_ONE, vec![horizon(&mri(2), &ids[2])]);
     h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
-    assert_eq!(receipts(&h.app), vec![(newest, "seen".to_string())]);
-    assert_eq!(
-        touch(&h.app, "MessageRow::receipt-mark")
-            .accessible_label()
-            .unwrap(),
-        "Seen"
-    );
+    assert_eq!(receipts(&h.app), vec![(ids[2].clone(), "seen".to_string())]);
+    assert_eq!(side_marks(&h.app), ["", "", "Seen"]);
+}
+
+#[test]
+fn a_one_on_one_message_being_sent_shows_the_sending_mark_beside_its_bubble() {
+    let side = |m: Msg| Msg {
+        receipt_side: true,
+        ..m
+    };
+    let app = app_with_messages(vec![
+        side(outgoing("m1", "sent earlier", false, false)),
+        side(outgoing("pending-1", "going out", true, false)),
+        side(outgoing("pending-2", "did not go", false, true)),
+        // Someone else's message has no column for a mark.
+        side(msg("m4", "theirs", false)),
+    ]);
+    assert_eq!(side_marks(&app), ["", "Sending", ""]);
 }
 
 #[test]

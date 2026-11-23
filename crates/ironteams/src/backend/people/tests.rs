@@ -175,3 +175,28 @@ fn many_readers_are_cut_to_three_names() {
         "the popup lists every reader, not just the three in the line"
     );
 }
+
+#[test]
+fn only_the_newest_read_message_of_mine_is_seen_and_the_later_ones_are_sent() {
+    let mine = [("100", 100), ("200", 200), ("300", 300)];
+    // The other person has read up to the second one.
+    let states = delivery_states(&[horizon(A, "200")], ME, &mine);
+    assert_eq!(states, ["", "seen", "sent"]);
+    // Read past the last one: only the last is seen.
+    assert_eq!(
+        delivery_states(&[horizon(A, "999")], ME, &mine),
+        ["", "", "seen"]
+    );
+    // Read nothing of mine (or only an older message): all are sent.
+    assert_eq!(
+        delivery_states(&[horizon(A, "50")], ME, &mine),
+        ["sent", "sent", "sent"]
+    );
+    assert_eq!(delivery_states(&[], ME, &mine), ["sent", "sent", "sent"]);
+    // My own horizon does not count as the other person reading.
+    assert_eq!(
+        delivery_states(&[horizon(ME, "999")], ME, &mine),
+        ["sent", "sent", "sent"]
+    );
+    assert!(delivery_states(&[horizon(A, "200")], ME, &[]).is_empty());
+}

@@ -85,8 +85,10 @@ pub(super) struct MsgMarks<'a> {
     pub failed: Option<&'a HashSet<String>>,
     /// Index (among the non-control rows) where the unread divider sits.
     pub divider: Option<usize>,
-    /// My newest message and its read receipt.
-    pub receipt: Option<&'a super::people::ReceiptMark>,
+    /// The read receipts of my messages (see `receipt_marks`).
+    pub receipt: &'a [super::people::ReceiptMark],
+    /// A 1:1 chat: my messages carry their mark at the bubble's right edge.
+    pub receipt_side: bool,
     /// Messages that arrived live a moment ago: the row fades in.
     pub fresh: Option<&'a HashMap<String, Instant>>,
 }
@@ -917,10 +919,11 @@ impl Engine {
             None
         };
         let receipt = if thread.is_none() {
-            self.receipt_mark(&conv, &visible)
+            self.receipt_marks(&conv, &visible)
         } else {
-            None
+            Vec::new()
         };
+        let receipt_side = thread.is_none() && self.conv_kind(&conv) == Some(ConvKind::OneOnOne);
         let fresh = self.view.lock().unwrap().fresh.clone();
         let mut out = self.build_msgs(
             &rows,
@@ -932,7 +935,8 @@ impl Engine {
                 selected: &selected,
                 failed: Some(&failed),
                 divider,
-                receipt: receipt.as_ref(),
+                receipt: &receipt,
+                receipt_side,
                 fresh: Some(&fresh),
             },
         );
@@ -1003,6 +1007,7 @@ impl Engine {
         let failed = marks.failed.unwrap_or(&none);
         let divider = marks.divider;
         let receipt = marks.receipt;
+        let receipt_side = marks.receipt_side;
         let fresh = marks.fresh;
         let (visible, meetings) = super::meeting_cards::visible_rows(rows);
         let mut out: Vec<MsgData> = Vec::with_capacity(rows.len());
@@ -1012,7 +1017,7 @@ impl Engine {
         let mut built = 0usize;
         for (i, r) in visible.iter().copied().enumerate() {
             let system = system_text(r);
-            let this_receipt = receipt.filter(|x| x.msg_id == r.id);
+            let this_receipt = receipt.iter().find(|x| x.msg_id == r.id);
             let mine = r.sender_mri == self.me;
             let shown = self.translated_html(&r.id);
             let html = shown.as_deref().unwrap_or(&r.content_html);
@@ -1189,6 +1194,7 @@ impl Engine {
                 receipt: this_receipt.map(|x| x.state.clone()).unwrap_or_default(),
                 receipt_names: this_receipt.map(|x| x.names.clone()).unwrap_or_default(),
                 receipt_readers: this_receipt.map(|x| x.readers.clone()).unwrap_or_default(),
+                receipt_side: receipt_side && mine,
                 flash: false,
                 fresh: fresh.is_some_and(|f| {
                     f.get(&r.id)

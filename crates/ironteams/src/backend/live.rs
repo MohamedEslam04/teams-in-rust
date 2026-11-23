@@ -103,6 +103,10 @@ impl Engine {
                     tokio::spawn(async move {
                         let _ = e.sync().await;
                     });
+                } else {
+                    // The open chat's read marks move when the other person reads (the push
+                    // names no horizon, so ask for them).
+                    self.refresh_open_horizons(&conversation_id);
                 }
             }
             Event::Presence {
@@ -192,6 +196,10 @@ impl Engine {
                 let _ = e.sync().await;
             });
         }
+        if !mine {
+            // Someone who answers has read what came before: their read marks moved.
+            self.refresh_open_horizons(&m.conversation_id);
+        }
         if counted {
             // Scrolled up: leave the list alone and count the message on the jump button.
             let n = {
@@ -208,6 +216,17 @@ impl Engine {
                 d.scroll |= follow;
             }
         });
+    }
+
+    /// Reads the read horizons of `conv` again when it is the open chat (the poll in
+    /// `start_people` does the same every 20 s).
+    fn refresh_open_horizons(self: &Arc<Self>, conv: &str) {
+        if self.view.lock().unwrap().current.as_deref() != Some(conv) {
+            return;
+        }
+        let e = self.clone();
+        let conv = conv.to_string();
+        tokio::spawn(async move { e.refresh_horizons(&conv).await });
     }
 
     fn notify(self: &Arc<Self>, st: &Store, m: &Message) {

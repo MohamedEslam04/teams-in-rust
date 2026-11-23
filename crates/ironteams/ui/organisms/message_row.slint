@@ -10,6 +10,7 @@ import { VoicePlayer } from "../molecules/voice_player.slint";
 import { CodeBlock } from "../molecules/code_block.slint";
 import { VideoClipCard } from "video_clip.slint";
 import { MeetingCardView } from "meeting_card.slint";
+import { DeliveryMark } from "../molecules/delivery_mark.slint";
 import { FadeImage, Motion, PopIn } from "../tokens/motion.slint";
 import { ReaderItem } from "../tokens/types.slint";
 
@@ -520,11 +521,19 @@ export component MessageRow inherits TouchArea {
                     }
                 }
             }
+
+            // My message in a 1:1 chat: its delivery mark at the right edge, level with the
+            // bubble's bottom. The column is there on every one of my messages, so the bubbles
+            // line up whether or not they carry a mark.
+            if root.m.receipt-side && root.m.mine && !root.card-style: DeliveryMark {
+                state: root.m.pending ? "sending" : root.m.receipt;
+            }
         }
 
-        // Delivery under my newest message: a clock while it is being sent, a check once sent, an
-        // eye (and the readers) when someone saw it. The glyphs cross-fade (200 ms).
-        if root.m.receipt != "" || (root.m.mine && root.m.pending && !root.m.failed): receipt-mark := Rectangle {
+        // Delivery under my newest message of a group: a clock while it is being sent, a check once
+        // sent, an eye (and the readers) when someone saw it. The glyphs cross-fade (200 ms). A
+        // 1:1 chat draws the mark beside the bubble instead (`DeliveryMark`).
+        if !root.m.receipt-side && (root.m.receipt != "" || (root.m.mine && root.m.pending && !root.m.failed)): receipt-mark := Rectangle {
             property <bool> sending: root.m.pending;
             property <bool> seen: !self.sending && root.m.receipt == "seen";
             property <string> seen-line: root.m.receipt-names != "" ? @tr("Seen by {}", root.m.receipt-names) : @tr("Seen");

@@ -241,6 +241,9 @@ pub struct MsgData {
     pub receipt_names: String,
     /// Every reader's name, in the order they read it (empty in a 1:1 chat): the "Seen by" list.
     pub receipt_readers: Vec<String>,
+    /// My message in a 1:1 chat: the mark (and "Sending") is drawn at the bubble's right edge,
+    /// not on a line under it.
+    pub receipt_side: bool,
     /// The row a jump from the pinned banner landed on.
     pub flash: bool,
     /// Arrived live a moment ago: the row fades in.
