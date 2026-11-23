@@ -15,13 +15,13 @@ import { BackgroundTile } from "../molecules/background_tile.slint";
 
 export component CameraMenu inherits Rectangle {
     // The tallest it may be (the window under the top bar).
-    in property <length> max-height: 600px;
+    in property <length> avail-height: 600px;
     // The blur's strengths are listed under its row.
     property <bool> strengths;
     // Pictures shown: the first eight after None and the blur, four to a row.
     property <int> pictures: min(max(VideoFxStore.backgrounds.length - 2, 0), 8);
     width: 300px;
-    height: min(col.preferred-height, root.max-height);
+    height: min(col.preferred-height, root.avail-height);
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.border;

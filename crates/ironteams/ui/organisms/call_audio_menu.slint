@@ -16,9 +16,9 @@ import { LevelMeter } from "../molecules/level_meter.slint";
 
 export component AudioMenu inherits Rectangle {
     // The tallest it may be (the window under the top bar).
-    in property <length> max-height: 600px;
+    in property <length> avail-height: 600px;
     width: 300px;
-    height: min(col.preferred-height, root.max-height);
+    height: min(col.preferred-height, root.avail-height);
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.border;

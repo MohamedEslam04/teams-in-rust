@@ -110,13 +110,13 @@ component InCall inherits Rectangle {
         x: max(12px, min(bar.camera-x - 139px, root.width - self.width - root.side - 12px));
         y: 64px;
         z: 30;
-        max-height: root.height - 64px - 12px;
+        avail-height: root.height - 64px - 12px;
     }
     if CallStore.menu == "devices": AudioMenu {
         x: max(12px, min(bar.mic-x - 139px, root.width - self.width - root.side - 12px));
         y: 64px;
         z: 30;
-        max-height: root.height - 64px - 12px;
+        avail-height: root.height - 64px - 12px;
     }
 }
 
