@@ -813,7 +813,7 @@ mod tests {
                     author_mri: None,
                     author: None,
                     time_ms: None,
-                    preview: "hello world line 2".into(),
+                    preview: "hello world\nline 2".into(),
                     dir: Dir::Ltr,
                 },
                 para(vec![span("after", Style::default())]),
