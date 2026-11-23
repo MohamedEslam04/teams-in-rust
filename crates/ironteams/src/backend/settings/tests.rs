@@ -158,6 +158,18 @@ fn find_matches_labels_pages_and_keywords() {
 }
 
 #[test]
+fn the_graphics_setting_is_found_on_the_general_page() {
+    for q in ["graphics", "gpu", "cpu", "memory"] {
+        assert!(
+            find(q)
+                .iter()
+                .any(|f| f.page == "general" && f.label == "Graphics"),
+            "{q}"
+        );
+    }
+}
+
+#[test]
 fn the_chats_page_is_listed_after_general_and_its_settings_are_found() {
     assert_eq!(page_title("chats"), "Chats and channels");
     let keys: Vec<_> = PAGES.iter().map(|(k, _)| *k).collect();

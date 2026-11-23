@@ -200,6 +200,14 @@ export global SettingsStore {
     // A downloaded update waits for "Restart to update" (or the next quit).
     in-out property <bool> update-ready: false;
 
+    // Graphics (General > Performance): the saved choice and the renderer drawing now, "cpu" or
+    // "gpu". A change applies on the next start (`renderer-restart`); `renderer-fallback`: the GPU
+    // was asked for and could not start.
+    in-out property <string> renderer: "cpu";
+    in-out property <string> renderer-running: "cpu";
+    in-out property <bool> renderer-restart: false;
+    in-out property <bool> renderer-fallback: false;
+
     // The line under the Focus switch and in the indicator's description; "" when Focus is off.
     pure public function focus-label() -> string {
         return root.focus-end-kind == "forever" ? @tr("Until you turn it off")

@@ -876,6 +876,128 @@ fn the_chats_page_sets_where_a_chat_opens_enter_to_send_receipts_and_link_previe
     );
 }
 
+/// Whether a line of text (a note, not a control) is on screen. The conditional ones are only
+/// created when the tree is next updated.
+fn text_shown(app: &AppWindow, text: &str) -> bool {
+    for _ in 0..3 {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    }
+    ElementHandle::find_by_accessible_label(app, text)
+        .next()
+        .is_some()
+}
+
+const CPU_PILL: &str = "Graphics: CPU (low memory, default)";
+const GPU_PILL: &str = "Graphics: GPU (smoother, uses more memory)";
+
+/// A window on General with `saved` in `general.json` and `started` as what drew at start.
+fn graphics_ui(
+    tag: &str,
+    saved: appearance::Renderer,
+    started: crate::renderer::Started,
+) -> (Ui, PathBuf) {
+    let home = Home::new(tag);
+    let config = home.paths().config_dir;
+    let mut local = Local::load(&config);
+    local.general.renderer = saved;
+    local.save_general().unwrap();
+    crate::renderer::set_running_for_test(started);
+    let ui = window(home);
+    open_page(&ui.app, "general");
+    tall_window(&ui.app);
+    (ui, config)
+}
+
+#[test]
+fn graphics_shows_the_saved_choice_and_the_renderer_that_is_running() {
+    use crate::renderer::Started;
+    use appearance::Renderer::Gpu;
+    let (ui, _) = graphics_ui(
+        "graphics-gpu",
+        Gpu,
+        Started {
+            wanted: Gpu,
+            running: Gpu,
+        },
+    );
+    let app = &ui.app;
+    assert!(checked(app, GPU_PILL));
+    assert!(!checked(app, CPU_PILL));
+    assert_eq!(store(app).get_renderer(), "gpu");
+    assert!(text_shown(app, "Running: GPU"));
+    assert!(!text_shown(app, "Running: CPU"));
+    assert!(!text_shown(app, "Restart IronTeams to apply"));
+    assert!(!text_shown(
+        app,
+        "GPU graphics are not available here, using CPU"
+    ));
+}
+
+#[test]
+fn graphics_is_cpu_by_default() {
+    use crate::renderer::Started;
+    let (ui, _) = graphics_ui(
+        "graphics-default",
+        appearance::Renderer::Cpu,
+        Started::default(),
+    );
+    assert!(checked(&ui.app, CPU_PILL));
+    assert!(!checked(&ui.app, GPU_PILL));
+    assert!(text_shown(&ui.app, "Running: CPU"));
+    assert!(!text_shown(&ui.app, "Restart IronTeams to apply"));
+}
+
+#[test]
+fn a_gpu_that_could_not_start_shows_the_cpu_as_running_and_says_so() {
+    use crate::renderer::Started;
+    use appearance::Renderer::{Cpu, Gpu};
+    let (ui, _) = graphics_ui(
+        "graphics-fallback",
+        Gpu,
+        Started {
+            wanted: Gpu,
+            running: Cpu,
+        },
+    );
+    let app = &ui.app;
+    assert!(checked(app, GPU_PILL), "the saved choice stays");
+    assert!(text_shown(app, "Running: CPU"), "the effective renderer");
+    assert!(text_shown(
+        app,
+        "GPU graphics are not available here, using CPU"
+    ));
+    assert!(
+        !text_shown(app, "Restart IronTeams to apply"),
+        "the choice is what this start asked for"
+    );
+}
+
+#[test]
+fn changing_graphics_saves_it_and_asks_for_a_restart_without_changing_what_runs() {
+    use crate::renderer::Started;
+    use appearance::Renderer::{Cpu, Gpu};
+    let (ui, config) = graphics_ui("graphics-change", Cpu, Started::default());
+    let app = &ui.app;
+    assert!(!text_shown(app, "Restart IronTeams to apply"));
+
+    press(app, GPU_PILL);
+    assert_eq!(Local::load(&config).general.renderer, Gpu);
+    assert!(checked(app, GPU_PILL));
+    assert!(text_shown(app, "Restart IronTeams to apply"));
+    assert!(
+        text_shown(app, "Running: CPU"),
+        "the renderer cannot change while the app runs"
+    );
+
+    press(app, "Restart now");
+    assert_eq!(*ui.log.borrow(), ["restart"]);
+
+    // Back to what is running: nothing to apply.
+    press(app, CPU_PILL);
+    assert_eq!(Local::load(&config).general.renderer, Cpu);
+    assert!(!text_shown(app, "Restart IronTeams to apply"));
+}
+
 #[test]
 fn find_in_settings_reaches_the_chats_page() {
     let ui = window(Home::new("chats-find"));

@@ -155,7 +155,7 @@ sharing on Windows and macOS (`IRONTEAMS_GST_LAUNCH` points at another `gst-laun
 
 | Variable | Effect |
 |---|---|
-| `IRONTEAMS_RENDERER=femtovg` | GPU renderer instead of the default software renderer (uses more memory) |
+| `IRONTEAMS_RENDERER=femtovg` | GPU renderer instead of the default software renderer (uses more memory); beats the choice in Settings > General > Performance, see `docs/perf.md` |
 | `IRONTEAMS_LOG=ironteams=info,teams_proto=info` | Logging to stderr. Tokens are never logged |
 | `IRONTEAMS_DEMO=1` | Offline demo with sample data: no account, no network |
 | `IRONTEAMS_HOME=<dir>` | Keep config, cache and data under `<dir>` |

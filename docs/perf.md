@@ -36,6 +36,22 @@ grep -E '^(Rss|Pss|Pss_Anon|Pss_File)' /proc/$pid/smaps_rollup
 Record `Pss` (proportional set size: shared pages split between the processes that map them). It
 is fairer than RSS when the GPU driver and fonts are shared with other programs.
 
+## CPU or GPU drawing (Settings > General > Performance > Graphics)
+
+IronTeams draws with Slint's software renderer by default ("CPU"). The GPU choice uses femtovg
+(OpenGL): it can feel smoother when scrolling, at the price of memory. On the machine in
+`docs/adr/0001-ui-toolkit.md` the PSS was about 26 MB with CPU and about 111 MB with GPU.
+
+- The choice is saved in `general.json` (`"renderer": "cpu"` or `"gpu"`) and used at the **next
+  start**: the renderer cannot change while the app runs. Settings shows `Running: CPU` or
+  `Running: GPU` (what is drawing now) and, after a change, "Restart IronTeams to apply" with a
+  "Restart now" button.
+- `IRONTEAMS_RENDERER` (`software` or `femtovg`; `cpu` and `gpu` work too) beats the saved choice.
+  An unknown value means CPU.
+- If the GPU renderer cannot start (no OpenGL, a driver error), IronTeams logs a warning, starts
+  on the CPU renderer and says so under the setting. The saved choice stays.
+- To compare the two, take the idle PSS below once with each.
+
 ## Idle CPU
 
 With the app idle (window open, not focused, nothing arriving), sample for five minutes:

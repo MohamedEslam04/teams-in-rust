@@ -2408,3 +2408,35 @@ msgstr "إلغاء المسح"
 
 msgid "Yes, clear all cached data"
 msgstr "نعم، امسح كل البيانات المخزنة مؤقتًا"
+
+# Settings > General > Performance: CPU or GPU drawing.
+
+msgid "Performance"
+msgstr "الأداء"
+
+msgid "Graphics"
+msgstr "الرسومات"
+
+msgid "CPU draws with the processor and uses the least memory. GPU uses the graphics card, can feel smoother and uses more memory."
+msgstr "يرسم المعالج (CPU) باستخدام وحدة المعالجة المركزية ويستهلك أقل قدر من الذاكرة. أما GPU فيستخدم بطاقة الرسومات وقد يبدو أكثر سلاسة لكنه يستهلك ذاكرة أكبر."
+
+msgid "CPU (low memory, default)"
+msgstr "المعالج CPU (ذاكرة أقل، الافتراضي)"
+
+msgid "GPU (smoother, uses more memory)"
+msgstr "بطاقة الرسومات GPU (أكثر سلاسة، ذاكرة أكبر)"
+
+msgid "Running: GPU"
+msgstr "قيد التشغيل: GPU"
+
+msgid "Running: CPU"
+msgstr "قيد التشغيل: CPU"
+
+msgid "GPU graphics are not available here, using CPU"
+msgstr "رسومات GPU غير متاحة هنا، يتم استخدام CPU"
+
+msgid "Restart IronTeams to apply"
+msgstr "أعد تشغيل IronTeams لتطبيق التغيير"
+
+msgid "Restart now"
+msgstr "إعادة التشغيل الآن"
