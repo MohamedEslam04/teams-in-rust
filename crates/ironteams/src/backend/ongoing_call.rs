@@ -14,15 +14,21 @@
 //!
 //! Who is in the call: no request is known that lists a running call's participants without
 //! joining it, so the strip shows only who the live state names (the call's initiator, when it
-//! names one). The full roster comes with the join (`call::roster`).
+//! names one). While we are in the conversation's call it shows the call's roster
+//! (`call::roster`).
+//!
+//! To learn the live state's real shape, each read is logged (`info`, target [`CAPTURE`], on the
+//! user's machine only): the conversation's property names once per opening, and the call-like
+//! properties' raw values once per conversation each time they change.
 
 use super::Engine;
 use crate::data::{OngoingCallData, OngoingPersonData, color_for, initials};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use store::MessageRow;
-use teams_proto::live_call::LiveCall;
+use teams_proto::live_call::{ConversationLive, LiveCall};
 use teams_proto::meeting_events::{MeetingEvent, parse_meeting_event};
 use teams_proto::time::now_ms;
 
@@ -33,6 +39,8 @@ pub(crate) const AVATARS_SHOWN: usize = 5;
 /// A Teams call lasts at most 30 hours (`docs/research/calls.md`): a start older than that whose
 /// end never arrived is not a call going on.
 const LONGEST_CALL_MS: i64 = 30 * 3600 * 1000;
+/// The log target of the live state captures.
+pub(crate) const CAPTURE: &str = "ironteams::ongoing_call::capture";
 
 /// A call the conversation's messages started and did not end.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +141,51 @@ pub(crate) fn names_line(names: &[String]) -> String {
     }
 }
 
+/// Who the strip draws, as (MRI, name if known): the call's roster while we are in it (bots and
+/// the lobby left out), else the initiator the live state names.
+pub(crate) fn strip_people(
+    initiator: Option<&str>,
+    roster: Option<&[(String, String)]>,
+) -> Vec<(String, Option<String>)> {
+    match roster {
+        Some(r) => r
+            .iter()
+            .map(|(mri, name)| (mri.clone(), Some(name.clone()).filter(|n| !n.is_empty())))
+            .collect(),
+        None => initiator
+            .map(|m| (m.to_owned(), None))
+            .into_iter()
+            .collect(),
+    }
+}
+
+/// The call-like properties of a read, as one text to log when it differs from the last one
+/// logged for `conv` (which it then becomes); `None` when there are none or nothing changed.
+pub(crate) fn capture_change(
+    last: &mut HashMap<String, String>,
+    conv: &str,
+    read: &ConversationLive,
+) -> Option<String> {
+    if read.candidates.is_empty() && !last.contains_key(conv) {
+        return None;
+    }
+    let now: Vec<String> = read
+        .candidates
+        .iter()
+        .map(|(name, raw)| format!("{name} = {raw}"))
+        .collect();
+    let now = if now.is_empty() {
+        "(none)".to_owned()
+    } else {
+        now.join("\n")
+    };
+    if last.get(conv) == Some(&now) {
+        return None;
+    }
+    last.insert(conv.to_owned(), now.clone());
+    Some(now)
+}
+
 /// The strip for `chat_id`: hidden (`live: false`) when no call goes on.
 pub(crate) fn strip(
     chat_id: &str,
@@ -199,6 +252,10 @@ pub(crate) struct State {
     started_ms: Option<i64>,
     /// What the strip drawn last showed ([`shown_key`]).
     shown: String,
+    /// The conversation's property names were logged since it opened.
+    names_logged: bool,
+    /// The call-like properties last logged, by conversation (kept across openings).
+    captured: HashMap<String, String>,
 }
 
 /// What tells one drawn strip from another, the timer aside.
@@ -227,6 +284,7 @@ impl State {
             *self = State {
                 conv: conv.to_owned(),
                 row,
+                captured: std::mem::take(&mut self.captured),
                 ..Default::default()
             };
             return true;
@@ -266,19 +324,31 @@ impl Engine {
     /// Draws the strip again from what is known.
     fn push_ongoing(self: &Arc<Self>) {
         let now = now_ms();
-        let (conv, ongoing) = {
+        let conv = self.ongoing.lock().unwrap().conv.clone();
+        // While we are in this conversation's call, it is going on and its roster is known.
+        let roster = self.calls.roster_of(&conv);
+        let ongoing = {
             let mut s = self.ongoing.lock().unwrap();
-            let ongoing = merge(s.row.as_ref(), &s.polled, now);
+            if s.conv != conv {
+                return;
+            }
+            let ongoing = merge(s.row.as_ref(), &s.polled, now).or_else(|| {
+                roster.as_ref().map(|_| Ongoing {
+                    started_ms: None,
+                    initiator: None,
+                })
+            });
             s.live = ongoing.is_some();
             s.started_ms = ongoing.as_ref().and_then(|o| o.started_ms);
-            (s.conv.clone(), ongoing)
+            ongoing
         };
-        let people: Vec<OngoingPersonData> = ongoing
-            .as_ref()
-            .and_then(|o| o.initiator.clone())
-            .map(|mri| self.ongoing_person(&mri))
-            .into_iter()
-            .collect();
+        let people: Vec<OngoingPersonData> = match &ongoing {
+            Some(o) => strip_people(o.initiator.as_deref(), roster.as_deref())
+                .into_iter()
+                .map(|(mri, name)| self.ongoing_person(&mri, name))
+                .collect(),
+            None => Vec::new(),
+        };
         let data = strip(&conv, ongoing.as_ref(), people, now);
         // Every render lands here: the strip is drawn again only when it changed (the timer
         // ticks on its own, `start_ongoing_calls`).
@@ -293,17 +363,19 @@ impl Engine {
         self.ui.ongoing_call(data);
     }
 
-    fn ongoing_person(self: &Arc<Self>, mri: &str) -> OngoingPersonData {
-        let name = self
-            .store
-            .lock()
-            .unwrap()
-            .user(mri)
-            .ok()
-            .flatten()
-            .map(|u| u.display_name)
-            .filter(|n| !n.is_empty());
-        if name.is_none() {
+    /// Someone on the strip: `known` is the name the roster gave, else the stored profile's.
+    fn ongoing_person(self: &Arc<Self>, mri: &str, known: Option<String>) -> OngoingPersonData {
+        let name = known.or_else(|| {
+            self.store
+                .lock()
+                .unwrap()
+                .user(mri)
+                .ok()
+                .flatten()
+                .map(|u| u.display_name)
+                .filter(|n| !n.is_empty())
+        });
+        if name.is_none() && !mri.is_empty() {
             self.fetch_names(vec![mri.to_owned()]);
         }
         let name = name.unwrap_or_else(|| "Someone".to_owned());
@@ -345,7 +417,26 @@ impl Engine {
                     return;
                 }
                 match read {
-                    Ok(state) => s.polled = Polled::Known(state.map(Box::new)),
+                    Ok(read) => {
+                        // The real shape, for the next live test: on the user's machine only.
+                        if !s.names_logged {
+                            s.names_logged = true;
+                            tracing::info!(
+                                target: CAPTURE,
+                                conversation = %conv,
+                                names = %read.property_names.join(", "),
+                                "conversation property names"
+                            );
+                        }
+                        if let Some(values) = capture_change(&mut s.captured, &conv, &read) {
+                            tracing::info!(
+                                target: CAPTURE,
+                                conversation = %conv,
+                                "call-like conversation properties:\n{values}"
+                            );
+                        }
+                        s.polled = Polled::Known(read.call.map(Box::new));
+                    }
                     Err(err) => tracing::debug!(%err, "live call state read failed"),
                 }
             }
@@ -371,6 +462,10 @@ impl Engine {
                 };
                 if !open || conv.is_empty() {
                     continue;
+                }
+                // In this conversation's call: people join and leave (drawn only on a change).
+                if e.calls.roster_of(&conv).is_some() {
+                    e.push_ongoing();
                 }
                 if live && let Some(started) = started {
                     e.ui.ongoing_call_elapsed(&conv, elapsed_text(started, now_ms()));
@@ -659,6 +754,81 @@ mod tests {
         assert_eq!(join_route("19:group@thread.v2", None), JoinRoute::Chat);
         assert!(!pollable("48:notes"));
         assert!(pollable("19:group@thread.v2"));
+    }
+
+    #[test]
+    fn our_call_shows_its_roster_else_the_initiator() {
+        let roster = vec![
+            ("8:orgid:me".to_owned(), "Me".to_owned()),
+            ("8:orgid:ada".to_owned(), String::new()),
+        ];
+        assert_eq!(
+            strip_people(Some("8:orgid:x"), Some(roster.as_slice())),
+            [
+                ("8:orgid:me".to_owned(), Some("Me".to_owned())),
+                ("8:orgid:ada".to_owned(), None),
+            ]
+        );
+        assert_eq!(
+            strip_people(Some("8:orgid:x"), None),
+            [("8:orgid:x".to_owned(), None)]
+        );
+        assert!(strip_people(None, None).is_empty());
+        assert!(strip_people(Some("8:orgid:x"), Some(&[][..])).is_empty());
+    }
+
+    fn read(c: &[(&str, &str)]) -> ConversationLive {
+        ConversationLive {
+            candidates: c
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_capture_is_logged_once_per_conversation_and_value_change() {
+        let mut last = HashMap::new();
+        let a = "19:a@thread.v2";
+        // Nothing call-like, never seen: nothing to log.
+        assert_eq!(capture_change(&mut last, a, &read(&[])), None);
+        let active = read(&[(
+            "threadProperties.awareness_conversationLiveState",
+            "{\"status\":\"Active\"}",
+        )]);
+        assert_eq!(
+            capture_change(&mut last, a, &active).as_deref(),
+            Some("threadProperties.awareness_conversationLiveState = {\"status\":\"Active\"}")
+        );
+        // The same value on the next poll is not logged again, in another conversation it is.
+        assert_eq!(capture_change(&mut last, a, &active), None);
+        assert!(capture_change(&mut last, "19:b@thread.v2", &active).is_some());
+        // It changed, then went away.
+        let ended = read(&[(
+            "threadProperties.awareness_conversationLiveState",
+            "{\"status\":\"Ended\"}",
+        )]);
+        assert!(capture_change(&mut last, a, &ended).is_some());
+        assert_eq!(
+            capture_change(&mut last, a, &read(&[])).as_deref(),
+            Some("(none)")
+        );
+        assert_eq!(capture_change(&mut last, a, &read(&[])), None);
+    }
+
+    #[test]
+    fn the_capture_memory_outlives_a_conversation_switch() {
+        let mut s = State::default();
+        s.rows("19:a@thread.v2", None);
+        s.captured.insert("19:a@thread.v2".into(), "x".into());
+        s.names_logged = true;
+        s.rows("19:b@thread.v2", None);
+        assert!(!s.names_logged, "names are logged again on each opening");
+        assert_eq!(
+            s.captured.get("19:a@thread.v2").map(String::as_str),
+            Some("x")
+        );
     }
 
     #[test]
