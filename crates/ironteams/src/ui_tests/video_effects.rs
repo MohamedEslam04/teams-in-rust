@@ -239,6 +239,7 @@ fn grid_place(tile: &ElementHandle) -> (i32, i32) {
 
 #[test]
 fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones() {
+    use slint::Model as _;
     let dir = std::env::temp_dir().join(format!(
         "ironteams-ui-teams-backgrounds-{}-{:?}",
         std::process::id(),
@@ -258,7 +259,10 @@ fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones()
     f.camera_on();
     click(&f.button("Video effects"));
 
-    // The bundled pictures include the new ones.
+    // The bundled pictures include the new ones: the model has them all, the window shows the
+    // first rows (the rest is scrolled to).
+    let tiles: Vec<_> = f.fx().get_backgrounds().iter().collect();
+    let names: Vec<_> = tiles.iter().map(|t| t.name.to_string()).collect();
     for name in [
         "Bookshelf",
         "Sunrise",
@@ -269,8 +273,21 @@ fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones()
         "Loft",
         "Studio",
     ] {
-        assert!(f.shows(name), "{name}");
+        assert!(names.iter().any(|n| n == name), "{name}");
     }
+    assert!(f.shows("Bookshelf") && f.shows("Sunrise"));
+    let ids: Vec<_> = tiles.iter().map(|t| t.id.to_string()).collect();
+    assert_eq!(
+        ids[..5],
+        [
+            "none",
+            "blur",
+            "teams:escapeArtist3",
+            "teams:holiday",
+            "dusk"
+        ]
+    );
+    assert_eq!(ids.len(), 2 + 2 + 26, "none, blur, two Teams, 26 bundled");
     // Teams' pictures that are downloaded have a tile named as Teams names it; the rest have none.
     assert!(f.shows("Escape artist 3") && f.shows("Holiday"));
     assert!(!f.shows("Escape artist 4"), "not downloaded: no tile");
@@ -283,7 +300,7 @@ fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones()
         place("Escape artist 3"),
         place("Holiday"),
         place("Dusk"),
-        place("Studio"),
+        place("Sunrise"),
     ];
     assert!(
         order.windows(2).all(|w| w[0] < w[1]),
@@ -304,7 +321,7 @@ fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones()
         "its full picture is still to come"
     );
     // A bundled one goes on the camera at once.
-    click(&f.button("Studio"));
+    click(&f.button("Sunrise"));
     assert!(matches!(
         f.h.engine.calls.effects().background,
         Background::Image(_)
