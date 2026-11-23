@@ -629,6 +629,7 @@ mod tests {
             date_format: DateFormat::Ymd,
             time_format: TimeFormat::H12,
             time_zone: Some("Africa/Cairo".into()),
+            renderer: crate::renderer::Renderer::Gpu,
             auto_start: true,
             open_in_background: true,
             keep_running_on_close: true,
