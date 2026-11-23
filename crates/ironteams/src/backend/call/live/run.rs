@@ -207,7 +207,14 @@ impl Call {
                             if scope == "conversation" && event == "receiveMessage" =>
                         {
                             tracing::debug!(%body, "conversation message");
-                            for r in parse_reactions(&body).into_iter().filter(|r| r.mri != me) {
+                            let reactions = parse_reactions(&body);
+                            // Our own reaction coming back: the conversation took it and fans it
+                            // out (a live check that the other side was sent it too).
+                            for r in reactions.iter().filter(|r| r.mri == me) {
+                                let reaction = r.reaction.wire_name();
+                                tracing::info!(reaction, "own reaction echoed by the conversation");
+                            }
+                            for r in reactions.into_iter().filter(|r| r.mri != me) {
                                 if let Some(name) = reaction_named(r.reaction.wire_name()) {
                                     sink.send(Event::Reaction { mri: r.mri, name });
                                 }

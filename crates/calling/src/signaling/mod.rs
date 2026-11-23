@@ -687,8 +687,10 @@ impl NgcClient {
 
     /// Sends a live reaction everyone in the meeting sees float up (`POST
     /// <conversation>/sendMessage`, as Teams web does; see [`controls`]). Each send is logged at
-    /// info with the service's status and the URL's path (never its query or a token), so a live
-    /// run shows where it went and whether the service took it; a refusal comes back as the error.
+    /// info with the service's status, the URL's path (never its query or a token), the start of
+    /// the answer and the ids `from` named, so a live run shows where it went, whether the service
+    /// took it and as whom (the receiver's `receiveMessage` names the same ids); a refusal comes
+    /// back as the error.
     pub async fn send_reaction(
         &self,
         s: &CallSession,
@@ -697,13 +699,22 @@ impl NgcClient {
         reaction: controls::Reaction,
     ) -> Result<()> {
         let (url, body) = controls::reaction_request(s, links, controller, reaction);
-        let r = self.post("send_message", s, &url, &body).await?;
+        let to = url.split('?').next().unwrap_or_default().to_owned();
+        let r = self
+            .post("send_message", s, &url, &body)
+            .await
+            .inspect_err(|e| {
+                let controller_known = !controller.is_empty();
+                tracing::info!(%to, controller_known, %e, "reaction refused");
+            })?;
         let answer: String = r.body.to_string().chars().take(200).collect();
         tracing::info!(
             reaction = reaction.wire_name(),
             status = r.status,
-            to = url.split('?').next().unwrap_or_default(),
+            %to,
             %answer,
+            participant = %s.me.participant_id,
+            endpoint = %s.me.endpoint_id,
             "reaction sent"
         );
         Ok(())

@@ -161,12 +161,17 @@ pub fn reaction_request(
 /// as Teams web posts it), or a `sendMessage` link that names the same conversation. The call's
 /// link map also holds the call leg's links (acceptance, media answer, renegotiation): a
 /// `sendMessage` there is not the conversation's, and a message posted to it reaches no one.
+/// With no controller known, only a conversation's link (`/conv/`) is taken; else the request
+/// fails as a refusal instead of going out to the call leg.
 pub fn send_message_url(links: &Links, controller: &str) -> String {
     let own = insert_path(controller, "/sendMessage");
     let path = |url: &str| url.split('?').next().unwrap_or_default().to_owned();
     let ours = path(&own);
     let Some(at) = ours.find("/conv/") else {
-        return control_url(links, controller, "sendMessage");
+        return links
+            .get("sendMessage")
+            .filter(|link| path(link).contains("/conv/"))
+            .map_or(own, str::to_owned);
     };
     links
         .get("sendMessage")
