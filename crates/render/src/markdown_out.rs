@@ -812,6 +812,7 @@ mod tests {
                     message_id: None,
                     author_mri: None,
                     author: None,
+                    time_ms: None,
                     preview: "hello world line 2".into(),
                     dir: Dir::Ltr,
                 },
