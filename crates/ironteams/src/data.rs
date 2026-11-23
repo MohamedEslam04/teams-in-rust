@@ -183,6 +183,8 @@ pub struct MsgData {
     pub subject: String,
     pub quote_author: String,
     pub quote_text: String,
+    /// The message the reply quote points to (`""`: none): a click on the quote jumps there.
+    pub quote_id: String,
     pub markdown: String,
     pub plain: String,
     pub rtl: bool,

@@ -835,6 +835,7 @@ impl Engine {
         };
         let Some(conv) = cur else {
             self.ui.messages(vec![], Scroll::Keep);
+            self.ui.unread_mark(None, 0);
             return;
         };
         let (rows, is_channel, reply_counts, marker, failed, saved) = {
@@ -974,6 +975,9 @@ impl Engine {
         };
         let rows = out.len();
         self.ui.messages(out, mode);
+        // The "↑ New messages" button: where the divider is and how many follow it.
+        self.ui
+            .unread_mark(divider, divider.map_or(0, |i| unread_after(&info, i)));
         tracing::debug!(
             rows,
             us = started.elapsed().as_micros() as u64,
@@ -1154,6 +1158,7 @@ impl Engine {
                     .to_string(),
                 quote_author: parsed.quote_author,
                 quote_text: parsed.quote_text,
+                quote_id: parsed.quote_id,
                 markdown: parsed.markdown,
                 rtl: parsed.rtl,
                 images,

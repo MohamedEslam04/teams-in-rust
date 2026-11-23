@@ -633,6 +633,49 @@ msgstr "↓ الانتقال إلى الأحدث"
 msgid "Loading older messages…"
 msgstr "جارٍ تحميل الرسائل الأقدم…"
 
+# Chat navigation: the first message, a date, a reply's original, the unread divider, Ctrl+F.
+msgid "Loading older messages… ({} read)"
+msgstr "جارٍ تحميل الرسائل الأقدم… (تمت قراءة {})"
+
+msgid "↑ New messages · {}"
+msgstr "↑ رسائل جديدة · {}"
+
+msgid "Jump to first message"
+msgstr "الانتقال إلى الرسالة الأولى"
+
+msgid "Jump to a date"
+msgstr "الانتقال إلى تاريخ"
+
+msgid "Date"
+msgstr "التاريخ"
+
+msgid "YYYY-MM-DD"
+msgstr "YYYY-MM-DD"
+
+msgid "Yesterday"
+msgstr "أمس"
+
+msgid "A week ago"
+msgstr "قبل أسبوع"
+
+msgid "A month ago"
+msgstr "قبل شهر"
+
+msgid "A year ago"
+msgstr "قبل سنة"
+
+msgid "Jump"
+msgstr "انتقال"
+
+msgid "Go to the original message"
+msgstr "الانتقال إلى الرسالة الأصلية"
+
+msgid "Find in chat or channel"
+msgstr "البحث في الدردشة أو القناة"
+
+msgid "Jump to the first message of the chat"
+msgstr "الانتقال إلى أول رسالة في الدردشة"
+
 msgid "Attach"
 msgstr "إرفاق"
 

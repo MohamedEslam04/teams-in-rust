@@ -58,6 +58,11 @@ export component MessageRow inherits TouchArea {
     in property <bool> card-style: false;
     // Multi-select mode: a checkbox per row, clicking toggles it, no hover bar.
     in property <bool> select-mode: false;
+    // In the chat's own list: a reply's quote jumps to the quoted message and a day line opens
+    // "Jump to a date".
+    in property <bool> can-jump: false;
+    callback jump-to-message(string);
+    callback pick-date();
     callback react(string);
     callback reply();
     callback edit();
@@ -117,13 +122,25 @@ export component MessageRow inherits TouchArea {
         padding-top: root.m.show-header || root.m.day != "" ? 10px : 2px;
         spacing: 4px;
 
-        if root.m.day != "": HorizontalLayout {
-            padding-top: 6px;
-            padding-bottom: 6px;
-            spacing: 10px;
-            Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
-            Text { text: root.m.day; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
-            Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
+        if root.m.day != "": day-line := Rectangle {
+            property <bool> hover: false;
+            HorizontalLayout {
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 10px;
+                Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
+                Text { text: root.m.day; color: day-line.hover ? Theme.fg : Theme.fg-muted; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
+                Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
+            }
+            // A click opens "Jump to a date".
+            if root.can-jump: day-touch := TouchArea {
+                mouse-cursor: pointer;
+                accessible-role: button;
+                accessible-label: @tr("Jump to a date");
+                accessible-action-default => { root.pick-date(); }
+                changed has-hover => { day-line.hover = self.has-hover; }
+                clicked => { root.pick-date(); }
+            }
         }
 
         if root.m.new-above: HorizontalLayout {
@@ -236,8 +253,9 @@ export component MessageRow inherits TouchArea {
                         wrap: word-wrap;
                     }
 
-                    if root.m.quote-text != "": Rectangle {
-                        background: Theme.sidebar;
+                    if root.m.quote-text != "": quote-box := Rectangle {
+                        property <bool> hover: false;
+                        background: self.hover ? Theme.surface-hover : Theme.sidebar;
                         border-radius: 4px;
                         HorizontalLayout {
                             Rectangle { width: 3px; background: Theme.accent; }
@@ -247,6 +265,15 @@ export component MessageRow inherits TouchArea {
                                 Text { text: root.m.quote-author; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; font-weight: 600; overflow: elide; }
                                 Text { text: root.m.quote-text; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; max-height: 48px; overflow: elide; }
                             }
+                        }
+                        // A click goes to the quoted message.
+                        if root.can-jump && root.m.quote-id != "": quote-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            accessible-role: button;
+                            accessible-label: @tr("Go to the original message");
+                            accessible-action-default => { root.jump-to-message(root.m.quote-id); }
+                            changed has-hover => { quote-box.hover = self.has-hover; }
+                            clicked => { root.jump-to-message(root.m.quote-id); }
                         }
                     }
 

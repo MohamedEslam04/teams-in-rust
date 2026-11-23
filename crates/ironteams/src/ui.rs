@@ -151,6 +151,7 @@ fn msg(m: MsgData) -> Msg {
         subject: m.subject.into(),
         quote_author: m.quote_author.into(),
         quote_text: m.quote_text.into(),
+        quote_id: m.quote_id.into(),
         body: styled(&m.markdown),
         plain: m.plain.into(),
         rtl: m.rtl,
@@ -425,6 +426,12 @@ impl UiHandle {
 
     pub fn loading_older(&self, on: bool) {
         self.run(move |w| w.set_loading_older(on));
+    }
+
+    /// How many messages a jump (to the first message, to a date) has read so far: the loading
+    /// line counts them (0 shows the plain line).
+    pub fn loading_progress(&self, read: usize) {
+        self.run(move |w| w.set_loading_progress(read.min(i32::MAX as usize) as i32));
     }
 
     /// The open chat or channel is reading its newest page.
@@ -808,6 +815,16 @@ impl UiHandle {
     /// Count shown on the "Jump to newest" button.
     pub fn new_count(&self, n: usize) {
         self.run(move |w| w.set_new_count(n as i32));
+    }
+
+    /// The row of the "New messages" divider in the open list (`None`: no divider) and the count
+    /// of messages from others from there on: the "↑ New messages" button shows them while the
+    /// divider is above the view.
+    pub fn unread_mark(&self, row: Option<usize>, count: usize) {
+        self.run(move |w| {
+            w.set_unread_index(row.map_or(-1, |i| i as i32));
+            w.set_unread_count(count as i32);
+        });
     }
 }
 

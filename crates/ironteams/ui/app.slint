@@ -215,6 +215,8 @@ export component AppWindow inherits Window {
     in property <string> thread-root;     // non-empty: viewing a channel thread
     in property <[Msg]> messages;
     in property <bool> loading-older;
+    // Messages a jump (to the first message, to a date) has read so far: the loading line counts them.
+    in property <int> loading-progress;
     // The open chat or channel is reading its newest page (what the store had already shows).
     in property <bool> loading-latest;
     // The open chat is one the user is not a member of (a meeting they have not joined): the pane
@@ -234,6 +236,10 @@ export component AppWindow inherits Window {
     in property <int> new-count;
     // Row of the "New messages" divider to scroll to when a chat opens there.
     in property <int> divider-index: -1;
+    // Row of the open list's "New messages" divider (-1: none) and the messages from others from
+    // there on: the "↑ New messages" button while the divider is above the view.
+    in property <int> unread-index: -1;
+    in property <int> unread-count;
 
     // Message menu, "More reactions" picker, forward dialog and multi-select (see the
     // message_menu, reaction_picker, forward_dialog and select_bar modules).
@@ -812,10 +818,12 @@ export component AppWindow inherits Window {
                         divider-tick: root.divider-tick;
                         edit(a0) => { root.edit(a0); }
                         focus-tick <=> root.focus-tick;
+                        jump-to-message(a0) => { PeopleStore.command("quote-jump", a0); }
                         jump-to-newest => { root.jump-to-newest(); }
                         load-older => { root.load-older(); }
                         loading-latest: root.loading-latest;
                         loading-older: root.loading-older;
+                        loading-progress: root.loading-progress;
                         menu-msg <=> root.menu-msg;
                         menu-open <=> root.menu-open;
                         menu-preview <=> root.menu-preview;
@@ -846,6 +854,8 @@ export component AppWindow inherits Window {
                         toggle-select(a0) => { root.toggle-select(a0); }
                         unavailable: root.unavailable;
                         unavailable-text: root.unavailable-text;
+                        unread-count: root.unread-count;
+                        unread-index: root.unread-index;
                     }
 
                     // The chat's scheduled messages ("Sending on …"), below the newest message.

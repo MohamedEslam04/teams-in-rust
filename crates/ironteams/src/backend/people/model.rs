@@ -34,6 +34,12 @@ pub enum PeopleCmd {
     PinJump(String),
     PinUnpin(String),
     Receipts(bool),
+    /// "Jump to the first message" of the open chat (its whole history is read first).
+    JumpFirst,
+    /// "Jump to a date": `YYYY-MM-DD`, or `days:N` for N days ago.
+    JumpDate(String),
+    /// A click on a reply's quote: the quoted message.
+    QuoteJump(String),
 }
 
 impl PeopleCmd {
@@ -68,6 +74,9 @@ impl PeopleCmd {
             "pin-jump" => PeopleCmd::PinJump(a),
             "pin-unpin" => PeopleCmd::PinUnpin(a),
             "receipts" => PeopleCmd::Receipts(arg == "on"),
+            "jump-first" => PeopleCmd::JumpFirst,
+            "jump-date" => PeopleCmd::JumpDate(a),
+            "quote-jump" => PeopleCmd::QuoteJump(a),
             _ => return None,
         })
     }
@@ -122,6 +131,11 @@ pub(in super::super) struct State {
     pub(super) jump: Option<String>,
     /// The row the last jump landed on, highlighted for a moment.
     pub(super) flash: Option<String>,
+    /// Bumped by every jump and every chat opened: a jump still reading older history stops when
+    /// it no longer holds the latest number.
+    pub(super) nav_seq: u64,
+    /// A jump is reading older history behind the loading line.
+    pub(super) nav_loading: bool,
 }
 
 /// A person's profile details as a card last read them.

@@ -107,6 +107,7 @@ export component AppKeys inherits FocusScope {
     key-pressed(event) => {
         if event.text == Key.Escape && !event.modifiers.shift {
             if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
+            if PeopleStore.jump-date-open { PeopleStore.jump-date-open = false; root.focus-tick += 1; return accept; }
             if root.shortcuts-open { root.shortcuts-open = false; return accept; }
             if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
             if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
@@ -145,6 +146,24 @@ export component AppKeys inherits FocusScope {
         if a == "share-screen" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
             DirectCallStore.command("share-screen", root.current-id);
         }
+        // Ctrl+F: Find in chat (or in channel) for the open conversation; again, back to its box.
+        if a == "find" && root.conversation-open() {
+            if !FindStore.chat-find-open {
+                FindStore.chat-find-open = true;
+                FindStore.chat-find-tick += 1;
+                FindStore.command("find-open", "");
+            } else {
+                FindStore.chat-find-tick += 1;
+            }
+        }
+        // Ctrl+Alt+Home: the open chat's very first message (a channel's posts have their own list).
+        if a == "jump-first" && root.conversation-open() && !root.posts-mode {
+            PeopleStore.command("jump-first", "");
+        }
+    }
+    // A chat or channel is open in the window (not one of its threads).
+    function conversation-open() -> bool {
+        return (root.view == "chat" || root.view == "teams") && root.current-id != "" && !root.teams-no-channel && root.thread-root == "";
     }
     @children
 }
