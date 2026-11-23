@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAQ - IronTeams</title>
+  <meta name="description" content="Answers about IronTeams: is it official, what it costs, memory use, privacy, sign-in, systems and updates.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html">Install</a>
+        <a href="getting-started.html">Getting started</a>
+        <a href="platforms.html">Platforms</a>
+        <a href="troubleshooting.html">Troubleshooting</a>
+        <a href="faq.html" aria-current="page">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <div class="doc">
+      <div class="wrap">
+        <nav class="toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+          <li><a href="#questions">Questions</a></li>
+          <li><a href="#more">More help</a></li>
+          </ul>
+        </nav>
+        <div class="prose">
+
+          <h1>FAQ</h1>
+          <p class="lead">Short answers about what IronTeams is and is not.</p>
+          <h2 id="questions">Questions</h2>
+          <div class="faq">
+          <details><summary>Is IronTeams made by Microsoft?</summary>
+            <p>No. It is an unofficial project. Microsoft does not affiliate with, endorse or support it, and &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation.</p>
+          </details>
+          <details><summary>Is it allowed at my workplace?</summary>
+            <p>That is for your organization to say. IronTeams talks to the same internal endpoints the Teams web client uses, and your organization&rsquo;s policies may not allow third-party clients. Check with your IT team before you use it with a work account, and use it at your own risk.</p>
+          </details>
+          <details><summary>Does it cost anything?</summary>
+            <p>No. IronTeams is free software under the GPL-3.0-or-later license.</p>
+          </details>
+          <details><summary>How much memory does it use?</summary>
+            <p>About 62&nbsp;MB with a real work account and a chat with images open, and about 29&nbsp;MB after 10 minutes idle on the chat list. The Teams web app in a Chromium browser takes around 1100&nbsp;MB. These are measured numbers from the README; see the chart on the <a href="index.html">home page</a> for how.</p>
+          </details>
+          <details><summary>Does it collect data about me?</summary>
+            <p>No telemetry, and nothing is uploaded. The problem report is a local file that you read and attach yourself. This website has no analytics or trackers either.</p>
+          </details>
+          <details><summary>How does sign-in work, and where is my token kept?</summary>
+            <p>You sign in with a device code on the normal Microsoft sign-in page, and it works with MFA. The refresh token lives in your system keyring, never in a file.</p>
+          </details>
+          <details><summary>Which systems does it run on?</summary>
+            <p>Linux (used every day), Windows and macOS (tested in CI, not yet tried on real hardware). See <a href="platforms.html">Platforms and requirements</a>.</p>
+          </details>
+          <details><summary>Does it update itself?</summary>
+            <p>The AppImage, <code>Setup.exe</code> and the macOS <code>.pkg</code> do. The RPM, Flatpak, tarball, AUR and <code>cargo</code> builds do not. See <a href="install.html#updates">Updates</a>.</p>
+          </details>
+          <details><summary>Can I make calls and join meetings?</summary>
+            <p>There is a native call window with pre-join, meeting controls and the roster, and 1:1 incoming and outgoing call screens. Camera and screen sharing are only compile-tested on Windows and macOS for now.</p>
+          </details>
+          <details><summary>Does it support Arabic?</summary>
+            <p>Yes. Arabic, English and mixed-direction text show in the right direction, each paragraph on its own, and the main screens are translated into Arabic.</p>
+          </details>
+          <details><summary>Why does it download sounds and pictures from Microsoft?</summary>
+            <p>On first run IronTeams downloads Teams&rsquo; notification and ringtone sounds from Microsoft&rsquo;s CDN, and the Video effects panel downloads Teams&rsquo; background pictures. They are not part of IronTeams and not shipped with it. Turn the sounds download off in Settings &rsaquo; Notifications and IronTeams plays its own sounds instead.</p>
+          </details>
+          <details><summary>Why was it called kelma?</summary>
+            <p>That was the earlier name. The repository was <code>MohamedEslam04/kelma</code> before it became <code>teams-in-rust</code>. Your old config, data and sign-in move over on the first start.</p>
+          </details>
+          <details><summary>The installer is not signed. Is that a problem?</summary>
+            <p>Windows SmartScreen and macOS Gatekeeper ask before the first install because the installers are not signed yet. You can check each download against the SHA-256 shown in the <a href="index.html#download">download list</a>, and the source is public.</p>
+          </details>
+          </div>
+          <h2 id="more">More help</h2>
+          <p>See <a href="troubleshooting.html">Troubleshooting</a>, the <a href="https://github.com/MohamedEslam04/teams-in-rust">source and README</a>, and <a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> for how it is built.</p>
+
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>

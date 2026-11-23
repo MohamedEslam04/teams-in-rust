@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started - IronTeams</title>
+  <meta name="description" content="Install IronTeams, sign in with a device code and find your way around the first start.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html">Install</a>
+        <a href="getting-started.html" aria-current="page">Getting started</a>
+        <a href="platforms.html">Platforms</a>
+        <a href="troubleshooting.html">Troubleshooting</a>
+        <a href="faq.html">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <div class="doc">
+      <div class="wrap">
+        <nav class="toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+          <li><a href="#install">1. Install</a></li>
+          <li><a href="#start">2. Start it</a></li>
+          <li><a href="#sign-in">3. Sign in</a></li>
+          <li><a href="#demo">Try it without an account</a></li>
+          <li><a href="#around">Settings worth a look</a></li>
+          <li><a href="#work">Before you use a work account</a></li>
+          </ul>
+        </nav>
+        <div class="prose">
+
+          <h1>Getting started</h1>
+          <p class="lead">From download to your first chat takes a few minutes.</p>
+
+          <h2 id="install">1. Install</h2>
+          <p>Take the file for your system from the <a href="index.html#download">download section</a>, then follow the <a href="install.html">install guide</a> for that format. If you are on Linux and unsure, take the AppImage.</p>
+
+          <h2 id="start">2. Start it</h2>
+          <p>Start <strong>IronTeams</strong> from your launcher. An AppImage or tar.gz copy has no launcher entry until you have run it once: it adds the entry itself. A Flatpak also starts with <code>flatpak run io.github.mohamedeslam04.ironteams</code>.</p>
+
+          <h2 id="sign-in">3. Sign in</h2>
+          <p>On first start IronTeams shows a code. Open the link it shows, enter the code and sign in with your work account. That is the normal Microsoft sign-in page, and it works with multi-factor authentication.</p>
+          <p>IronTeams keeps the refresh token in your system keyring (KWallet or GNOME Keyring on Linux, Credential Manager on Windows, the login Keychain on macOS), never in a file. You can add several accounts and guest organizations.</p>
+          <div class="note"><p>On Linux, IronTeams needs a Secret Service provider such as GNOME Keyring or KWallet to keep you signed in.</p></div>
+
+          <h2 id="demo">Try it without an account</h2>
+          <p>Demo mode shows sample data with no account and no network:</p>
+          <div class="code"><pre><code>IRONTEAMS_DEMO=1 ironteams</code></pre></div>
+          <p>With an AppImage, run <code>IRONTEAMS_DEMO=1 ./IronTeams.AppImage</code> instead.</p>
+
+          <h2 id="around">Settings worth a look</h2>
+          <ul>
+            <li><strong>Appearance:</strong> theme (light, dark or system), accent, density and text size.</li>
+            <li><strong>Language:</strong> the app language, with Arabic for the main screens. Arabic, English and mixed text show in the right direction per paragraph.</li>
+            <li><strong>Notifications:</strong> including whether IronTeams downloads Teams&rsquo; original sounds.</li>
+            <li><strong>About &rsaquo; Updates:</strong> automatic updates, beta updates and <strong>Check now</strong>. See <a href="install.html#updates">Updates</a>.</li>
+          </ul>
+
+          <h2 id="work">Before you use a work account</h2>
+          <p>IronTeams is unofficial. It talks to the same internal endpoints the Teams web client uses, and your organization&rsquo;s policies may not allow third-party clients. Check with your IT team first. See the <a href="index.html#disclaimer">disclaimer</a>.</p>
+          <p>If something does not work, <a href="troubleshooting.html">Troubleshooting</a> shows how to write a local problem report.</p>
+
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>

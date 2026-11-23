@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install - IronTeams</title>
+  <meta name="description" content="How to install IronTeams on Linux, Windows and macOS: AppImage, RPM, Flatpak, tar.gz, Setup.exe and .pkg, plus updates and uninstall.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html" aria-current="page">Install</a>
+        <a href="getting-started.html">Getting started</a>
+        <a href="platforms.html">Platforms</a>
+        <a href="troubleshooting.html">Troubleshooting</a>
+        <a href="faq.html">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <div class="doc">
+      <div class="wrap">
+        <nav class="toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+          <li><a href="#choose">Which file?</a></li>
+          <li><a href="#appimage">Linux: AppImage</a></li>
+          <li><a href="#rpm">Linux: RPM</a></li>
+          <li><a href="#flatpak">Linux: Flatpak</a></li>
+          <li><a href="#tarball">Linux: tar.gz</a></li>
+          <li><a href="#windows">Windows</a></li>
+          <li><a href="#macos">macOS</a></li>
+          <li><a href="#updates">Updates</a></li>
+          <li><a href="#uninstall">Uninstall</a></li>
+          <li><a href="#source">Build from source</a></li>
+          </ul>
+        </nav>
+        <div class="prose">
+
+          <h1>Install IronTeams</h1>
+          <p class="lead">Pick one file, run the commands below, then start <strong>IronTeams</strong> from your launcher. The download buttons on this page read the latest release from GitHub.</p>
+
+          <h2 id="choose">Which file?</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">You use</th><th scope="col">Take</th><th scope="col">Updates itself</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Linux, any distribution</th><td><a href="#appimage">AppImage</a> (recommended)</td><td>Yes</td></tr>
+              <tr><th scope="row">Fedora</th><td><a href="#rpm">RPM</a></td><td>No</td></tr>
+              <tr><th scope="row">Linux with Flatpak, wanting a sandbox</th><td><a href="#flatpak">Flatpak</a></td><td>No</td></tr>
+              <tr><th scope="row">Linux, just the binary</th><td><a href="#tarball">tar.gz</a></td><td>No</td></tr>
+              <tr><th scope="row">Windows</th><td><a href="#windows">Setup.exe</a> or the portable zip</td><td>Setup.exe: yes</td></tr>
+              <tr><th scope="row">macOS</th><td><a href="#macos">.pkg</a> for Apple Silicon or Intel</td><td>Yes</td></tr>
+            </tbody>
+          </table></div>
+          <p>Linux is the system IronTeams is used on every day. The Windows and macOS builds pass their tests in CI but have not been tried on real hardware yet. See <a href="platforms.html">Platforms and requirements</a>.</p>
+
+          <h2 id="appimage">Linux: AppImage</h2>
+          <p class="dl-inline"><a class="btn" data-dl-link="linux-appimage" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download AppImage</a><span class="dl-meta" data-dl-meta="linux-appimage"></span></p>
+          <p>One file, no install step. Put it somewhere permanent, make it executable and run it:</p>
+          <div class="code"><pre><code>chmod +x IronTeams.AppImage
+./IronTeams.AppImage</code></pre></div>
+          <p>An AppImage updates itself (see <a href="#updates">Updates</a>). On start IronTeams writes a launcher entry under <code>~/.local/share/applications</code> that points at the file, and rewrites it if you move the file.</p>
+
+          <h2 id="rpm">Linux: RPM</h2>
+          <p class="dl-inline"><a class="btn" data-dl-link="linux-rpm" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download RPM</a><span class="dl-meta" data-dl-meta="linux-rpm"></span></p>
+          <p>Built for Fedora. Install it from the folder you downloaded it to:</p>
+          <div class="code"><pre><code>sudo dnf install ./ironteams-*.rpm</code></pre></div>
+          <p>The RPM is not in a package repository yet, so to move to a newer version you download the new file and install it the same way. On other distributions, take the AppImage.</p>
+
+          <h2 id="flatpak">Linux: Flatpak</h2>
+          <p class="dl-inline"><a class="btn" data-dl-link="linux-flatpak" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download Flatpak</a><span class="dl-meta" data-dl-meta="linux-flatpak"></span></p>
+          <div class="code"><pre><code>flatpak install --user ./ironteams.flatpak
+flatpak run io.github.mohamedeslam04.ironteams</code></pre></div>
+          <p>The bundle is built against the Freedesktop 26.08 runtime. If Flatpak does not offer to fetch it, install it from Flathub first:</p>
+          <div class="code"><pre><code>flatpak install flathub org.freedesktop.Platform//26.08</code></pre></div>
+          <p>The sandbox allows the network, Wayland and X11, PipeWire, notifications and the Secret Service, and nothing else. One known gap: recording voice messages needs <code>ffmpeg</code>, which the Freedesktop runtime does not include, so recording says &ldquo;Install ffmpeg&rdquo; inside the sandbox. Playing voice messages works.</p>
+
+          <h2 id="tarball">Linux: tar.gz</h2>
+          <p class="dl-inline"><a class="btn" data-dl-link="linux-tar" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download tar.gz</a><span class="dl-meta" data-dl-meta="linux-tar"></span></p>
+          <p>The archive holds the <code>ironteams</code> binary, the desktop file, the icon, the AppStream metadata, the license and the README, in a folder named after the version.</p>
+          <div class="code"><pre><code>tar -xzf IronTeams-*-linux-x86_64.tar.gz
+./IronTeams-*-linux-x86_64/ironteams</code></pre></div>
+          <p>A copy from the tarball never replaces itself. IronTeams needs a Secret Service provider (GNOME Keyring or KWallet) to keep your sign-in. When no package installed it, IronTeams writes its own launcher entry on start, as it does for the AppImage.</p>
+
+          <h2 id="windows">Windows</h2>
+          <p><strong>Setup.exe</strong> is a per-user install: no administrator needed, and it updates itself.</p>
+          <p class="dl-inline"><a class="btn" data-dl-link="windows-setup" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download Setup.exe</a><span class="dl-meta" data-dl-meta="windows-setup"></span></p>
+          <p>The installer is not signed yet. Windows SmartScreen asks once: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+          <p><strong>Portable zip</strong> is the same app without an installer: unzip it to a folder of your choice and start the program inside.</p>
+          <p class="dl-inline"><a class="btn" data-dl-link="windows-portable" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download portable zip</a><span class="dl-meta" data-dl-meta="windows-portable"></span></p>
+          <p>The Windows build passes its tests in CI but has not been tried on real Windows hardware yet. Camera and screen sharing need the GStreamer runtime; see <a href="platforms.html">Platforms and requirements</a>.</p>
+
+          <h2 id="macos">macOS</h2>
+          <p>Take the package for your chip: Apple Silicon (M-series) or Intel. Both update themselves.</p>
+          <p class="dl-inline"><a class="btn" data-dl-link="macos-arm64" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download .pkg for Apple Silicon</a><span class="dl-meta" data-dl-meta="macos-arm64"></span></p>
+          <p class="dl-inline"><a class="btn" data-dl-link="macos-x64" href="https://github.com/MohamedEslam04/teams-in-rust/releases">Download .pkg for Intel</a><span class="dl-meta" data-dl-meta="macos-x64"></span></p>
+          <p>The package is not signed or notarized yet, so macOS asks before the first install: open the <code>.pkg</code> with right click, then <strong>Open</strong>.</p>
+          <p>The macOS build passes its tests in CI but has not been tried on real Mac hardware yet.</p>
+
+          <h2 id="updates">Updates</h2>
+          <p>Copies installed from <code>Setup.exe</code>, the <code>.pkg</code> or the AppImage update themselves with <a href="https://velopack.io">Velopack</a>:</p>
+          <ul>
+            <li>About 45 seconds after the start, then every 6 hours, IronTeams looks at the GitHub releases for a newer version. It downloads it in the background, and only the parts that changed when it can. The size and SHA-256 of every download are checked, and the feed is read over HTTPS from github.com only.</li>
+            <li>Nothing is installed while you work. A banner says &ldquo;IronTeams &lt;version&gt; is ready&rdquo; with <strong>Restart to update</strong>. If you do not click it, the update is installed when you quit. If a download or the install fails, the current version keeps running and the next check tries again.</li>
+            <li>Before a new version first opens its data, your message caches and settings are copied to <code>backup-&lt;old version&gt;</code> in the data folder. The last two are kept.</li>
+            <li>If a new version fails to start three times in a row, automatic updates pause and a banner offers to go back to the version before.</li>
+            <li>Settings &rsaquo; About &rsaquo; Updates has <strong>Automatic updates</strong> (on), <strong>Get beta updates</strong> (off) and <strong>Check now</strong>.</li>
+          </ul>
+          <p>Copies from the tarball, RPM, Flatpak, AUR or <code>cargo</code> never replace themselves. For these, Settings &rsaquo; About has an opt-in update check, off by default, that asks GitHub for the latest release once per start and never downloads anything.</p>
+          <p>The first Velopack release has to be installed by hand once, also for users of an older MSI or <code>.dmg</code>. Every release after it arrives on its own.</p>
+
+          <h2 id="uninstall">Uninstall</h2>
+          <ul>
+            <li><strong>AppImage and tar.gz:</strong> delete the file or folder. Also delete the launcher entry IronTeams wrote, <code>~/.local/share/applications/io.github.mohamedeslam04.ironteams.desktop</code>, and its icon under <code>~/.local/share/icons/hicolor/scalable/apps/</code>.</li>
+            <li><strong>RPM:</strong> <code>sudo dnf remove ironteams</code></li>
+            <li><strong>Flatpak:</strong> <code>flatpak uninstall --user io.github.mohamedeslam04.ironteams</code></li>
+            <li><strong>Windows and macOS:</strong> the project does not document uninstalling these builds yet.</li>
+          </ul>
+          <p>Uninstalling does not delete your settings or cache. They live in folders named <code>ironteams</code> (or in the folder you set with <code>IRONTEAMS_HOME</code>), and your sign-in is kept in the system keyring.</p>
+
+          <h2 id="source">Build from source</h2>
+          <p>You need Rust (through <a href="https://rustup.rs">rustup</a>), Git, and the development headers for fontconfig, xkbcommon and D-Bus:</p>
+          <div class="code"><pre><code># Fedora
+sudo dnf install fontconfig-devel libxkbcommon-devel dbus-devel
+# Debian and Ubuntu
+sudo apt install libfontconfig1-dev libxkbcommon-dev libdbus-1-dev pkg-config</code></pre></div>
+          <div class="code"><pre><code>git clone https://github.com/MohamedEslam04/teams-in-rust && cd teams-in-rust
+./packaging/install.sh</code></pre></div>
+          <p>The script builds IronTeams and installs the binary, the desktop file and the icon to <code>~/.local</code>.</p>
+          <p>On Arch, the <code>packaging/aur/PKGBUILD</code> builds the <code>-git</code> package from the latest commit with <code>makepkg -si</code>. To build the Flatpak or the RPM yourself, each folder under <a href="https://github.com/MohamedEslam04/teams-in-rust/tree/dev/packaging">packaging/</a> has a README. On Windows (MSVC build tools) and macOS (Xcode command line tools) you need CMake as well, and <code>cargo build --release -p ironteams</code> builds the app.</p>
+
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/releases.js" defer></script>
+  <script src="js/download.js" defer></script>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>
