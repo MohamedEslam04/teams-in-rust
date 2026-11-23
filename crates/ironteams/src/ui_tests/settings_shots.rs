@@ -5,12 +5,15 @@
 //!
 //! Each page is drawn in the dark and the light theme at 1920x1080 (what the window shows) and
 //! whole at 900 px wide, whole at 760 px wide (the one-pane width) in the dark theme, and whole
-//! at 900 px in Arabic. Files: `<theme>-<width>-<page>.png`.
+//! at 900 px in Arabic. Files: `<theme>-<width>-<page>.png`. Then the keyboard's focus ring on a
+//! switch row, a pill, a button and a radio row (`focus-<control>-dark-900-<page>.png`), and Find in
+//! Settings: its results in English and Arabic and the page a result opens (`find-*.png`).
 
 use super::settings::{Home, env, server};
 use super::*;
 use crate::ui::settings::install;
 use crate::{SettingsStore, Theme};
+use i_slint_backend_testing::AccessibleRole;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{PhysicalSize, Rgb8Pixel};
@@ -166,4 +169,93 @@ fn settings_pages_to_png() {
         );
     }
     lang("en");
+
+    // The keyboard's focus ring: a click on one control, then Tab (or Shift+Tab) to the next.
+    let find = |label: &str| {
+        ElementHandle::find_by_accessible_label(&app, label)
+            .find(|e| e.size().height > 0. && e.accessible_role() != Some(AccessibleRole::Text))
+            .unwrap_or_else(|| panic!("{label:?} on screen"))
+    };
+    let click = |label: &str| {
+        let e = find(label);
+        let (p, s) = (e.absolute_position(), e.size());
+        let at = LogicalPosition::new(p.x + s.width / 2., p.y + s.height / 2.);
+        app.window()
+            .dispatch_event(WindowEvent::PointerMoved { position: at });
+        app.window().dispatch_event(WindowEvent::PointerPressed {
+            position: at,
+            button: PointerEventButton::Left,
+        });
+        settle();
+        app.window().dispatch_event(WindowEvent::PointerReleased {
+            position: at,
+            button: PointerEventButton::Left,
+        });
+        settle();
+        // The pointer leaves, so no hover tint mixes with the ring.
+        app.window().dispatch_event(WindowEvent::PointerExited);
+    };
+    let tab = |back: bool| {
+        if back {
+            key(&app, Key::Shift, true);
+        }
+        key(&app, Key::Tab, true);
+        key(&app, Key::Tab, false);
+        if back {
+            key(&app, Key::Shift, false);
+        }
+    };
+    for (page, first, back, name) in [
+        ("notifications", "Show the sender's photo", false, "switch"),
+        ("appearance", "Message density: Comfy", false, "pill"),
+        ("appearance", "Reset font size", true, "button"),
+        ("devices", "Speaker: System default", false, "radio"),
+    ] {
+        g.invoke_show(page.into());
+        window.set_size(PhysicalSize::new(900, 1080));
+        settle();
+        click(first);
+        // A switch was flipped by the click: Tab, then put it back with the mouse after the shot.
+        tab(back);
+        shoot(
+            &window,
+            900,
+            1080,
+            false,
+            &dir.join(format!("focus-{name}-dark-900-{page}.png")),
+        );
+        if name == "switch" {
+            click(first);
+        }
+    }
+
+    // Find in Settings: the results, then the page a result opens with the setting tinted.
+    g.invoke_show("general".into());
+    find("Find in Settings").set_accessible_value(SharedString::from("sound"));
+    shoot(
+        &window,
+        900,
+        1080,
+        false,
+        &dir.join("find-dark-900-results.png"),
+    );
+    lang("ar");
+    shoot(
+        &window,
+        900,
+        1080,
+        false,
+        &dir.join("find-ar-900-results.png"),
+    );
+    lang("en");
+    let first = g.get_found().row_data(0).expect("a setting about sound");
+    find(&format!("Result: {} in {}", first.label, first.page_title))
+        .invoke_accessible_default_action();
+    shoot(
+        &window,
+        1920,
+        1080,
+        false,
+        &dir.join("find-dark-1920-landed.png"),
+    );
 }

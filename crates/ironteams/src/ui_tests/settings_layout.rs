@@ -1,11 +1,13 @@
 //! The Settings kit (ui/molecules/settings_kit.slint) as the user meets it: a click anywhere on a
 //! switch row flips that row's switch and never a neighbour's, the keyboard reaches the rows in
 //! order and Space or Enter flips them, sections stand apart, rows are tall enough and divided,
-//! and narrow or right-to-left windows keep every switch inside its row.
+//! and narrow or right-to-left windows keep every switch inside its row. Tab shows a focus ring
+//! (a click does not), pills read from the start side, and radio rows line up with row labels.
 
 use super::settings::{Home, checked, control, open_page, window};
 use super::*;
 use crate::SettingsMetrics;
+use i_slint_backend_testing::AccessibleRole;
 use std::time::Duration;
 
 const PHOTO: &str = "Show the sender's photo";
@@ -317,5 +319,185 @@ fn right_to_left_puts_the_switch_on_the_start_side() {
         track_side(app) < 0.2,
         "right to left: the switch is at the left"
     );
+    lang("en");
+}
+
+fn lang(tag: &str) {
+    crate::language::apply(&appearance::GeneralPrefs {
+        language: Some(tag.into()),
+        ..Default::default()
+    })
+}
+
+/// The keyboard focus rings on screen: (element id, rectangle).
+fn rings(app: &AppWindow) -> Vec<(&'static str, (f32, f32, f32, f32))> {
+    settle();
+    [
+        "SettingsSwitchRow::focus-ring",
+        "SettingsLinkRow::focus-ring",
+        "SChoicePill::focus-ring",
+        "SRadio::focus-ring",
+        "ButtonBody::focus-ring",
+    ]
+    .into_iter()
+    .flat_map(|id| ElementHandle::find_by_element_id(app, id).map(move |r| (id, rect(&r))))
+    .filter(|(_, (l, t, r, b))| r > l && b > t)
+    .collect()
+}
+
+/// The one element on screen with this accessible label.
+fn one(app: &AppWindow, label: &str) -> ElementHandle {
+    let mut v: Vec<_> = ElementHandle::find_by_accessible_label(app, label)
+        .filter(|e| e.size().height > 0. && e.accessible_role() != Some(AccessibleRole::Text))
+        .collect();
+    assert_eq!(v.len(), 1, "one {label:?}");
+    v.pop().unwrap()
+}
+
+fn click_middle(app: &AppWindow, e: &ElementHandle) {
+    let (l, t, r, b) = rect(e);
+    click_at(app, LogicalPosition::new((l + r) / 2., (t + b) / 2.));
+}
+
+/// A ring is drawn just inside a row, or just outside a pill or a button.
+fn around(ring: (f32, f32, f32, f32), e: (f32, f32, f32, f32)) -> bool {
+    (ring.0 - e.0).abs() <= 4.
+        && (ring.1 - e.1).abs() <= 4.
+        && (ring.2 - e.2).abs() <= 4.
+        && (ring.3 - e.3).abs() <= 4.
+}
+
+#[test]
+fn tab_shows_a_focus_ring_on_switch_rows_pills_and_buttons_and_a_click_does_not() {
+    let ui = window(Home::new("kit-ring"));
+    let app = &ui.app;
+
+    // A switch row.
+    open_page(app, "notifications");
+    tall(app, 1200.);
+    click_middle(app, &control(app, PHOTO));
+    assert_eq!(rings(app), vec![], "a click shows no ring");
+    press_key(app, Key::Tab);
+    let r = rings(app);
+    assert_eq!(r.len(), 1, "Tab: one ring ({r:?})");
+    assert_eq!(r[0].0, "SettingsSwitchRow::focus-ring");
+    assert!(
+        around(r[0].1, rect(&control(app, ACTIONS))),
+        "on the row Tab reached"
+    );
+    click_middle(app, &control(app, ACTIONS));
+    assert_eq!(
+        rings(app),
+        vec![],
+        "a click on the focused row hides the ring"
+    );
+
+    // Choice pills.
+    open_page(app, "appearance");
+    tall(app, 1200.);
+    click_middle(app, &one(app, "Message density: Comfy"));
+    assert_eq!(rings(app), vec![], "a click on a pill shows no ring");
+    press_key(app, Key::Tab);
+    let r = rings(app);
+    assert_eq!(r.len(), 1, "Tab: one ring ({r:?})");
+    assert_eq!(r[0].0, "SChoicePill::focus-ring");
+    assert!(around(r[0].1, rect(&one(app, "Message density: Compact"))));
+    press_key(app, Key::Space);
+    assert_eq!(
+        super::settings::store(app).get_density(),
+        "compact",
+        "Space picks the focused pill"
+    );
+    click_middle(app, &one(app, "Message density: Comfy"));
+    assert_eq!(rings(app), vec![]);
+
+    // A button row's button, and the button before it.
+    click_middle(app, &one(app, "Reset font size"));
+    assert_eq!(rings(app), vec![], "a click on a button shows no ring");
+    key(app, Key::Shift, true);
+    press_key(app, Key::Tab);
+    key(app, Key::Shift, false);
+    let r = rings(app);
+    assert_eq!(r.len(), 1, "Shift+Tab: one ring ({r:?})");
+    assert_eq!(r[0].0, "ButtonBody::focus-ring");
+    assert!(around(r[0].1, rect(&one(app, "Larger font"))));
+    press_key(app, Key::Tab);
+    let r = rings(app);
+    assert_eq!(r.len(), 1, "Tab: one ring ({r:?})");
+    assert!(around(r[0].1, rect(&one(app, "Reset font size"))));
+    click_middle(app, &one(app, "Reset font size"));
+    assert_eq!(rings(app), vec![]);
+}
+
+#[test]
+fn right_to_left_lists_the_pills_from_the_start_side() {
+    let ui = window(Home::new("kit-rtl-pills"));
+    let app = &ui.app;
+    open_page(app, "appearance");
+    // The skin tones: the same labels in every language, left to right on screen.
+    let tones = |app: &AppWindow| {
+        tall(app, 1200.);
+        let mut pills: Vec<_> = ElementHandle::find_by_element_type_name(app, "SChoicePill")
+            .filter(|p| p.size().height > 0.)
+            .filter_map(|p| {
+                let label = p.accessible_label()?.to_string();
+                let (_, tone) = label.rsplit_once(": ")?;
+                tone.starts_with('👋').then(|| (rect(&p), tone.to_string()))
+            })
+            .collect();
+        assert_eq!(pills.len(), 6, "six skin tones");
+        let top = pills[0].0.1;
+        assert!(
+            pills.iter().all(|(r, _)| (r.1 - top).abs() < 0.5),
+            "on one line"
+        );
+        pills.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
+        pills.into_iter().map(|(_, t)| t).collect::<Vec<_>>()
+    };
+    let order = ["👋", "👋🏻", "👋🏼", "👋🏽", "👋🏾", "👋🏿"];
+    lang("en");
+    assert_eq!(tones(app), order, "left to right: the first at the left");
+    lang("ar");
+    let mut reversed = order;
+    reversed.reverse();
+    assert_eq!(
+        tones(app),
+        reversed,
+        "right to left: the first at the right"
+    );
+    lang("en");
+}
+
+#[test]
+fn radio_rows_line_up_with_the_row_labels() {
+    let ui = window(Home::new("kit-radio"));
+    let app = &ui.app;
+    let pad = app.global::<SettingsMetrics>().get_row_pad_x();
+    open_page(app, "devices");
+    for (tag, rtl) in [("en", false), ("ar", true)] {
+        lang(tag);
+        tall(app, 1200.);
+        let cards: Vec<_> = ElementHandle::find_by_element_id(app, "SettingsSection::card")
+            .map(|c| rect(&c))
+            .collect();
+        let dots: Vec<_> = ElementHandle::find_by_element_id(app, "SRadio::dot")
+            .map(|d| rect(&d))
+            .filter(|d| d.3 > d.1)
+            .collect();
+        assert!(dots.len() >= 3, "{tag}: the device lists' radio rows");
+        for d in dots {
+            let card = cards
+                .iter()
+                .find(|c| d.1 >= c.1 && d.3 <= c.3)
+                .expect("a radio row in a card");
+            // The card's border is 1px; a row's text starts `row-pad-x` inside it.
+            let edge = if rtl { card.2 - d.2 } else { d.0 - card.0 };
+            assert!(
+                (edge - 1. - pad).abs() < 0.5,
+                "{tag}: a radio dot {edge} px from its card's start edge, not {}",
+                1. + pad
+            );
+        }
+    }
     lang("en");
 }

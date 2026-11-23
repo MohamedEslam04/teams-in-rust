@@ -19,8 +19,8 @@ import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
 import { SwitchTrack } from "../atoms/check.slint";
+import { Icon } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
-import { RangeSlider } from "../atoms/range_slider.slint";
 import { SChoice } from "settings_widgets.slint";
 
 export global SettingsMetrics {
@@ -117,7 +117,9 @@ export component SettingsRow inherits Rectangle {
     property <length> stack-gap: root.has-text && root.ctl-h > 0px ? Space.s : 0px;
     height: root.stack ? max(SettingsMetrics.row-min, 2 * root.pad-y + root.text-h + root.stack-gap + root.ctl-h)
         : max(SettingsMetrics.row-min, 2 * root.pad-y + max(root.text-h, root.ctl-h));
-    background: root.highlight ? Theme.surface-hover : transparent;
+    // Opened by a Find result: the row is tinted for a moment, so the eye lands on it.
+    property <bool> landed: false;
+    background: root.highlight ? Theme.surface-hover : (root.landed ? Theme.selected : transparent);
     animate background { duration: Theme.reduced-motion ? 0ms : 100ms; }
     // Opened by a Find result: tells the page where this row is.
     Timer {
@@ -126,7 +128,13 @@ export component SettingsRow inherits Rectangle {
         triggered => {
             SettingsStore.target-y = root.absolute-position.y;
             SettingsStore.target = "";
+            root.landed = true;
         }
+    }
+    Timer {
+        running: root.landed;
+        interval: 1600ms;
+        triggered => { root.landed = false; }
     }
     if root.divider: divider-line := Rectangle {
         x: root.pad-x;
@@ -281,13 +289,13 @@ export component SettingsSwitchRow inherits Rectangle {
             root.flip();
         }
     }
-    Rectangle {
+    if root.focus-visible: focus-ring := Rectangle {
         x: 2px;
         y: 2px;
         width: parent.width - 4px;
         height: parent.height - 4px;
         border-radius: SettingsMetrics.radius - 2px;
-        border-width: root.focus-visible ? 2px : 0px;
+        border-width: 2px;
         border-color: Theme.accent;
     }
 }
@@ -325,29 +333,6 @@ export component SettingsButtonRow inherits SettingsRow {
     }
 }
 
-// A value from 0 to 100 on a slider, with the value as text next to it.
-export component SettingsSliderRow inherits SettingsRow {
-    in property <float> value;
-    in property <string> value-text;
-    callback edited(float);
-    callback released(float);
-    RangeSlider {
-        width: 180px;
-        label: root.label;
-        value: root.value;
-        edited(v) => { root.edited(v); }
-        released(v) => { root.released(v); }
-    }
-    Text {
-        min-width: 40px;
-        text: root.value-text;
-        color: Theme.fg-muted;
-        font-size: Theme.font-body;
-        vertical-alignment: center;
-        horizontal-alignment: right;
-    }
-}
-
 // A name with one action on the end side (Unblock, Remove): the button is read out as
 // "<action> <name>".
 export component SPersonRow inherits SettingsRow {
@@ -360,5 +345,63 @@ export component SPersonRow inherits SettingsRow {
         label: root.action;
         accessible-label: root.action + " " + root.name;
         clicked => { root.act(); }
+    }
+}
+
+// A row that takes you somewhere (a Find in Settings result): the label and where it is, a
+// chevron on the end side. The whole row is one button: click, or Tab then Space or Enter.
+export component SettingsLinkRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    // What a screen reader says for the row ("" says the label).
+    in property <string> a11y-label;
+    callback clicked();
+    property <bool> focus-visible: false;
+    height: row.height;
+    accessible-role: button;
+    accessible-label: root.a11y-label != "" ? root.a11y-label : root.label;
+    accessible-description: root.description;
+    accessible-action-default => { root.clicked(); }
+    row := SettingsRow {
+        width: parent.width;
+        divider: root.y > 2px;
+        label: root.label;
+        description: root.description;
+        quiet-text: true;
+        highlight: touch.has-hover;
+        Icon {
+            source: Theme.rtl ? @image-url("../icons/chevron-left.svg") : @image-url("../icons/chevron-right.svg");
+            tint: Theme.fg-muted;
+            width: 16px;
+            height: 16px;
+        }
+    }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if root.focus-visible: focus-ring := Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: SettingsMetrics.radius - 2px;
+        border-width: 2px;
+        border-color: Theme.accent;
     }
 }

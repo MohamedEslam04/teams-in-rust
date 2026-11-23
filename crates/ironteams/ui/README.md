@@ -149,13 +149,23 @@ row padding, smallest row height, content width), both exported to Rust for the 
   row is the switch: click target, hover tint, Tab focus with a ring, Space or Enter flips it,
   and it carries the accessible name and description (its texts are hidden from screen readers).
 - `SettingsChoiceRow` (`options`, `value`, `picked(string)`): pills under the text (`SChoice`).
+- `SettingsChoiceRow`'s pills (`SChoice`) list the first option on the start side, also in a
+  right-to-left language (the row lists them backwards there; stacked, the first is on top).
 - `SettingsButtonRow` (`button-label`, `primary`, `danger`, `button-enabled`, `clicked()`),
-  `SettingsSliderRow` (`value` 0 to 100, `value-text`, `edited`, `released`), `SPersonRow`
-  (`name`, `action`, `act()`; the button reads "<action> <name>").
+  `SPersonRow` (`name`, `action`, `act()`; the button reads "<action> <name>").
+- `SettingsLinkRow` (`label`, `description`, `a11y-label`, `clicked()`): a row that goes somewhere,
+  with a chevron on the end side; Find in Settings lists its results with it, in one card.
 - `SettingsBlock` (free content in a card, stacked) and `SettingsNote` (a muted paragraph).
+- `SRadio`: a radio row whose dot sits on the row's start edge, in line with the row labels.
 
-Every row with a `label` answers Find in Settings (it reports where it is when its label is the
-target). Element ids the tests use: `SettingsSection::card`, `SettingsRow::divider-line`.
+Keyboard: a switch row, a link row, each pill, each radio row and a `settings` button are reached
+with Tab and act on Space or Enter. A ring (`focus-ring`) shows only when Tab put the focus there,
+never after a click.
+
+Every row with a `label` answers Find in Settings: it reports where it is when its label is the
+target, and is tinted (`Theme.selected`) for a moment after the page scrolls to it. Element ids
+the tests use: `SettingsSection::card`, `SettingsRow::divider-line`, `SettingsSwitchRow::focus-ring`,
+`SChoicePill::focus-ring`, `ButtonBody::focus-ring`.
 
 ## The window and the composer
 
