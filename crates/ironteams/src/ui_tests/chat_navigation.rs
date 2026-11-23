@@ -157,8 +157,14 @@ fn ctrl_alt_home_and_ctrl_home_in_the_message_pane_ask_for_the_first_message() {
     let (h, log) = harness(&[]);
     h.select(NOTES);
     composer(&h.app).mock_single_click(PointerEventButton::Left);
-    chord(&h.app, &[Key::Control, Key::Alt], Key::Home);
-    assert_eq!(log.borrow().last().unwrap(), "jump-first ");
+    // Slint on Windows reads Ctrl+Alt plus a key that is not a letter or digit as AltGr when the
+    // event carries no `text_without_modifiers`, which a synthetic event never does, and drops
+    // both modifiers. A real key press does carry it. The chord's mapping is covered on every
+    // platform by `shortcuts::tests`.
+    if !cfg!(windows) {
+        chord(&h.app, &[Key::Control, Key::Alt], Key::Home);
+        assert_eq!(log.borrow().last().unwrap(), "jump-first ");
+    }
 
     // Alt+Shift+M: Home and End keep scrolling the loaded list, Ctrl+Home goes to the start.
     chord(&h.app, &[Key::Alt, Key::Shift], "m");
