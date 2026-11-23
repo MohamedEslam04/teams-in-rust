@@ -8,8 +8,9 @@
 # each channel (win, osx-arm64, osx-x64, linux); installed copies read them from the published
 # release and download only what changed.
 #
-# A tag push builds Linux and Windows only. macOS is added to the same release by a manual run on
-# the tag with macos=true, which re-uploads the other files of that version unchanged in name.
+# A tag push builds Linux only. Windows and macOS are added to the same release by a manual run on
+# the tag (windows=true, macos=true), which re-uploads the Linux files of that version unchanged in
+# name.
 #
 # Nothing is published unless the whole CI gate (fmt and clippy on Linux, every test on Linux,
 # Windows, and both macOS runners when macOS is built) passes and every packaged app passes `--self-check --packaged`. A tag with a
@@ -41,11 +42,18 @@ on:
           gate on every system (for example after a packaging-only fix).
         type: boolean
         default: false
+      windows:
+        description: >-
+          Also test and build Windows. A tag push builds Linux only; run this by hand on the tag
+          (gh workflow run release.yml --ref vX.Y.Z -f windows=true) to add the Windows files to
+          that same release.
+        type: boolean
+        default: false
       macos:
         description: >-
-          Also test and build macOS (arm64 and Intel). A tag push leaves macOS out; run this by hand
-          on the tag (gh workflow run release.yml --ref vX.Y.Z -f macos=true) to add the macOS files
-          to that same release.
+          Also test and build macOS (arm64 and Intel). A tag push builds Linux only; run this by
+          hand on the tag (gh workflow run release.yml --ref vX.Y.Z -f macos=true) to add the macOS
+          files to that same release.
         type: boolean
         default: false
 
@@ -91,6 +99,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       all-platforms: true
+      skip-windows: ${{ inputs.windows != true }}
       skip-macos: ${{ inputs.macos != true }}
 
   icons:
@@ -174,6 +183,8 @@ jobs:
             velopack-out/*
 
   windows:
+    # Windows takes longer than Linux: a tag release goes out with Linux only.
+    if: ${{ inputs.windows == true }}
     needs: [meta, icons]
     runs-on: windows-latest
     timeout-minutes: 120
@@ -376,6 +387,6 @@ jobs:
           # A draft while the files upload; clients only see it once it is published.
           gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft "${pre[@]}" \
-                 --title "$APP_NAME $GITHUB_REF_NAME" --notes "Builds for Windows and Linux; macOS builds are added to this release later. Installed copies update themselves."
+                 --title "$APP_NAME $GITHUB_REF_NAME" --notes "Builds for Linux; Windows and macOS builds may be added to this release later. Installed copies update themselves."
           gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber "${files[@]}"
           gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft=false "${pre[@]}"

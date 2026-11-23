@@ -16,9 +16,12 @@ on:
       all-platforms:
         type: boolean
         default: false
-      # Leaves the two macOS runners out of all-platforms (a tag release builds and publishes
-      # Linux and Windows only; macOS is added to that release by a manual run). Compared with
-      # true, not false: an unset input (push, manual run) must keep macOS.
+      # Leave the Windows or the two macOS runners out of all-platforms (a tag release builds and
+      # publishes Linux only; a manual run adds Windows or macOS to that release). Compared with
+      # true, not false: an unset input (push, manual run) must keep every system.
+      skip-windows:
+        type: boolean
+        default: false
       skip-macos:
         type: boolean
         default: false
@@ -111,12 +114,18 @@ jobs:
   # requests get the Linux gate only; the nightly cache-warm, the release gate and a manual run
   # (`gh workflow run CI --ref dev`) check every system.
   platforms:
-    if: github.event_name == 'workflow_dispatch' || inputs.all-platforms
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (inputs.all-platforms && !(inputs.skip-windows == true && inputs.skip-macos == true))
     name: check (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(inputs.skip-macos == true && '["windows-latest"]' || '["windows-latest","macos-latest","macos-15-intel"]') }}
+        os: [windows-latest, macos-latest, macos-15-intel]
+        exclude:
+          - os: ${{ inputs.skip-windows == true && 'windows-latest' || 'none' }}
+          - os: ${{ inputs.skip-macos == true && 'macos-latest' || 'none' }}
+          - os: ${{ inputs.skip-macos == true && 'macos-15-intel' || 'none' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
