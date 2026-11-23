@@ -388,8 +388,12 @@ fn ctrl_f_finds_in_a_channel_and_does_nothing_outside_a_conversation() {
         "19:team1@thread.tacv2".into(),
         "General".into(),
     ));
-    // Keys reach the app's chords once the window has the focus, as a click in the box gives it.
-    composer(&h.app).mock_single_click(PointerEventButton::Left);
+    // Keys reach the app's chords once an input has the focus; a channel shows no composer until
+    // "Post in channel", so the top search box takes it.
+    ElementHandle::find_by_element_id(&h.app, "TopSearch::input")
+        .next()
+        .expect("the top search box")
+        .mock_single_click(PointerEventButton::Left);
     chord(&h.app, &[Key::Control], "f");
     assert!(h.app.global::<FindStore>().get_chat_find_open());
 
