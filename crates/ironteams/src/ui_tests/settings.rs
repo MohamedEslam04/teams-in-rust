@@ -15,10 +15,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use teams_proto::user_settings::{NotificationSettings, PrivacySettings};
 
 /// A temporary home, removed when dropped.
-struct Home(PathBuf);
+pub(super) struct Home(PathBuf);
 
 impl Home {
-    fn new(tag: &str) -> Home {
+    pub(super) fn new(tag: &str) -> Home {
         let d = std::env::temp_dir().join(format!(
             "ironteams-ui-settings-{tag}-{}-{:?}",
             std::process::id(),
@@ -39,7 +39,7 @@ impl Home {
     }
 
     /// A config with two fake accounts; the first is active.
-    fn with_accounts(self) -> Home {
+    pub(super) fn with_accounts(self) -> Home {
         let p = self.paths();
         let mut cfg = session::Config {
             display_name: Some("Test User".into()),
@@ -64,7 +64,7 @@ impl Drop for Home {
     }
 }
 
-fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv {
+pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv {
     let rec = |l: &Log, what: &'static str| {
         let l = l.clone();
         move || l.borrow_mut().push(what.into())
@@ -1171,7 +1171,7 @@ fn local_preferences_round_trip_through_the_temp_home() {
     std::mem::forget(again.home); // `ui.home` removes the directory
 }
 
-fn server(privacy: PrivacySettings) -> ServerData {
+pub(super) fn server(privacy: PrivacySettings) -> ServerData {
     ServerData {
         chat_service: "https://chat.invalid".into(),
         middle_tier: "https://mt.invalid".into(),
