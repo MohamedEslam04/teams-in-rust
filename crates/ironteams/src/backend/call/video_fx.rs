@@ -294,18 +294,15 @@ mod state {
         }
     }
 
-    /// The picker's tiles: none and the blurs, the built-in pictures, then the user's.
+    /// The picker's tiles: none and the blur, the built-in pictures, then the user's.
     fn choices(dir: Option<&Path>) -> Vec<Choice> {
         let plain = |id: &str, name: &str| Choice {
             id: id.into(),
             name: name.into(),
             thumb: None,
         };
-        let mut v = vec![
-            plain("none", "None"),
-            plain("blur", "Blur"),
-            plain("strong-blur", "Strong blur"),
-        ];
+        // "Strong blur" is the blur's other strength, picked beside the tiles, not a tile.
+        let mut v = vec![plain("none", "None"), plain("blur", "Standard blur")];
         for b in effects::BUILT_IN {
             v.push(Choice {
                 id: b.id.into(),
@@ -432,12 +429,14 @@ mod state {
         }
 
         #[test]
-        fn the_picker_lists_none_the_blurs_and_the_built_in_pictures() {
+        fn the_picker_lists_none_the_blur_and_the_built_in_pictures() {
             let v = VideoFx::load(None).view();
             let ids: Vec<_> = v.choices.iter().map(|c| c.id.as_str()).collect();
-            assert_eq!(ids[..3], ["none", "blur", "strong-blur"]);
-            assert_eq!(v.choices.len(), 3 + effects::BUILT_IN.len());
-            assert!(v.choices[3..].iter().all(|c| c.thumb.is_some()));
+            assert_eq!(ids[..2], ["none", "blur"]);
+            let names: Vec<_> = v.choices[..2].iter().map(|c| c.name.as_str()).collect();
+            assert_eq!(names, ["None", "Standard blur"]);
+            assert_eq!(v.choices.len(), 2 + effects::BUILT_IN.len());
+            assert!(v.choices[2..].iter().all(|c| c.thumb.is_some()));
         }
     }
 }

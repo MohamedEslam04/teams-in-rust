@@ -22,6 +22,9 @@ pub struct CallModel {
     pub camera: bool,
     /// The pre-join camera choice.
     pub prejoin_camera: bool,
+    /// The Video effects panel's or the camera menu's self-preview is wanted: our camera is shown
+    /// to us only, not sent (on the pre-join screen, or in a call while the camera is off).
+    pub video_preview: bool,
     /// Who else shares a screen now, or empty.
     pub presenter: String,
     /// Remote control: "" | requested | incoming | controlling | controlled.

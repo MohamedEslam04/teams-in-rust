@@ -218,6 +218,13 @@ impl CallManager {
         (*self.shared.fx.lock().unwrap().control().get()).clone()
     }
 
+    /// Keeps the Video effects choices in `dir` from now on, reading what is there (tests).
+    #[cfg(all(test, feature = "calls"))]
+    pub fn keep_effects_in(&self, dir: std::path::PathBuf) {
+        *self.shared.fx.lock().unwrap() = video_fx::VideoFx::load(Some(dir));
+        self.shared.push_fx();
+    }
+
     /// "Add new" in the Video effects panel: the picture at `path` becomes a background.
     #[cfg(all(feature = "calls", not(test)))]
     pub fn add_background(&self, path: &std::path::Path) {
@@ -354,6 +361,12 @@ impl CallManager {
                     self.shared.push();
                     return;
                 }
+                CallCmd::VideoPreview(on) => {
+                    m.set_video_preview(on);
+                    None
+                }
+                CallCmd::VideoApply => m.apply_video(),
+                CallCmd::AudioRefresh => m.refresh_audio(),
                 CallCmd::Fx(c) => {
                     drop(m);
                     #[cfg(feature = "calls")]

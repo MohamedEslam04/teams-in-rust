@@ -98,36 +98,44 @@ pub(crate) fn chosen(id: Option<&str>) -> (CameraChoice, Option<String>) {
     (choice, v4l2_device())
 }
 
-/// The cameras the pickers list: the default first, then each camera found (V4L2 on Linux,
+/// The cameras the pickers list, each by its own name ("Integrated Camera"; V4L2 on Linux,
 /// GStreamer's device monitor on Windows and macOS), and the position of `chosen`.
 pub(crate) fn list(chosen: Option<&str>) -> (Vec<Device>, usize) {
-    let mut list = vec![Device {
-        id: None,
-        name: super::DEFAULT_CAMERA.into(),
-    }];
     #[cfg(target_os = "linux")]
-    list.extend(
-        devices::cameras()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|c| Device {
-                id: Some(c.bus),
-                name: c.name,
-            }),
-    );
+    let found: Vec<Device> = devices::cameras()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| Device {
+            id: Some(c.bus),
+            name: c.name,
+        })
+        .collect();
     #[cfg(not(target_os = "linux"))]
-    list.extend(
-        calling::video::camera::system_cameras()
-            .into_iter()
-            .map(|c| Device {
-                id: Some(c.name.clone()),
-                name: c.name,
-            }),
-    );
+    let found: Vec<Device> = calling::video::camera::system_cameras()
+        .into_iter()
+        .map(|c| Device {
+            id: Some(c.name.clone()),
+            name: c.name,
+        })
+        .collect();
+    camera_rows(found, chosen)
+}
+
+/// The picker's rows for the cameras `found`: just those, the first one standing for the default.
+/// "Default camera" (the portal's camera, or the system's) only stands in when none was found.
+/// The row of `chosen` is selected; a camera that is gone, or none chosen, selects the first.
+pub(crate) fn camera_rows(found: Vec<Device>, chosen: Option<&str>) -> (Vec<Device>, usize) {
+    let mut rows = found;
+    if rows.is_empty() {
+        rows.push(Device {
+            id: None,
+            name: super::DEFAULT_CAMERA.into(),
+        });
+    }
     let at = chosen
-        .and_then(|id| list.iter().position(|d| d.id.as_deref() == Some(id)))
+        .and_then(|id| rows.iter().position(|d| d.id.as_deref() == Some(id)))
         .unwrap_or(0);
-    (list, at)
+    (rows, at)
 }
 
 /// Our picture as a self-view draws it: at most `max_width` wide, mirrored when `mirror` ("Mirror
@@ -435,11 +443,28 @@ mod tests {
     }
 
     #[test]
-    fn the_camera_list_starts_with_the_default() {
-        let (list, at) = list(Some("not-plugged-in"));
-        assert_eq!(list[0].id, None);
-        assert_eq!(list[0].name, super::super::DEFAULT_CAMERA);
-        assert_eq!(at, 0, "a camera that is gone falls back to the default");
+    fn the_camera_rows_name_each_camera_and_default_only_when_none_is_found() {
+        let cam = |id: &str, name: &str| Device {
+            id: Some(id.into()),
+            name: name.into(),
+        };
+        let found = vec![
+            cam("usb-1", "Integrated Camera"),
+            cam("usb-2", "Logitech BRIO"),
+        ];
+        let (rows, at) = camera_rows(found.clone(), Some("usb-2"));
+        let names: Vec<_> = rows.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, ["Integrated Camera", "Logitech BRIO"]);
+        assert_eq!(at, 1);
+        let (_, at) = camera_rows(found.clone(), Some("not-plugged-in"));
+        assert_eq!(at, 0, "a camera that is gone falls back to the first");
+        assert_eq!(camera_rows(found, None).1, 0);
+
+        let (rows, at) = camera_rows(Vec::new(), Some("usb-1"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, None);
+        assert_eq!(rows[0].name, super::super::DEFAULT_CAMERA);
+        assert_eq!(at, 0);
     }
 
     #[test]

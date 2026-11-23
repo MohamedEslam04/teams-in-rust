@@ -42,6 +42,7 @@ impl CallModel {
         let target = self.target.clone()?;
         self.phase = Phase::Connecting;
         self.muted = !self.mic_on;
+        self.video_preview = false;
         Some((target, self.options()))
     }
 
@@ -290,8 +291,38 @@ impl CallModel {
             self.prejoin_camera = !self.prejoin_camera;
             return None;
         }
+        // The camera is about to be opened for sending: the preview lets go of it first.
+        if self.phase.active() && !self.camera {
+            self.video_preview = false;
+        }
         (self.phase.active() && (self.can_camera || self.camera))
             .then_some(Control::Camera(!self.camera))
+    }
+
+    /// The self-preview of the Video effects panel and the camera menu, on or off. It runs on
+    /// the pre-join screen and in a call whose camera is off (the sending camera is its own
+    /// picture); nothing is sent.
+    pub fn set_video_preview(&mut self, on: bool) -> bool {
+        replace(&mut self.video_preview, on)
+    }
+
+    /// "Apply and turn on video": the preview ends, and the camera goes on (the pre-join switch,
+    /// or the call's camera when it is off and can send).
+    pub fn apply_video(&mut self) -> Option<Control> {
+        self.video_preview = false;
+        if self.phase == Phase::PreJoin {
+            self.prejoin_camera = true;
+            return None;
+        }
+        (self.phase.active() && self.can_camera && !self.camera).then_some(Control::Camera(true))
+    }
+
+    /// The devices open again, to pick up what Settings changed (noise suppression).
+    pub fn refresh_audio(&self) -> Option<Control> {
+        self.phase.active().then(|| Control::Devices {
+            mic: self.mic_id(),
+            speaker: self.speaker_id(),
+        })
     }
 
     /// A remote-control command while a call runs. "Give control" takes the person's name from
@@ -569,6 +600,7 @@ impl CallModel {
             people,
             mics: self.devices.mics.iter().map(|d| d.name.clone()).collect(),
             mic: self.devices.mic,
+            mic_id: self.mic_id(),
             speakers: self
                 .devices
                 .speakers

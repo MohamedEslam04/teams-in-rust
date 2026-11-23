@@ -328,6 +328,78 @@ fn controls_toggle_only_in_a_call() {
 }
 
 #[test]
+fn the_self_preview_never_sends_and_apply_turns_the_video_on() {
+    // Pre-join: the preview is the camera shown to us; Apply flips the switch we join with.
+    let mut m = ready();
+    assert!(m.set_video_preview(true));
+    assert!(!m.set_video_preview(true), "no change");
+    assert!(!m.prejoin_camera, "a preview is not the camera switch");
+    assert_eq!(m.apply_video(), None);
+    assert!(m.prejoin_camera && !m.video_preview);
+
+    // In a call that can send video: Apply asks the driver, a preview asks nothing.
+    let mut m = ready();
+    m.joining();
+    m.apply(Event::Connected, Instant::now());
+    m.apply(
+        Event::Camera {
+            available: true,
+            on: false,
+        },
+        Instant::now(),
+    );
+    assert!(m.set_video_preview(true));
+    assert_eq!(m.apply_video(), Some(Control::Camera(true)));
+    assert!(!m.video_preview, "the preview lets go of the camera first");
+    // Once it is on there is nothing more to turn on; turning it on by the toolbar ends a preview.
+    m.apply(
+        Event::Camera {
+            available: true,
+            on: true,
+        },
+        Instant::now(),
+    );
+    assert_eq!(m.apply_video(), None);
+    m.camera = false;
+    m.set_video_preview(true);
+    assert_eq!(m.toggle_camera(), Some(Control::Camera(true)));
+    assert!(!m.video_preview);
+
+    // Joining ends a preview left running on the pre-join screen.
+    let mut m = ready();
+    m.set_video_preview(true);
+    m.joining();
+    assert!(!m.video_preview);
+}
+
+#[test]
+fn the_audio_devices_open_again_only_in_a_call() {
+    let mut m = ready();
+    assert_eq!(m.refresh_audio(), None, "nothing runs before joining");
+    m.joining();
+    assert_eq!(
+        m.refresh_audio(),
+        Some(Control::Devices {
+            mic: Some("mic-builtin".into()),
+            speaker: Some("spk-builtin".into())
+        })
+    );
+    assert_eq!(
+        CallCmd::parse("audio-refresh", ""),
+        Some(CallCmd::AudioRefresh)
+    );
+    assert_eq!(
+        CallCmd::parse("video-preview", "on"),
+        Some(CallCmd::VideoPreview(true))
+    );
+    assert_eq!(
+        CallCmd::parse("video-preview", "off"),
+        Some(CallCmd::VideoPreview(false))
+    );
+    assert_eq!(CallCmd::parse("video-apply", ""), Some(CallCmd::VideoApply));
+}
+
+#[test]
 fn photos_are_looked_up_by_mri_for_the_people_who_have_one() {
     let p = |mri: &str| Person {
         mri: mri.into(),

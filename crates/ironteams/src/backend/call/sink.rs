@@ -130,7 +130,9 @@ impl Shared {
     pub(super) fn sync_preview(&self) {
         let wanted = {
             let m = self.model.lock().unwrap();
-            (m.phase == Phase::PreJoin && m.prejoin_camera).then(|| m.camera_id())
+            let on_prejoin = m.phase == Phase::PreJoin && (m.prejoin_camera || m.video_preview);
+            let in_call = m.phase.active() && !m.camera && m.can_camera && m.video_preview;
+            (on_prejoin || in_call).then(|| m.camera_id())
         };
         let mut preview = self.preview.lock().unwrap();
         if preview.as_ref().map(|(camera, _)| camera) == wanted.as_ref() {
@@ -421,6 +423,11 @@ impl Shared {
     }
 
     pub(super) fn control(&self, c: Control) {
+        // The camera opens for sending: a running preview of it lets go first.
+        #[cfg(feature = "calls")]
+        if c == Control::Camera(true) {
+            self.sync_preview();
+        }
         // Out of the lock: a driver may report (and end the call) from inside `control`.
         let h = self.handle.lock().unwrap().clone();
         if let Some(h) = h {
