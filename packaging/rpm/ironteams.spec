@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           ironteams
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        An unofficial native Microsoft Teams client written in Rust
 
@@ -106,5 +106,8 @@ install -Dm644 packaging/io.github.mohamedeslam04.ironteams.metainfo.xml %{build
 %{_metainfodir}/io.github.mohamedeslam04.ironteams.metainfo.xml
 
 %changelog
+* Mon Nov 23 2026 IronTeams contributors - 0.1.1-1
+- 0.1.1
+
 * Thu Nov 19 2026 IronTeams contributors - 0.1.0-1
 - First package
