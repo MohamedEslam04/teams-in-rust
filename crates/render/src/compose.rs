@@ -160,6 +160,7 @@ mod tests {
                 author_mri: Some("8:orgid:11111111-2222-3333-4444-555555555555".into()),
                 author: Some("سارة & Co".into()),
                 time_ms: Some(1731234999000),
+                forwarded: false,
                 preview: "the <original> message".into(),
                 dir: Dir::Ltr,
             }
