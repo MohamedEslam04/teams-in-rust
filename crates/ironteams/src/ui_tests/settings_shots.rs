@@ -68,7 +68,7 @@ fn shoot(window: &MinimalSoftwareWindow, w: u32, h: u32, whole: bool, path: &std
     if whole {
         // The page's own column (right of the page list): cut the rows that only show its
         // background, keeping a margin.
-        let x0 = (w / 3) as usize;
+        let x0 = (w / 2) as usize;
         let bg = buf[((h - 1) * w) as usize + x0];
         let blank = |y: u32| {
             let row = &buf[(y * w) as usize..((y + 1) * w) as usize];

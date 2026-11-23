@@ -64,6 +64,7 @@ mod saved;
 mod scroll;
 mod seen_by;
 mod settings;
+mod settings_layout;
 mod settings_shots;
 mod shortcuts;
 mod snippets;

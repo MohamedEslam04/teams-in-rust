@@ -1,191 +1,236 @@
 // The pages of Settings. Each one reads `SettingsStore` and reports changes through
 // `SettingsStore.command(name, argument)`; the Rust side saves local preferences and only plans
 // (dry run) the changes that belong to Teams.
+//
+// Every page is built from the Settings kit (molecules/settings_kit.slint): sections with a
+// heading over a card, one setting per row, the control on the end side of its row.
 import { Theme } from "../tokens/theme.slint";
-import { SettingsStore, SOption } from "../stores/settings_store.slint";
+import { Space } from "../tokens/space.slint";
+import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SChoice, SChoiceRow, SPersonRow, SRadio, SRadioList, SSection } from "../molecules/settings_widgets.slint";
+import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
+import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
-import { Check, Switch, SwitchVariant } from "../atoms/check.slint";
-
-component Para inherits Text {
-    color: Theme.fg-muted;
-    font-size: Theme.font-small;
-    wrap: word-wrap;
-    horizontal-alignment: Theme.start-align;
-}
 
 // The Teams changes that were only planned, so the user sees exactly what was not sent.
-component DryRuns inherits SSection {
+component DryRuns inherits SettingsSection {
     title: @tr("Planned changes (not sent to Teams)");
-    hint: @tr("IronTeams does not change Teams settings yet. Each change is shown here as the request it would send.");
-    if SettingsStore.dry-runs.length == 0: Para { text: @tr("None yet."); }
-    for d[i] in SettingsStore.dry-runs: Rectangle {
-        height: dr.preferred-height + 12px;
-        border-radius: 4px;
-        background: Theme.surface;
-        accessible-role: text;
-        accessible-label: @tr("Planned request {}", i + 1);
-        accessible-description: d;
-        dr := Text {
-            x: 8px;
-            width: parent.width - 16px;
-            text: d;
-            color: Theme.fg-muted;
-            font-size: Theme.font-small;
-            font-family: "monospace";
-            wrap: word-wrap;
-            vertical-alignment: center;
+    description: @tr("IronTeams does not change Teams settings yet. Each change is shown here as the request it would send.");
+    SettingsBlock {
+        if SettingsStore.dry-runs.length == 0: SettingsNote { text: @tr("None yet."); }
+        for d[i] in SettingsStore.dry-runs: Rectangle {
+            height: dr.preferred-height + 12px;
+            border-radius: 4px;
+            background: Theme.surface;
+            accessible-role: text;
+            accessible-label: @tr("Planned request {}", i + 1);
+            accessible-description: d;
+            dr := Text {
+                x: 8px;
+                width: parent.width - 16px;
+                text: d;
+                color: Theme.fg-muted;
+                font-size: Theme.font-small;
+                font-family: "monospace";
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
         }
     }
 }
 
-export component GeneralPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+// A status line under a page's sections (what the last change answered).
+component PageNote inherits HorizontalLayout {
+    in property <string> text;
+    padding-left: Space.xxs;
+    padding-right: Space.xxs;
+    SettingsNote { text: root.text; }
+}
+
+export component GeneralPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Language and region");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("App language");
-            hint: @tr("Now: {}. The main screens are translated; the rest stays in English for now.", SettingsStore.language-shown);
+            description: @tr("Now: {}. The main screens are translated; the rest stays in English for now.", SettingsStore.language-shown);
             options: SettingsStore.languages;
             value: SettingsStore.language;
             picked(v) => { SettingsStore.language = v; SettingsStore.command("language", v); }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Date format");
-            hint: @tr("Used for dates in the chat list and in OneDrive.");
+            description: @tr("Used for dates in the chat list and in OneDrive.");
             options: [{v: "auto", l: @tr("Follow the language")}, {v: "dmy", l: "31/12/2026"}, {v: "mdy", l: "12/31/2026"}, {v: "ymd", l: "2026-12-31"}];
             value: SettingsStore.date-format;
             picked(v) => { SettingsStore.date-format = v; SettingsStore.command("date-format", v); }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Time format");
-            hint: @tr("Used for every clock time: chats, the calendar, reminders, scheduled messages and OneDrive.");
+            description: @tr("Used for every clock time: chats, the calendar, reminders, scheduled messages and OneDrive.");
             options: [{v: "h12", l: @tr("12-hour (1:30 PM)")}, {v: "h24", l: @tr("24-hour (13:30)")}];
             value: SettingsStore.time-format;
             picked(v) => { SettingsStore.time-format = v; SettingsStore.command("time-format", v); }
         }
-        Field { variant: FieldVariant.settings;
-            label: @tr("Time zone");
-            placeholder: @tr("System: {}", SettingsStore.system-time-zone);
-            text: SettingsStore.time-zone;
-            committed(t) => { SettingsStore.command("time-zone", t); }
+        SettingsBlock {
+            Field {
+                variant: FieldVariant.settings;
+                label: @tr("Time zone");
+                placeholder: @tr("System: {}", SettingsStore.system-time-zone);
+                text: SettingsStore.time-zone;
+                committed(t) => { SettingsStore.command("time-zone", t); }
+            }
+            SettingsNote { text: @tr("An IANA name such as Africa/Cairo. Leave it empty to follow the system. Chat times, the calendar, OneDrive and Store dates use it. A name that is not a time zone is ignored and the system zone is used."); }
         }
-        Para { text: @tr("An IANA name such as Africa/Cairo. Leave it empty to follow the system. Chat times, the calendar, OneDrive and Store dates use it. A name that is not a time zone is ignored and the system zone is used."); }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Writing");
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Check spelling");
-            hint: @tr("Underline misspelled words in the message box. Right-click a word for suggestions. Uses the English and Arabic Hunspell dictionaries installed on this computer.");
+            description: @tr("Underline misspelled words in the message box. Right-click a word for suggestions. Uses the English and Arabic Hunspell dictionaries installed on this computer.");
             checked: SettingsStore.check-spelling;
             toggled(on) => { SettingsStore.check-spelling = on; SettingsStore.command("check-spelling", on ? "1" : "0"); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("System");
-        for t in SettingsStore.startup: Switch { variant: SwitchVariant.settings;
+        for t in SettingsStore.startup: SettingsSwitchRow {
             label: t.label;
-            hint: t.hint;
+            description: t.hint;
             checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("startup", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Performance");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Graphics");
-            hint: @tr("CPU draws with the processor and uses the least memory. GPU uses the graphics card, can feel smoother and uses more memory.");
+            description: @tr("CPU draws with the processor and uses the least memory. GPU uses the graphics card, can feel smoother and uses more memory.");
             options: [{v: "cpu", l: @tr("CPU (low memory, default)")}, {v: "gpu", l: @tr("GPU (smoother, uses more memory)")}];
             value: SettingsStore.renderer;
             picked(v) => { SettingsStore.renderer = v; SettingsStore.command("renderer", v); }
         }
-        Para { text: SettingsStore.renderer-running == "gpu" ? @tr("Running: GPU") : @tr("Running: CPU"); }
-        if SettingsStore.renderer-fallback: Para { text: @tr("GPU graphics are not available here, using CPU"); }
-        if SettingsStore.renderer-restart: Para { text: @tr("Restart IronTeams to apply"); }
-        if SettingsStore.renderer-restart: Button { variant: ButtonVariant.settings; label: @tr("Restart now"); clicked => { SettingsStore.command("restart", ""); } }
+        SettingsRow {
+            label: SettingsStore.renderer-running == "gpu" ? @tr("Running: GPU") : @tr("Running: CPU");
+            description: SettingsStore.renderer-restart ? @tr("Restart IronTeams to apply") : "";
+            if SettingsStore.renderer-restart: Button {
+                variant: ButtonVariant.settings;
+                label: @tr("Restart now");
+                clicked => { SettingsStore.command("restart", ""); }
+            }
+        }
+        if SettingsStore.renderer-fallback: SettingsBlock {
+            SettingsNote { text: @tr("GPU graphics are not available here, using CPU"); }
+        }
     }
     // What IronTeams cannot do yet is greyed out, below the settings that work.
-    SSection {
+    SettingsSection {
         title: @tr("Translation");
-        Para { text: @tr("Translation preferences are a Teams account setting. IronTeams cannot change them yet, so these show Teams' choices greyed out. Translate in a message's … menu."); }
-        SChoiceRow {
+        description: @tr("Translation preferences are a Teams account setting. IronTeams cannot change them yet, so these show Teams' choices greyed out. Translate in a message's … menu.");
+        SettingsChoiceRow {
             label: @tr("Translate messages into");
             options: [{v: "app", l: @tr("The app language")}];
             value: "app";
             enabled: false;
             picked(v) => { }
         }
-        Switch { variant: SwitchVariant.settings; label: @tr("Ask me before translating"); enabled: false; checked: true; }
-        Switch { variant: SwitchVariant.settings; label: @tr("Never translate messages in these languages"); hint: @tr("Adding languages needs the same Teams setting."); enabled: false; checked: false; }
+        SettingsSwitchRow {
+            label: @tr("Ask me before translating");
+            enabled: false;
+            checked: true;
+        }
+        SettingsSwitchRow {
+            label: @tr("Never translate messages in these languages");
+            description: @tr("Adding languages needs the same Teams setting.");
+            enabled: false;
+            checked: false;
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Spell check languages");
-        Para { text: @tr("IronTeams checks with the English and Arabic Hunspell dictionaries installed on this computer. Choosing up to three languages is not available yet."); }
+        SettingsBlock {
+            SettingsNote { text: @tr("IronTeams checks with the English and Arabic Hunspell dictionaries installed on this computer. Choosing up to three languages is not available yet."); }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Meetings");
-        Switch { variant: SwitchVariant.settings; label: @tr("New meeting controls"); hint: @tr("IronTeams's call window has one set of controls."); enabled: false; checked: true; }
-        Switch { variant: SwitchVariant.settings; label: @tr("Ask me to confirm when I leave a meeting"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
+        SettingsSwitchRow {
+            label: @tr("New meeting controls");
+            description: @tr("IronTeams's call window has one set of controls.");
+            enabled: false;
+            checked: true;
+        }
+        SettingsSwitchRow {
+            label: @tr("Ask me to confirm when I leave a meeting");
+            description: @tr("Not available in IronTeams yet.");
+            enabled: false;
+            checked: false;
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Out of office");
-        Para { text: @tr("Automatic replies with a start, an end and a message are an Outlook mailbox setting. IronTeams cannot read or schedule them yet: set them in Teams or Outlook."); }
-        Button { variant: ButtonVariant.settings; label: @tr("Schedule"); enabled: false; clicked => { } }
+        SettingsButtonRow {
+            description: @tr("Automatic replies with a start, an end and a message are an Outlook mailbox setting. IronTeams cannot read or schedule them yet: set them in Teams or Outlook.");
+            button-label: @tr("Schedule");
+            button-enabled: false;
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Keyboard");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Keyboard shortcuts");
-            hint: @tr("IronTeams uses the Teams shortcuts (Ctrl+. lists them).");
+            description: @tr("IronTeams uses the Teams shortcuts (Ctrl+. lists them).");
             options: [{v: "teams", l: @tr("Teams")}];
             value: "teams";
             enabled: false;
             picked(v) => { }
         }
-        Switch { variant: SwitchVariant.settings; label: @tr("Use Enter or Spacebar to show content"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
+        SettingsSwitchRow {
+            label: @tr("Use Enter or Spacebar to show content");
+            description: @tr("Not available in IronTeams yet.");
+            enabled: false;
+            checked: false;
+        }
     }
 }
 
-export component ChatsPage inherits VerticalLayout {
-    alignment: start;
+export component ChatsPage inherits SettingsSections {
     // The composer's own setting (it is also in the composer's "more" menu).
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
-    SSection {
+    SettingsSection {
         title: @tr("Opening a chat");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("When I open a chat take me to");
-            hint: @tr("Last read opens at the first message you have not read, with the New messages line.");
+            description: @tr("Last read opens at the first message you have not read, with the New messages line.");
             options: [{v: "newest", l: @tr("Newest message")}, {v: "last-read", l: @tr("Last read")}];
             value: SettingsStore.open-chat-at;
             picked(v) => { SettingsStore.open-chat-at = v; SettingsStore.command("open-chat-at", v); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Writing");
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Press Enter to send");
-            hint: @tr("Off: Enter starts a new line and Ctrl+Enter sends.");
+            description: @tr("Off: Enter starts a new line and Ctrl+Enter sends.");
             checked: root.enter-sends;
             toggled(on) => { root.set-enter-sends(on); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Privacy and previews");
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Read receipts");
-            hint: @tr("People see when you have read their message. This is the same setting as in Privacy.");
+            description: @tr("People see when you have read their message. This is the same setting as in Privacy.");
             checked: PeopleStore.receipts-on;
             toggled(on) => { PeopleStore.command("receipts", on ? "on" : "off"); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Link previews");
-            hint: @tr("Show a card with the title and picture under messages that contain a link.");
+            description: @tr("Show a card with the title and picture under messages that contain a link.");
             checked: SettingsStore.link-previews;
             toggled(on) => { SettingsStore.command("link-previews", on ? "1" : "0"); }
         }
@@ -194,114 +239,136 @@ export component ChatsPage inherits VerticalLayout {
     SnippetsSection { }
 }
 
-export component AccountsPage inherits VerticalLayout {
-    alignment: start;
+export component AccountsPage inherits SettingsSections {
     // First, so the notice is seen right after a switch (and stays on screen in short windows).
-    if SettingsStore.restart-needed: SSection {
+    if SettingsStore.restart-needed: SettingsSection {
         title: @tr("Restart needed");
-        hint: @tr("The change is saved. IronTeams uses it after a restart.");
-        Button { variant: ButtonVariant.settings; label: @tr("Restart IronTeams"); primary: true; clicked => { SettingsStore.command("restart", ""); } }
+        SettingsButtonRow {
+            description: @tr("The change is saved. IronTeams uses it after a restart.");
+            button-label: @tr("Restart IronTeams");
+            primary: true;
+            clicked => { SettingsStore.command("restart", ""); }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Accounts");
-        hint: @tr("The account IronTeams signs in with. Switching restarts IronTeams. Each account keeps its own chats on this computer.");
-        for a in SettingsStore.accounts: SRadio {
-            group: @tr("Account");
-            label: a.name != "" ? a.name : a.label;
-            detail: a.upn;
-            checked: a.active;
-            picked => { SettingsStore.command("switch-account", a.label); }
+        description: @tr("The account IronTeams signs in with. Switching restarts IronTeams. Each account keeps its own chats on this computer.");
+        SettingsBlock {
+            for a in SettingsStore.accounts: SRadio {
+                group: @tr("Account");
+                label: a.name != "" ? a.name : a.label;
+                detail: a.upn;
+                checked: a.active;
+                picked => { SettingsStore.command("switch-account", a.label); }
+            }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Add an account");
-        hint: @tr("Pick a short name (letters, digits, - _ .), then restart IronTeams: it shows a code to sign in with, on this computer, for the new account. The accounts stay separate.");
-        new-account := Field { variant: FieldVariant.settings;
-            label: @tr("Name for the new account");
-            placeholder: "work";
-        }
-        Button { variant: ButtonVariant.settings;
-            label: @tr("Add account");
-            clicked => { SettingsStore.command("add-account", new-account.text); }
+        description: @tr("Pick a short name (letters, digits, - _ .), then restart IronTeams: it shows a code to sign in with, on this computer, for the new account. The accounts stay separate.");
+        SettingsBlock {
+            new-account := Field {
+                variant: FieldVariant.settings;
+                label: @tr("Name for the new account");
+                placeholder: "work";
+            }
+            HorizontalLayout {
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button {
+                    variant: ButtonVariant.settings;
+                    label: @tr("Add account");
+                    clicked => { SettingsStore.command("add-account", new-account.text); }
+                }
+            }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Remove an account");
-        hint: @tr("Forgets the account's saved sign-in on this computer and takes it off the list. Nothing changes in Teams.");
+        description: @tr("Forgets the account's saved sign-in on this computer and takes it off the list. Nothing changes in Teams.");
+        danger: true;
         for a in SettingsStore.accounts: SPersonRow {
             name: a.name != "" ? a.name : a.label;
             action: @tr("Remove");
             act => { SettingsStore.confirm-remove = a.label; }
         }
-        if SettingsStore.confirm-remove != "": VerticalLayout {
-            spacing: 6px;
-            Para { text: @tr("Remove \"{}\" from IronTeams on this computer? Its saved sign-in is deleted.", SettingsStore.confirm-remove); }
+        if SettingsStore.confirm-remove != "": SettingsBlock {
+            SettingsNote { text: @tr("Remove \"{}\" from IronTeams on this computer? Its saved sign-in is deleted.", SettingsStore.confirm-remove); }
             HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
                 Button { variant: ButtonVariant.settings; label: @tr("Cancel removal"); clicked => { SettingsStore.confirm-remove = ""; } }
                 Button { variant: ButtonVariant.settings; label: @tr("Yes, remove the account"); danger: true; clicked => { SettingsStore.command("remove-account", SettingsStore.confirm-remove); SettingsStore.confirm-remove = ""; } }
             }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Organizations");
-        hint: @tr("Organizations this account belongs to, as a member or a guest.");
-        if SettingsStore.orgs.length == 0: Para { text: @tr("No organization list yet."); }
-        for o in SettingsStore.orgs: SRadio {
-            group: @tr("Organization");
-            label: o.name;
-            detail: o.home ? @tr("Home organization") : @tr("Guest");
-            checked: o.active;
-            picked => { SettingsStore.command("switch-org", o.tenant); }
+        description: @tr("Organizations this account belongs to, as a member or a guest.");
+        SettingsBlock {
+            if SettingsStore.orgs.length == 0: SettingsNote { text: @tr("No organization list yet."); }
+            for o in SettingsStore.orgs: SRadio {
+                group: @tr("Organization");
+                label: o.name;
+                detail: o.home ? @tr("Home organization") : @tr("Guest");
+                checked: o.active;
+                picked => { SettingsStore.command("switch-org", o.tenant); }
+            }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("License");
-        hint: @tr("Asks Microsoft for your sign-in and license details again, then restarts IronTeams. Use it after an admin changed your license or your organization's settings.");
-        Button { variant: ButtonVariant.settings; label: @tr("Refresh license and restart"); clicked => { SettingsStore.command("refresh-license", ""); } }
+        SettingsButtonRow {
+            description: @tr("Asks Microsoft for your sign-in and license details again, then restarts IronTeams. Use it after an admin changed your license or your organization's settings.");
+            button-label: @tr("Refresh license and restart");
+            clicked => { SettingsStore.command("refresh-license", ""); }
+        }
     }
-    if SettingsStore.accounts-status != "": Para { text: SettingsStore.accounts-status; }
+    if SettingsStore.accounts-status != "": PageNote { text: SettingsStore.accounts-status; }
 }
 
-export component PrivacyPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component PrivacyPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Privacy");
-        hint: @tr("These are Teams settings.");
-        for t in SettingsStore.privacy: Switch { variant: SwitchVariant.settings;
+        description: @tr("These are Teams settings.");
+        for t in SettingsStore.privacy: SettingsSwitchRow {
             label: t.label;
-            hint: t.hint;
+            description: t.hint;
             checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("privacy", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Blocked contacts");
-        hint: @tr("Blocked people cannot call you or see your presence.");
-        if SettingsStore.blocked.length == 0: Para { text: @tr("You have not blocked anyone."); }
+        description: @tr("Blocked people cannot call you or see your presence.");
+        if SettingsStore.blocked.length == 0: SettingsBlock {
+            SettingsNote { text: @tr("You have not blocked anyone."); }
+        }
         for p in SettingsStore.blocked: SPersonRow {
             name: p.name;
             action: @tr("Unblock");
             act => { SettingsStore.command("unblock", p.mri); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Priority access");
-        hint: @tr("People who can reach you when you are set to Do not disturb.");
-        if SettingsStore.priority.length == 0: Para { text: @tr("Nobody has priority access."); }
+        description: @tr("People who can reach you when you are set to Do not disturb.");
+        if SettingsStore.priority.length == 0: SettingsBlock {
+            SettingsNote { text: @tr("Nobody has priority access."); }
+        }
         for p in SettingsStore.priority: SPersonRow {
             name: p.name;
             action: @tr("Remove");
             act => { SettingsStore.command("priority-remove", p.mri); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Diagnostic data");
-        Para { text: @tr("IronTeams sends no diagnostic data. Report a problem (in About) writes a redacted bundle on this computer."); }
+        SettingsBlock {
+            SettingsNote { text: @tr("IronTeams sends no diagnostic data. Report a problem (in About) writes a redacted bundle on this computer."); }
+        }
     }
-    if SettingsStore.privacy-status != "": Para { text: SettingsStore.privacy-status; }
+    if SettingsStore.privacy-status != "": PageNote { text: SettingsStore.privacy-status; }
     if SettingsStore.dry-runs.length > 0: DryRuns { }
 }
 
@@ -326,8 +393,8 @@ component DayChip inherits Rectangle {
 
 // A text box with an Add button; the box empties after a word is added.
 component KeywordAdd inherits HorizontalLayout {
-    spacing: 8px;
-    alignment: start;
+    spacing: Space.s;
+    alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
     callback add(string);
     Rectangle {
         width: 260px;
@@ -361,13 +428,46 @@ component KeywordAdd inherits HorizontalLayout {
     Button { variant: ButtonVariant.settings; label: @tr("Add"); clicked => { root.add(kw.text); kw.text = ""; } }
 }
 
-export component NotificationsPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
-        title: @tr("Notifications and activity");
-        SChoiceRow {
+// One kind of activity and how it reaches you; the first of a group (Chat, Teams and channels…)
+// carries the group's name above it.
+component NotifyTypeRow inherits Rectangle {
+    in property <SNotify> n;
+    if root.y > 2px: divider-line := Rectangle {
+        x: SettingsMetrics.row-pad-x;
+        y: 0px;
+        width: max(0px, root.width - 2 * SettingsMetrics.row-pad-x);
+        height: 1px;
+        background: Theme.border;
+    }
+    VerticalLayout {
+        if root.n.group != "": HorizontalLayout {
+            padding-left: SettingsMetrics.row-pad-x;
+            padding-right: SettingsMetrics.row-pad-x;
+            padding-top: SettingsMetrics.row-pad-y;
+            Text {
+                horizontal-alignment: Theme.start-align;
+                text: root.n.group;
+                color: Theme.fg;
+                font-size: Theme.font-body;
+                font-weight: 600;
+            }
+        }
+        SettingsChoiceRow {
+            divider: false;
+            label: root.n.label;
+            options: [{v: "banner", l: @tr("Banner and feed")}, {v: "feed", l: @tr("Only show in feed")}, {v: "off", l: @tr("Off")}];
+            value: root.n.value;
+            picked(v) => { SettingsStore.command("notify", SettingsStore.j2(root.n.key, v)); }
+        }
+    }
+}
+
+export component NotificationsPage inherits SettingsSections {
+    SettingsSection {
+        title: @tr("Banners");
+        SettingsChoiceRow {
             label: @tr("Pause notifications");
-            hint: SettingsStore.paused ? (SettingsStore.pause-until != "" ? SettingsStore.pause-until : @tr("Paused")) : @tr("No banners for as long as you choose. Until tomorrow means 8:00 the next morning.");
+            description: SettingsStore.paused ? (SettingsStore.pause-until != "" ? SettingsStore.pause-until : @tr("Paused")) : @tr("No banners for as long as you choose. Until tomorrow means 8:00 the next morning.");
             options: [{v: "off", l: @tr("Off")}, {v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow")}, {v: "custom", l: @tr("Custom")}];
             value: SettingsStore.pause-custom-open ? "custom" : (SettingsStore.paused ? "" : "off");
             picked(v) => {
@@ -379,49 +479,55 @@ export component NotificationsPage inherits VerticalLayout {
                 }
             }
         }
-        if SettingsStore.pause-custom-open: VerticalLayout {
-            spacing: 6px;
+        if SettingsStore.pause-custom-open: SettingsBlock {
             pause-at := Field { variant: FieldVariant.settings; label: @tr("Pause until"); placeholder: "2026-12-31 17:30"; }
-            Button { variant: ButtonVariant.settings;
-                label: @tr("Pause notifications until then");
-                clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
+            HorizontalLayout {
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button {
+                    variant: ButtonVariant.settings;
+                    label: @tr("Pause notifications until then");
+                    clicked => { SettingsStore.command("pause", SettingsStore.j2("custom", pause-at.text)); }
+                }
             }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Notification style");
-            hint: @tr("Teams cards show in the corner of the screen, above other windows.");
+            description: @tr("Teams cards show in the corner of the screen, above other windows.");
             options: [{v: "cards", l: @tr("Teams cards")}, {v: "system", l: @tr("System notifications")}];
             value: SettingsStore.notification-style;
             picked(v) => { SettingsStore.command("notification-style", v); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Show the sender's photo");
-            hint: @tr("Message notifications show who wrote, like Teams.");
+            description: @tr("Message notifications show who wrote, like Teams.");
             checked: SettingsStore.banner-photo;
             toggled(on) => { SettingsStore.command("banner-photo", on ? "1" : "0"); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Show Reply and Like buttons");
-            hint: @tr("Reply opens the chat with the cursor in the message box. Clicking a notification always opens its chat.");
+            description: @tr("Reply opens the chat with the cursor in the message box. Clicking a notification always opens its chat.");
             checked: SettingsStore.banner-actions;
             toggled(on) => { SettingsStore.command("banner-actions", on ? "1" : "0"); }
         }
-        Button { variant: ButtonVariant.settings; label: @tr("Test notification"); clicked => { SettingsStore.command("test-notification", ""); } }
+        SettingsButtonRow {
+            label: @tr("See how a notification looks");
+            description: SettingsStore.notify-status;
+            button-label: @tr("Test notification");
+            clicked => { SettingsStore.command("test-notification", ""); }
+        }
     }
-    if SettingsStore.notify-status != "": Para { text: SettingsStore.notify-status; }
-    SSection {
+    SettingsSection {
         title: @tr("Quiet hours");
-        hint: @tr("No banners and no notification sound during these hours. Messages still arrive and unread counts still update. This applies to this computer only.");
-        Switch { variant: SwitchVariant.settings;
+        description: @tr("No banners and no notification sound during these hours. Messages still arrive and unread counts still update. This applies to this computer only.");
+        SettingsSwitchRow {
             label: @tr("Turn on quiet hours");
             checked: SettingsStore.quiet-on;
             toggled(on) => { SettingsStore.command("quiet-on", on ? "1" : "0"); }
         }
-        if SettingsStore.quiet-on: VerticalLayout {
-            spacing: 8px;
+        if SettingsStore.quiet-on: SettingsBlock {
             HorizontalLayout {
                 spacing: 6px;
-                alignment: start;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
                 for d[i] in [@tr("Mon"), @tr("Tue"), @tr("Wed"), @tr("Thu"), @tr("Fri"), @tr("Sat"), @tr("Sun")]: DayChip {
                     label: d;
                     on: SettingsStore.quiet-days[i];
@@ -429,223 +535,239 @@ export component NotificationsPage inherits VerticalLayout {
                 }
             }
             HorizontalLayout {
-                spacing: 12px;
-                alignment: start;
+                spacing: Space.m;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
                 Field { variant: FieldVariant.settings; label: @tr("From"); text: SettingsStore.quiet-start; width: 120px; committed(t) => { SettingsStore.command("quiet-start", t); } }
                 Field { variant: FieldVariant.settings; label: @tr("To"); text: SettingsStore.quiet-end; width: 120px; committed(t) => { SettingsStore.command("quiet-end", t); } }
             }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Focus mode");
-        hint: @tr("Only @mentions of you, urgent messages, priority people, calls and your keywords still show a banner. Your Teams status does not change.");
-        Switch { variant: SwitchVariant.settings;
+        description: @tr("Only @mentions of you, urgent messages, priority people, calls and your keywords still show a banner. Your Teams status does not change.");
+        SettingsSwitchRow {
             label: @tr("Focus mode");
-            hint: SettingsStore.focus-label();
+            description: SettingsStore.focus-label();
             checked: SettingsStore.focus-on;
             toggled(on) => { SettingsStore.command("focus", on ? "1" : "0"); }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Turn on for");
             options: [{v: "1h", l: @tr("1 hour")}, {v: "2h", l: @tr("2 hours")}, {v: "tomorrow", l: @tr("Until tomorrow 9:00")}, {v: "manual", l: @tr("Until I turn it off")}];
             value: SettingsStore.focus-duration;
             picked(v) => { SettingsStore.focus-duration = v; SettingsStore.command("focus-duration", v); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Keyword alerts");
-        hint: @tr("A message from someone else with one of these words or phrases shows a banner, even in a muted chat, but not during quiet hours. Focus mode lets them through.");
-        KeywordAdd { add(t) => { SettingsStore.command("keyword-add", t); } }
-        if SettingsStore.keywords.length == 0: Para { text: @tr("No keywords yet."); }
+        description: @tr("A message from someone else with one of these words or phrases shows a banner, even in a muted chat, but not during quiet hours. Focus mode lets them through.");
+        SettingsBlock {
+            KeywordAdd { add(t) => { SettingsStore.command("keyword-add", t); } }
+            if SettingsStore.keywords.length == 0: SettingsNote { text: @tr("No keywords yet."); }
+        }
         for k in SettingsStore.keywords: SPersonRow {
             name: k;
             action: @tr("Remove");
             act => { SettingsStore.command("keyword-remove", k); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Sounds and previews");
-        for t in SettingsStore.notify-sounds: Switch { variant: SwitchVariant.settings;
+        for t in SettingsStore.notify-sounds: SettingsSwitchRow {
             label: t.label;
-            hint: t.hint;
+            description: t.hint;
             checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("notify-sound", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Meeting chats");
-            hint: @tr("Which meeting chats notify you.");
+            description: @tr("Which meeting chats notify you.");
             options: [{v: "all", l: @tr("All meetings I'm invited to")}, {v: "participated", l: @tr("Meetings I take part in")}, {v: "none", l: @tr("Only ones I unmuted")}];
             value: SettingsStore.meeting-chat;
             picked(v) => { SettingsStore.meeting-chat = v; SettingsStore.command("meeting-chat", v); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Message sound");
-        hint: @tr("The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above.");
-        SRadioList {
-            label: @tr("Message sound");
-            teams: SettingsStore.message-originals;
-            others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
-            value: SettingsStore.message-sound;
-            picked(v) => { SettingsStore.message-sound = v; SettingsStore.command("message-sound", v); }
+        description: @tr("The sound IronTeams plays for a new message. It is kept on this computer, and follows the sound switches above.");
+        SettingsBlock {
+            SRadioList {
+                label: @tr("Message sound");
+                teams: SettingsStore.message-originals;
+                others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+                value: SettingsStore.message-sound;
+                picked(v) => { SettingsStore.message-sound = v; SettingsStore.command("message-sound", v); }
+            }
+            if SettingsStore.message-sound-file != "": SettingsNote { text: SettingsStore.message-sound-file; }
+            HorizontalLayout {
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button { variant: ButtonVariant.settings; label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
+                Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
+            }
         }
-        if SettingsStore.message-sound-file != "": Para { text: SettingsStore.message-sound-file; }
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            Button { variant: ButtonVariant.settings; label: @tr("Play message sound"); clicked => { SettingsStore.command("message-sound-preview", SettingsStore.message-sound); } }
-            Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("message-sound-file", ""); } }
-        }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Download Teams' original sounds");
-            hint: @tr("Teams' own ringtones and message sounds are Microsoft's. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Until a sound is downloaded, and when this is off, IronTeams' own sounds play instead.");
+            description: @tr("Teams' own ringtones and message sounds are Microsoft's. IronTeams downloads them once from Microsoft's servers and keeps them on this computer; they are not part of IronTeams. Until a sound is downloaded, and when this is off, IronTeams' own sounds play instead.");
             checked: SettingsStore.download-teams-sounds;
             toggled(on) => { SettingsStore.command("teams-sounds", on ? "1" : "0"); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Urgent and priority messages");
-        hint: @tr("The sound for an urgent message or one from a priority contact, when the message sound is one of Teams'. Other message sounds stay as they are.");
-        SRadioList {
-            label: @tr("Urgent message sound");
-            teams: SettingsStore.urgent-originals;
-            others: [];
-            value: SettingsStore.urgent-sound;
-            picked(v) => { SettingsStore.urgent-sound = v; SettingsStore.command("urgent-sound", v); }
+        description: @tr("The sound for an urgent message or one from a priority contact, when the message sound is one of Teams'. Other message sounds stay as they are.");
+        SettingsBlock {
+            SRadioList {
+                label: @tr("Urgent message sound");
+                teams: SettingsStore.urgent-originals;
+                others: [];
+                value: SettingsStore.urgent-sound;
+                picked(v) => { SettingsStore.urgent-sound = v; SettingsStore.command("urgent-sound", v); }
+            }
+            HorizontalLayout {
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button { variant: ButtonVariant.settings; label: @tr("Play urgent sound"); clicked => { SettingsStore.command("urgent-sound-preview", SettingsStore.urgent-sound); } }
+            }
         }
-        Button { variant: ButtonVariant.settings; label: @tr("Play urgent sound"); clicked => { SettingsStore.command("urgent-sound-preview", SettingsStore.urgent-sound); } }
     }
-    for n in SettingsStore.notify: VerticalLayout {
-        spacing: 4px;
-        padding-bottom: 10px;
-        if n.group != "": Text { text: n.group; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
-        Text { text: n.label; color: Theme.fg; font-size: Theme.font-body; }
-        SChoice {
-            group: n.label;
-            options: [{v: "banner", l: @tr("Banner and feed")}, {v: "feed", l: @tr("Only show in feed")}, {v: "off", l: @tr("Off")}];
-            value: n.value;
-            picked(v) => { SettingsStore.command("notify", SettingsStore.j2(n.key, v)); }
-        }
+    SettingsSection {
+        title: @tr("Activity types");
+        description: @tr("How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing.");
+        for n in SettingsStore.notify: NotifyTypeRow { n: n; }
     }
     if SettingsStore.dry-runs.length > 0: DryRuns { }
 }
 
-export component AppearancePage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component AppearancePage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Theme");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Theme");
-            hint: @tr("Now showing: {}.", SettingsStore.theme-shown);
+            description: @tr("Now showing: {}.", SettingsStore.theme-shown);
             options: [{v: "light", l: @tr("Light")}, {v: "dark", l: @tr("Dark")}, {v: "system", l: @tr("Use system setting")}];
             value: SettingsStore.theme;
             picked(v) => { SettingsStore.theme = v; SettingsStore.command("theme", v); }
         }
-        Switch { variant: SwitchVariant.settings; label: @tr("Always use dark theme for calls and meetings"); hint: @tr("IronTeams's call window follows the theme above. A separate call theme is not available yet."); enabled: false; checked: false; }
-    }
-    SSection {
-        title: @tr("App bar");
-        Switch { variant: SwitchVariant.settings;
-            label: @tr("Show app names");
-            hint: @tr("The names under the app bar's icons (the bar's own Collapse does the same).");
-            checked: !AppsStore.rail-collapsed;
-            toggled(on) => { if on == AppsStore.rail-collapsed { AppsStore.command("rail-collapse", ""); } }
-        }
-        Switch { variant: SwitchVariant.settings; label: @tr("Auto collapse app bar"); hint: @tr("Not available in IronTeams yet."); enabled: false; checked: false; }
-    }
-    SSection {
-        title: @tr("Accent colour");
-        hint: @tr("Now: {}.", SettingsStore.accent-shown);
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            for a in [{v: "", l: @tr("Desktop accent"), c: Theme.accent}, {v: "#5b5fc7", l: @tr("Purple"), c: #5b5fc7}, {v: "#0f6cbd", l: @tr("Blue"), c: #0f6cbd}, {v: "#038387", l: @tr("Teal"), c: #038387}, {v: "#107c10", l: @tr("Green"), c: #107c10}, {v: "#ca5010", l: @tr("Orange"), c: #ca5010}, {v: "#c239b3", l: @tr("Pink"), c: #c239b3}]: Rectangle {
-                width: 32px;
-                height: 32px;
-                border-radius: 16px;
-                border-width: SettingsStore.accent == a.v ? 3px : 1px;
-                border-color: SettingsStore.accent == a.v ? Theme.fg : Theme.border;
-                background: a.v == "" ? transparent : a.c;
-                accessible-role: radio-button;
-                accessible-label: @tr("Accent colour: {}", a.l);
-                accessible-checked: SettingsStore.accent == a.v;
-                accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
-                if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
+        SettingsRow {
+            label: @tr("Accent colour");
+            description: @tr("Now: {}.", SettingsStore.accent-shown);
+            stacked: true;
+            HorizontalLayout {
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                for a in [{v: "", l: @tr("Desktop accent"), c: Theme.accent}, {v: "#5b5fc7", l: @tr("Purple"), c: #5b5fc7}, {v: "#0f6cbd", l: @tr("Blue"), c: #0f6cbd}, {v: "#038387", l: @tr("Teal"), c: #038387}, {v: "#107c10", l: @tr("Green"), c: #107c10}, {v: "#ca5010", l: @tr("Orange"), c: #ca5010}, {v: "#c239b3", l: @tr("Pink"), c: #c239b3}]: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    border-width: SettingsStore.accent == a.v ? 3px : 1px;
+                    border-color: SettingsStore.accent == a.v ? Theme.fg : Theme.border;
+                    background: a.v == "" ? transparent : a.c;
+                    accessible-role: radio-button;
+                    accessible-label: @tr("Accent colour: {}", a.l);
+                    accessible-checked: SettingsStore.accent == a.v;
+                    accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
+                    if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
+                }
             }
         }
+        SettingsSwitchRow {
+            label: @tr("Always use dark theme for calls and meetings");
+            description: @tr("IronTeams's call window follows the theme above. A separate call theme is not available yet.");
+            enabled: false;
+            checked: false;
+        }
     }
-    SSection {
+    SettingsSection {
+        title: @tr("Text");
+        SettingsRow {
+            label: @tr("Font size");
+            description: @tr("Larger text in Accessibility adds to this.");
+            stacked: true;
+            HorizontalLayout {
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button { variant: ButtonVariant.settings; label: @tr("Smaller font"); clicked => { SettingsStore.command("font-step", "-1"); } }
+                Rectangle {
+                    width: 70px;
+                    accessible-role: text;
+                    accessible-label: @tr("Current font size");
+                    accessible-value: Math.round(SettingsStore.font-scale * 100) + "%";
+                    Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Button { variant: ButtonVariant.settings; label: @tr("Larger font"); clicked => { SettingsStore.command("font-step", "1"); } }
+            }
+        }
+        // The preview is in the body size, so it shows what the buttons above changed.
+        SettingsButtonRow {
+            label: "Preview: the quick brown fox. نص تجريبي.";
+            button-label: @tr("Reset font size");
+            clicked => { SettingsStore.command("font-scale", "1"); }
+        }
+    }
+    SettingsSection {
         title: @tr("Layout");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Message density");
             options: [{v: "comfy", l: @tr("Comfy")}, {v: "compact", l: @tr("Compact")}];
             value: SettingsStore.density;
             picked(v) => { SettingsStore.density = v; SettingsStore.command("density", v); }
         }
-    }
-    SSection {
-        title: @tr("Font size");
-        hint: @tr("Larger text in Accessibility adds to this.");
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            Button { variant: ButtonVariant.settings; label: @tr("Smaller font"); clicked => { SettingsStore.command("font-step", "-1"); } }
-            Rectangle {
-                width: 70px;
-                accessible-role: text;
-                accessible-label: @tr("Current font size");
-                accessible-value: Math.round(SettingsStore.font-scale * 100) + "%";
-                Text { text: Math.round(SettingsStore.font-scale * 100) + "%"; color: Theme.fg; font-size: Theme.font-body; horizontal-alignment: center; vertical-alignment: center; }
-            }
-            Button { variant: ButtonVariant.settings; label: @tr("Larger font"); clicked => { SettingsStore.command("font-step", "1"); } }
-            Button { variant: ButtonVariant.settings; label: @tr("Reset font size"); clicked => { SettingsStore.command("font-scale", "1"); } }
-        }
-        Text { text: "Preview: the quick brown fox. نص تجريبي."; color: Theme.fg; font-size: Theme.font-body; }
-    }
-    SSection {
-        title: @tr("Skin tone");
-        hint: @tr("Used for emoji in reactions and the composer.");
-        SChoice {
-            group: @tr("Skin tone");
+        SettingsChoiceRow {
+            label: @tr("Skin tone");
+            description: @tr("Used for emoji in reactions and the composer.");
             options: [{v: "0", l: "👋"}, {v: "1", l: "👋🏻"}, {v: "2", l: "👋🏼"}, {v: "3", l: "👋🏽"}, {v: "4", l: "👋🏾"}, {v: "5", l: "👋🏿"}];
             value: SettingsStore.skin-tone;
             picked(v) => { SettingsStore.command("skin-tone", v); }
         }
     }
+    SettingsSection {
+        title: @tr("App bar");
+        SettingsSwitchRow {
+            label: @tr("Show app names");
+            description: @tr("The names under the app bar's icons (the bar's own Collapse does the same).");
+            checked: !AppsStore.rail-collapsed;
+            toggled(on) => { if on == AppsStore.rail-collapsed { AppsStore.command("rail-collapse", ""); } }
+        }
+        SettingsSwitchRow {
+            label: @tr("Auto collapse app bar");
+            description: @tr("Not available in IronTeams yet.");
+            enabled: false;
+            checked: false;
+        }
+    }
 }
 
-export component AccessibilityPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component AccessibilityPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Display");
-        hint: @tr("Now: {}.", SettingsStore.a11y-shown);
-        SChoiceRow {
+        description: @tr("Now: {}.", SettingsStore.a11y-shown);
+        SettingsChoiceRow {
             label: @tr("High contrast");
             options: [{v: "auto", l: @tr("Follow the system")}, {v: "on", l: @tr("On")}, {v: "off", l: @tr("Off")}];
             value: SettingsStore.high-contrast;
             picked(v) => { SettingsStore.high-contrast = v; SettingsStore.command("high-contrast", v); }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Reduce motion");
             options: [{v: "auto", l: @tr("Follow the system")}, {v: "on", l: @tr("On")}, {v: "off", l: @tr("Off")}];
             value: SettingsStore.reduced-motion;
             picked(v) => { SettingsStore.reduced-motion = v; SettingsStore.command("reduced-motion", v); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Larger text");
-            hint: @tr("Makes text a quarter bigger than the font size in Appearance.");
+            description: @tr("Makes text a quarter bigger than the font size in Appearance.");
             checked: SettingsStore.larger-text;
             toggled(on) => { SettingsStore.command("larger-text", on ? "1" : "0"); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Captions and meetings");
-        hint: @tr("Saved now; meetings and calls use them when they come to IronTeams.");
-        for t in SettingsStore.a11y-flags: Switch { variant: SwitchVariant.settings;
+        description: @tr("Saved now; meetings and calls use them when they come to IronTeams.");
+        for t in SettingsStore.a11y-flags: SettingsSwitchRow {
             label: t.label;
-            hint: t.hint;
+            description: t.hint;
             checked: t.on;
             enabled: t.enabled;
             toggled(on) => { SettingsStore.command("a11y", SettingsStore.j2(t.key, on ? "1" : "0")); }
@@ -653,120 +775,130 @@ export component AccessibilityPage inherits VerticalLayout {
     }
 }
 
-export component DevicesPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component DevicesPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Speaker");
-        SRadio { group: @tr("Speaker"); label: @tr("System default"); checked: SettingsStore.speaker == ""; picked => { SettingsStore.command("speaker", ""); } }
-        for d in SettingsStore.speakers: SRadio { group: @tr("Speaker"); label: d.name; checked: SettingsStore.speaker == d.id; picked => { SettingsStore.command("speaker", d.id); } }
-        Button { variant: ButtonVariant.settings; label: @tr("Play test sound"); clicked => { SettingsStore.command("test-sound", ""); } }
-    }
-    SSection {
-        title: @tr("Microphone");
-        SRadio { group: @tr("Microphone"); label: @tr("System default"); checked: SettingsStore.mic == ""; picked => { SettingsStore.command("mic", ""); } }
-        for d in SettingsStore.mics: SRadio { group: @tr("Microphone"); label: d.name; checked: SettingsStore.mic == d.id; picked => { SettingsStore.command("mic", d.id); } }
-        HorizontalLayout {
-            spacing: 12px;
-            alignment: start;
-            Button { variant: ButtonVariant.settings;
-                label: SettingsStore.mic-testing ? @tr("Stop microphone test") : @tr("Test microphone");
-                clicked => { SettingsStore.command("mic-test", SettingsStore.mic-testing ? "0" : "1"); }
+        SettingsBlock {
+            SRadio { group: @tr("Speaker"); label: @tr("System default"); checked: SettingsStore.speaker == ""; picked => { SettingsStore.command("speaker", ""); } }
+            for d in SettingsStore.speakers: SRadio { group: @tr("Speaker"); label: d.name; checked: SettingsStore.speaker == d.id; picked => { SettingsStore.command("speaker", d.id); } }
+            HorizontalLayout {
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button { variant: ButtonVariant.settings; label: @tr("Play test sound"); clicked => { SettingsStore.command("test-sound", ""); } }
             }
-            if SettingsStore.mic-testing: Rectangle {
-                width: 200px;
-                height: 8px;
-                y: (parent.height - self.height) / 2;
-                border-radius: 4px;
-                background: Theme.surface;
-                accessible-role: progress-indicator;
-                accessible-label: @tr("Microphone level");
-                accessible-value: Math.round(SettingsStore.mic-level * 100) + "%";
-                Rectangle {
-                    x: 0;
-                    width: parent.width * clamp(SettingsStore.mic-level, 0, 1);
+        }
+    }
+    SettingsSection {
+        title: @tr("Microphone");
+        SettingsBlock {
+            SRadio { group: @tr("Microphone"); label: @tr("System default"); checked: SettingsStore.mic == ""; picked => { SettingsStore.command("mic", ""); } }
+            for d in SettingsStore.mics: SRadio { group: @tr("Microphone"); label: d.name; checked: SettingsStore.mic == d.id; picked => { SettingsStore.command("mic", d.id); } }
+            HorizontalLayout {
+                spacing: Space.m;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button {
+                    variant: ButtonVariant.settings;
+                    label: SettingsStore.mic-testing ? @tr("Stop microphone test") : @tr("Test microphone");
+                    clicked => { SettingsStore.command("mic-test", SettingsStore.mic-testing ? "0" : "1"); }
+                }
+                if SettingsStore.mic-testing: Rectangle {
+                    width: 200px;
+                    height: 8px;
+                    y: (parent.height - self.height) / 2;
                     border-radius: 4px;
-                    background: Theme.accent;
+                    background: Theme.surface;
+                    accessible-role: progress-indicator;
+                    accessible-label: @tr("Microphone level");
+                    accessible-value: Math.round(SettingsStore.mic-level * 100) + "%";
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * clamp(SettingsStore.mic-level, 0, 1);
+                        border-radius: 4px;
+                        background: Theme.accent;
+                    }
                 }
             }
         }
+        SettingsSwitchRow {
+            label: @tr("Show all devices");
+            description: @tr("Also list the raw sound card entries.");
+            checked: SettingsStore.all-devices;
+            toggled(on) => { SettingsStore.command("all-devices", on ? "1" : "0"); }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Call audio");
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Noise suppression");
-            hint: @tr("Removes background noise, like typing or a fan, from your microphone in calls.");
+            description: @tr("Removes background noise, like typing or a fan, from your microphone in calls.");
             checked: SettingsStore.noise-suppression;
             toggled(on) => { SettingsStore.command("noise-suppression", on ? "1" : "0"); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Echo cancellation");
-            hint: @tr("Stops others from hearing themselves when you use speakers instead of a headset.");
+            description: @tr("Stops others from hearing themselves when you use speakers instead of a headset.");
             checked: SettingsStore.echo-cancellation;
             toggled(on) => { SettingsStore.command("echo-cancellation", on ? "1" : "0"); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Camera");
-        hint: @tr("Preview, mirroring and low-light correction come with calls.");
-        SRadio { group: @tr("Camera"); label: @tr("System default"); checked: SettingsStore.camera == ""; picked => { SettingsStore.command("camera", ""); } }
-        for d in SettingsStore.cameras: SRadio { group: @tr("Camera"); label: d.name; detail: d.id; checked: SettingsStore.camera == d.id; picked => { SettingsStore.command("camera", d.id); } }
+        description: @tr("Preview, mirroring and low-light correction come with calls.");
+        SettingsBlock {
+            SRadio { group: @tr("Camera"); label: @tr("System default"); checked: SettingsStore.camera == ""; picked => { SettingsStore.command("camera", ""); } }
+            for d in SettingsStore.cameras: SRadio { group: @tr("Camera"); label: d.name; detail: d.id; checked: SettingsStore.camera == d.id; picked => { SettingsStore.command("camera", d.id); } }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Calls");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Ask about call quality after calls");
             options: [{v: "always", l: @tr("Always")}, {v: "sometimes", l: @tr("Sometimes")}, {v: "never", l: @tr("Never")}];
             value: SettingsStore.call-feedback;
             picked(v) => { SettingsStore.call-feedback = v; SettingsStore.command("call-feedback", v); }
         }
     }
-    Switch { variant: SwitchVariant.settings;
-        label: @tr("Show all devices");
-        hint: @tr("Also list the raw sound card entries.");
-        checked: SettingsStore.all-devices;
-        toggled(on) => { SettingsStore.command("all-devices", on ? "1" : "0"); }
-    }
-    if SettingsStore.devices-status != "": Para { text: SettingsStore.devices-status; }
+    if SettingsStore.devices-status != "": PageNote { text: SettingsStore.devices-status; }
 }
 
-export component CallsSettingsPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component CallsSettingsPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Ringtone");
-        hint: @tr("The sound IronTeams plays for an incoming call. It is kept on this computer.");
-        SRadioList {
-            label: @tr("Ringtone");
-            teams: SettingsStore.ringtone-originals;
-            others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
-            value: SettingsStore.ringtone;
-            picked(v) => { SettingsStore.ringtone = v; SettingsStore.command("ringtone", v); }
-        }
-        if SettingsStore.ringtone-file != "": Para { text: SettingsStore.ringtone-file; }
-        HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            Button { variant: ButtonVariant.settings; label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
-            Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("ringtone-file", ""); } }
+        description: @tr("The sound IronTeams plays for an incoming call. It is kept on this computer.");
+        SettingsBlock {
+            SRadioList {
+                label: @tr("Ringtone");
+                teams: SettingsStore.ringtone-originals;
+                others: [{v: "ironteams", l: @tr("IronTeams")}, {v: "chime", l: @tr("Chime")}, {v: "soft", l: @tr("Soft")}, {v: "pulse", l: @tr("Pulse")}, {v: "custom", l: @tr("Custom file")}];
+                value: SettingsStore.ringtone;
+                picked(v) => { SettingsStore.ringtone = v; SettingsStore.command("ringtone", v); }
+            }
+            if SettingsStore.ringtone-file != "": SettingsNote { text: SettingsStore.ringtone-file; }
+            HorizontalLayout {
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Button { variant: ButtonVariant.settings; label: @tr("Play ringtone"); clicked => { SettingsStore.command("ringtone-preview", SettingsStore.ringtone); } }
+                Button { variant: ButtonVariant.settings; label: @tr("Choose a file…"); clicked => { SettingsStore.command("ringtone-file", ""); } }
+            }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Call forwarding");
-        hint: @tr("IronTeams can't read or change these yet: the Teams service that keeps them is not documented for it. Change them in Teams.");
-        SChoiceRow {
+        description: @tr("IronTeams can't read or change these yet: the Teams service that keeps them is not documented for it. Change them in Teams.");
+        SettingsChoiceRow {
             label: @tr("Forward my calls");
             options: [{v: "none", l: @tr("Don't forward")}, {v: "voicemail", l: @tr("To voicemail")}];
             value: "";
             enabled: false;
             picked(v) => { }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("If unanswered");
             options: [{v: "voicemail", l: @tr("Voicemail")}, {v: "person", l: @tr("A person")}, {v: "number", l: @tr("A number")}];
             value: "";
             enabled: false;
             picked(v) => { }
         }
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Ring for");
             options: [{v: "10", l: @tr("10 seconds")}, {v: "20", l: @tr("20 seconds")}, {v: "30", l: @tr("30 seconds")}, {v: "45", l: @tr("45 seconds")}];
             value: "";
@@ -774,85 +906,100 @@ export component CallsSettingsPage inherits VerticalLayout {
             picked(v) => { }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Voicemail greeting");
-        hint: @tr("Recording or choosing a greeting needs the same Teams service, so it stays in Teams for now.");
-        Button { variant: ButtonVariant.settings; label: @tr("Record a greeting"); enabled: false; clicked => { } }
+        SettingsButtonRow {
+            description: @tr("Recording or choosing a greeting needs the same Teams service, so it stays in Teams for now.");
+            button-label: @tr("Record a greeting");
+            button-enabled: false;
+        }
     }
 }
 
-export component FilesPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component FilesPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Files");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Open Word, Excel and PowerPoint files in");
             options: [{v: "browser", l: @tr("Browser")}, {v: "desktop", l: @tr("Desktop app")}, {v: "ironteams", l: @tr("IronTeams preview")}];
             value: SettingsStore.open-files;
             picked(v) => { SettingsStore.open-files = v; SettingsStore.command("open-files", v); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Links");
-        Para { text: @tr("Links open in your default browser."); }
+        SettingsBlock {
+            SettingsNote { text: @tr("Links open in your default browser."); }
+        }
     }
 }
 
 // One line of the disk space list: what it is and how big it is. Read out as "<label> size".
-component StorageRow inherits Rectangle {
-    in property <string> label;
+component StorageRow inherits SettingsRow {
     in property <string> value;
     in property <bool> bold: false;
-    height: 28px;
+    property <string> shown: SettingsStore.storage-loaded ? root.value : @tr("Calculating…");
+    quiet-text: true;
     accessible-role: text;
     accessible-label: root.label + " " + @tr("size");
-    property <string> shown: SettingsStore.storage-loaded ? root.value : @tr("Calculating…");
     accessible-value: root.shown;
-    HorizontalLayout {
-        spacing: 12px;
-        Text { text: root.label; color: Theme.fg; font-size: Theme.font-body; font-weight: root.bold ? 600 : 400; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; horizontal-alignment: Theme.start-align; }
-        Text { text: root.shown; color: Theme.fg-muted; font-size: Theme.font-body; font-weight: root.bold ? 600 : 400; vertical-alignment: center; }
+    Text {
+        text: root.shown;
+        color: root.bold ? Theme.fg : Theme.fg-muted;
+        font-size: Theme.font-body;
+        font-weight: root.bold ? 600 : 400;
+        vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
-export component StoragePage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component StoragePage inherits SettingsSections {
+    SettingsSection {
         title: @tr("Disk space");
-        hint: @tr("What IronTeams keeps on this computer.");
+        description: @tr("What IronTeams keeps on this computer.");
         StorageRow { label: @tr("Messages database"); value: SettingsStore.storage-db; }
         StorageRow { label: @tr("Media (pictures, voice, video)"); value: SettingsStore.storage-media; }
         StorageRow { label: @tr("Temporary files"); value: SettingsStore.storage-temp; }
         StorageRow { label: @tr("Update backups"); value: SettingsStore.storage-backups; }
         StorageRow { label: @tr("Total"); value: SettingsStore.storage-total; bold: true; }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Media cache");
-        hint: @tr("Pictures and media download again when needed. Messages stay.");
-        SChoiceRow {
+        SettingsChoiceRow {
             label: @tr("Media cache limit");
-            hint: @tr("When the media cache grows past this, the oldest files are deleted.");
+            description: @tr("When the media cache grows past this, the oldest files are deleted.");
             options: [{v: "250", l: @tr("250 MB")}, {v: "500", l: @tr("500 MB (default)")}, {v: "1024", l: @tr("1 GB")}, {v: "2048", l: @tr("2 GB")}, {v: "none", l: @tr("No limit")}];
             value: SettingsStore.media-cache-limit;
             picked(v) => { SettingsStore.media-cache-limit = v; SettingsStore.command("media-cache-limit", v); }
         }
-        Button { variant: ButtonVariant.settings; label: @tr("Clear media cache"); clicked => { SettingsStore.command("clear-media-cache", ""); } }
+        SettingsButtonRow {
+            description: @tr("Pictures and media download again when needed. Messages stay.");
+            button-label: @tr("Clear media cache");
+            clicked => { SettingsStore.command("clear-media-cache", ""); }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Update backups");
-        hint: @tr("Before a new version starts, IronTeams keeps a copy of your saved chats and settings from the version before. Deleting the copies frees space. Your current chats are not touched.");
-        Button { variant: ButtonVariant.settings; label: @tr("Delete old update backups"); clicked => { SettingsStore.command("delete-update-backups", ""); } }
+        SettingsButtonRow {
+            description: @tr("Before a new version starts, IronTeams keeps a copy of your saved chats and settings from the version before. Deleting the copies frees space. Your current chats are not touched.");
+            button-label: @tr("Delete old update backups");
+            clicked => { SettingsStore.command("delete-update-backups", ""); }
+        }
     }
-    SSection {
+    SettingsSection {
         title: @tr("All cached data");
-        hint: @tr("Removes saved messages and media from this computer; they download again. Drafts, unsent messages, saved items and favourites stay.");
-        if !SettingsStore.confirm-clear-all: Button { variant: ButtonVariant.settings; label: @tr("Clear all cached data"); danger: true; clicked => { SettingsStore.confirm-clear-all = true; } }
-        if SettingsStore.confirm-clear-all: VerticalLayout {
-            spacing: 6px;
-            Para { text: @tr("Clear all saved messages and media from this computer? They download again when needed."); }
+        danger: true;
+        if !SettingsStore.confirm-clear-all: SettingsButtonRow {
+            description: @tr("Removes saved messages and media from this computer; they download again. Drafts, unsent messages, saved items and favourites stay.");
+            button-label: @tr("Clear all cached data");
+            danger: true;
+            clicked => { SettingsStore.confirm-clear-all = true; }
+        }
+        if SettingsStore.confirm-clear-all: SettingsBlock {
+            SettingsNote { text: @tr("Clear all saved messages and media from this computer? They download again when needed."); }
             HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
+                spacing: Space.s;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
                 Button { variant: ButtonVariant.settings; label: @tr("Cancel clearing"); clicked => { SettingsStore.confirm-clear-all = false; } }
                 Button { variant: ButtonVariant.settings; label: @tr("Yes, clear all cached data"); danger: true; clicked => { SettingsStore.confirm-clear-all = false; SettingsStore.command("clear-all-cache", ""); } }
             }
@@ -860,77 +1007,86 @@ export component StoragePage inherits VerticalLayout {
     }
 }
 
-export component PermissionsPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component PermissionsPage inherits SettingsSections {
+    SettingsSection {
         title: @tr("App permissions");
-        hint: @tr("What each app may use. Apps run in IronTeams's web host and ask for these first.");
-        if SettingsStore.app-perms.length == 0: Para { text: @tr("No app has asked for a permission."); }
+        description: @tr("What each app may use. Apps run in IronTeams's web host and ask for these first.");
+        if SettingsStore.app-perms.length == 0: SettingsBlock {
+            SettingsNote { text: @tr("No app has asked for a permission."); }
+        }
     }
-    for a in SettingsStore.app-perms: SSection {
+    for a in SettingsStore.app-perms: SettingsSection {
         title: a.name;
-        for p in a.perms: Switch { variant: SwitchVariant.settings;
+        for p in a.perms: SettingsSwitchRow {
             label: a.name + ": " + p.label;
             checked: p.on;
             toggled(on) => { SettingsStore.command("perm", SettingsStore.j3(a.app, p.key, on ? "1" : "0")); }
         }
     }
-    if SettingsStore.perms-status != "": Para { text: SettingsStore.perms-status; }
+    if SettingsStore.perms-status != "": PageNote { text: SettingsStore.perms-status; }
 }
 
-export component AboutPage inherits VerticalLayout {
-    alignment: start;
-    SSection {
+export component AboutPage inherits SettingsSections {
+    SettingsSection {
         title: "IronTeams " + SettingsStore.version;
-        Para { text: @tr("An unofficial native Microsoft Teams client written in Rust."); }
+        SettingsBlock {
+            SettingsNote { text: @tr("An unofficial native Microsoft Teams client written in Rust."); }
+        }
     }
     // A copy Velopack installed updates itself; any other copy only offers the opt-in check.
-    if SettingsStore.self-update: SSection {
+    if SettingsStore.self-update: SettingsSection {
         title: @tr("Updates");
-        hint: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it.");
-        Switch { variant: SwitchVariant.settings;
+        description: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it.");
+        SettingsSwitchRow {
             label: @tr("Automatic updates");
             checked: SettingsStore.auto-update;
             toggled(on) => { SettingsStore.command("auto-update", on ? "1" : "0"); }
         }
-        Switch { variant: SwitchVariant.settings;
+        SettingsSwitchRow {
             label: @tr("Get beta updates");
             checked: SettingsStore.beta-updates;
             toggled(on) => { SettingsStore.command("beta-updates", on ? "1" : "0"); }
         }
-        Button { variant: ButtonVariant.settings;
-            label: @tr("Check now");
-            enabled: !SettingsStore.update-checking && !SettingsStore.update-ready;
+        SettingsButtonRow {
+            description: SettingsStore.update-status;
+            button-label: @tr("Check now");
+            button-enabled: !SettingsStore.update-checking && !SettingsStore.update-ready;
             clicked => { SettingsStore.command("check-now", ""); }
         }
-        if SettingsStore.update-status != "": Para { text: SettingsStore.update-status; }
-        if SettingsStore.update-ready: Button { variant: ButtonVariant.settings;
-            label: @tr("Restart to update");
+        if SettingsStore.update-ready: SettingsButtonRow {
+            button-label: @tr("Restart to update");
+            primary: true;
             clicked => { SettingsStore.command("restart-update", ""); }
         }
     }
-    if !SettingsStore.self-update: SSection {
+    if !SettingsStore.self-update: SettingsSection {
         title: @tr("Updates");
-        hint: @tr("Off by default. When on, IronTeams asks api.github.com for the latest release when it starts. The request has no cookies, no account and nothing about you. IronTeams never downloads or installs anything.");
-        Switch { variant: SwitchVariant.settings;
+        description: @tr("Off by default. When on, IronTeams asks api.github.com for the latest release when it starts. The request has no cookies, no account and nothing about you. IronTeams never downloads or installs anything.");
+        SettingsSwitchRow {
             label: @tr("Check for updates");
             checked: SettingsStore.check-updates;
             toggled(on) => { SettingsStore.command("check-updates", on ? "1" : "0"); }
         }
-        if SettingsStore.check-updates: Button { variant: ButtonVariant.settings;
-            label: @tr("Check now");
-            enabled: !SettingsStore.update-checking;
+        if SettingsStore.check-updates: SettingsButtonRow {
+            description: SettingsStore.update-status;
+            button-label: @tr("Check now");
+            button-enabled: !SettingsStore.update-checking;
             clicked => { SettingsStore.command("check-now", ""); }
         }
-        if SettingsStore.update-status != "": Para { text: SettingsStore.update-status; }
-        if SettingsStore.update-available: Button { variant: ButtonVariant.settings;
-            label: @tr("View release notes");
+        if !SettingsStore.check-updates && SettingsStore.update-status != "": SettingsBlock {
+            SettingsNote { text: SettingsStore.update-status; }
+        }
+        if SettingsStore.update-available: SettingsButtonRow {
+            button-label: @tr("View release notes");
             clicked => { SettingsStore.command("release-notes", ""); }
         }
     }
-    SSection {
+    SettingsSection {
         title: @tr("Report a problem");
-        Para { text: @tr("Writes a bundle of logs with tokens, ids and addresses removed to your Downloads folder. Nothing is uploaded."); }
-        Button { variant: ButtonVariant.settings; label: @tr("Report a problem"); clicked => { SettingsStore.command("report-problem", ""); } }
+        SettingsButtonRow {
+            description: @tr("Writes a bundle of logs with tokens, ids and addresses removed to your Downloads folder. Nothing is uploaded.");
+            button-label: @tr("Report a problem");
+            clicked => { SettingsStore.command("report-problem", ""); }
+        }
     }
 }

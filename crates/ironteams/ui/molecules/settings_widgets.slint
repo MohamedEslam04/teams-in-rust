@@ -3,7 +3,6 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { SOption, SettingsStore } from "../stores/settings_store.slint";
-import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // A round +/- button of the zoom row.
 component ZoomButton inherits Rectangle {
@@ -42,17 +41,6 @@ export component ZoomRow inherits Rectangle {
         }
         ZoomButton { y: 4px; label: "+"; hint: @tr("Zoom in"); clicked => { SettingsStore.command("font-step", "1"); } }
     }
-}
-
-// A titled group of settings.
-export component SSection inherits VerticalLayout {
-    in property <string> title;
-    in property <string> hint;
-    spacing: 8px;
-    padding-bottom: 18px;
-    if root.title != "": Text { horizontal-alignment: Theme.start-align; text: root.title; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-muted; font-size: Theme.font-small; wrap: word-wrap; }
-    @children
 }
 
 // One choice out of a few, as a row of pills. Each pill is labelled "<group>: <option>" for
@@ -101,7 +89,7 @@ export component SChoice inherits Rectangle {
     height: root.fits ? root.pill-height + 2px : root.options.length * (root.pill-height + 6px);
     if root.fits: HorizontalLayout {
         spacing: 6px;
-        alignment: start;
+        alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
         init => { root.row-width = self.preferred-width; }
         for o in root.options: SChoicePill {
             height: root.pill-height;
@@ -116,7 +104,7 @@ export component SChoice inherits Rectangle {
         spacing: 6px;
         alignment: start;
         for o in root.options: HorizontalLayout {
-            alignment: start;
+            alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
             SChoicePill {
                 height: root.pill-height;
                 group: root.group;
@@ -126,35 +114,6 @@ export component SChoice inherits Rectangle {
                 picked => { root.picked(o.v); }
             }
         }
-    }
-}
-
-// A labelled choice: the label above, the pills below.
-export component SChoiceRow inherits VerticalLayout {
-    in property <string> label;
-    in property <string> hint;
-    in property <[SOption]> options;
-    in property <string> value;
-    in property <bool> enabled: true;
-    callback picked(string);
-    spacing: 4px;
-    // Opened by a Find result: tells the page where this row is.
-    Timer {
-        running: root.label != "" && root.label == SettingsStore.target;
-        interval: 60ms;
-        triggered => {
-            SettingsStore.target-y = root.absolute-position.y;
-            SettingsStore.target = "";
-        }
-    }
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
-    SChoice {
-        group: root.label;
-        options: root.options;
-        value: root.value;
-        enabled: root.enabled;
-        picked(v) => { root.picked(v); }
     }
 }
 
@@ -212,19 +171,6 @@ export component SRadioList inherits VerticalLayout {
     }
     for o in root.teams: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
     for o in root.others: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
-}
-
-// A person row with one action button (Unblock, Remove).
-export component SPersonRow inherits Rectangle {
-    in property <string> name;
-    in property <string> action;
-    callback act();
-    height: 40px;
-    HorizontalLayout {
-        spacing: 10px;
-        Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-        Button { variant: ButtonVariant.settings; label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
-    }
 }
 
 // The left list entry of the page.

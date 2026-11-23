@@ -2440,3 +2440,17 @@ msgstr "أعد تشغيل IronTeams لتطبيق التغيير"
 
 msgid "Restart now"
 msgstr "إعادة التشغيل الآن"
+
+# Settings: section headings and rows of the Settings kit layout.
+
+msgid "Banners"
+msgstr "الإشعارات المنبثقة"
+
+msgid "See how a notification looks"
+msgstr "شاهد شكل الإشعار"
+
+msgid "Activity types"
+msgstr "أنواع النشاط"
+
+msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
+msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."

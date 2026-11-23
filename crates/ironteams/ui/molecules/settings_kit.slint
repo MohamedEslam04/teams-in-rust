@@ -99,6 +99,8 @@ export component SettingsRow inherits Rectangle {
     in property <bool> highlight: false;
     // The row itself is the control a screen reader reads (a switch row): its texts stay quiet.
     in property <bool> quiet-text: false;
+    // The line above the row: every row but the first of its card (which sits at y = 1px).
+    in property <bool> divider: root.y > 2px;
     property <length> pad-x: SettingsMetrics.row-pad-x;
     property <length> pad-y: SettingsMetrics.row-pad-y;
     property <length> inner: max(0px, root.width - 2 * root.pad-x);
@@ -123,8 +125,7 @@ export component SettingsRow inherits Rectangle {
             SettingsStore.target = "";
         }
     }
-    // The line between this row and the one above (the first row of a card sits at y = 1px).
-    if root.y > 2px: Rectangle {
+    if root.divider: divider-line := Rectangle {
         x: root.pad-x;
         y: 0px;
         width: root.inner;
@@ -236,6 +237,7 @@ export component SettingsSwitchRow inherits Rectangle {
     }
     row := SettingsRow {
         width: parent.width;
+        divider: root.y > 2px;
         label: root.label;
         description: root.description;
         enabled: root.enabled;
@@ -337,5 +339,20 @@ export component SettingsSliderRow inherits SettingsRow {
         font-size: Theme.font-body;
         vertical-alignment: center;
         horizontal-alignment: right;
+    }
+}
+
+// A name with one action on the end side (Unblock, Remove): the button is read out as
+// "<action> <name>".
+export component SPersonRow inherits SettingsRow {
+    in property <string> name;
+    in property <string> action;
+    callback act();
+    label: root.name;
+    Button {
+        variant: ButtonVariant.settings;
+        label: root.action;
+        accessible-label: root.action + " " + root.name;
+        clicked => { root.act(); }
     }
 }

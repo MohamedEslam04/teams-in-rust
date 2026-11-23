@@ -124,14 +124,14 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
     }
 }
 
-struct Ui {
-    app: AppWindow,
+pub(super) struct Ui {
+    pub(super) app: AppWindow,
     log: Log,
     tokens: Arc<session::MemoryStore>,
     home: Home,
 }
 
-fn window(home: Home) -> Ui {
+pub(super) fn window(home: Home) -> Ui {
     window_full(home, None, false, |_| {})
 }
 
@@ -174,12 +174,12 @@ fn window_full(
     }
 }
 
-fn store(app: &AppWindow) -> SettingsStore<'_> {
+pub(super) fn store(app: &AppWindow) -> SettingsStore<'_> {
     app.global::<SettingsStore>()
 }
 
 /// The one element with this label that is not plain text (a control and its caption share it).
-fn control(app: &AppWindow, label: &str) -> ElementHandle {
+pub(super) fn control(app: &AppWindow, label: &str) -> ElementHandle {
     // Let pending property changes reach the item tree first: an element behind an `if` (the
     // "Restart needed" section) is only created when the tree is next updated, which on a slower
     // machine (CI) has not happened yet right after the click that turned the condition on.
@@ -211,7 +211,7 @@ fn value_of(app: &AppWindow, label: &str) -> String {
         .to_string()
 }
 
-fn checked(app: &AppWindow, label: &str) -> bool {
+pub(super) fn checked(app: &AppWindow, label: &str) -> bool {
     control(app, label).accessible_checked().unwrap_or(false)
 }
 
@@ -224,7 +224,7 @@ fn tall_window(app: &AppWindow) {
     }
 }
 
-fn open_page(app: &AppWindow, page: &str) {
+pub(super) fn open_page(app: &AppWindow, page: &str) {
     store(app).invoke_show(page.into());
 }
 
@@ -1898,7 +1898,17 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         for _ in 0..3 {
             testing::mock_elapsed_time(std::time::Duration::from_millis(16));
         }
-        for kind in ["SChoice", "Switch", "Button", "SPersonRow", "Field"] {
+        for kind in [
+            "SChoice",
+            "Switch",
+            "SettingsSwitchRow",
+            "SettingsRow",
+            "SettingsChoiceRow",
+            "SettingsButtonRow",
+            "Button",
+            "SPersonRow",
+            "Field",
+        ] {
             for row in ElementHandle::find_by_element_type_name(app, kind)
                 .filter(|r| !super::overflow::texts(r).is_empty())
             {
@@ -2193,7 +2203,7 @@ fn the_update_rows_stay_inside_a_narrow_window() {
     for _ in 0..3 {
         testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     }
-    for kind in ["Switch", "Button"] {
+    for kind in ["Switch", "SettingsSwitchRow", "SettingsButtonRow", "Button"] {
         for row in ElementHandle::find_by_element_type_name(app, kind)
             .filter(|r| !super::overflow::texts(r).is_empty())
         {
