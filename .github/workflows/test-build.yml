@@ -29,6 +29,14 @@ jobs:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
+      - name: More swap
+        # Compiling the ironteams crate needs more than the runner's ~16 GB: without swap rustc is
+        # killed or the runner shuts down mid-build.
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
+          free -h
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries

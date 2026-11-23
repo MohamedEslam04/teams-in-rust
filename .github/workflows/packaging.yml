@@ -77,8 +77,18 @@ jobs:
     timeout-minutes: 90
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
-      options: --privileged
+      options: --privileged -v /mnt:/mnt
     steps:
+      - name: More swap
+        # As the rpm job: swap on the host's /mnt (bind-mounted), since it cannot sit on the
+        # container's overlay filesystem.
+        run: |
+          command -v mkswap >/dev/null || dnf -y install util-linux >/dev/null 2>&1 || true
+          swapoff -a 2>/dev/null || true
+          fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
+          chmod 600 /mnt/swapfile
+          mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
+          cat /proc/swaps
       - uses: actions/checkout@v7
       - name: Generate cargo-sources.json
         run: |
@@ -98,8 +108,20 @@ jobs:
   aur:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    container: archlinux:base-devel
+    container:
+      image: archlinux:base-devel
+      options: --privileged -v /mnt:/mnt
     steps:
+      - name: More swap
+        # As the rpm job: swap on the host's /mnt (bind-mounted), since it cannot sit on the
+        # container's overlay filesystem.
+        run: |
+          command -v mkswap >/dev/null || pacman -Sy --noconfirm util-linux >/dev/null 2>&1 || true
+          swapoff -a 2>/dev/null || true
+          fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
+          chmod 600 /mnt/swapfile
+          mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
+          cat /proc/swaps
       - name: Tools
         run: pacman -Syu --noconfirm --needed git rust cmake alsa-lib fontconfig libxkbcommon libxkbcommon-x11 dbus wayland libx11 libxcursor libxi libxrender libglvnd namcap
       - uses: actions/checkout@v7
@@ -111,9 +133,9 @@ jobs:
           # Build the checked-out commit instead of the default branch of the upstream URL.
           git clone --bare . /home/builder/ironteams.git && chown -R builder /home/builder/ironteams.git
           sed -i 's|git+${url}.git|git+file:///home/builder/ironteams.git|' /home/builder/aur/PKGBUILD
-          # The runner has ~16 GB and no swap we can add inside the container: thin LTO with one
-          # codegen unit gets rustc killed. This check only needs the package to build, so it
-          # links without LTO (the shipped release profile is unchanged).
+          # The runner has ~16 GB: even with the swap above, thin LTO with one codegen unit is slow
+          # and close to the limit. This check only needs the package to build, so it links
+          # without LTO (the shipped release profile is unchanged).
           su builder -c 'export CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*" && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -f --noconfirm'
       - name: .SRCINFO is current
         run: diff <(sed 's|file:///home/builder/ironteams.git|https://github.com/MohamedEslam04/teams-in-rust.git|' /tmp/srcinfo) packaging/aur/.SRCINFO
