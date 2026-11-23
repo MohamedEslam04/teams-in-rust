@@ -1,0 +1,20 @@
+// A row of 16 bars that light up with a level (the mic menu's microphone meter). `muted` keeps
+// them all dark.
+import { Theme } from "../tokens/theme.slint";
+
+export component LevelMeter inherits Rectangle {
+    in property <float> level;
+    in property <bool> muted;
+    in property <string> label: "Microphone level";
+    height: 16px;
+    accessible-role: progress-indicator;
+    accessible-label: root.label;
+    accessible-value: root.muted ? "Muted" : round(root.level * 100) + "%";
+    HorizontalLayout {
+        spacing: 3px;
+        for i in 16: Rectangle {
+            border-radius: 1px;
+            background: !root.muted && root.level * 16 > i ? Theme.accent : Theme.border;
+        }
+    }
+}

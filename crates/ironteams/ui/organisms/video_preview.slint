@@ -42,7 +42,8 @@ export component VideoEffectsButton inherits Rectangle {
 }
 
 export component VideoPreview inherits Rectangle {
-    property <bool> live: CallStore.prejoin-camera && VideoFxStore.has-preview;
+    // Also while only the Video effects panel's Preview runs (the camera is not sent).
+    property <bool> live: VideoFxStore.has-preview;
     height: 220px;
     border-radius: Theme.radius;
     clip: true;

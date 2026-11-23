@@ -1,0 +1,52 @@
+// One radio choice of a flyout or a panel: a radio dot, the label, a hover highlight. The row is
+// as wide as the list it sits in; the owner keeps which one is selected.
+import { Theme } from "../tokens/theme.slint";
+
+export component RadioRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback picked();
+    height: 32px;
+    border-radius: 4px;
+    background: touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: radio-button;
+    accessible-label: root.label;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.picked(); }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 10px;
+        VerticalLayout {
+            width: 16px;
+            alignment: center;
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border-width: 1.5px;
+                border-color: root.selected ? Theme.accent : Theme.fg-muted;
+                if root.selected: Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.accent;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+            }
+        }
+        Text {
+            text: root.label;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}

@@ -8,7 +8,6 @@ import { CallStore, CallPerson, CallFound } from "../stores/call_store.slint";
 import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
-import { VideoEffectsPanel } from "video_effects.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
@@ -212,8 +211,8 @@ export component PeoplePanel inherits Rectangle {
     }
 }
 
-// More, as Teams' "..." menu: Record and transcribe, Language and speech, Video effects and the
-// devices. The
+// More, as Teams' "..." menu: Record and transcribe, Language and speech, Video effects (its
+// panel replaces this one while it is open, see call_window.slint) and the devices. The
 // service decides who may record; a refusal shows as the call's error banner.
 export component MorePanel inherits Rectangle {
     // The top bar had no room for these (a narrow window): they are here instead.
@@ -327,10 +326,5 @@ export component MorePanel inherits Rectangle {
                 }
             }
         }
-    }
-    // Video effects: a page of the panel, over its content.
-    if VideoFxStore.open: VideoEffectsPanel {
-        width: root.width;
-        height: root.height;
     }
 }

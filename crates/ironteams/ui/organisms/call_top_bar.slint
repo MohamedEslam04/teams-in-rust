@@ -12,6 +12,9 @@ export component TopBar inherits Rectangle {
     out property <length> view-x;
     // Where the React button starts, for its menu.
     out property <length> react-x;
+    // Where the Camera chevron and the Mic chevron start, for the menus under them.
+    out property <length> camera-x;
+    out property <length> mic-x;
     height: 62px;
     background: Theme.topbar;
     HorizontalLayout {
@@ -130,15 +133,30 @@ export component TopBar inherits Rectangle {
             width: 1px;
             background: Theme.border;
         }
-        Button { variant: ButtonVariant.call;
-            icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
-            label: "Camera";
-            checkable: true;
-            active: CallStore.camera;
-            enabled: CallStore.can-camera || CallStore.camera;
-            tip: CallStore.can-camera || CallStore.camera ? (CallStore.camera ? "Turn camera off" : "Turn camera on")
-                : CallStore.kind == "meeting" ? "Video isn't available in meetings yet" : "Video isn't available in this call";
-            clicked => { CallStore.command("camera", ""); }
+        HorizontalLayout {
+            Button { variant: ButtonVariant.call;
+                icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
+                label: "Camera";
+                checkable: true;
+                active: CallStore.camera;
+                enabled: CallStore.can-camera || CallStore.camera;
+                tip: CallStore.can-camera || CallStore.camera ? (CallStore.camera ? "Turn camera off" : "Turn camera on")
+                    : CallStore.kind == "meeting" ? "Video isn't available in meetings yet" : "Video isn't available in this call";
+                clicked => { CallStore.command("camera", ""); }
+            }
+            // The camera menu: our picture, the camera, the background.
+            if CallStore.camera-available: Button { variant: ButtonVariant.call;
+                width: 22px;
+                icon: @image-url("../icons/chevron-down.svg");
+                label: "";
+                tip: "Camera and video effects";
+                active: CallStore.menu == "camera";
+                accessible-label: "Camera options";
+                clicked => {
+                    root.camera-x = self.absolute-position.x - root.absolute-position.x;
+                    CallStore.menu = CallStore.menu == "camera" ? "" : "camera";
+                }
+            }
         }
         HorizontalLayout {
             Button { variant: ButtonVariant.call;
@@ -155,7 +173,10 @@ export component TopBar inherits Rectangle {
                 tip: "Microphone and speaker";
                 active: CallStore.menu == "devices";
                 accessible-label: "Audio devices";
-                clicked => { CallStore.menu = CallStore.menu == "devices" ? "" : "devices"; }
+                clicked => {
+                    root.mic-x = self.absolute-position.x - root.absolute-position.x;
+                    CallStore.menu = CallStore.menu == "devices" ? "" : "devices";
+                }
             }
         }
         HorizontalLayout {

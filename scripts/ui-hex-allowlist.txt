@@ -231,7 +231,6 @@ pages/calendar.slint #ffffff
 pages/calendar.slint #ffffffcc
 pages/calendar.slint #ffffffdd
 pages/calls_page.slint #00000090
-pages/call_window.slint #00000080
 pages/call_window.slint #3d3e66
 pages/call_window.slint #4b4f8a
 pages/call_window.slint #8a5a00
