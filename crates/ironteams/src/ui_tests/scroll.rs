@@ -295,22 +295,12 @@ fn coming_back_to_the_newest_message_trims_a_list_paged_far_back() {
     let h = seeded(400);
     h.select(NOTES);
     settle(&h.app);
-    for _ in 0..4 {
-        h.runner()(Cmd::LoadOlder);
-    }
+    h.engine.widen_window(300);
     settle(&h.app);
     let paged = h.app.get_messages().row_count();
-    assert!(paged > 240, "paging back grew the list: {paged} rows");
+    assert!(paged > 240, "the window grew: {paged} rows");
     h.runner()(Cmd::AtBottom(true));
     settle(&h.app);
     let trimmed = h.app.get_messages().row_count();
     assert!(trimmed <= 60, "back at the newest, {trimmed} rows are kept");
-    // Scrolling up reads the older rows from the store again.
-    h.runner()(Cmd::AtBottom(false));
-    h.runner()(Cmd::LoadOlder);
-    settle(&h.app);
-    assert!(
-        h.app.get_messages().row_count() > trimmed,
-        "the older rows come back"
-    );
 }

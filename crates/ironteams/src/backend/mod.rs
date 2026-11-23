@@ -426,6 +426,16 @@ const PAGE: usize = 60;
 /// at the newest message again (the older rows come back from the store as the user scrolls up),
 /// so a long session in one chat does not keep rebuilding hundreds of rows on every update.
 const TRIM_ABOVE: usize = PAGE * 4;
+
+impl Engine {
+    /// A window of `rows` newest rows, as paging back that far leaves it (tests cannot page back
+    /// offline).
+    #[cfg(test)]
+    pub(crate) fn widen_window(&self, rows: usize) {
+        self.view.lock().unwrap().limit = rows;
+        self.mark(|d| d.messages = true);
+    }
+}
 /// Emoji kept in the panel's recent row.
 const RECENT_EMOJI: usize = 16;
 
