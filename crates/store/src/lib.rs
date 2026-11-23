@@ -395,6 +395,19 @@ impl Store {
         Ok(())
     }
 
+    /// Rewrites the preview of a conversation whose newest message (the one stamped
+    /// `activity_ms`) changed in place, e.g. was deleted. A message that is not the newest
+    /// leaves the row alone; activity and unread are never touched.
+    pub fn refresh_preview(&self, id: &str, activity_ms: i64, preview: &str) -> Result<()> {
+        self.conn
+            .prepare_cached(
+                "UPDATE conversations SET last_preview = ?3 \
+                 WHERE id = ?1 AND last_activity_ms = ?2 AND last_preview <> ?3",
+            )?
+            .execute(params![id, activity_ms, preview])?;
+        Ok(())
+    }
+
     // ---- messages ------------------------------------------------------
 
     /// Inserts a message, or on id conflict updates content, edit time,

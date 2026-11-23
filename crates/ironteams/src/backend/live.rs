@@ -164,6 +164,14 @@ impl Engine {
                     &preview_of(&m, &self.me),
                     unread,
                 );
+            } else if existed && m.deleted && m.is_chat_content() {
+                // A delete arrives as an update of a message we already have. When it was the
+                // newest one the chat list must read "deleted" too (older ones change nothing).
+                let _ = st.refresh_preview(
+                    &m.conversation_id,
+                    m.compose_ms,
+                    &preview_of(&m, &self.me),
+                );
             }
             let counted =
                 is_current && !follow && !existed && m.parent_id.is_none() && m.is_chat_content();
