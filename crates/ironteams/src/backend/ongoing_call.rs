@@ -49,7 +49,7 @@ pub(crate) enum Polled {
     #[default]
     Unknown,
     /// The conversation's live state (`None`: it has none).
-    Known(Option<LiveCall>),
+    Known(Option<Box<LiveCall>>),
 }
 
 /// A call going on, as far as it is known.
@@ -345,7 +345,7 @@ impl Engine {
                     return;
                 }
                 match read {
-                    Ok(state) => s.polled = Polled::Known(state),
+                    Ok(state) => s.polled = Polled::Known(state.map(Box::new)),
                     Err(err) => tracing::debug!(%err, "live call state read failed"),
                 }
             }
@@ -392,7 +392,7 @@ impl Engine {
                 _ => None,
             }
         };
-        if let JoinRoute::Link(url) = join_route(conv, state.as_ref()) {
+        if let JoinRoute::Link(url) = join_route(conv, state.as_deref()) {
             let title = self.view.lock().unwrap().current_title.clone();
             let title = if title.is_empty() {
                 "Call".to_owned()
@@ -504,26 +504,29 @@ mod tests {
         assert!(merge(Some(&row), &Polled::Known(None), now).is_some());
         // An active state names the initiator, with or without a start message.
         assert_eq!(
-            merge(Some(&row), &Polled::Known(Some(live(true))), now),
+            merge(Some(&row), &Polled::Known(Some(Box::new(live(true)))), now),
             Some(Ongoing {
                 started_ms: Some(T0),
                 initiator: Some("8:orgid:aaaa-1".into())
             })
         );
         assert_eq!(
-            merge(None, &Polled::Known(Some(live(true))), now).map(|o| o.started_ms),
+            merge(None, &Polled::Known(Some(Box::new(live(true)))), now).map(|o| o.started_ms),
             Some(None)
         );
         // An ended or lapsed state hides a start whose end was missed.
         assert_eq!(
-            merge(Some(&row), &Polled::Known(Some(live(false))), now),
+            merge(Some(&row), &Polled::Known(Some(Box::new(live(false)))), now),
             None
         );
         let lapsed = LiveCall {
             expires_ms: Some(now - 1),
             ..live(true)
         };
-        assert_eq!(merge(Some(&row), &Polled::Known(Some(lapsed)), now), None);
+        assert_eq!(
+            merge(Some(&row), &Polled::Known(Some(Box::new(lapsed))), now),
+            None
+        );
     }
 
     #[test]
@@ -613,7 +616,7 @@ mod tests {
         let mut s = State::default();
         assert!(s.rows("19:a@thread.v2", None));
         assert!(!s.rows("19:a@thread.v2", None));
-        s.polled = Polled::Known(Some(live(false)));
+        s.polled = Polled::Known(Some(Box::new(live(false))));
         let call = RowCall {
             call_id: "call-2".into(),
             started_ms: T0,
