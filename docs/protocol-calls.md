@@ -349,7 +349,18 @@ Where the links come from (live 1:1 dump, names only):
   - IronTeams: `controls::reaction_body`, `controls::send_message_url`, `NgcClient::send_reaction`,
     which logs each send at info (`reaction sent`, with the status and the URL's path); a refusal
     is a warning (`reaction not sent`) with the status and the start of the answer.
-  - To confirm live: that the Teams web participant now sees IronTeams's reaction.
+  - Second live run (2026-11-23, a 1:1 call IronTeams placed to a Teams web guest): again IronTeams
+    floated its own reaction, Teams web saw none, and no refusal was logged. A placed 1:1 call
+    was handed on with its links alone and no controller (only an attach answer's links named
+    it), so `send_message_url` fell back to the link map's `sendMessage`: the call leg's, which
+    answers 2xx and shows the reaction to no one. A conversation answer's links now name its
+    controller (`conversationController`, as the attach answer's do), and with no controller
+    known only a `conv/` link is taken (else the send fails as a refusal). `reaction sent` also
+    logs the `participantId`/`endpointId` that `from` named, a failed send logs `reaction
+    refused`, and our own reaction coming back on `receiveMessage` logs `own reaction echoed by
+    the conversation` at info: the service took it and fanned it out.
+  - To confirm live: that the Teams web participant now sees IronTeams's reaction, in a meeting
+    and in a placed and an answered 1:1 call.
 - **Receive:** the `conversation/receiveMessage` callback (already in our callback links) with
   the same `messageContent` items; the sender is the item's `from.id`, else the message's.
   Verified live 2026-11-21: a Teams web Like floated in IronTeams with the sender's name.
@@ -455,6 +466,19 @@ What IronTeams does with this (`calling::video`, `calling::media`, `calling::sig
   that refused the sharing line (a port-0 stub with its label and no mid, seen after a hold on
   2026-11-20) gets it offered again on its own mid and label; the stub kept for a line not
   offered again keeps its label.
+- 1:1, every SDP says what we send (2026-11-23: after IronTeams stopped a share, camera off the
+  whole time, Teams web showed IronTeams's tile as an empty video box). webrtc-rs offers and
+  answers every line it has a track for as sending. So the first offer of a 1:1 call (placed, or
+  answering a ring without an offer) has the camera line `recvonly` and the sharing line
+  `inactive`, as the web client's own offer; and every answer to the other side's offer (the
+  ring's, and its re-offers mid-call) says on the camera line `sendrecv` only while the camera is
+  on, on the sharing line `sendonly` only while we share, else `recvonly`, within what the offer
+  allows (`sdp::direct_answer`). The answer to a browser's ring said the camera line `sendonly`
+  before. Each 1:1 offer and answer logs its lines at info (`1:1 call offered`, `1:1 call
+  answered`, `1:1 re-offer sent` with `callModalities` and the negotiation tag, `1:1 re-offer
+  answered`, `1:1 media answer applied`) as `<mid> <label> <direction> <x-ssrc-range>`.
+  UNVERIFIED that this was the empty box: the log of a share start and stop shows which SDP
+  still said a video line sends.
 - A `controlVideoStreaming` callback with `KeyFrame=1` forces a keyframe; otherwise one goes out
   every 2 s.
 - Capture: the ScreenCast portal (`ashpd`, monitors and windows, cursor embedded), the PipeWire
