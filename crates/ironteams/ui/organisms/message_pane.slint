@@ -7,11 +7,12 @@ import { ListView } from "std-widgets.slint";
 import { MessageRow } from "message_row.slint";
 import { Msg } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SkeletonMessages, Spinner } from "../tokens/motion.slint";
+import { Motion, SkeletonMessages, Spinner } from "../tokens/motion.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export component MessagePane inherits Rectangle {
     in property <int> anchor-index;
+    in property <length> anchor-off;
     in property <int> anchor-tick;
     in-out property <bool> at-bottom;
     callback at-bottom-changed(bool);
@@ -54,6 +55,15 @@ export component MessagePane inherits Rectangle {
     in property <bool> select-mode;
     in property <string> thread-root;
     callback toggle-select(string);
+    // The row at the top of the view and how far above the view's top its own top is: older
+    // messages that land above are put back so this row stays where it was.
+    in-out property <string> top-id;
+    in-out property <length> top-off;
+    // `top-cy` is where the view was when `top-id` was recorded and `view-y` where it is now:
+    // when they differ the view jumped (Home, a jump to a message) without the rows noticing, and
+    // `top-id` is not to be trusted.
+    in-out property <length> top-cy;
+    in-out property <length> view-y;
     in property <bool> unavailable;
     in property <string> unavailable-text;
     vertical-stretch: 1;
@@ -87,6 +97,8 @@ export component MessagePane inherits Rectangle {
         property <int> d-tick: root.divider-tick;
         property <int> a-tick: root.anchor-tick;
         property <bool> anchoring: false;
+        // The row was put at the view's top and the user's offset inside it is still to be applied.
+        property <bool> apply-off: false;
         // Stay pinned to the newest message while content grows (images loading).
         property <bool> pinned: true;
         // After a jump to the divider its real position corrects the estimate
@@ -119,7 +131,18 @@ export component MessagePane inherits Rectangle {
             self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
         }
         // The user scrolled (wheel, drag, scrollbar): that is never growth.
-        scrolled => { self.recheck(); }
+        scrolled => {
+            self.recheck();
+            Motion.scrolling = true;
+            scroll-idle.restart();
+        }
+        // The pane got taller or shorter (typing indicator, composer, window resize) while at
+        // the newest message: stay at it.
+        changed visible-height => {
+            if self.pinned && !self.aligning {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+        }
         changed content-height => {
             self.seen-height = self.content-height;
             if self.pinned && !self.aligning {
@@ -127,13 +150,15 @@ export component MessagePane inherits Rectangle {
             }
         }
         changed content-y => {
+            root.view-y = self.content-y;
             // Pinned only at the very bottom: rows that get their real height while
             // scrolling up change the content height, and a looser margin pulled the
             // list back down (the list shook when scrolling up).
             if self.content-height == self.seen-height {
                 self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
             }
-            if self.content-y > -40px && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
+            // From a screen and a half away, so the older page is in before the top is reached.
+            if self.content-y > -(self.visible-height * 1.5) && self.content-height > self.visible-height + 40px && !self.pinned && root.messages.length > 0 && !root.loading-older && !self.aligning {
                 // Until the older page lands: one request per arrival at the top.
                 self.aligning = true;
                 root.load-older();
@@ -145,6 +170,24 @@ export component MessagePane inherits Rectangle {
                 pane-top: msg-list.absolute-position.y;
                 in-channel: root.current-is-channel && root.thread-root == "";
                 select-mode: root.select-mode;
+                // How far the view's top is below this row's top; the row that holds the view's
+                // top is the one older messages must not push away.
+                property <length> top-gap: -msg-list.content-y - self.y;
+                property <bool> holds-top: self.top-gap >= 0px && self.top-gap < self.height;
+                changed top-gap => {
+                    if self.holds-top {
+                        root.top-id = m.id;
+                        root.top-off = self.top-gap;
+                        root.top-cy = msg-list.content-y;
+                    }
+                }
+                changed holds-top => {
+                    if self.holds-top {
+                        root.top-id = m.id;
+                        root.top-off = self.top-gap;
+                        root.top-cy = msg-list.content-y;
+                    }
+                }
                 changed y => {
                     if msg-list.aligning && !msg-list.anchoring && (m.new-above || m.flash) {
                         msg-list.content-y = min(0px, 24px - self.y);
@@ -255,12 +298,39 @@ export component MessagePane inherits Rectangle {
             msg-list.anchoring = false;
             msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
             msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+            // ensure-row-visible only records the request: the scroll happens in the next layout,
+            // so the user's offset inside the row is applied a moment later (`offset-timer`).
+            msg-list.apply-off = root.anchor-off > 0px;
+        }
+    }
+    // The anchor row is at the view's top by now: move down to where the user was inside it. The
+    // view must have left the bottom the first timer put it at, or there is nothing to adjust.
+    offset-timer := Timer {
+        interval: 40ms;
+        running: msg-list.apply-off;
+        triggered => {
+            msg-list.apply-off = false;
+            if msg-list.content-y > msg-list.visible-height - msg-list.content-height + 2px {
+                msg-list.content-y = min(0px, msg-list.content-y - root.anchor-off);
+            }
+        }
+    }
+    // The user stopped scrolling.
+    scroll-idle := Timer {
+        interval: 250ms;
+        running: false;
+        triggered => {
+            Motion.scrolling = false;
+            self.running = false;
         }
     }
     Timer {
         interval: 700ms;
         running: msg-list.aligning;
-        triggered => { msg-list.aligning = false; }
+        triggered => {
+            msg-list.aligning = false;
+            msg-list.apply-off = false;
+        }
     }
     if !root.at-bottom && root.messages.length > 0 && !root.posts-mode: Rectangle {
         z: 5;
@@ -270,8 +340,8 @@ export component MessagePane inherits Rectangle {
         height: 32px;
         border-radius: 16px;
         background: jump-touch.has-hover ? Theme.accent-strong : Theme.accent;
-        drop-shadow-blur: 8px;
-        drop-shadow-color: #00000080;
+        border-width: 1px;
+        border-color: Theme.accent-strong;
         jump-text := Text {
             text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
             color: #ffffff;

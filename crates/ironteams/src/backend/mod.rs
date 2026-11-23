@@ -278,6 +278,9 @@ struct View {
     at_bottom: bool,
     /// The first message shown before an older page was added, for the list to keep in place.
     older_anchor: Option<String>,
+    /// The server had nothing older than the oldest message shown: scrolling near the top asks
+    /// for no more pages (reset when another conversation or thread opens).
+    older_done: bool,
     /// New messages that arrived while scrolled up; shown on the jump button.
     new_count: usize,
     /// The delivery option of the next message: "Mark as important" or "Set delivery options"
@@ -419,6 +422,20 @@ pub struct Engine {
 }
 
 const PAGE: usize = 60;
+/// A chat paged further back than this many rows goes back to its newest page once the list is
+/// at the newest message again (the older rows come back from the store as the user scrolls up),
+/// so a long session in one chat does not keep rebuilding hundreds of rows on every update.
+const TRIM_ABOVE: usize = PAGE * 4;
+
+impl Engine {
+    /// A window of `rows` newest rows, as paging back that far leaves it (tests cannot page back
+    /// offline).
+    #[cfg(test)]
+    pub(crate) fn widen_window(&self, rows: usize) {
+        self.view.lock().unwrap().limit = rows;
+        self.mark(|d| d.messages = true);
+    }
+}
 /// Emoji kept in the panel's recent row.
 const RECENT_EMOJI: usize = 16;
 
@@ -818,6 +835,7 @@ impl Engine {
                     let mut v = self.view.lock().unwrap();
                     v.thread_root = Some(root.clone());
                     v.limit = PAGE;
+                    v.older_done = false;
                     v.at_bottom = true;
                 }
                 self.mark(|d| {
@@ -877,10 +895,23 @@ impl Engine {
             Cmd::AtBottom(at_bottom) => {
                 let mut v = self.view.lock().unwrap();
                 v.at_bottom = at_bottom;
-                if at_bottom && v.new_count > 0 {
+                // Back at the newest message after paging far back: the window shrinks to the
+                // newest page (the rows above the view go; the view does not move).
+                let trim = at_bottom && v.thread_root.is_none() && v.limit > TRIM_ABOVE;
+                if trim {
+                    v.limit = PAGE;
+                    v.older_done = false;
+                }
+                let new_count = at_bottom && v.new_count > 0;
+                if new_count {
                     v.new_count = 0;
-                    drop(v);
+                }
+                drop(v);
+                if new_count {
                     self.ui.new_count(0);
+                }
+                if trim {
+                    self.mark(|d| d.messages = true);
                 }
             }
             Cmd::RetrySend(id) => self.retry_send(&id).await?,

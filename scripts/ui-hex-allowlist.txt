@@ -137,9 +137,7 @@ organisms/media.slint #000000ea
 organisms/media.slint #444444cc
 organisms/meeting_card.slint #00000080
 organisms/meeting_card.slint #ffffff
-organisms/message_pane.slint #00000080
 organisms/message_pane.slint #ffffff
-organisms/message_row.slint #00000080
 organisms/message_row.slint #000000a0
 organisms/message_row.slint #3a3a63
 organisms/message_row.slint #7f85f526

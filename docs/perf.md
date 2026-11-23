@@ -16,6 +16,10 @@ IRONTEAMS_LOG=warn,ironteams=debug ironteams 2>&1 | grep -E 'render_chats|render
 - `render_messages rows=… us=…`: one rebuild of the open chat (it includes `build_msgs`).
 - `build_msgs rows=… built=… us=…`: turning stored rows into message view data; `built` is how
   many rows were parsed again (the others came from the parse memo).
+- `ui_messages rows=… written=… us=…`: the UI-thread half of the same rebuild: how many rows the
+  list holds, how many of them were converted to Slint types and written to the model (a row whose
+  data did not change is skipped, see `ui/row_fingerprint.rs`), and how long it took. After an
+  avatar, a reaction or a presence change `written` should be a handful, not `rows`.
 - `dirty marks, last minute: chats=… messages=… | backend/media.rs:870 messages x12, …`: once a
   minute, how often each part of the view was marked for a rebuild, and by which line. A minute
   without marks logs nothing.
@@ -67,6 +71,15 @@ ls -l target/release/ironteams   # bytes
 On CI the release artifact of the `Release` workflow gives the same number without a local
 release build (this machine runs out of memory on one).
 
+## Scrolling a long chat
+
+Open a chat with a few hundred messages (page up with the wheel until `rows` passes 300), then
+scroll up and down for a minute with `IRONTEAMS_LOG=warn,ironteams=debug` and look at
+`ui_messages`: `written` stays small while avatars and images decode, and `us` stays under a frame
+(16000). Compare with `IRONTEAMS_RENDERER=femtovg` to see how much of the cost is the software
+renderer. The older page now lands without the view moving (the row at the top of the view is put
+back with the user's offset) and is asked for from a screen and a half away from the top.
+
 ## Results
 
 | Measure                         | Baseline | After |
@@ -76,7 +89,19 @@ release build (this machine runs out of memory on one).
 | Idle wakeups (per minute)       |          |       |
 | Cached chat-open time (ms)      |          |       |
 | `render_messages` on a mark (µs)|          |       |
+| `ui_messages` rows written on a mark (400-row list) | 400 | 1 |
+| `ui_messages` on a mark (µs, 400-row list, debug build) | 8308 | 1490 |
 | Release binary size (MB)        |          |       |
+
+### How the `ui_messages` numbers were taken
+
+`cargo test -p ironteams --bin ironteams update_cost -- --ignored --nocapture` (2026-11-23, debug
+build, software renderer is not involved): `UiHandle::messages` with a 400-row list, mean of 20
+calls. "Before" is every row differing from the one shown, which is what every update cost before
+rows were compared (all 400 rows converted, markdown parsed again, written to the model); "after"
+is the same list with one row changed. Both figures include building the input rows (a few
+hundred microseconds), so the ratio (about 5.6x) is indicative, not exact. It is the UI-thread
+cost of one update, not an on-screen scroll measurement.
 
 ## Dependencies
 

@@ -350,6 +350,7 @@ impl Engine {
             v.current_title = title.unwrap_or_default();
             v.thread_root = None;
             v.limit = PAGE;
+            v.older_done = false;
             v.reply_to = None;
             v.editing = None;
             v.selected.clear();
@@ -495,12 +496,19 @@ impl Engine {
     }
 
     pub(super) async fn load_older(self: &Arc<Self>) -> anyhow::Result<()> {
-        let (conv, thread, limit) = {
+        let (conv, thread, limit, done) = {
             let v = self.view.lock().unwrap();
-            (v.current.clone(), v.thread_root.clone(), v.limit)
+            (
+                v.current.clone(),
+                v.thread_root.clone(),
+                v.limit,
+                v.older_done,
+            )
         };
         let Some(conv) = conv else { return Ok(()) };
-        if thread.is_some() {
+        // The list asks near the top, and now from 1.5 screens away: history that already ended
+        // is not asked for again.
+        if thread.is_some() || done {
             return Ok(());
         }
         // A window reaching a hole in the cache reads it first (chats and channels alike).
@@ -534,6 +542,7 @@ impl Engine {
                 self.ui.loading_older(false);
                 if let Ok(page) = page {
                     if page.messages.is_empty() {
+                        self.view.lock().unwrap().older_done = true;
                         return Ok(());
                     }
                     self.store_messages(&page.messages, None);
