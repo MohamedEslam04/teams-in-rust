@@ -53,14 +53,21 @@ pub(super) fn row_from_message(m: &Message, parent: Option<&str>) -> MessageRow 
 
 /// Preview text for the chat list.
 pub(crate) fn preview_of(m: &Message, me: &str) -> String {
+    // A deleted message arrives with `deletetime`, or (as a chat's last message) with its
+    // content emptied: a chat message with nothing in it is a deleted one.
+    let deleted = m.deleted
+        || (m.is_chat_content()
+            && m.content.trim().is_empty()
+            && m.files.is_empty()
+            && m.card.is_none());
     // A meeting event reads as what happened ("Meeting ended · 1h 3m"), not its "Play" link.
-    if !m.deleted
+    if !deleted
         && let Some(text) =
             super::meeting_cards::summary(&m.message_type, &m.content, &m.conversation_id)
     {
         return text;
     }
-    let text = if m.deleted {
+    let text = if deleted {
         "This message has been deleted.".to_string()
     } else {
         let p = render::plain_text(&render::parse_teams_html(&m.content)).replace('\n', " ");
@@ -495,6 +502,39 @@ mod tests {
             Some("The settings were changed.")
         );
         assert_eq!(system_text(&row("RichText/Html")), None);
+    }
+
+    #[test]
+    fn a_deleted_last_message_reads_as_deleted_in_the_chat_list() {
+        let me = "8:orgid:aaaa-1";
+        let last = |from: &str, content: &str, props: serde_json::Value| {
+            let c = teams_proto::model::conversation_from_json(&serde_json::json!({
+                "id": "19:abc@thread.v2",
+                "lastMessage": {"id": "1795001078052", "from": from, "messagetype": "RichText/Html",
+                    "composetime": "2026-11-18T11:24:38Z", "content": content, "properties": props},
+            }))
+            .unwrap();
+            c.last_message.unwrap()
+        };
+        let live = last(me, "<p>old text</p>", serde_json::json!({}));
+        assert_eq!(preview_of(&live, me), "You: old text");
+
+        // The server's last message already carries the delete time (fresh start / sync).
+        let gone = last(me, "", serde_json::json!({"deletetime": "1795001099999"}));
+        assert_eq!(preview_of(&gone, me), "You: This message has been deleted.");
+        let theirs = last(
+            "8:orgid:bbbb-2",
+            "<p>old text</p>",
+            serde_json::json!({"deletetime": "1795001099999"}),
+        );
+        assert_eq!(preview_of(&theirs, me), "This message has been deleted.");
+
+        // Emptied content without a delete time is the same thing.
+        let emptied = last(me, "", serde_json::json!({}));
+        assert_eq!(
+            preview_of(&emptied, me),
+            "You: This message has been deleted."
+        );
     }
 
     #[test]

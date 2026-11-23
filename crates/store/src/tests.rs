@@ -253,6 +253,33 @@ fn touch_conversation_only_moves_forward() {
 }
 
 #[test]
+fn refresh_preview_only_rewrites_the_newest_message() {
+    let s = Store::open_in_memory().unwrap();
+    s.upsert_conversation(&conv("c", ConvKind::Group, "t", 100))
+        .unwrap();
+    s.touch_conversation("c", 200, "You: old text", false)
+        .unwrap();
+
+    // An older message changed: the preview stays.
+    s.refresh_preview("c", 150, "This message has been deleted.")
+        .unwrap();
+    assert_eq!(
+        s.conversation("c").unwrap().unwrap().last_preview,
+        "You: old text"
+    );
+
+    // The newest one changed: the preview follows, activity and unread stay.
+    s.refresh_preview("c", 200, "You: This message has been deleted.")
+        .unwrap();
+    let got = s.conversation("c").unwrap().unwrap();
+    assert_eq!(got.last_preview, "You: This message has been deleted.");
+    assert_eq!(got.last_activity_ms, 200);
+    assert!(!got.unread);
+
+    s.refresh_preview("missing", 1, "x").unwrap();
+}
+
+#[test]
 fn search_conversations_arabic_and_case_insensitive() {
     let s = Store::open_in_memory().unwrap();
     s.upsert_conversation(&conv("ar", ConvKind::Group, "مجموعة الإدارة", 10))
