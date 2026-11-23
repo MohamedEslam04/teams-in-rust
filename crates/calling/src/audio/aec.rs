@@ -10,6 +10,7 @@
 use super::latency::{DelayEstimator, DelaySample, device_latency};
 use super::{Frame, FrameSource};
 use crate::{Error, FRAME_SAMPLES, Result, SAMPLE_RATE};
+use nnnoiseless::DenoiseState;
 use sonora::config::{
     AdaptiveDigital, EchoCanceller, GainController2, HighPassFilter, NoiseSuppression,
 };
@@ -23,13 +24,15 @@ const CHUNK: usize = FRAME_SAMPLES / 2;
 const REFERENCE_DEPTH: usize = 50;
 pub use super::latency::DEFAULT_STREAM_DELAY_MS;
 
-/// AEC + noise suppression + AGC on 48 kHz mono frames of 10 ms or 20 ms.
+/// AEC + noise suppression (WebRTC's, then RNNoise) + AGC on 48 kHz mono frames of 10 ms or 20 ms.
 ///
 /// Feed every frame that is played with [`process_render`](Self::process_render) and every
 /// microphone frame through [`process_capture`](Self::process_capture), in the order they
 /// happen. Both sides take `&mut self`: share it behind a lock, or use [`echo_cancelled`].
 pub struct AudioProcessor {
     apm: AudioProcessing,
+    /// RNNoise, after the WebRTC chain, when noise suppression is on.
+    transients: Option<Box<DenoiseState<'static>>>,
     stream_delay_ms: u32,
 }
 
@@ -81,6 +84,12 @@ impl AudioProcessor {
                 .render_config(stream)
                 .build(),
             stream_delay_ms: 0,
+            transients: options.noise_suppression.then(|| {
+                let mut st = DenoiseState::new();
+                // The first output frame carries a fade-in; spend it on silence.
+                st.process_frame(&mut [0.0; CHUNK], &[0.0; CHUNK]);
+                st
+            }),
         };
         processor.set_stream_delay_ms(DEFAULT_STREAM_DELAY_MS);
         processor
@@ -110,6 +119,25 @@ impl AudioProcessor {
         Ok(())
     }
 
+    /// Run RNNoise over one 10 ms chunk in place. WebRTC's noise suppression models steady
+    /// noise, so clicks and key presses get through it (and the gain control then lifts them);
+    /// RNNoise is a trained model that takes them out, and works on the chunk with no lookahead.
+    /// It runs after the echo canceller, which needs the unaltered microphone signal.
+    fn denoise(&mut self, chunk: &mut [i16]) {
+        let Some(rnnoise) = self.transients.as_mut() else {
+            return;
+        };
+        let mut input = [0.0f32; CHUNK];
+        for (f, &s) in input.iter_mut().zip(chunk.iter()) {
+            *f = f32::from(s);
+        }
+        let mut out = [0.0f32; CHUNK];
+        rnnoise.process_frame(&mut out, &input);
+        for (d, o) in chunk.iter_mut().zip(out) {
+            *d = o.clamp(-32768.0, 32767.0) as i16;
+        }
+    }
+
     /// Clean a microphone frame: remove the far end's echo and noise, level the gain.
     pub fn process_capture(&mut self, frame: &[i16]) -> Result<Frame> {
         check_len(frame)?;
@@ -121,6 +149,7 @@ impl AudioProcessor {
             self.apm
                 .process_capture_i16(src, dst)
                 .map_err(|e| Error::Audio(format!("echo canceller capture: {e:?}")))?;
+            self.denoise(dst);
         }
         Ok(out)
     }

@@ -48,6 +48,9 @@ hound = "3.5.1"
 # Echo cancellation (AEC3), noise suppression and AGC2: a pure Rust port of WebRTC's audio
 # processing module, so no C++ toolchain, meson or system webrtc-audio-processing is needed.
 sonora = { version = "0.3.0", optional = true }
+# RNNoise (BSD-3-Clause), pure Rust, 48 kHz native with 10 ms frames: WebRTC's noise suppression
+# models steady noise only, so clicks and key presses pass it; RNNoise removes them.
+nnnoiseless = { version = "0.5.2", default-features = false, optional = true }
 
 # --- video (video/) ---
 # H.264 through Cisco's OpenH264, built from the bundled source with the C++ compiler (no system
@@ -80,7 +83,7 @@ default = ["devices", "aec", "screen-share", "camera", "effects"]
 # endpoints build without it.
 devices = ["dep:cpal", "dep:devices"]
 # Echo cancellation, noise suppression and AGC on the microphone path (pure Rust, no system deps).
-aec = ["dep:sonora"]
+aec = ["dep:sonora", "dep:nnnoiseless"]
 # Screen sharing: the ScreenCast portal and the H.264 encoder. Runtime needs xdg-desktop-portal and
 # GStreamer's `pipewiresrc` (gstreamer1-plugins / pipewire-gstreamer). The RemoteDesktop portal
 # (remote control of a share, `video::remote_input`) is the same crate, no new library.
