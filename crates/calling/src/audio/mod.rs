@@ -29,6 +29,7 @@ mod latency;
 mod pipeline;
 mod resample;
 mod source;
+mod volume;
 
 #[cfg(feature = "aec")]
 pub use aec::{AudioProcessor, EchoCancelled, EchoReference, ProcessingOptions, echo_cancelled};
@@ -42,6 +43,7 @@ pub use latency::{
 pub use pipeline::{spawn_capture_encoder, spawn_decoder_playback};
 pub use resample::InputConverter;
 pub use source::{FrameSink, FrameSource, Paced, ToneSource, WavSink, WavSource};
+pub use volume::{gain, output_volume, scale, set_output_volume};
 
 /// One 20 ms mono frame: [`FRAME_SAMPLES`](crate::FRAME_SAMPLES) samples at 48 kHz.
 pub type Frame = Vec<i16>;
