@@ -857,3 +857,29 @@ the meeting's own time: from the "Meeting started" message of the meeting chat (
 - The start is read once, when the call connects (a started message that arrives later is missed,
   the timer then counts from our join). A start in the future of our join (clock skew) or over 24 h
   old (a start whose end was never seen) is ignored: `call::head_start`.
+
+## A running call's live state, read before joining (verified 2026-11-23)
+
+Captured live on a scheduled meeting's chat (`19:meeting_…@thread.v2`) with its call going on.
+`GET /v1/users/ME/conversations/<id>?view=msnp24Equivalent` (chat service) carries it as
+`threadProperties["awareness_conversationLiveState:0"]`, a JSON **string**:
+
+```text
+{"conversationUrl": "https://api.flightproxy.teams.microsoft.com/api/v2/ep/conv-<region>.conv.skype.com/conv/<id>?i=<ip>&e=<n>",
+ "conversationId": "<guid>", "groupCallInitiator": "8:orgid:<guid>", "expiration": <unix seconds>,
+ "status": "Active", "callStartTime": "<RFC 3339, seven fractional digits, Z>",
+ "conversationType": "scheduledMeeting", "isHostless": true,
+ "meetingInfo": {"organizerId": "<guid>", "tenantId": "<guid>", "isBroadcast": false},
+ "meetingData": {"meetingCode": "<digits>", "passcode": "<text>"}, "iCalUid": "<hex>"}
+```
+
+- `callStartTime` is the running meeting's real start: the chat header's live-call strip and the
+  call header's timer count from it, and fall back to the "Meeting started" message (above) when the
+  chat's live state was not read or has none (`teams_proto::live_call`, `backend/ongoing_call.rs`).
+  The timer's 24 h and clock-skew rules (`call::head_start`) apply to it as well.
+- It names the initiator, not who is in the call: no participant list is in it, and no request is
+  known that returns a running call's roster without joining it.
+- Next to it: `threadProperties.hasMoreAwareness`, and `threadProperties.ongoingCallChatEnforcement`
+  (`"true"`/`"false"`), which non-meeting chats carry too, so it is no sign of a call. Channel
+  threads (`@thread.tacv2`) carry `threadProperties.rosterSummary` (shape not captured).
+- Not yet seen: the live state of a group chat's call, a 1:1 call or a channel's Meet now.

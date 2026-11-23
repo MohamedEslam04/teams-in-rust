@@ -2,20 +2,23 @@
 //!
 //! Two shapes carry the same "live state" of a conversation's call:
 //!
-//! - the chat service's `GET /v1/users/ME/conversations/<id>?view=msnp24Equivalent`: a property
-//!   whose name starts with `awareness_conversationLiveState`, under `properties` or
-//!   `threadProperties`, holding (as a JSON string or an object) `status` (`Active` while the call
-//!   runs), `conversationUrl`, `conversationId`, `conversationType`, `expiration`,
-//!   `meetingInfo {organizerId, tenantId}` and `meetingData {meetingCode, passcode}`. Source:
-//!   rusty-teams `crates/calling/src/meeting.rs` (`fetch_live_meeting`, MIT), facts only.
+//! - the chat service's `GET /v1/users/ME/conversations/<id>?view=msnp24Equivalent`:
+//!   `threadProperties["awareness_conversationLiveState:0"]`, a JSON string (verified live on
+//!   2026-11-23 for a scheduled meeting's chat, `docs/protocol-calls.md`) with `conversationUrl`,
+//!   `conversationId`, `groupCallInitiator` (an MRI), `expiration` (unix seconds), `status`
+//!   (`Active` while the call runs), `callStartTime` (RFC 3339, seven fractional digits),
+//!   `conversationType` (`scheduledMeeting`), `isHostless`, `meetingInfo {organizerId, tenantId,
+//!   isBroadcast}`, `meetingData {meetingCode, passcode}` and `iCalUid`. The name's prefix is what
+//!   is matched (rusty-teams `crates/calling/src/meeting.rs`, MIT, facts only), under
+//!   `properties` or `threadProperties`, as a string or an object.
 //! - CSA `GET /api/csa/api/v1/teams/users/me` `chats[].activeMeetup`, the same fields plus
-//!   `groupCallInitiator` (an MRI) and `messageId` (see
-//!   `crates/calling/tests/fixtures/signaling/csa_meeting_chat_tfl.json`; verified live for a
-//!   meeting chat, `docs/protocol-calls.md` §3).
+//!   `messageId` (see `crates/calling/tests/fixtures/signaling/csa_meeting_chat_tfl.json`;
+//!   verified live for a meeting chat, `docs/protocol-calls.md` §3).
 //!
-//! Neither names who is in the call: the only person either one names is the initiator, and only
-//! the CSA shape is known to carry it. No request that lists a running call's participants without
-//! joining it is known (the roster only comes with the join, `calling::signaling::roster`).
+//! Neither names who is in the call beyond the initiator. No request that lists a running call's
+//! participants without joining it is known (the roster only comes with the join,
+//! `calling::signaling::roster`). `threadProperties.ongoingCallChatEnforcement` is on chats
+//! without a call too, so it says nothing about one.
 
 use crate::chatsvc::encode_conversation;
 use crate::time::parse_iso_ms;
@@ -38,8 +41,12 @@ pub struct LiveCall {
     pub conversation_id: Option<String>,
     /// e.g. `scheduledMeeting`.
     pub conversation_type: Option<String>,
-    /// Who started the call (an MRI), when the state names them (CSA `activeMeetup`).
+    /// Who started the call (an MRI), when the state names them (`groupCallInitiator`).
     pub initiator: Option<String>,
+    /// When the call started (Unix ms), from `callStartTime`.
+    pub started_ms: Option<i64>,
+    /// `isHostless`: the call goes on without its organizer.
+    pub hostless: Option<bool>,
     /// The reply chain the call belongs to (`"0"` for a meeting chat), when it says.
     pub message_id: Option<String>,
     pub tenant_id: Option<String>,
@@ -96,6 +103,8 @@ pub fn parse_live_state(state: &Value) -> Option<LiveCall> {
         conversation_id: text(&state, "/conversationId"),
         conversation_type: text(&state, "/conversationType"),
         initiator: text(&state, "/groupCallInitiator"),
+        started_ms: text(&state, "/callStartTime").and_then(|t| parse_iso_ms(&t)),
+        hostless: state["isHostless"].as_bool(),
         message_id: text(&state, "/messageId"),
         tenant_id: text(&state, "/meetingInfo/tenantId"),
         organizer_id: text(&state, "/meetingInfo/organizerId"),
@@ -194,13 +203,17 @@ mod tests {
     use serde_json::json;
 
     /// A chat service conversation with its live state as a JSON string (made-up ids).
+    /// A scheduled meeting's chat with a call going on, in the shape captured live on 2026-11-23
+    /// (every id, code and passcode made up).
     const CONVERSATION: &str = r#"{
-        "id": "19:made-up-group@thread.v2",
+        "id": "19:meeting_TWFkZVVwTWVldGluZw@thread.v2",
         "type": "Conversation",
         "properties": {"consumptionhorizon": "1;2;3"},
         "threadProperties": {
-            "topic": "Made-up group",
-            "awareness_conversationLiveState": "{\"conversationUrl\":\"https://conv.example.invalid/conv/abc\",\"conversationId\":\"conv-1\",\"status\":\"Active\",\"expiration\":\"2099-01-01T00:00:00Z\",\"conversationType\":\"groupCall\",\"meetingInfo\":{\"organizerId\":\"org-1\",\"tenantId\":\"tenant-1\"},\"meetingData\":{\"meetingCode\":\"123\",\"passcode\":\"pw\"}}"
+            "awareness_conversationLiveState:0": "{\"conversationUrl\":\"https://api.flightproxy.teams.microsoft.com/api/v2/ep/conv-example.conv.skype.com/conv/MadeUpConversation?i=10-0-0-1&e=638000000000000000\",\"conversationId\":\"00000000-0000-0000-0000-0000000000c1\",\"groupCallInitiator\":\"8:orgid:00000000-0000-0000-0000-0000000000a1\",\"expiration\":4070908800,\"status\":\"Active\",\"callStartTime\":\"2026-11-23T07:02:26.9202488Z\",\"conversationType\":\"scheduledMeeting\",\"isHostless\":true,\"meetingInfo\":{\"organizerId\":\"00000000-0000-0000-0000-0000000000a2\",\"tenantId\":\"00000000-0000-0000-0000-0000000000f1\",\"isBroadcast\":false},\"meetingData\":{\"meetingCode\":\"123456789\",\"passcode\":\"MadeUpPass\"},\"iCalUid\":\"0123abcd\"}",
+            "hasMoreAwareness": "false",
+            "ongoingCallChatEnforcement": "false",
+            "topic": "Made-up meeting"
         }
     }"#;
 
@@ -216,17 +229,35 @@ mod tests {
         let v: Value = serde_json::from_str(CONVERSATION).unwrap();
         let c = parse_conversation_live_call(&v).unwrap();
         assert!(c.active);
-        assert_eq!(
-            c.conversation_url.as_deref(),
-            Some("https://conv.example.invalid/conv/abc")
+        assert!(
+            c.conversation_url
+                .as_deref()
+                .unwrap()
+                .starts_with("https://api.flightproxy.teams.microsoft.com/api/v2/ep/")
         );
-        assert_eq!(c.conversation_id.as_deref(), Some("conv-1"));
-        assert_eq!(c.conversation_type.as_deref(), Some("groupCall"));
-        assert_eq!(c.organizer_id.as_deref(), Some("org-1"));
-        assert_eq!(c.tenant_id.as_deref(), Some("tenant-1"));
-        assert_eq!(c.meeting_code.as_deref(), Some("123"));
-        assert_eq!(c.passcode.as_deref(), Some("pw"));
-        assert_eq!(c.initiator, None);
+        assert_eq!(
+            c.conversation_id.as_deref(),
+            Some("00000000-0000-0000-0000-0000000000c1")
+        );
+        assert_eq!(c.conversation_type.as_deref(), Some("scheduledMeeting"));
+        assert_eq!(
+            c.organizer_id.as_deref(),
+            Some("00000000-0000-0000-0000-0000000000a2")
+        );
+        assert_eq!(
+            c.tenant_id.as_deref(),
+            Some("00000000-0000-0000-0000-0000000000f1")
+        );
+        assert_eq!(c.meeting_code.as_deref(), Some("123456789"));
+        assert_eq!(c.passcode.as_deref(), Some("MadeUpPass"));
+        assert_eq!(
+            c.initiator.as_deref(),
+            Some("8:orgid:00000000-0000-0000-0000-0000000000a1")
+        );
+        assert_eq!(c.hostless, Some(true));
+        // 2026-11-23T07:02:26.920Z: seven fractional digits, read to the millisecond.
+        assert_eq!(c.started_ms, Some(1_795_417_346_920));
+        // `expiration` in unix seconds.
         assert_eq!(c.expires_ms, Some(4_070_908_800_000));
         assert!(c.is_live(1_800_000_000_000));
         assert!(!c.is_live(4_070_908_800_001));
@@ -281,7 +312,8 @@ mod tests {
             "properties.consumptionhorizon",
             "properties.ongoingCallInfo",
             "threadProperties.topic",
-            "threadProperties.awareness_conversationLiveState",
+            "threadProperties.hasMoreAwareness",
+            "threadProperties.awareness_conversationLiveState:0",
         ] {
             assert!(c.property_names.iter().any(|n| n == name), "{name}");
         }
@@ -291,7 +323,8 @@ mod tests {
             [
                 "activeMeetup",
                 "properties.ongoingCallInfo",
-                "threadProperties.awareness_conversationLiveState"
+                "threadProperties.awareness_conversationLiveState:0",
+                "threadProperties.ongoingCallChatEnforcement",
             ]
         );
         // A string value stays as the service sent it; an object is written as JSON.
