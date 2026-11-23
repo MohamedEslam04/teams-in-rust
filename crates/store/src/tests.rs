@@ -257,7 +257,8 @@ fn refresh_preview_only_rewrites_the_newest_message() {
     let s = Store::open_in_memory().unwrap();
     s.upsert_conversation(&conv("c", ConvKind::Group, "t", 100))
         .unwrap();
-    s.touch_conversation("c", 200, "You: old text", false).unwrap();
+    s.touch_conversation("c", 200, "You: old text", false)
+        .unwrap();
 
     // An older message changed: the preview stays.
     s.refresh_preview("c", 150, "This message has been deleted.")
