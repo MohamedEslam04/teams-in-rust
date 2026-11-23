@@ -5,8 +5,12 @@
 //! * [`test_sound`], [`mic_level`] and [`loopback`] drive a device for the settings page.
 //! * [`DevicePrefs`] is the chosen-device record the UI persists.
 //!
-//! Ids: audio ids are cpal's `device.id()` (for example `alsa:default` or
-//! `alsa:front:CARD=PCH,DEV=0`), stable across runs. A camera is identified by its USB/PCI
+//! Ids: on Linux with a sound server (PulseAudio or PipeWire) audio ids are `pulse:<node name>`
+//! (`pulse:alsa_output.pci-0000_00_1f.3.analog-stereo`), listed by their descriptions; streams
+//! go through the server, never to the raw ALSA cards. An id saved by an older version
+//! (`alsa:front:CARD=PCH,DEV=0`) is not in that list and means the default device. Elsewhere,
+//! and without a server, audio ids are cpal's `device.id()` (for example `alsa:default`),
+//! stable across runs. A camera is identified by its USB/PCI
 //! bus string ([`Camera::bus`]); `/dev/videoN` numbers can change after a replug or reboot.
 //! In a Flatpak sandbox cameras come through the PipeWire camera portal instead of
 //! `/dev/video*`; that path is not implemented here.
@@ -16,12 +20,16 @@ mod audio;
 #[cfg(all(feature = "cameras", target_os = "linux"))]
 mod cameras;
 mod dsp;
+#[cfg(all(feature = "audio", any(target_os = "linux", test)))]
+mod names;
 mod prefs;
+#[cfg(all(feature = "audio", target_os = "linux"))]
+mod pulse;
 
 #[cfg(feature = "audio")]
 pub use audio::{
     DeviceStream, MicLevelStream, audio_inputs, audio_outputs, loopback, mic_level,
-    open_input_stream, open_output_stream, test_sound,
+    open_input_stream, open_output_stream, pick_audio_device, test_sound,
 };
 #[cfg(all(feature = "cameras", target_os = "linux"))]
 pub use cameras::cameras;

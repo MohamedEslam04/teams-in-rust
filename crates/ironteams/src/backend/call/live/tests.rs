@@ -321,3 +321,65 @@ fn pushes_route_to_the_active_call_or_the_subscribers() {
     hub.route(push("sess-1"));
     assert!(unmatched.try_recv().is_ok(), "no active call: unmatched");
 }
+fn audio_dev(id: &str, name: &str, is_default: bool) -> devices::AudioDevice {
+    devices::AudioDevice {
+        id: id.into(),
+        name: name.into(),
+        is_default,
+        channels: 2,
+        sample_rates: vec![48_000],
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_picker_starts_with_a_default_that_names_the_system_default() {
+    let outs = [
+        audio_dev("pulse:analog", "Built-in Audio Analog Stereo", false),
+        audio_dev("pulse:hdmi", "GA107 Digital Stereo (HDMI)", false),
+        audio_dev("pulse:bt", "soundcore R50i", true),
+    ];
+    let (rows, selected) = device_rows(&outs, None);
+    let names: Vec<_> = rows.iter().map(|d| d.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "Default (soundcore R50i)",
+            "Built-in Audio Analog Stereo",
+            "GA107 Digital Stereo (HDMI)",
+            "soundcore R50i"
+        ]
+    );
+    // Nothing chosen (or an id the list no longer has): the default row follows the system.
+    assert_eq!((selected, rows[0].id.clone()), (0, None));
+    assert_eq!(rows[3].id.as_deref(), Some("pulse:bt"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_device_chosen_in_settings_is_selected_after_the_default_row() {
+    let outs = [
+        audio_dev("pulse:analog", "Built-in Audio Analog Stereo", false),
+        audio_dev("pulse:bt", "soundcore R50i", true),
+    ];
+    let (rows, selected) = device_rows(&outs, Some(&outs[0]));
+    assert_eq!(rows[selected].name, "Built-in Audio Analog Stereo");
+    // With no default flagged the row is just "Default".
+    let (rows, _) = device_rows(&outs[..1], None);
+    assert_eq!(rows[0].name, "Default");
+    // No devices at all still gives the Default row, which opens the system default.
+    let (rows, selected) = device_rows(&[], None);
+    assert_eq!((rows.len(), selected), (1, 0));
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn off_linux_the_picker_lists_the_devices_with_the_default_selected() {
+    let outs = [
+        audio_dev("a", "Speakers", false),
+        audio_dev("b", "Headset", true),
+    ];
+    let (rows, selected) = device_rows(&outs, None);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[selected].name, "Headset");
+}

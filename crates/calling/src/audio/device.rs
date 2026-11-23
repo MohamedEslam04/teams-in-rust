@@ -4,7 +4,7 @@ use super::latency::device_latency;
 use super::resample::OutputConverter;
 use super::{Frame, FrameSink, FrameSource, InputConverter, JitterBuffer};
 use crate::{Error, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -41,29 +41,18 @@ fn device_name(d: &Device) -> String {
 }
 
 fn list(input: bool) -> Result<Vec<DeviceInfo>> {
-    let host = cpal::default_host();
-    let default = if input {
-        host.default_input_device()
+    let list = if input {
+        devices::audio_inputs()
     } else {
-        host.default_output_device()
+        devices::audio_outputs()
     };
-    let default_id = default.as_ref().map(device_id);
-    let devices = host.devices().map_err(|e| dev_err("list devices", e))?;
-    Ok(devices
-        .filter(|d| {
-            if input {
-                d.supports_input()
-            } else {
-                d.supports_output()
-            }
-        })
-        .map(|d| {
-            let id = device_id(&d);
-            DeviceInfo {
-                is_default: default_id.as_deref() == Some(id.as_str()),
-                name: device_name(&d),
-                id,
-            }
+    Ok(list
+        .map_err(device_err)?
+        .into_iter()
+        .map(|d| DeviceInfo {
+            id: d.id,
+            name: d.name,
+            is_default: d.is_default,
         })
         .collect())
 }
@@ -76,50 +65,17 @@ pub fn list_output_devices() -> Result<Vec<DeviceInfo>> {
     list(false)
 }
 
-/// The default device, or the one whose id/name equals `wanted` (exact match first, then a
-/// case-insensitive substring).
-fn pick_device(wanted: Option<&str>, input: bool) -> Result<Device> {
-    let host = cpal::default_host();
-    let kind = if input { "input" } else { "output" };
-    let Some(wanted) = wanted else {
-        let d = if input {
-            host.default_input_device()
-        } else {
-            host.default_output_device()
-        };
-        return d.ok_or_else(|| Error::Audio(format!("no default {kind} device")));
-    };
-    let candidates: Vec<(String, String, Device)> = host
-        .devices()
-        .map_err(|e| dev_err("list devices", e))?
-        .filter(|d| {
-            if input {
-                d.supports_input()
-            } else {
-                d.supports_output()
-            }
-        })
-        .map(|d| (device_id(&d), device_name(&d), d))
-        .collect();
-    let lower = wanted.to_lowercase();
-    let pos = candidates
-        .iter()
-        .position(|(id, name, _)| id == wanted || name == wanted)
-        .or_else(|| {
-            candidates.iter().position(|(id, name, _)| {
-                id.to_lowercase().contains(&lower) || name.to_lowercase().contains(&lower)
-            })
-        });
-    match pos {
-        Some(i) => Ok(candidates
-            .into_iter()
-            .nth(i)
-            .expect("index from position")
-            .2),
-        None => Err(Error::Audio(format!(
-            "no {kind} device matching {wanted:?}"
-        ))),
+fn device_err(e: devices::Error) -> Error {
+    match e {
+        devices::Error::Audio(m) => Error::Audio(m),
+        other => Error::Audio(other.to_string()),
     }
+}
+
+/// The default device, or the one whose id/name matches `wanted`. On Linux this is the sound
+/// server's sink or source (see `devices::pick_audio_device`), not a raw ALSA card.
+fn pick_device(wanted: Option<&str>, input: bool) -> Result<Device> {
+    devices::pick_audio_device(wanted, input).map_err(device_err)
 }
 
 fn log_stream_error(e: cpal::Error) {

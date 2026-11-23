@@ -42,6 +42,8 @@ webpki-roots = "1.0.12"
 # `opus` bundles libopus via opusic-sys (cmake), so no system opus-devel is needed.
 opus = "0.4.0"
 cpal = { version = "0.18.2", optional = true }
+# Device lists and the choice of device (on Linux through the sound server), shared with Settings.
+devices = { version = "0.0.0", path = "../devices", default-features = false, features = ["audio"], optional = true }
 hound = "3.5.1"
 # Echo cancellation (AEC3), noise suppression and AGC2: a pure Rust port of WebRTC's audio
 # processing module, so no C++ toolchain, meson or system webrtc-audio-processing is needed.
@@ -76,7 +78,7 @@ rcgen = "0.14.10"
 default = ["devices", "aec", "screen-share", "camera", "effects"]
 # Microphone/speaker I/O through cpal (needs alsa-lib-devel on Linux). The Opus codec, WAV and tone
 # endpoints build without it.
-devices = ["dep:cpal"]
+devices = ["dep:cpal", "dep:devices"]
 # Echo cancellation, noise suppression and AGC on the microphone path (pure Rust, no system deps).
 aec = ["dep:sonora"]
 # Screen sharing: the ScreenCast portal and the H.264 encoder. Runtime needs xdg-desktop-portal and

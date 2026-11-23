@@ -10,13 +10,15 @@ publish = false
 [features]
 default = ["audio", "cameras"]
 # Real audio I/O through cpal (ALSA on Linux; PipeWire serves ALSA clients).
-audio = ["dep:cpal"]
+audio = ["dep:cpal", "dep:serde_json"]
 # V4L2 camera discovery through sysfs and read-only ioctls (Linux; no system library). Windows
 # and macOS list no cameras: calls use the default one.
 cameras = ["dep:libc"]
 
 [dependencies]
 cpal = { version = "0.18.2", optional = true }
+# Parses `pactl -f json`, the sound server's device names (Linux).
+serde_json = { version = "1.0.154", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"
 
