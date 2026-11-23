@@ -209,6 +209,39 @@ fn renegotiation_acknowledgement_and_unknown_callbacks() {
     assert_eq!(offer.blob, "v=0\r\nreoffer\r\n");
     assert!(links.get("mediaAnswer").is_some());
 
+    // A media server's restart offer may put the new leg's links beside the media holder
+    // (rusty-teams `nested_links`): they are kept, and the holder's own `mediaAnswer` wins.
+    let body = json!({
+        "mediaNegotiation": {
+            "mediaContent": {"contentType": "application/sdp-ngc-1.0", "blob": "v=0\r\nrestart\r\n"},
+            "links": {"mediaAnswer": "https://cc.example.skype.com/ma2"},
+        },
+        "callLegInfo": {"links": {
+            "mediaAnswer": "https://cc.example.skype.com/other",
+            "mediaRenegotiation": "https://cc.example.skype.com/mr2",
+            "callLeg": "https://cc.example.skype.com/leg2",
+        }},
+    });
+    let (_, ev) = parse_call_event(&cb("call/mediaRenegotiation/"), &body).unwrap();
+    let CallEvent::MediaRenegotiation { links, .. } = ev else {
+        panic!("{ev:?}")
+    };
+    assert_eq!(
+        links.get("mediaAnswer"),
+        Some("https://cc.example.skype.com/ma2")
+    );
+    assert_eq!(
+        links.get("mediaRenegotiation"),
+        Some("https://cc.example.skype.com/mr2")
+    );
+    assert_eq!(
+        links.get("callLeg"),
+        Some("https://cc.example.skype.com/leg2")
+    );
+    // Only leg-shaped link objects count.
+    let links = calling::invitation::nested_links(&json!({"x": {"links": {"self": "https://a"}}}));
+    assert!(links.0.is_empty());
+
     let body = json!({"mediaAcknowledgement": {"code": 200, "subCode": 10109}, "links": {"callLeg": "https://x"}});
     let (_, ev) = parse_call_event(&cb("call/mediaAcknowledgement/"), &body).unwrap();
     assert!(

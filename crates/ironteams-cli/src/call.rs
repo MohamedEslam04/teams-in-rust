@@ -623,7 +623,7 @@ async fn run_call(
                                     dump(dump_dir, "our-reanswer", &ans);
                                     if let Some(url) = l.get("mediaAnswer") {
                                         match ngc.send_media_answer(&s, url, &modalities, &SdpBlob::ngc(ans)).await {
-                                            Ok(()) => {
+                                            Ok(_) => {
                                                 println!("renegotiation answered");
                                                 // Teams ignored the first state update after admission
                                                 // (mautrix-teams), so publish the mute state again.

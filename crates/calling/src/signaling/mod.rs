@@ -584,16 +584,20 @@ impl NgcClient {
             .map(drop)
     }
 
-    /// Sends our answer to a media offer on its `mediaAnswer` link.
+    /// Sends our answer to a media offer on its `mediaAnswer` link; returns the call leg links its
+    /// response names (none for most answers).
     pub async fn send_media_answer(
         &self,
         s: &CallSession,
         url: &str,
         modalities: &[Modality],
         answer: &SdpBlob,
-    ) -> Result<()> {
+    ) -> Result<Links> {
         let body = bodies::media_answer_body(s, modalities, answer);
-        self.post("media_answer", s, url, &body).await.map(drop)
+        let r = self.post("media_answer", s, url, &body).await?;
+        // After a media server's restart its answer may name the new leg's links (rusty-teams
+        // absorbs them as the leg's); later re-offers go there.
+        Ok(crate::invitation::nested_links(&r.body))
     }
 
     /// Leaves the call: the conversation's `leave` link when there is one, else ends the leg
