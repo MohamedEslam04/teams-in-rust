@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Platforms and requirements - IronTeams</title>
+  <meta name="description" content="What works on Linux, Windows and macOS, and what each system needs: keyring, ffmpeg, GStreamer and a browser for web apps.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html">Install</a>
+        <a href="getting-started.html">Getting started</a>
+        <a href="platforms.html" aria-current="page">Platforms</a>
+        <a href="troubleshooting.html">Troubleshooting</a>
+        <a href="faq.html">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <div class="doc">
+      <div class="wrap">
+        <nav class="toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+          <li><a href="#status">What has been tried</a></li>
+          <li><a href="#table">Feature by system</a></li>
+          <li><a href="#needs">What you need</a></li>
+          <li><a href="#codec">Why ffmpeg and GStreamer</a></li>
+          </ul>
+        </nav>
+        <div class="prose">
+
+          <h1>Platforms and requirements</h1>
+          <p class="lead">IronTeams runs on Linux, Windows and macOS. Linux is the one used every day.</p>
+
+          <h2 id="status">What has been tried</h2>
+          <p>CI runs clippy and the whole test suite on Linux, Windows (x86_64) and macOS (Apple Silicon and Intel) on every push. The CI runners have no screen, camera or microphone, so anything that needs one is only checked to build there.</p>
+          <div class="note note--warn"><p>Daily use is on Linux (KDE Plasma, Wayland). Nothing has been tried on real Windows or macOS hardware yet.</p></div>
+          <p>The downloads are for 64-bit systems: x86_64 on Linux and Windows, and Apple Silicon or Intel on macOS.</p>
+
+          <h2 id="table">Feature by system</h2>
+          <p>&ldquo;Compile-only&rdquo; means the code builds on that system but nobody has run it there with the hardware.</p>
+          <div class="table-wrap"><table>
+            <caption>From the project README. Scroll sideways on a narrow screen.</caption>
+            <thead><tr><th scope="col">Feature</th><th scope="col">Linux</th><th scope="col">Windows</th><th scope="col">macOS</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Chat, channels, calendar, files, search, settings</th><td>works</td><td>builds, tests pass</td><td>builds, tests pass</td></tr>
+              <tr><th scope="row">Sign-in token storage</th><td>Secret Service (KWallet, GNOME Keyring)</td><td>Credential Manager</td><td>login Keychain</td></tr>
+              <tr><th scope="row">Desktop notifications</th><td>works (actions, markup)</td><td>toasts with buttons</td><td>banners, no buttons</td></tr>
+              <tr><th scope="row">Tray icon with unread badge</th><td>StatusNotifierItem and launcher badge</td><td>Slint tray icon, compile-only</td><td>Slint menu-bar icon, compile-only</td></tr>
+              <tr><th scope="row">Start at login</th><td>XDG autostart</td><td>Run key</td><td>LaunchAgent</td></tr>
+              <tr><th scope="row">Spell check</th><td>system Hunspell</td><td>bundled en_US and ar</td><td>bundled en_US and ar, <code>~/Library/Spelling</code></td></tr>
+              <tr><th scope="row">Voice messages: record, play</th><td>works</td><td>compile-only (cpal/WASAPI)</td><td>compile-only (cpal/CoreAudio)</td></tr>
+              <tr><th scope="row">Voice messages: encode</th><td>ffmpeg</td><td>Media Foundation (tested in CI), else ffmpeg</td><td>AudioToolbox (tested in CI)</td></tr>
+              <tr><th scope="row">Call audio</th><td>works</td><td>compile-only</td><td>compile-only</td></tr>
+              <tr><th scope="row">Camera</th><td>Camera portal or V4L2 through GStreamer</td><td>compile-only: GStreamer <code>mfvideosrc</code>, needs the GStreamer runtime</td><td>compile-only: GStreamer <code>avfvideosrc</code>, needs the GStreamer runtime</td></tr>
+              <tr><th scope="row">Screen sharing</th><td>ScreenCast portal through GStreamer</td><td>compile-only: main screen via <code>d3d11screencapturesrc</code>, no picker, needs GStreamer</td><td>compile-only: main screen via <code>avfvideosrc</code>, no picker, needs GStreamer</td></tr>
+              <tr><th scope="row">Remote control of a share</th><td>RemoteDesktop portal</td><td>not yet (the call window says so)</td><td>not yet (the call window says so)</td></tr>
+              <tr><th scope="row">Video clips</th><td>ffmpeg</td><td>needs ffmpeg installed</td><td>needs ffmpeg installed</td></tr>
+              <tr><th scope="row">Web apps (web host)</th><td>Chromium-family browser</td><td>Edge or Chrome, compile-only</td><td>Chrome, Edge, Brave&hellip; in <code>/Applications</code>, compile-only</td></tr>
+              <tr><th scope="row">Screen-locked presence (Away)</th><td><code>org.freedesktop.ScreenSaver</code></td><td>not detected</td><td>not detected</td></tr>
+            </tbody>
+          </table></div>
+
+          <h2 id="needs">What you need</h2>
+          <h3>Linux</h3>
+          <ul>
+            <li>A Secret Service provider (GNOME Keyring or KWallet) to keep your sign-in.</li>
+            <li><code>xdg-desktop-portal</code> and an emoji font help, and are recommended.</li>
+            <li><code>ffmpeg</code> for recording voice messages and for video clips.</li>
+            <li>A Chromium-family browser for app tabs (the web host).</li>
+          </ul>
+          <h3>Windows</h3>
+          <ul>
+            <li>The <a href="https://gstreamer.freedesktop.org/download/">GStreamer runtime</a> for camera and screen sharing.</li>
+            <li><code>ffmpeg</code> for video clips.</li>
+            <li>Edge or Chrome for app tabs.</li>
+          </ul>
+          <h3>macOS</h3>
+          <ul>
+            <li>The <a href="https://gstreamer.freedesktop.org/download/">GStreamer runtime</a> for camera and screen sharing.</li>
+            <li><code>ffmpeg</code> for video clips.</li>
+            <li>Chrome, Edge or Brave in <code>/Applications</code> for app tabs.</li>
+          </ul>
+
+          <h2 id="codec">Why ffmpeg and GStreamer</h2>
+          <p>IronTeams is GPL-3.0-or-later and must not link fdk-aac. So Linux runs the system <code>ffmpeg</code> for the AAC encoder, while Windows and macOS use the encoder that comes with the system. Media Foundation is loaded at run time, so Windows N editions without the Media Feature Pack still start and fall back to <code>ffmpeg</code>.</p>
+          <p>GStreamer is not bundled. <code>IRONTEAMS_GST_LAUNCH</code> points IronTeams at another <code>gst-launch-1.0</code>.</p>
+
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>

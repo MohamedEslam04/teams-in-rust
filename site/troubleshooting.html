@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Troubleshooting - IronTeams</title>
+  <meta name="description" content="Write a local problem report, turn on logging, use the environment variables and fix common first-run problems in IronTeams.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html">Install</a>
+        <a href="getting-started.html">Getting started</a>
+        <a href="platforms.html">Platforms</a>
+        <a href="troubleshooting.html" aria-current="page">Troubleshooting</a>
+        <a href="faq.html">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <div class="doc">
+      <div class="wrap">
+        <nav class="toc" aria-label="On this page">
+          <strong>On this page</strong>
+          <ul>
+          <li><a href="#report">Report a problem</a></li>
+          <li><a href="#env">Environment variables</a></li>
+          <li><a href="#common">Common problems</a></li>
+          <li><a href="#issue">Open an issue</a></li>
+          </ul>
+        </nav>
+        <div class="prose">
+
+          <h1>Troubleshooting</h1>
+          <p class="lead">IronTeams collects no telemetry and never uploads anything. When something breaks, you write a local bundle, read it, and attach it to an issue yourself.</p>
+
+          <h2 id="report">Report a problem</h2>
+          <div class="code"><pre><code>ironteams --report-problem</code></pre></div>
+          <p>The same command is in the launcher&rsquo;s right-click menu as <strong>Report a problem</strong>. To include a log, run IronTeams with logging on, then write the report with <code>ironteams-cli</code>:</p>
+          <div class="code"><pre><code>IRONTEAMS_LOG=ironteams=debug ironteams 2> ironteams.log
+ironteams-cli diag --log ironteams.log</code></pre></div>
+          <p>The <code>.tar.gz</code> goes to your Downloads folder (<code>--out PATH</code> changes that). It holds the IronTeams version, OS and desktop facts, the non-secret config and the logs you pass in. Tokens, cookies, e-mail addresses, MRIs, conversation ids, GUIDs (tenant ids included), tenant domains and user names are replaced by placeholders. The keyring and the message cache are never read.</p>
+          <div class="note"><p>Read the bundle before you attach it. It is a plain archive on your disk.</p></div>
+
+          <h2 id="env">Environment variables</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">Variable</th><th scope="col">Effect</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>IRONTEAMS_RENDERER=femtovg</code></th><td>GPU renderer instead of the default software renderer (uses more memory). It beats the choice in Settings &rsaquo; General &rsaquo; Performance.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_LOG=ironteams=info,teams_proto=info</code></th><td>Logging to stderr. Tokens are never logged.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_DEMO=1</code></th><td>Offline demo with sample data: no account, no network.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_HOME=&lt;dir&gt;</code></th><td>Keep config, cache and data under <code>&lt;dir&gt;</code>.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_GST_LAUNCH</code></th><td>Use another <code>gst-launch-1.0</code> for camera and screen sharing.</td></tr>
+            </tbody>
+          </table></div>
+          <p>The old <code>KELMA_*</code> names still work when the <code>IRONTEAMS_*</code> one is not set. IronTeams was called kelma before. On the first start after the rename, the old <code>kelma</code> config, data and cache folders move to <code>ironteams</code>, and a saved sign-in under the old keyring name moves to the new one when it is first read, so you stay signed in.</p>
+
+          <h2 id="common">Common problems</h2>
+          <h3>Windows SmartScreen warns about the installer</h3>
+          <p>The installer is not signed yet. Choose <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+          <h3>macOS will not open the .pkg</h3>
+          <p>The package is not signed or notarized yet. Open it with right click, then <strong>Open</strong>.</p>
+          <h3>Recording a voice message says &ldquo;Install ffmpeg&rdquo;</h3>
+          <p>IronTeams runs <code>ffmpeg</code> to encode recordings. Install <code>ffmpeg</code>. In the Flatpak the sandbox has no <code>ffmpeg</code>, so recording does not work there yet, while playing voice messages does.</p>
+          <h3>Camera or screen sharing does not work on Windows or macOS</h3>
+          <p>Install the <a href="https://gstreamer.freedesktop.org/download/">GStreamer runtime</a>. Both are compile-only on these systems for now. See <a href="platforms.html">Platforms and requirements</a>.</p>
+          <h3>It asks me to sign in again every time (Linux)</h3>
+          <p>IronTeams keeps the refresh token in the Secret Service. Check that GNOME Keyring or KWallet runs and is unlocked.</p>
+          <h3>It does not update</h3>
+          <p>Only copies installed from <code>Setup.exe</code>, the <code>.pkg</code> or the AppImage update themselves. Look at Settings &rsaquo; About &rsaquo; Updates, and press <strong>Check now</strong>. If a new version failed to start three times, automatic updates pause and a banner offers to go back to the previous version.</p>
+          <h3>It uses more memory than I expected</h3>
+          <p>The default is the software renderer. <code>IRONTEAMS_RENDERER=femtovg</code> switches to the GPU renderer, which uses more memory.</p>
+
+          <h2 id="issue">Open an issue</h2>
+          <p>Describe what you did and what you expected, name your system and the IronTeams version, and attach the report bundle. Open it on <a href="https://github.com/MohamedEslam04/teams-in-rust/issues">GitHub issues</a>. For how IronTeams is built, read <a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a>.</p>
+
+        </div>
+      </div>
+    </div>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>

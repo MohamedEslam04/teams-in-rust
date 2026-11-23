@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IronTeams: an unofficial native Teams client in Rust</title>
+  <meta name="description" content="IronTeams is an unofficial, native desktop client for Microsoft Teams written in Rust. Download it for Linux, Windows or macOS.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="32" height="32">IronTeams</a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="install.html">Install</a>
+        <a href="getting-started.html">Getting started</a>
+        <a href="platforms.html">Platforms</a>
+        <a href="troubleshooting.html">Troubleshooting</a>
+        <a href="faq.html">FAQ</a>
+        <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <div>
+          <h1 id="hero-title">Teams chat in about 60&nbsp;MB.</h1>
+          <p class="lead">IronTeams is a native desktop client for Microsoft Teams, written in Rust. The Teams web app takes around 1&nbsp;GB of memory. IronTeams uses a fraction of that.</p>
+          <div class="hero-cta">
+            <a id="hero-download" class="btn" href="#download"><span class="hero-label">Download</span><small class="hero-sub">Linux, Windows and macOS builds</small></a>
+            <a class="btn btn--quiet" href="install.html">Install guides</a>
+          </div>
+          <p class="hero-note" id="hero-others">All downloads: <a href="#download">Linux, Windows, macOS</a>.</p>
+          <p class="unofficial"><strong>Unofficial.</strong> Microsoft does not affiliate with, endorse or support IronTeams. Check that your organization allows third-party clients before you sign in with a work account. <a href="#disclaimer">Read the disclaimer</a>.</p>
+        </div>
+
+        <figure class="memory">
+          <h2>Memory in use</h2>
+          <ul>
+            <li>
+              <span class="who">Teams web app in a Chromium browser</span><span class="mb">~1100 MB</span>
+              <span class="track" aria-hidden="true"><span class="bar" style="--w:100%"></span></span>
+            </li>
+            <li>
+              <span class="who">Pidgin with purple-teams</span><span class="mb">~147 MB</span>
+              <span class="track" aria-hidden="true"><span class="bar" style="--w:13.4%"></span></span>
+            </li>
+            <li class="is-us">
+              <span class="who">IronTeams, real account, a chat with images open</span><span class="mb">~62 MB</span>
+              <span class="track" aria-hidden="true"><span class="bar is-us" style="--w:5.6%"></span></span>
+            </li>
+            <li class="is-us">
+              <span class="who">IronTeams, 10 minutes idle, chat list only</span><span class="mb">~29 MB</span>
+              <span class="track" aria-hidden="true"><span class="bar is-us" style="--w:2.6%"></span></span>
+            </li>
+          </ul>
+          <figcaption>Measured from <code>/proc/&lt;pid&gt;/smaps_rollup</code> (PSS, which counts shared memory once), release build, KDE Plasma on Wayland, Fedora 44. The idle figure does not count swapped-out pages.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <h2 id="features-title">What it does</h2>
+        <p class="section-intro">The Teams you use every day, in a familiar layout, as a small native program.</p>
+        <dl class="features">
+          <div><dt>Chat</dt><dd>1:1, group, meeting and self-notes chats. Rich text both ways, @mentions, replies, forwarding, images, link previews, voice messages and videos. Arabic, English and mixed-direction text, each paragraph in its own direction.</dd></div>
+          <div><dt>Teams and channels</dt><dd>Posts as cards with replies, announcements and channel files, plus a page to discover, join and manage teams.</dd></div>
+          <div><dt>Calendar</dt><dd>Day, week and month views, the event form with recurrence, the scheduling assistant and rooms.</dd></div>
+          <div><dt>OneDrive</dt><dd>Browse, upload, share and use the recycle bin, with a native PDF and Office preview.</dd></div>
+          <div><dt>Calls and meetings</dt><dd>A native call window with pre-join, meeting controls and the roster, and 1:1 incoming and outgoing call screens.</dd></div>
+          <div><dt>Search</dt><dd>Messages, files, people and meetings, find in chat, and quick views for Mentions, Followed threads and Saved.</dd></div>
+          <div><dt>Sign-in</dt><dd>Sign in with a device code, which works with MFA. The refresh token stays in your system keyring, never in a file. Several accounts and guest organizations.</dd></div>
+          <div><dt>On your desktop</dt><dd>A tray icon with an unread badge, close to tray, autostart, desktop notifications, and real-time updates with automatic reconnect.</dd></div>
+          <div><dt>Private</dt><dd>No telemetry and nothing uploaded. &ldquo;Report a problem&rdquo; writes a local, redacted file that you read and attach yourself.</dd></div>
+          <div><dt>Free software</dt><dd>GPL-3.0-or-later, with the source on <a href="https://github.com/MohamedEslam04/teams-in-rust">GitHub</a>. The README lists every feature.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <h2 id="download-title">Download</h2>
+        <p class="section-intro">Every file comes from the latest GitHub release, read live when this page opens.</p>
+
+        <div class="dl-controls">
+          <div class="seg" id="dl-os" role="group" aria-label="Operating system">
+            <button type="button" data-os="linux" aria-pressed="true">Linux</button>
+            <button type="button" data-os="windows" aria-pressed="false">Windows</button>
+            <button type="button" data-os="macos" aria-pressed="false">macOS</button>
+          </div>
+          <label class="check"><input type="checkbox" id="dl-beta"> Show beta releases</label>
+        </div>
+        <p id="dl-os-note" class="small muted"></p>
+        <p id="dl-status" class="dl-status" role="status">Checking the latest release&hellip;</p>
+        <ul id="dl-list" class="dl-list"></ul>
+        <noscript>
+          <div class="note"><p>The download list needs JavaScript to read the GitHub releases. Without it, get the files from the <a href="https://github.com/MohamedEslam04/teams-in-rust/releases">releases page</a>: take <code>IronTeams.AppImage</code> on Linux, <code>IronTeams-win-Setup.exe</code> on Windows or <code>IronTeams-osx-arm64-Setup.pkg</code> (Apple Silicon) and <code>IronTeams-osx-x64-Setup.pkg</code> (Intel) on macOS.</p></div>
+        </noscript>
+
+        <p class="dl-fallback">Something off? The <a href="https://github.com/MohamedEslam04/teams-in-rust/releases">releases page</a> on GitHub always has every file. Not sure how to install a file? Read the <a href="install.html">install guides</a>.</p>
+      </div>
+    </section>
+
+    <section class="section" id="disclaimer" aria-labelledby="disclaimer-title">
+      <div class="wrap">
+        <h2 id="disclaimer-title">Disclaimer</h2>
+        <p>IronTeams is an unofficial project. Microsoft does not affiliate with, endorse or support it, and &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation.</p>
+        <p>IronTeams talks to the same internal endpoints the Teams web client uses. They are undocumented and Microsoft can change them at any time, which would break IronTeams. Your organization&rsquo;s policies may not allow third-party clients, so check with your IT team before you use IronTeams with a work account. Use it at your own risk.</p>
+        <p>On first run IronTeams downloads Microsoft Teams&rsquo; notification and ringtone sounds from Microsoft&rsquo;s CDN, and its Video effects panel downloads Teams&rsquo; background pictures the same way. They are not part of IronTeams and not shipped with it. You can turn the sounds download off in Settings &rsaquo; Notifications.</p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p><strong>IronTeams is unofficial.</strong> Microsoft does not affiliate with, endorse or support it. &ldquo;Microsoft Teams&rdquo; is a trademark of Microsoft Corporation. This is not a Microsoft website.</p>
+        <p>IronTeams is free software under the GPL-3.0-or-later license. It collects no telemetry, and so does this website: no analytics, no trackers, no third-party requests except the GitHub API call that lists the downloads.</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust">Source code</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/releases">All releases</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/issues">Report an issue</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="https://github.com/MohamedEslam04/teams-in-rust/blob/dev/LICENSE">License</a></li>
+      </ul>
+    </div>
+  </footer>
+  <script src="js/releases.js" defer></script>
+  <script src="js/download.js" defer></script>
+  <script src="js/copy.js" defer></script>
+</body>
+</html>
