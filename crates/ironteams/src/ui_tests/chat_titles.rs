@@ -101,6 +101,8 @@ fn harness() -> Harness {
         row(GROUP, ConvKind::Group, ""),
         row(BARE_GROUP, ConvKind::Group, "  "),
         row(CHANNEL, ConvKind::Channel, ""),
+        // A private channel the sync stored under the stand-in "General".
+        row(PRIVATE, ConvKind::Channel, "General"),
         row(MEETING, ConvKind::Meeting, "Sprint review"),
     ] {
         store.upsert_conversation(&r).unwrap();
@@ -205,14 +207,9 @@ fn a_channel_without_a_name_is_general() {
 #[test]
 fn a_private_channel_stored_as_general_is_corrected_by_the_team_list() {
     let h = harness();
-    // A private channel the sync stored under the stand-in "General".
-    h.engine.test_store(|s| {
-        s.upsert_conversation(&row(PRIVATE, ConvKind::Channel, "General"))
-            .unwrap()
-    });
     let teams = teams_proto::teams::parse_teams(&serde_json::json!({"teams": [{
         "id": "19:team1@thread.tacv2", "displayName": "Orchid",
-        "channels": [{"id": PRIVATE, "displayName": "Leads", "channelType": 1}]
+        "channels": [{"id": PRIVATE, "displayName": "Leads", "channelType": 1, "isFavorite": true}]
     }]}));
     h.engine.test_set_teams(&teams);
     h.runner()(Cmd::SetFilter("all".into()));
