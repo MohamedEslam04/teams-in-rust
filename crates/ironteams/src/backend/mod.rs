@@ -422,6 +422,8 @@ pub struct Engine {
 }
 
 const PAGE: usize = 60;
+/// How many of a meeting chat's newest rows are searched for its "Meeting started" message.
+const MEETING_START_ROWS: usize = 300;
 /// A chat paged further back than this many rows goes back to its newest page once the list is
 /// at the newest message again (the older rows come back from the store as the user scrolls up),
 /// so a long session in one chat does not keep rebuilding hundreds of rows on every update.
@@ -534,6 +536,19 @@ impl Engine {
                 let key = util::avatar_key(mri, util::AVATAR_PX);
                 e.avatars.lock().unwrap().get(&*key).cloned().flatten()
             }
+        });
+        // A meeting's header timer counts from its "Meeting started" message, which the chat's
+        // cached rows hold.
+        let weak = Arc::downgrade(&engine);
+        engine.calls.set_meeting_start(move |chat| {
+            let e = weak.upgrade()?;
+            let rows = e
+                .store
+                .lock()
+                .unwrap()
+                .messages_before(chat, None, MEETING_START_ROWS)
+                .ok()?;
+            meeting_cards::live_call_start_ms(&rows)
         });
         engine
     }

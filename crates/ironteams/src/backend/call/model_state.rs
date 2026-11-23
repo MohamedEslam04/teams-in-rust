@@ -486,10 +486,25 @@ impl CallModel {
         self.devices.cameras.get(self.devices.camera)?.id.clone()
     }
 
+    /// The meeting's chat, whose "Meeting started" message tells when the meeting began (`None` for
+    /// a 1:1 call, or a meeting joined by code).
+    pub fn meeting_chat(&self) -> Option<String> {
+        if !matches!(self.kind, CallKind::Meeting { .. }) {
+            return None;
+        }
+        Some(self.chat_id.clone())
+            .filter(|c| !c.is_empty())
+            .or_else(|| match self.target.as_ref()? {
+                JoinTarget::Chat(c) => Some(c.clone()),
+                JoinTarget::Link(u) => ::calendar::meeting_chat_thread_id(u),
+                JoinTarget::Code { .. } => None,
+            })
+    }
+
     pub fn data(&self, now: Instant) -> CallData {
         let elapsed = match (self.phase, self.connected_at, self.duration) {
-            (Phase::Ended, _, Some(d)) => d,
-            (p, Some(t), _) if p.active() => now.saturating_duration_since(t),
+            (Phase::Ended, _, Some(d)) => d + self.head_start,
+            (p, Some(t), _) if p.active() => now.saturating_duration_since(t) + self.head_start,
             _ => Duration::ZERO,
         };
         let mut people: Vec<Person> = self

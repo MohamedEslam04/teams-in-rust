@@ -842,3 +842,17 @@ an update refused with 400, 10146, then the call ended with 410, 301999,
 - The refusal (join error, end code, subCode and phrase, the refused update's error) is logged at
   info level, so a live run shows why.
 - The rejoin declares no lines, so a refusal there ends the call as before (no loop).
+
+## The meeting's own time in the call header (2026-11-23)
+
+The header timer used to count from our join, so every rejoin restarted it at 00:00. It now counts
+the meeting's own time: from the "Meeting started" message of the meeting chat (an `Event/Call`
+`callStarted` row, its `compose_ms`) when the chat's running call has one, else from our join.
+
+- What the join answer, `conversation/rosterUpdate` pushes and the meeting's `activeMeetup` carry
+  has no start time of a running meeting that any capture or fixture shows. `meetingInformation.startTime`
+  is the scheduled start, not the real one. `callStartTime` is in an incoming 1:1 call's `debugContent`
+  only (the ring), and IronTeams does not read it: a 1:1 call counts from its connect, as before.
+- The start is read once, when the call connects (a started message that arrives later is missed,
+  the timer then counts from our join). A start in the future of our join (clock skew) or over 24 h
+  old (a start whose end was never seen) is ignored: `call::head_start`.

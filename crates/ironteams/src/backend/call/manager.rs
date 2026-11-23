@@ -73,6 +73,7 @@ impl CallManager {
                 ticking: AtomicBool::new(false),
                 ui,
                 photos: Mutex::new(None),
+                meeting_start: Mutex::new(None),
                 feedback_file: Mutex::new(None),
                 #[cfg(feature = "calls")]
                 fx: Mutex::new(video_fx::VideoFx::load(config_dir)),
@@ -99,6 +100,12 @@ impl CallManager {
     /// while connected, so a photo still downloading shows up on a later push.
     pub fn set_photos(&self, lookup: impl Fn(&str) -> Option<Pixels> + Send + Sync + 'static) {
         *self.shared.photos.lock().unwrap() = Some(Arc::new(lookup));
+    }
+
+    /// Where a meeting's start time comes from (unix ms by the meeting chat's id): the header's
+    /// timer counts the meeting's own time, not the time since we joined.
+    pub fn set_meeting_start(&self, lookup: impl Fn(&str) -> Option<i64> + Send + Sync + 'static) {
+        *self.shared.meeting_start.lock().unwrap() = Some(Arc::new(lookup));
     }
 
     /// Makes the running call look `by` older, so a test need not wait for it to last.
