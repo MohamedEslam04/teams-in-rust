@@ -45,6 +45,7 @@ mod format_live;
 mod global_search;
 mod language;
 mod list_parity;
+mod list_stability;
 mod lists;
 mod media;
 mod meeting_cards;
