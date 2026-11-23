@@ -97,6 +97,8 @@ export component MessagePane inherits Rectangle {
         property <int> d-tick: root.divider-tick;
         property <int> a-tick: root.anchor-tick;
         property <bool> anchoring: false;
+        // The row was put at the view's top and the user's offset inside it is still to be applied.
+        property <bool> apply-off: false;
         // Stay pinned to the newest message while content grows (images loading).
         property <bool> pinned: true;
         // After a jump to the divider its real position corrects the estimate
@@ -149,6 +151,12 @@ export component MessagePane inherits Rectangle {
         }
         changed content-y => {
             root.view-y = self.content-y;
+            // The anchor row has just been scrolled to (the view left the bottom the timer put it
+            // at): move down to where the user was inside the row.
+            if self.apply-off && self.content-y > self.visible-height - self.content-height + 2px {
+                self.apply-off = false;
+                self.content-y = min(0px, self.content-y - root.anchor-off);
+            }
             // Pinned only at the very bottom: rows that get their real height while
             // scrolling up change the content height, and a looser margin pulled the
             // list back down (the list shook when scrolling up).
@@ -296,10 +304,9 @@ export component MessagePane inherits Rectangle {
             msg-list.anchoring = false;
             msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
             msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
-            // The row's top is at the view's top: move down to where the user was inside it.
-            if root.anchor-off > 0px {
-                msg-list.content-y = min(0px, msg-list.content-y - root.anchor-off);
-            }
+            // ensure-row-visible only records the request: the scroll happens in the next layout,
+            // so the user's offset inside the row is applied when `content-y` moves (below).
+            msg-list.apply-off = root.anchor-off > 0px;
         }
     }
     // The user stopped scrolling.
@@ -314,7 +321,10 @@ export component MessagePane inherits Rectangle {
     Timer {
         interval: 700ms;
         running: msg-list.aligning;
-        triggered => { msg-list.aligning = false; }
+        triggered => {
+            msg-list.aligning = false;
+            msg-list.apply-off = false;
+        }
     }
     if !root.at-bottom && root.messages.length > 0 && !root.posts-mode: Rectangle {
         z: 5;

@@ -282,6 +282,8 @@ fn older_rows_landing_above_keep_the_row_at_the_top_in_place() {
     let shifted = row_y(&app, "subject 0");
     assert!(
         (shifted - (before - 30.)).abs() <= 2.,
-        "the row should keep the user's 30px offset: {before} -> {shifted}"
+        "the row should keep the user's 30px offset: {before} -> {shifted} (view at {}, recorded {})",
+        app.get_msg_view_y(),
+        app.get_msg_top_cy()
     );
 }
