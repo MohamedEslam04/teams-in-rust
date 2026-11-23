@@ -54,6 +54,11 @@ modules:
   - name: ironteams
     buildsystem: simple
     build-commands:
+      # CI restores the cargo target of an earlier build as flatpak-target/ (packaging.yml). Its
+      # outputs can be newer than the copied sources, so the sources get the current time and cargo
+      # rebuilds every workspace crate; the vendored crates in cargo/ are matched by version.
+      - if [ -d flatpak-target ]; then rm -rf target && mv flatpak-target target && find . -path ./target
+        -prune -o -path ./cargo -prune -o -type f -exec touch {} +; fi
       - cargo --offline build --release --locked -p ironteams
       - install -Dm755 target/release/ironteams /app/bin/ironteams
       - install -Dm644 packaging/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop

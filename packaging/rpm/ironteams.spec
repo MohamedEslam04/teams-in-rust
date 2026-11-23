@@ -66,8 +66,11 @@ cat > .cargo/config.toml <<'EOF'
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = "vendor"
+directory = "%{?ironteams_vendor_dir}%{!?ironteams_vendor_dir:vendor}"
 EOF
+# CI defines ironteams_vendor_dir: the same vendored crates at a path that does not change with the
+# version. Cargo keys a dependency's cached build on its absolute source path, so in the versioned
+# build dir every new version recompiled all of them.
 
 %build
 export CARGO_HOME=%{_builddir}/cargo-home
@@ -81,6 +84,11 @@ fi
 # ironteams crate (a lot of Slint-generated code) need more memory than a 7 GB CI runner has.
 export RUSTFLAGS="${RUSTFLAGS:-}"
 RUSTFLAGS="${RUSTFLAGS//-Cdebuginfo=2/-Cdebuginfo=0}"
+# CI sets CARGO_PROFILE_RELEASE_CODEGEN_UNITS so the large ironteams crate compiles in parallel; the
+# -Ccodegen-units=1 of the distribution's RUSTFLAGS would win over it, so it is dropped then.
+if [ -n "${CARGO_PROFILE_RELEASE_CODEGEN_UNITS:-}" ]; then
+  RUSTFLAGS=$(echo "$RUSTFLAGS" | sed 's/-Ccodegen-units=[0-9]*//')
+fi
 cargo build --release --frozen -p ironteams
 
 %check
