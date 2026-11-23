@@ -71,14 +71,18 @@ pub fn parse_snapshot(v: &Value) -> Snapshot {
                                         .unwrap_or(false)
                                 })
                                 .filter_map(|ch| {
+                                    let is_general = ch
+                                        .get("isGeneral")
+                                        .and_then(Value::as_bool)
+                                        .unwrap_or(false);
                                     Some(Channel {
                                         id: s(ch, "id")?,
+                                        // Only the General channel arrives without a name. Any
+                                        // other channel without one is unknown, not "General".
                                         name: s(ch, "displayName")
-                                            .unwrap_or_else(|| "General".into()),
-                                        is_general: ch
-                                            .get("isGeneral")
-                                            .and_then(Value::as_bool)
-                                            .unwrap_or(false),
+                                            .or_else(|| is_general.then(|| "General".into()))
+                                            .unwrap_or_default(),
+                                        is_general,
                                     })
                                 })
                                 .collect()
@@ -187,5 +191,20 @@ mod tests {
     #[test]
     fn tolerates_empty() {
         assert_eq!(parse_snapshot(&json!({})), Snapshot::default());
+    }
+
+    #[test]
+    fn a_channel_without_a_name_is_general_only_when_it_is_the_general_channel() {
+        let snap = parse_snapshot(&json!({"teams": [{"id": "19:t@thread.tacv2", "channels": [
+            {"id": "19:t@thread.tacv2", "isGeneral": true},
+            {"id": "19:p@thread.tacv2", "channelType": 1},
+            {"id": "19:q@thread.tacv2", "displayName": "", "channelType": 1}
+        ]}]}));
+        let names: Vec<&str> = snap.teams[0]
+            .channels
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, ["General", "", ""]);
     }
 }
