@@ -475,7 +475,10 @@ async fn sync_dir(dir: PathBuf) {
 }
 
 /// Runs `job` on a thread of its own with a small runtime of its own.
-pub(crate) fn spawn(name: &str, job: impl std::future::Future<Output = ()> + Send + 'static) -> bool {
+pub(crate) fn spawn(
+    name: &str,
+    job: impl std::future::Future<Output = ()> + Send + 'static,
+) -> bool {
     std::thread::Builder::new()
         .name(name.into())
         .spawn(move || {
