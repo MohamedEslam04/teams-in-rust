@@ -39,7 +39,11 @@ fn msg_rows(n: usize) -> Vec<MsgData> {
 }
 
 fn post(i: usize) -> PostData {
-    let replies = if i % 3 == 0 { (i % 7 + 1) as i32 } else { 0 };
+    let replies = if i.is_multiple_of(3) {
+        (i % 7 + 1) as i32
+    } else {
+        0
+    };
     PostData {
         post: row(&format!("p{i}"), i),
         day: String::new(),

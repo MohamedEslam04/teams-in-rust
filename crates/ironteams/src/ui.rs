@@ -57,7 +57,7 @@ thread_local! {
     /// The fingerprint of each row of `MESSAGES` (see `row_fingerprint`), in the same order.
     static MESSAGE_PRINTS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
     /// The chat list's sections (favorites, chats, channels) and the print of each row.
-    static CHAT_LISTS: RefCell<Vec<(Rc<VecModel<ChatRow>>, Vec<model_sync::Print>)>> =
+    static CHAT_LISTS: RefCell<Vec<model_sync::Synced<ChatRow>>> =
         const { RefCell::new(Vec::new()) };
 }
 

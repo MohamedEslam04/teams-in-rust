@@ -12,7 +12,7 @@ use std::rc::Rc;
 thread_local! {
     static POPOUT: RefCell<Option<ChatWindow>> = const { RefCell::new(None) };
     /// The popped-out chat's rows and the print of each (`model_sync`).
-    static ROWS: RefCell<Option<(Rc<VecModel<Msg>>, Vec<model_sync::Print>)>> =
+    static ROWS: RefCell<Option<model_sync::Synced<Msg>>> =
         const { RefCell::new(None) };
 }
 

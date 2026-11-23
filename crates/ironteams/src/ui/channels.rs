@@ -10,10 +10,10 @@ use std::rc::Rc;
 
 thread_local! {
     /// The Posts tab's model and the print of each card in it (`model_sync`).
-    static POSTS: RefCell<Option<(Rc<VecModel<PostItem>>, Vec<model_sync::Print>)>> =
+    static POSTS: RefCell<Option<model_sync::Synced<PostItem>>> =
         const { RefCell::new(None) };
     /// The thread panel's replies, their prints, and the print of the post above them.
-    static THREAD: RefCell<Option<(Rc<VecModel<Msg>>, Vec<model_sync::Print>, u64)>> =
+    static THREAD: RefCell<Option<(model_sync::Synced<Msg>, u64)>> =
         const { RefCell::new(None) };
 }
 
@@ -138,8 +138,8 @@ impl UiHandle {
                 .collect();
             THREAD.with(|cell| {
                 let mut cell = cell.borrow_mut();
-                let (m, prints, post_print) =
-                    cell.get_or_insert_with(|| (Rc::new(VecModel::default()), vec![], u64::MAX));
+                let ((m, prints), post_print) =
+                    cell.get_or_insert_with(|| ((Rc::new(VecModel::default()), vec![]), u64::MAX));
                 if *post_print != print || s.get_thread_post().id != t.post.id.as_str() {
                     *post_print = print;
                     s.set_thread_post(msg(t.post));

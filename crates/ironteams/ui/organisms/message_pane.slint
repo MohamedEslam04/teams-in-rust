@@ -136,8 +136,17 @@ export component MessagePane inherits Rectangle {
         changed a-tick => {
             msg-glide.stop();
             self.aligning = true;
-            self.anchoring = true;
             self.pinned = false;
+            if root.anchor-off < 1px {
+                // The row's top was the view's top: putting it back is exact, so it is done
+                // now, in the layout that shows the new rows, and no frame shows them misplaced
+                // (the list only keeps its rows in place by itself when all the new ones are
+                // above the rows it built).
+                self.content-y = min(0px, self.visible-height - self.content-height);
+                self.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+            } else {
+                self.anchoring = true;
+            }
         }
         changed d-tick => { root.show-row(root.divider-index); }
         // The content height the last `changed content-height` saw. A content-y change
@@ -217,7 +226,10 @@ export component MessagePane inherits Rectangle {
                         root.top-cy = msg-list.content-y;
                     }
                 }
-                changed holds-top => {
+                // Also when the list reuses the row holding the top for another message (rows
+                // inserted above the ones built): the top is then another message.
+                property <string> top-mark: self.holds-top ? m.id : "";
+                changed top-mark => {
                     if self.holds-top {
                         root.top-id = m.id;
                         root.top-off = self.top-gap;
