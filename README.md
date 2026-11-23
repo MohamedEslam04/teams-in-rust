@@ -158,7 +158,7 @@ sharing on Windows and macOS (`IRONTEAMS_GST_LAUNCH` points at another `gst-laun
 | Variable | Effect |
 |---|---|
 | `IRONTEAMS_RENDERER=femtovg` | GPU renderer instead of the default software renderer (uses more memory); beats the choice in Settings > General > Performance, see `docs/perf.md` |
-| `IRONTEAMS_LOG=ironteams=info,teams_proto=info` | Logging to stderr. Tokens are never logged |
+| `IRONTEAMS_LOG=ironteams=debug,teams_proto=info` | More detail in the log (`logs/` in the data folder; also printed to the terminal). The default is `ironteams=info,calling=info`, warnings from the rest. Tokens are never logged |
 | `IRONTEAMS_DEMO=1` | Offline demo with sample data: no account, no network |
 | `IRONTEAMS_HOME=<dir>` | Keep config, cache and data under `<dir>` |
 
@@ -173,11 +173,11 @@ bundle and attach it to an issue yourself after reading it:
 
 ```sh
 ironteams --report-problem              # also in the launcher's right-click menu
-ironteams-cli diag --log ironteams.log      # optionally include a log: IRONTEAMS_LOG=ironteams=debug ironteams 2> ironteams.log
+ironteams-cli diag                      # the same bundle from the terminal; --log FILE adds another log
 ```
 
 The `.tar.gz` goes to your Downloads folder (`--out PATH` changes that). It holds the IronTeams
-version, OS and desktop facts, the non-secret config and the logs you pass in. Tokens, cookies,
+version, OS and desktop facts, the non-secret config and the logs (the app keeps its own in the data folder). Tokens, cookies,
 e-mail addresses, MRIs, conversation ids, GUIDs (tenant ids included), tenant domains and
 user names are replaced by placeholders. The keyring and the message cache are never read.
 

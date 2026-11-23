@@ -389,7 +389,7 @@ pub async fn leave_session(ngc: &NgcClient, s: &CallSession, share: &mut Share) 
     if let Some(session) = share.session.take()
         && let Err(e) = ngc.leave_content_sharing(s, &session).await
     {
-        tracing::warn!("content-sharing session not given back: {e:#}");
+        tracing::warn!("content-sharing session not given back: {}", teams_proto::logsafe::text(&format!("{e:#}")));
     }
 }
 

@@ -19,6 +19,7 @@ mod find_data;
 mod key_layout;
 mod language;
 mod lists_data;
+mod logging;
 mod loop_compose;
 mod markdown;
 mod media_data;
@@ -463,14 +464,12 @@ fn main() -> anyhow::Result<()> {
         unsafe { std::env::set_var("IRONTEAMS_CALL_DEMO", "1") };
     }
     configure_fonts();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            compat::var("IRONTEAMS_LOG")
-                .ok()
-                .and_then(|v| tracing_subscriber::EnvFilter::try_new(v).ok())
-                .unwrap_or_else(|| "warn".into()),
-        )
-        .init();
+    // Demo mode keeps its hands off the real data folder, so it logs to stdout as before.
+    let logs_dir = session::Paths::new()
+        .ok()
+        .filter(|_| compat::var_os("IRONTEAMS_DEMO").is_none())
+        .map(|paths| paths.data_dir.join("logs"));
+    logging::init(logs_dir.as_deref());
     // Before anything opens the store, the session or the preferences: the first run after the
     // rename from kelma moves the old directories.
     compat::migrate_legacy_dirs();

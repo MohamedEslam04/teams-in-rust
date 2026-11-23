@@ -155,8 +155,10 @@ Tokens, cookies, e-mail addresses, MRIs (8:orgid:...), conversation ids, GUIDs (
 ids), tenant domains and home-directory user names were replaced with placeholders such as\n\
 <email> and <guid>. Redaction is automatic and cannot catch everything, so skim the logs.\n\
 \n\
-To capture a log, run ironteams as: IRONTEAMS_LOG=ironteams=debug,teams_proto=info ironteams 2> ironteams.log\n\
-and pass it with: ironteams-cli diag --log ironteams.log\n";
+IronTeams keeps its own log in the data folder (logs/ironteams.log, at most 5 files of 5 MB) and this\n\
+report collects it automatically. To get more detail in it, start ironteams with\n\
+IRONTEAMS_LOG=ironteams=debug,teams_proto=info set, reproduce the problem, then write the report.\n\
+Another log can be added with: ironteams-cli diag --log FILE\n";
 
 fn system_info(app_version: &str) -> String {
     let os = fs::read_to_string("/etc/os-release")
@@ -325,6 +327,13 @@ mod tests {
             .1;
         assert!(config.contains("\"enter_sends\": true"), "{config}");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn readme_says_the_app_log_is_collected_without_a_redirect() {
+        assert!(README.contains("logs/ironteams.log"));
+        assert!(README.contains("collects it automatically"));
+        assert!(!README.contains("2>"));
     }
 
     #[test]

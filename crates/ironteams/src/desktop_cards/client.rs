@@ -11,7 +11,7 @@
 use super::protocol::{self, Action, Card, FromHost, ToHost};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
@@ -99,23 +99,37 @@ fn start(g: &mut Inner) {
             .arg(super::HOST_ARG)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            // The host's log lines go into the app's own log (nobody reads this process's stderr).
+            .stderr(Stdio::piped())
             .spawn()
     });
     match spawned {
         Ok(mut child) => {
             g.stdin = child.stdin.take();
             let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
             g.child = Some(child);
             g.phase = Phase::Starting;
             if let Some(stdout) = stdout {
                 std::thread::spawn(move || read(stdout));
+            }
+            if let Some(stderr) = stderr {
+                std::thread::spawn(move || forward_log(stderr));
             }
         }
         Err(err) => {
             tracing::warn!(%err, "desktop cards: could not start the card host");
             g.phase = Phase::Failed;
         }
+    }
+}
+
+/// The host's log lines (it logs to stderr, its stdout is the protocol) into this process's log,
+/// until it exits. The host applied its own filter, so every line is kept.
+fn forward_log(stderr: ChildStderr) {
+    for line in BufReader::new(stderr).lines() {
+        let Ok(line) = line else { break };
+        tracing::warn!("card host: {line}");
     }
 }
 

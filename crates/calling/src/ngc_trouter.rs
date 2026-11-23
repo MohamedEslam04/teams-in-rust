@@ -131,7 +131,7 @@ pub fn decode_call_push(data: &str) -> Option<CallPush> {
     });
     let raw = v.get("body").and_then(Value::as_str).unwrap_or_default();
     let body = decode_body(raw, gzip).unwrap_or_else(|| {
-        tracing::warn!(%url, "calling push body could not be decoded");
+        tracing::warn!(url = %teams_proto::logsafe::url(&url), "calling push body could not be decoded");
         Value::Null
     });
     Some(CallPush {

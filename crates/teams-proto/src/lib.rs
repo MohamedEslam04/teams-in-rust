@@ -29,6 +29,7 @@ pub mod http;
 pub mod images;
 pub mod lists;
 pub mod live_call;
+pub mod logsafe;
 pub mod meeting_events;
 pub mod mentions;
 pub mod model;

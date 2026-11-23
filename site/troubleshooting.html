@@ -43,10 +43,8 @@
 
           <h2 id="report">Report a problem</h2>
           <div class="code"><pre><code>ironteams --report-problem</code></pre></div>
-          <p>The same command is in the launcher&rsquo;s right-click menu as <strong>Report a problem</strong>. To include a log, run IronTeams with logging on, then write the report with <code>ironteams-cli</code>:</p>
-          <div class="code"><pre><code>IRONTEAMS_LOG=ironteams=debug ironteams 2> ironteams.log
-ironteams-cli diag --log ironteams.log</code></pre></div>
-          <p>The <code>.tar.gz</code> goes to your Downloads folder (<code>--out PATH</code> changes that). It holds the IronTeams version, OS and desktop facts, the non-secret config and the logs you pass in. Tokens, cookies, e-mail addresses, MRIs, conversation ids, GUIDs (tenant ids included), tenant domains and user names are replaced by placeholders. The keyring and the message cache are never read.</p>
+          <p>The same command is in the launcher&rsquo;s right-click menu as <strong>Report a problem</strong>. IronTeams always keeps a log in its data folder (<code>logs/ironteams.log</code>, at most 5 files of 5&nbsp;MB, crashes included), and the report collects it for you. To get more detail, start IronTeams once with <code>IRONTEAMS_LOG=ironteams=debug</code> set, reproduce the problem, then write the report. <code>ironteams-cli diag --log FILE</code> adds another log file.</p>
+          <p>The <code>.tar.gz</code> goes to your Downloads folder (<code>--out PATH</code> changes that). It holds the IronTeams version, OS and desktop facts, the non-secret config and the logs. Tokens, cookies, e-mail addresses, MRIs, conversation ids, GUIDs (tenant ids included), tenant domains and user names are replaced by placeholders. The keyring and the message cache are never read.</p>
           <div class="note"><p>Read the bundle before you attach it. It is a plain archive on your disk.</p></div>
 
           <h2 id="env">Environment variables</h2>
@@ -54,7 +52,7 @@ ironteams-cli diag --log ironteams.log</code></pre></div>
             <thead><tr><th scope="col">Variable</th><th scope="col">Effect</th></tr></thead>
             <tbody>
               <tr><th scope="row"><code>IRONTEAMS_RENDERER=femtovg</code></th><td>GPU renderer instead of the default software renderer (uses more memory). It beats the choice in Settings &rsaquo; General &rsaquo; Performance.</td></tr>
-              <tr><th scope="row"><code>IRONTEAMS_LOG=ironteams=info,teams_proto=info</code></th><td>Logging to stderr. Tokens are never logged.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_LOG=ironteams=info,teams_proto=info</code></th><td>More detail in the log (and in the terminal). Tokens are never logged.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_DEMO=1</code></th><td>Offline demo with sample data: no account, no network.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_HOME=&lt;dir&gt;</code></th><td>Keep config, cache and data under <code>&lt;dir&gt;</code>.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_GST_LAUNCH</code></th><td>Use another <code>gst-launch-1.0</code> for camera and screen sharing.</td></tr>
