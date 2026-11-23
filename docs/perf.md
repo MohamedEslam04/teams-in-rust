@@ -101,10 +101,32 @@ The numbers are from a debug build on a GitHub runner, so only before/after on t
 What it showed: Calendar, OneDrive and Calls destroyed the chat list (every row of a plain `for`)
 and the chat pane, and Activity shrank the list to 0 px so every message row was laid out again;
 coming back built or relaid all of it. The pages now sit over the chat, which stays built and is
-clipped to nothing underneath. Hiding with `visible: false` was tried first: the renderer then
-re-marks every item under the hidden element on each switch (`partial_renderer.rs`,
-`must_refresh_children`), which made Chat → Calendar and Chat → Teams about 50 ms slower; a clip
-that changes size only walks them once, cheaply.
+clipped to nothing underneath. Hiding something built is not free with partial repaints: the
+renderer's dirty-region walk (`partial_renderer.rs`) visits every item under it on the switch, and
+the chat list is a plain `for` over every chat (about 4000 items for 159 chats). So a chat list row
+outside the list now hides its content (`ChatItem.in-view`), which the walk skips on every frame;
+that also halved the idle frame and took a quarter off a scroll frame.
+
+Bench UI run 45157659433 (commit 47fc224e, debug build, partial repaints, ms, median):
+
+| Measure                           | Before (dev UI) | After |
+| --------------------------------- | --------------- | ----- |
+| Calendar → Chat, first frame      | 311             | 66    |
+| Teams → Chat, first frame         | 317             | 117   |
+| Chat → Activity, first frame      | 386             | 386   |
+| Chat → Calendar, first frame      | 36              | 64    |
+| Chat → Teams, first frame         | 18              | 27    |
+| Chat frames after the switch      | 7.7             | 2.7   |
+| Activity frames after the switch  | 9.2             | 3.7   |
+| Idle frame in Chat (tree walk)    | 10.0            | 5.1   |
+| Scroll frame, wheel notch         | 48.6            | 36.4  |
+| Scroll frame, 8 px step           | 40.6            | 31.6  |
+| Scroll frame, full repaint        | 65.0            | 59.0  |
+| PSS in Chat / Calendar (MB)       | 183 / 189       | 183 / 188 |
+
+Still open: leaving Chat costs one walk of the chat pane's rows; building the Activity page is
+most of Chat → Activity; a scroll frame is mostly the repaint of the message area (`draw_ms`), and
+every frame still walks all the chat list's row shells (a `ListView` would not).
 
 ## Results
 
