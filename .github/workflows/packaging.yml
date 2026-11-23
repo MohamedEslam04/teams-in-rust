@@ -147,6 +147,9 @@ jobs:
           restore-keys: |
             flatpak-target-${{ env.PKG_CACHE_REV }}-${{ steps.gen.outputs.deps }}-
             flatpak-target-${{ env.PKG_CACHE_REV }}-
+      # Also without a cache: the manifest builds the CI way (see there) whenever this dir exists,
+      # so the first build, the one dev saves, matches the later ones.
+      - run: mkdir -p flatpak-target
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: ironteams.flatpak
@@ -221,7 +224,9 @@ jobs:
           # The runner has ~16 GB: even with the swap above, thin LTO with one codegen unit is slow
           # and close to the limit. This check only needs the package to build, so it links
           # without LTO (the shipped release profile is unchanged).
-          env='export CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*"'
+          # A fixed SOURCE_DATE_EPOCH: makepkg sets the current time otherwise, and the cc crate reruns
+          # every C build script (ring, sqlite... and all that depends on them) when it changes.
+          env='export SOURCE_DATE_EPOCH=315532800 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*"'
           # Fetch and extract first (-o), put the cached cargo target where the PKGBUILD builds
           # (src/ironteams/target), then build from that tree (-e). The fresh clone gives the
           # sources the current time, so cargo rebuilds the workspace crates.

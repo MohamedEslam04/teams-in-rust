@@ -54,15 +54,16 @@ modules:
   - name: ironteams
     buildsystem: simple
     build-commands:
-      # CI restores the cargo target of an earlier build as flatpak-target/ (packaging.yml). Its
-      # outputs can be newer than the copied sources, so the sources get the current time and cargo
-      # rebuilds every workspace crate. The vendored crates in cargo/ are unpacked anew with the
-      # current time too, which made the build scripts that watch their own files (ring, sqlite,
-      # openh264...) run again: they get an old fixed time instead.
+      # CI always passes a flatpak-target/ dir (packaging.yml): the cargo target of an earlier
+      # build, or empty. Its outputs can be newer than the copied sources, so the sources get the
+      # current time and cargo rebuilds every workspace crate. Two things would make cargo rebuild
+      # ~50 dependencies too: the vendored crates in cargo/ are unpacked anew with the current time
+      # (build scripts that watch their files rerun), so they get an old fixed time; and
+      # flatpak-builder's SOURCE_DATE_EPOCH changes with the sources, which reruns every C build
+      # script (the cc crate watches it), so CI builds without it. A local build is unchanged.
       - if [ -d flatpak-target ]; then rm -rf target && mv flatpak-target target && find . -path ./target
         -prune -o -path ./cargo -prune -o -type f -exec touch {} + && find cargo/vendor -exec touch -h -d
-        @315532800 {} +; fi
-      - cargo --offline build --release --locked -p ironteams
+        @315532800 {} + && unset SOURCE_DATE_EPOCH; fi; cargo --offline build --release --locked -p ironteams
       - install -Dm755 target/release/ironteams /app/bin/ironteams
       - install -Dm644 packaging/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 packaging/${FLATPAK_ID}.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
