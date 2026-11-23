@@ -3,6 +3,9 @@
 //! Esc, the letters of the message menu, and the older chords that must keep working.
 
 use super::*;
+use crate::key_layout;
+use slint::winit_030::winit::event::ElementState;
+use slint::winit_030::winit::keyboard::KeyCode;
 
 fn chord(app: &AppWindow, mods: &[Key], text: &str) {
     for m in mods {
@@ -208,4 +211,89 @@ fn the_older_chords_still_work() {
 
     chord(&app, &[Key::Control, Key::Alt], "e");
     assert_eq!(app.get_view(), "search", "Ctrl+Alt+E");
+}
+
+// ---- Other keyboard layouts -------------------------------------------------------------
+
+/// A chord as the window hook passes it on from a layout that types `text` on the key at `code`
+/// (`base` without modifiers): with the key's US letter when it remaps it, else unchanged.
+fn layout_chord(app: &AppWindow, mods: &[Key], text: &str, base: &str, code: KeyCode) {
+    let m = key_layout::Mods {
+        ctrl: mods.contains(&Key::Control),
+        alt: mods.contains(&Key::Alt),
+        shift: mods.contains(&Key::Shift),
+        meta: mods.contains(&Key::Meta),
+    };
+    for k in mods {
+        key(app, *k, true);
+    }
+    match key_layout::latin(text, base, key_layout::us_key(code), m) {
+        Some(c) => {
+            key_layout::send(app.window(), c, ElementState::Pressed, false);
+            key_layout::send(app.window(), c, ElementState::Released, false);
+        }
+        None => press_letter(app, text),
+    }
+    for k in mods.iter().rev() {
+        key(app, *k, false);
+    }
+}
+
+#[test]
+fn ctrl_v_on_the_arabic_layout_pastes_like_on_the_english_one() {
+    let app = app_with_messages(vec![]);
+    let asked = Rc::new(RefCell::new(0));
+    {
+        let a = asked.clone();
+        app.on_paste_image(move || *a.borrow_mut() += 1);
+    }
+    focus_composer(&app);
+    type_text(&app, "x");
+    // Ctrl+A, Ctrl+C on the Arabic layout: the A key types ش, the C key ؤ.
+    layout_chord(&app, &[Key::Control], "ش", "ش", KeyCode::KeyA);
+    layout_chord(&app, &[Key::Control], "ؤ", "ؤ", KeyCode::KeyC);
+    // As Slint reads the V key by its Arabic character, nothing is pasted (the bug).
+    chord(&app, &[Key::Control], "ر");
+    assert_eq!(app.get_draft(), "x");
+    assert_eq!(*asked.borrow(), 0);
+    // The hook's Latin letter pastes over the selected text and asks for an image.
+    layout_chord(&app, &[Key::Control], "ر", "ر", KeyCode::KeyV);
+    assert_eq!(*asked.borrow(), 1);
+    assert_eq!(app.get_draft(), "x");
+    layout_chord(&app, &[Key::Control], "ر", "ر", KeyCode::KeyV);
+    assert_eq!(app.get_draft(), "xx", "the second paste adds the text");
+    // Ctrl+X cuts, and the cut text pastes back.
+    layout_chord(&app, &[Key::Control], "ش", "ش", KeyCode::KeyA);
+    layout_chord(&app, &[Key::Control], "ء", "ء", KeyCode::KeyX);
+    assert_eq!(app.get_draft(), "");
+    layout_chord(&app, &[Key::Control], "ر", "ر", KeyCode::KeyV);
+    assert_eq!(app.get_draft(), "xx");
+    // Arabic typing without Ctrl is untouched.
+    layout_chord(&app, &[], "ر", "ر", KeyCode::KeyV);
+    assert_eq!(app.get_draft(), "xxر");
+    assert_eq!(*asked.borrow(), 3);
+}
+
+#[test]
+fn the_app_chords_work_on_the_arabic_layout() {
+    let app = app_with_messages(vec![]);
+    focus_composer(&app);
+    // Ctrl+. is the key that types ز.
+    layout_chord(&app, &[Key::Control], "ز", "ز", KeyCode::Period);
+    assert!(app.get_shortcuts_open());
+    press(&app, Key::Escape);
+    // Ctrl+Alt+U: the U key types ع.
+    focus_composer(&app);
+    layout_chord(&app, &[Key::Control, Key::Alt], "ع", "ع", KeyCode::KeyU);
+    assert_eq!(app.get_filter(), "unread");
+    // Ctrl+Shift+X expands the composer; Shift+X types a sukun there.
+    focus_composer(&app);
+    layout_chord(
+        &app,
+        &[Key::Control, Key::Shift],
+        "\u{652}",
+        "ء",
+        KeyCode::KeyX,
+    );
+    assert!(app.get_composer_expanded());
 }
