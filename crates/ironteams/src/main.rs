@@ -92,6 +92,7 @@ async fn app_main(
             let status = *window.borrow_and_update();
             e.focused.store(status.focused, Ordering::Relaxed);
             e.set_visible(status.visible);
+            e.window_changed();
             if window.changed().await.is_err() {
                 break;
             }

@@ -13,6 +13,9 @@ import { CallStore } from "../stores/call_store.slint";
 export global DirectCallStore {
     // Incoming call (the toast).
     in property <bool> incoming-open: false;
+    // False while the window is out of focus and the call rings on the desktop's banner
+    // instead (one banner at a time); `incoming-open` stays true so the call is not lost.
+    in property <bool> incoming-shown: true;
     in property <string> incoming-name;
     in property <string> incoming-initials;
     in property <color> incoming-color: #5b5fc7;

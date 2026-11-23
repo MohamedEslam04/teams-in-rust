@@ -127,6 +127,39 @@ fn the_toast_goes_when_the_caller_gives_up() {
 }
 
 #[test]
+fn a_hidden_toast_keeps_the_call_ringing_and_comes_back_whole() {
+    // The desktop's banner rings it while the window is away: the toast is hidden, not closed.
+    let h = harness();
+    ring(&h, "Sara Example", false);
+    assert!(cs(&h.app).get_incoming_shown());
+    cs(&h.app).set_incoming_shown(false);
+    assert!(cs(&h.app).get_incoming_open());
+    assert!(!shows(&h.app, "Incoming call"), "one banner at a time");
+    assert!(buttons(&h.app, "Decline").is_empty());
+    assert_eq!(h.engine.incoming_call_state(), Some(IncomingState::Ringing));
+    // The window is back in front: the same call, with its actions.
+    cs(&h.app).set_incoming_shown(true);
+    assert!(shows(&h.app, "Incoming call"));
+    click(&button(&h.app, "Decline"));
+    assert_eq!(h.engine.call_log(), ["decline"]);
+    assert!(!cs(&h.app).get_incoming_open());
+}
+
+#[test]
+fn the_toast_stays_when_the_window_is_away_but_the_desktop_cannot_ring() {
+    // Tests have no desktop banner (`external::suppressed`): a call must not be left with none.
+    let h = harness();
+    h.engine
+        .focused
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    ring(&h, "Sara Example", false);
+    h.engine.window_changed();
+    assert!(cs(&h.app).get_incoming_open());
+    assert!(cs(&h.app).get_incoming_shown());
+    assert!(shows(&h.app, "Incoming call"));
+}
+
+#[test]
 fn a_second_invitation_does_not_replace_a_ringing_one() {
     let h = harness();
     ring(&h, "Sara Example", false);
