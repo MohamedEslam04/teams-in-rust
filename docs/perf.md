@@ -93,7 +93,7 @@ run it on CI: push the branch as `ci/bench-<name>` and the `Bench UI` workflow r
 commit and again with `crates/ironteams/ui` from `origin/dev`, on the same runner:
 
 ```sh
-gh run view <run> --log | grep -E 'repaint|page_switch |scroll frames'
+gh run view <run> --log | grep -E 'repaint|page_switch |scroll step'
 ```
 
 The numbers are from a debug build on a GitHub runner, so only before/after on the same run compare.

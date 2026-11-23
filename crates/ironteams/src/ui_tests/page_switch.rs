@@ -231,24 +231,35 @@ fn page_switch_cost_and_scroll_frames_of_a_long_chat() {
         .expect("the message list");
     let (p, s) = (l.absolute_position(), l.size());
     let at = LogicalPosition::new(p.x + s.width / 2., p.y + s.height / 2.);
-    let mut frames = vec![];
-    for i in 0..120 {
-        let t = Instant::now();
-        h.app.window().dispatch_event(WindowEvent::PointerScrolled {
-            position: at,
-            delta_x: 0.,
-            delta_y: if i < 60 { 120. } else { -120. },
-        });
-        testing::mock_elapsed_time(Duration::from_millis(16));
-        screen.frame();
-        frames.push(ms(t.elapsed()));
-    }
-    let max = frames.iter().cloned().fold(0., f64::max);
-    let over = frames.iter().filter(|f| **f > 16.).count();
-    eprintln!(
-        "scroll frames=120 median_ms={:.2} max_ms={max:.1} over_16ms={over}",
-        median(frames)
-    );
+    let mut scroll = |step: f32, n: usize| {
+        let (mut frames, mut events, mut draws) = (vec![], vec![], vec![]);
+        for i in 0..n {
+            let t = Instant::now();
+            h.app.window().dispatch_event(WindowEvent::PointerScrolled {
+                position: at,
+                delta_x: 0.,
+                delta_y: if i < n / 2 { step } else { -step },
+            });
+            testing::mock_elapsed_time(Duration::from_millis(16));
+            let event = t.elapsed();
+            screen.frame();
+            frames.push(ms(t.elapsed()));
+            events.push(ms(event));
+            draws.push(ms(t.elapsed() - event));
+        }
+        let max = frames.iter().cloned().fold(0., f64::max);
+        let over = frames.iter().filter(|f| **f > 16.).count();
+        eprintln!(
+            "scroll step={step} frames={n} median_ms={:.2} max_ms={max:.1} over_16ms={over} \
+             event_ms={:.2} draw_ms={:.2}",
+            median(frames),
+            median(events),
+            median(draws)
+        );
+    };
+    // Wheel notches (new rows come into view), then small steps (mostly the same rows moved).
+    scroll(120., 120);
+    scroll(8., 60);
 }
 
 fn settle() {
