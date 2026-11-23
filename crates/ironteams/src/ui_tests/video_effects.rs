@@ -231,6 +231,105 @@ fn the_effects_panel_opens_and_blur_applies_to_what_is_sent() {
     );
 }
 
+/// A tile's place in reading order: its row, then its column.
+fn grid_place(tile: &ElementHandle) -> (i32, i32) {
+    let p = tile.absolute_position();
+    (p.y.round() as i32, p.x.round() as i32)
+}
+
+#[test]
+fn the_panel_lists_none_blur_add_new_then_teams_pictures_then_the_bundled_ones() {
+    use slint::Model as _;
+    let dir = std::env::temp_dir().join(format!(
+        "ironteams-ui-teams-backgrounds-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // Two of Teams' thumbnails are already downloaded.
+    for file in ["escapeArtist3_thumb.png", "holiday_thumb.png"] {
+        image::RgbImage::from_pixel(280, 158, image::Rgb([200, 90, 30]))
+            .save(dir.join(file))
+            .unwrap();
+    }
+    let f = Fx::new();
+    f.h.engine.calls.keep_teams_in(dir.clone());
+    f.prejoin();
+    f.camera_on();
+    click(&f.button("Video effects"));
+
+    // The bundled pictures include the new ones: the model has them all, the window shows the
+    // first rows (the rest is scrolled to).
+    let tiles: Vec<_> = f.fx().get_backgrounds().iter().collect();
+    let names: Vec<_> = tiles.iter().map(|t| t.name.to_string()).collect();
+    for name in [
+        "Bookshelf",
+        "Sunrise",
+        "Warm bokeh",
+        "Mosaic",
+        "Living room",
+        "Home office",
+        "Loft",
+        "Studio",
+    ] {
+        assert!(names.iter().any(|n| n == name), "{name}");
+    }
+    assert!(f.shows("Bookshelf") && f.shows("Sunrise"));
+    let ids: Vec<_> = tiles.iter().map(|t| t.id.to_string()).collect();
+    assert_eq!(
+        ids[..5],
+        [
+            "none",
+            "blur",
+            "teams:escapeArtist3",
+            "teams:holiday",
+            "dusk"
+        ]
+    );
+    assert_eq!(ids.len(), 2 + 2 + 26, "none, blur, two Teams, 26 bundled");
+    // Teams' pictures that are downloaded have a tile named as Teams names it; the rest have none.
+    assert!(f.shows("Escape artist 3") && f.shows("Holiday"));
+    assert!(!f.shows("Escape artist 4"), "not downloaded: no tile");
+
+    let place = |label: &str| grid_place(&f.button(label));
+    let order = [
+        place("None"),
+        place("Standard blur"),
+        place("Add new background"),
+        place("Escape artist 3"),
+        place("Holiday"),
+        place("Dusk"),
+        place("Sunrise"),
+    ];
+    assert!(
+        order.windows(2).all(|w| w[0] < w[1]),
+        "reading order: {order:?}"
+    );
+
+    // Picking a Teams tile is the same panel command as any background.
+    click(&f.button("Escape artist 3"));
+    assert!(
+        f.sent()
+            .contains(&"fx-background teams:escapeArtist3".to_owned())
+    );
+    assert_eq!(f.fx().get_background(), "teams:escapeArtist3");
+    assert_eq!(f.button("Escape artist 3").accessible_checked(), Some(true));
+    assert_eq!(
+        f.h.engine.calls.effects().background,
+        Background::None,
+        "its full picture is still to come"
+    );
+    // A bundled one goes on the camera at once.
+    click(&f.button("Sunrise"));
+    assert!(matches!(
+        f.h.engine.calls.effects().background,
+        Background::Image(_)
+    ));
+    assert_eq!(f.fx().get_teams_note(), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn the_panel_has_two_tabs_the_effects_and_the_settings() {
     let f = Fx::new();

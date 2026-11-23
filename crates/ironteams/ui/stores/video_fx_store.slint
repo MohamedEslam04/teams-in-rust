@@ -4,11 +4,13 @@
 
 // A tile of the background picker.
 export struct FxChoice {
-    // none | blur | strong-blur | a built-in background's id | custom:<file>
+    // none | blur | strong-blur | a built-in background's id | teams:<name> | custom:<file>
     id: string,
     name: string,
     thumb: image,
     has-thumb: bool,
+    // A Teams picture whose thumbnail is still being downloaded: a placeholder, not yet pickable.
+    loading: bool,
 }
 
 export global VideoFxStore {
@@ -19,6 +21,8 @@ export global VideoFxStore {
     in property <string> preview-status;
     in property <[FxChoice]> backgrounds;
     in property <string> background: "none";
+    // Under the tiles: why Teams' pictures are missing (the CDN is out of reach), or "".
+    in property <string> teams-note;
     // none | warm | cool | mono | vivid
     in property <string> filter: "none";
     in property <bool> brighten;

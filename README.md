@@ -248,6 +248,11 @@ On first run IronTeams downloads Microsoft Teams' notification and ringtone soun
 (the files Teams web plays). They are not part of IronTeams and not shipped with it; turn this off in
 Settings › Notifications › "Download Teams' original sounds", and IronTeams plays its own sounds instead.
 
+In the same way, the Video effects panel downloads Microsoft Teams' background pictures (the ones the Teams web
+app offers) from Microsoft's CDN into IronTeams' data folder (`backgrounds/teams/`): the small previews after
+sign-in, and a full picture when you choose it. They are not part of IronTeams and not shipped with it. The
+panel's other backgrounds are drawn by IronTeams itself.
+
 ## Credits
 
 - Protocol knowledge from [purple-teams](https://github.com/EionRobb/purple-teams) by Eion Robb (GPL-3.0).

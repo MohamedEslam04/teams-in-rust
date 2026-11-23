@@ -172,6 +172,14 @@ impl Shared {
         self.ui.video_fx(view);
     }
 
+    /// Something arrived from Teams' background CDN: the panel's tiles are listed again, and a
+    /// chosen picture that was missing goes on the camera.
+    #[cfg(all(feature = "calls", not(test)))]
+    pub(super) fn teams_changed(&self) {
+        self.fx.lock().unwrap().teams_changed();
+        self.push_fx();
+    }
+
     /// Keeps the camera picked (`None`: the default) in Settings' devices, where the camera reads
     /// it when it opens.
     #[cfg(feature = "calls")]

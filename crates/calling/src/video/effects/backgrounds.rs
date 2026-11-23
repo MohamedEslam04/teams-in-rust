@@ -1,7 +1,10 @@
-//! The bundled backgrounds, drawn here at any size (no picture files): two gradients, an
-//! abstract office, a bookshelf and two plain colours.
+//! The bundled backgrounds, drawn here at any size (no picture files): gradients and plain
+//! colours, soft abstract shapes, bokeh, geometric patterns and a few simple rooms (an office, a
+//! bookshelf, a living room, a home office, a loft, a studio).
 
 use crate::video::RgbFrame;
+
+mod extra;
 
 /// A background that comes with IronTeams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,7 +14,7 @@ pub struct BuiltIn {
     pub name: &'static str,
 }
 
-pub const BUILT_IN: [BuiltIn; 6] = [
+pub const BUILT_IN: [BuiltIn; 26] = [
     BuiltIn {
         id: "dusk",
         name: "Dusk",
@@ -36,7 +39,31 @@ pub const BUILT_IN: [BuiltIn; 6] = [
         id: "slate",
         name: "Slate",
     },
+    b("sunrise", "Sunrise"),
+    b("ocean", "Ocean"),
+    b("forest-mist", "Forest mist"),
+    b("lavender", "Lavender haze"),
+    b("midnight", "Midnight"),
+    b("peach", "Peach"),
+    b("mint", "Mint"),
+    b("graphite", "Graphite"),
+    b("bokeh-warm", "Warm bokeh"),
+    b("bokeh-cool", "Cool bokeh"),
+    b("city-lights", "City lights"),
+    b("stripes", "Stripes"),
+    b("mosaic", "Mosaic"),
+    b("rings", "Rings"),
+    b("waves", "Waves"),
+    b("dots", "Dots"),
+    b("living-room", "Living room"),
+    b("home-office", "Home office"),
+    b("loft", "Loft"),
+    b("studio", "Studio"),
 ];
+
+const fn b(id: &'static str, name: &'static str) -> BuiltIn {
+    BuiltIn { id, name }
+}
 
 type Rgb = [f32; 3];
 
@@ -106,6 +133,24 @@ impl Canvas {
                 let fx = (x as f32 + 0.5) / w as f32;
                 if (fx - cx).abs() <= rx && inside(fx, fy) {
                     self.px[y * w + x] = c;
+                }
+            }
+        }
+    }
+
+    /// A disc around `(cx, cy)` with radius `r` (a fraction of the height) laid over what is
+    /// there with `alpha`.
+    fn disc(&mut self, (cx, cy): (f32, f32), r: f32, c: Rgb, alpha: f32) {
+        let aspect = self.w as f32 / self.h.max(1) as f32;
+        let from = |v: f32, n: usize| (v * n as f32).floor().max(0.0) as usize;
+        let to = |v: f32, n: usize| ((v * n as f32).ceil().max(0.0) as usize).min(n);
+        for y in from(cy - r, self.h)..to(cy + r, self.h) {
+            let fy = (y as f32 + 0.5) / self.h as f32;
+            for x in from(cx - r / aspect, self.w)..to(cx + r / aspect, self.w) {
+                let fx = (x as f32 + 0.5) / self.w as f32;
+                if ((fx - cx) * aspect).powi(2) + (fy - cy).powi(2) <= r * r {
+                    let p = &mut self.px[y * self.w + x];
+                    *p = mix(*p, c, alpha);
                 }
             }
         }
@@ -264,6 +309,26 @@ pub fn built_in(id: &str, w: usize, h: usize) -> Option<RgbFrame> {
         "bookshelf" => bookshelf(w, h),
         "sage" => plain(w, h, 0x9fb28c),
         "slate" => plain(w, h, 0x4d5b6e),
+        "sunrise" => extra::sunrise(w, h),
+        "ocean" => extra::ocean(w, h),
+        "forest-mist" => extra::forest_mist(w, h),
+        "lavender" => extra::lavender(w, h),
+        "midnight" => extra::midnight(w, h),
+        "peach" => extra::diagonal(w, h, 0xffd9c0, 0xff9e8f),
+        "mint" => extra::diagonal(w, h, 0xd4f5e4, 0x4db6a4),
+        "graphite" => extra::graphite(w, h),
+        "bokeh-warm" => extra::bokeh(w, h, (0x3b1d1a, 0x1c1214), &extra::WARM, 38),
+        "bokeh-cool" => extra::bokeh(w, h, (0x0e2a4a, 0x14183a), &extra::COOL, 38),
+        "city-lights" => extra::bokeh(w, h, (0x101a33, 0x2a2140), &extra::CITY, 55),
+        "stripes" => extra::stripes(w, h),
+        "mosaic" => extra::mosaic(w, h),
+        "rings" => extra::rings(w, h),
+        "waves" => extra::waves(w, h),
+        "dots" => extra::dots(w, h),
+        "living-room" => extra::living_room(w, h),
+        "home-office" => extra::home_office(w, h),
+        "loft" => extra::loft(w, h),
+        "studio" => extra::studio(w, h),
         _ => return None,
     };
     Some(canvas.into_frame())
@@ -292,7 +357,50 @@ mod tests {
         assert_ne!(a, built_in("office", 32, 18).unwrap());
         let ids: Vec<_> = BUILT_IN.iter().map(|b| b.id).collect();
         let mut unique = ids.clone();
+        unique.sort_unstable();
         unique.dedup();
-        assert_eq!(ids, unique);
+        assert_eq!(ids.len(), unique.len(), "an id twice");
+        let mut names: Vec<_> = BUILT_IN.iter().map(|b| b.name).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), BUILT_IN.len(), "a name twice");
+    }
+
+    #[test]
+    fn there_are_twenty_six_and_none_borrows_a_reserved_id() {
+        assert_eq!(BUILT_IN.len(), 26);
+        for b in BUILT_IN {
+            assert!(!b.name.is_empty());
+            for reserved in ["none", "blur", "strong-blur"] {
+                assert_ne!(b.id, reserved);
+            }
+            assert!(
+                !b.id.contains(':'),
+                "{}: a prefix with a colon means a picture file",
+                b.id
+            );
+        }
+    }
+
+    #[test]
+    fn the_new_backgrounds_are_pictures_not_flat_and_differ_from_each_other() {
+        let drawn: Vec<_> = BUILT_IN
+            .iter()
+            .map(|b| (b.id, built_in(b.id, 96, 54).unwrap()))
+            .collect();
+        for (i, (id, a)) in drawn.iter().enumerate() {
+            for (other, b) in &drawn[i + 1..] {
+                assert_ne!(a, b, "{id} and {other} are the same picture");
+            }
+        }
+    }
+
+    #[test]
+    fn a_background_draws_at_the_size_the_camera_uses() {
+        let f = built_in("living-room", 1280, 720).unwrap();
+        assert_eq!(
+            (f.width, f.height, f.data.len()),
+            (1280, 720, 1280 * 720 * 3)
+        );
     }
 }
