@@ -198,7 +198,7 @@ export component VideoEffectsPanel inherits Rectangle {
             }
         }
         if root.shows-preview: Rectangle {
-            height: 150px;
+            height: 120px;
             border-radius: 6px;
             clip: true;
             background: Theme.rail;
@@ -249,8 +249,8 @@ export component VideoEffectsPanel inherits Rectangle {
                 alignment: start;
                 spacing: 10px;
                 Heading { variant: HeadingVariant.caption; text: "Background"; }
-                BackgroundGrid { }
-                if VideoFxStore.background == "blur" || VideoFxStore.background == "strong-blur": VerticalLayout {
+                // The blur's strength: neither is checked until a blur is chosen.
+                VerticalLayout {
                     spacing: 2px;
                     Heading { variant: HeadingVariant.caption; text: "Blur strength"; }
                     HorizontalLayout {
@@ -267,6 +267,7 @@ export component VideoEffectsPanel inherits Rectangle {
                         }
                     }
                 }
+                BackgroundGrid { }
                 if VideoFxStore.background.starts-with("custom:"): HorizontalLayout {
                     alignment: start;
                     Rectangle {

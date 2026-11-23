@@ -466,19 +466,6 @@ fn the_call_s_more_panel_opens_the_effects() {
     assert!(f.fx().get_open());
     click(&f.button("Standard blur"));
     assert_eq!(f.fx().get_background(), "blur", "{:?}", f.sent());
-    let (tile, size) = (f.button("Standard blur"), f.button("Add new background"));
-    let found: Vec<_> = f
-        .all("Strong")
-        .iter()
-        .map(|e| e.accessible_role())
-        .collect();
-    assert!(
-        !found.is_empty(),
-        "no Strong row; tile {:?} {:?}, add {:?}",
-        tile.absolute_position(),
-        tile.size(),
-        size.absolute_position()
-    );
     click(&f.radio("Strong"));
     assert_eq!(
         f.h.engine.calls.effects().background,
