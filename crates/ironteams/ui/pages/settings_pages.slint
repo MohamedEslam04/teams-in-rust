@@ -95,6 +95,20 @@ export component GeneralPage inherits VerticalLayout {
             toggled(on) => { SettingsStore.command("startup", SettingsStore.j2(t.key, on ? "1" : "0")); }
         }
     }
+    SSection {
+        title: @tr("Performance");
+        SChoiceRow {
+            label: @tr("Graphics");
+            hint: @tr("CPU draws with the processor and uses the least memory. GPU uses the graphics card, can feel smoother and uses more memory.");
+            options: [{v: "cpu", l: @tr("CPU (low memory, default)")}, {v: "gpu", l: @tr("GPU (smoother, uses more memory)")}];
+            value: SettingsStore.renderer;
+            picked(v) => { SettingsStore.renderer = v; SettingsStore.command("renderer", v); }
+        }
+        Para { text: SettingsStore.renderer-running == "gpu" ? @tr("Running: GPU") : @tr("Running: CPU"); }
+        if SettingsStore.renderer-fallback: Para { text: @tr("GPU graphics are not available here, using CPU"); }
+        if SettingsStore.renderer-restart: Para { text: @tr("Restart IronTeams to apply"); }
+        if SettingsStore.renderer-restart: Button { variant: ButtonVariant.settings; label: @tr("Restart now"); clicked => { SettingsStore.command("restart", ""); } }
+    }
     // What IronTeams cannot do yet is greyed out, below the settings that work.
     SSection {
         title: @tr("Translation");

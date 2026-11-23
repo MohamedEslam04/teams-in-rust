@@ -74,6 +74,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "Start IronTeams when I sign in",
         "autostart login startup boot",
     ),
+    (
+        "general",
+        "Graphics",
+        "renderer cpu gpu graphics card memory smooth performance femtovg software",
+    ),
     ("general", "Open in the background", "minimized hidden tray"),
     (
         "general",

@@ -261,6 +261,10 @@ pub struct GeneralPrefs {
     /// IANA zone name (`Africa/Cairo`). `None` follows the system.
     #[serde(deserialize_with = "de_time_zone")]
     pub time_zone: Option<String>,
+    /// CPU or GPU drawing (Settings > General > Performance). Read before the window exists; it
+    /// applies on the next start.
+    #[serde(deserialize_with = "lenient")]
+    pub renderer: crate::renderer::Renderer,
     /// Start IronTeams at login. This is the user's intent; the login entry is the tray crate's.
     #[serde(deserialize_with = "lenient")]
     pub auto_start: bool,
@@ -319,6 +323,7 @@ impl Default for GeneralPrefs {
             date_format: DateFormat::default(),
             time_format: TimeFormat::default(),
             time_zone: None,
+            renderer: crate::renderer::Renderer::default(),
             auto_start: false,
             open_in_background: false,
             keep_running_on_close: true,
@@ -624,6 +629,7 @@ mod tests {
             date_format: DateFormat::Ymd,
             time_format: TimeFormat::H12,
             time_zone: Some("Africa/Cairo".into()),
+            renderer: crate::renderer::Renderer::Gpu,
             auto_start: true,
             open_in_background: true,
             keep_running_on_close: true,

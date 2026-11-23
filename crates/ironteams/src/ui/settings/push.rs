@@ -157,6 +157,12 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_time_zone(s(gp.time_zone.clone().unwrap_or_default()));
     g.set_system_time_zone(s(iana_time_zone::get_timezone().unwrap_or_default()));
     g.set_startup(toggles(st::startup_rows(gp)));
+    let started = crate::renderer::running();
+    g.set_renderer(s(gp.renderer.slug()));
+    g.set_renderer_running(s(started.running.slug()));
+    g.set_renderer_fallback(started.fell_back());
+    // What the next start will use differs from what this start asked for.
+    g.set_renderer_restart(crate::renderer::wanted(gp.renderer) != started.wanted);
     g.set_check_updates(gp.check_updates);
     g.set_self_update(c.env.hooks.updates.is_some());
     g.set_auto_update(gp.auto_update);
