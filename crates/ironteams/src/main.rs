@@ -16,6 +16,7 @@ mod desktop_entry;
 mod external;
 mod file_hover;
 mod find_data;
+mod key_layout;
 mod language;
 mod lists_data;
 mod loop_compose;
@@ -759,7 +760,12 @@ fn main() -> anyhow::Result<()> {
         let tx = tx.clone();
         let weak = window.as_weak();
         let cursor = std::cell::Cell::new(slint::LogicalPosition::default());
+        let shortcuts = key_layout::Shortcuts::default();
         window.window().on_winit_window_event(move |win, event| {
+            // Ctrl+V and every other shortcut by the key's place on a non-Latin layout.
+            if shortcuts.event(win, event) == EventResult::PreventDefault {
+                return EventResult::PreventDefault;
+            }
             if let WindowEvent::CursorMoved { position, .. } = event {
                 let p = position.to_logical::<f32>(f64::from(win.scale_factor()));
                 cursor.set(slint::LogicalPosition::new(p.x, p.y));
