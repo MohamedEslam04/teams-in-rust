@@ -3,11 +3,11 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 
 export component InfoTip inherits Rectangle {
-    in property <string> text;
+    in property <string> tip;
     width: 20px;
     height: 20px;
     accessible-role: text;
-    accessible-label: root.text;
+    accessible-label: root.tip;
     Icon {
         source: @image-url("../icons/info.svg");
         tint: touch.has-hover ? Theme.fg : Theme.fg-muted;
@@ -30,7 +30,7 @@ export component InfoTip inherits Rectangle {
             x: 8px;
             y: 8px;
             width: parent.width - 16px;
-            text: root.text;
+            text: root.tip;
             color: Theme.fg;
             font-size: 12px * Theme.font-scale;
             wrap: word-wrap;
