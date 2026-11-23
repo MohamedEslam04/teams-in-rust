@@ -2,6 +2,8 @@
 
 IronTeams — an unofficial native Microsoft Teams client written in Rust.
 
+**Website:** [mohamedeslam04.github.io/teams-in-rust](https://mohamedeslam04.github.io/teams-in-rust/) has the downloads for every system and the install guides.
+
 A lightweight native desktop client for Microsoft Teams on Linux, written in Rust with [Slint](https://slint.dev).
 Formerly called kelma; the repository was `MohamedEslam04/kelma` before it became `teams-in-rust`.
 
