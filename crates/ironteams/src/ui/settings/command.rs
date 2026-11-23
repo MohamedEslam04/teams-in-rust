@@ -781,6 +781,16 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             notice(w, "Saved.");
         }
+        "wheel-speed" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.wheel_speed = appearance::general::clamp_wheel_speed(
+                arg.parse()
+                    .unwrap_or(appearance::general::WHEEL_SPEED_DEFAULT),
+            );
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "link-previews" => {
             let mut c = shared.borrow_mut();
             c.local.general.link_previews = bit(arg);

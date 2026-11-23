@@ -78,6 +78,9 @@ component ButtonBody inherits Rectangle {
     property <length> chevron-part: root.inline-row && root.chevron ? 6px + 12px : 0px;
     property <bool> hover: touch.has-hover;
     property <bool> hot: touch.has-hover && root.enabled;
+    // `settings`: reached with Tab; the ring shows for the keyboard only.
+    property <bool> tabbable: root.variant == ButtonVariant.settings && root.enabled;
+    property <bool> focus-visible: false;
     // The width the label (and icon) asks for.
     out property <length> natural-width: max(root.base-width, root.pad * 2 + root.icon-part + lbl.preferred-width + root.chevron-part);
 
@@ -177,6 +180,22 @@ component ButtonBody inherits Rectangle {
         height: 12px;
         tint: root.primary ? #ffffff : Theme.fg-muted;
     }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.tabbable;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat && root.enabled {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
     touch := TouchArea {
         // The calendar's and the call bar's buttons keep their pointer: the call bar's tooltip
         // also says why a button is disabled.
@@ -184,9 +203,23 @@ component ButtonBody inherits Rectangle {
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => {
             if root.enabled {
+                // The keys follow the pointer (a ring elsewhere goes), without a ring here.
+                if root.tabbable {
+                    keys.focus();
+                }
+                root.focus-visible = false;
                 root.clicked();
             }
         }
+    }
+    if root.focus-visible: focus-ring := Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: Theme.accent;
     }
     if root.stacked && touch.has-hover && root.tip != "": Rectangle {
         y: root.height + 4px;

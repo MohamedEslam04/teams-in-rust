@@ -495,6 +495,15 @@ msgstr "مستند Word"
 msgid "Writing"
 msgstr "الكتابة"
 
+msgid "Scrolling"
+msgstr "التمرير"
+
+msgid "Mouse wheel speed"
+msgstr "سرعة عجلة الماوس"
+
+msgid "How far one notch of the mouse wheel scrolls messages and posts. A touchpad scrolls as it always does."
+msgstr "المسافة التي تمررها نقرة واحدة من عجلة الماوس في الرسائل والمنشورات. لوحة اللمس تمرر كما هي دائمًا."
+
 msgid "You asked {} for control"
 msgstr "طلبت من {} التحكم"
 
@@ -2440,3 +2449,17 @@ msgstr "أعد تشغيل IronTeams لتطبيق التغيير"
 
 msgid "Restart now"
 msgstr "إعادة التشغيل الآن"
+
+# Settings: section headings and rows of the Settings kit layout.
+
+msgid "Banners"
+msgstr "الإشعارات المنبثقة"
+
+msgid "See how a notification looks"
+msgstr "شاهد شكل الإشعار"
+
+msgid "Activity types"
+msgstr "أنواع النشاط"
+
+msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
+msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."

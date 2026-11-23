@@ -11,7 +11,7 @@ import { IconButton } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { MessageRow } from "message_row.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { Spinner } from "../tokens/motion.slint";
+import { Motion, Spinner, WheelGlide } from "../tokens/motion.slint";
 
 // Someone who replied to a post: the summary shows their photo and names the first two.
 export struct Replier {
@@ -188,9 +188,12 @@ component Divider inherits HorizontalLayout {
     Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
 }
 
-component PostCard inherits Rectangle {
+// A TouchArea so the whole card takes the wheel before the list does (`wheel`, the list's glide).
+component PostCard inherits TouchArea {
     in property <PostItem> item;
     in property <length> bubble: 600px;
+    callback wheel(PointerScrollEvent) -> EventResult;
+    scroll-event(e) => { return root.wheel(e); }
     callback react(string, string);
     callback edit(string);
     callback more-reactions(string, length, length);
@@ -513,8 +516,17 @@ export component ChannelPosts inherits Rectangle {
             property <bool> anchoring: false;
             // An older page was asked for: one request per arrival at the oldest post.
             property <bool> asked: false;
+            // The content height the last `changed content-height` saw. A move of the view that
+            // comes with another height is the cards getting their real height under the view
+            // (the list only estimates the cards it has not laid out), not the user scrolling
+            // away from the newest post: it must not unpin the list.
+            property <length> seen-height: 0px;
             function to-newest() {
                 self.content-y = ChannelStore.newest-top ? 0px : min(0px, self.visible-height - self.content-height);
+            }
+            // Whether the view is at the newest post, as the user left it.
+            function recheck() {
+                self.pinned = ChannelStore.newest-top ? self.content-y >= -4px : self.content-y <= self.visible-height - self.content-height + 4px;
             }
             function ask-older() {
                 if !self.asked && !root.loading-older && ChannelStore.posts.length > 0 {
@@ -523,14 +535,50 @@ export component ChannelPosts inherits Rectangle {
                 }
             }
             changed tick => {
+                posts-glide.stop();
                 self.pinned = true;
                 self.to-newest();
             }
+            // The card holding the view's top and how far the view's top is below the card's
+            // top, as the user scrolls; and the same when older posts landed (`a-tick`).
+            property <string> top-id;
+            property <length> top-gap;
+            property <string> anchor-id;
+            property <length> anchor-gap;
             changed a-tick => {
-                self.anchoring = true;
+                posts-glide.stop();
+                self.anchor-id = self.top-id;
+                self.anchor-gap = self.top-gap;
                 self.pinned = false;
+                // Also while the card is put back now: the view passes the newest post on its
+                // way, which must not pin the list there.
+                self.anchoring = true;
+                if self.top-gap < 1px && ChannelStore.posts[ChannelStore.anchor-index].post.id == self.top-id {
+                    // The first card's top was the view's top: putting it back is exact, so it
+                    // is done now, in the layout that shows the new cards, and no frame shows
+                    // them misplaced. The timer puts it back once more, measured (no anchor).
+                    self.anchor-id = "";
+                    // From far below: the content height is still the old one until the next
+                    // layout, and from the old bottom the card would seem to be below the view
+                    // and be put at its bottom edge. From below it goes to the top edge.
+                    self.content-y = -1000000px;
+                    self.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+                }
+            }
+            // The user scrolled (wheel, drag, scrollbar).
+            scrolled => {
+                self.recheck();
+                Motion.scrolling = true;
+                posts-idle.restart();
+            }
+            // The pane got taller or shorter (the composer, the window) while at the newest post.
+            changed visible-height => {
+                if self.pinned && !self.anchoring {
+                    self.to-newest();
+                }
             }
             changed content-height => {
+                self.seen-height = self.content-height;
                 if self.pinned && !self.anchoring {
                     self.to-newest();
                 }
@@ -540,8 +588,12 @@ export component ChannelPosts inherits Rectangle {
                 }
             }
             changed content-y => {
-                self.pinned = ChannelStore.newest-top ? self.content-y >= -4px : self.content-y <= self.visible-height - self.content-height + 4px;
-                // Near the oldest post (the top, or the bottom with the newest posts on top).
+                if self.content-height == self.seen-height {
+                    self.recheck();
+                }
+                // Near the oldest post (the top, or the bottom with the newest posts on top). Not
+                // earlier: the card that was first goes back to the top of the view when the
+                // older page lands, which is where the user is only when they reached it.
                 if !self.pinned && !self.anchoring && self.content-height > self.visible-height + 40px
                     && (ChannelStore.newest-top ? self.content-y < self.visible-height - self.content-height + 40px : self.content-y > -40px) {
                     self.ask-older();
@@ -549,6 +601,36 @@ export component ChannelPosts inherits Rectangle {
             }
             for item in ChannelStore.posts: PostCard {
                 item: item;
+                wheel(e) => { return posts-glide.take(e); }
+                // A card that starts above the view's top changed height (a reply count, an
+                // edit): the view moves with it, so the cards being read stay where they are.
+                // `seen-id`: the list reuses a card for another post.
+                property <length> seen-h: 0px;
+                property <string> seen-id;
+                changed height => {
+                    if self.seen-id == item.post.id && self.seen-h > 0px && !posts-list.pinned && !posts-list.anchoring
+                        && self.y < -posts-list.content-y {
+                        posts-list.content-y = min(0px, posts-list.content-y - (self.height - self.seen-h));
+                    }
+                    self.seen-h = self.height;
+                    self.seen-id = item.post.id;
+                }
+                property <length> top-gap: -posts-list.content-y - self.y;
+                property <bool> holds-top: self.top-gap >= 0px && self.top-gap < self.height;
+                changed top-gap => {
+                    if self.holds-top {
+                        posts-list.top-id = item.post.id;
+                        posts-list.top-gap = self.top-gap;
+                    }
+                }
+                // Also when the list reuses the card holding the top for another post.
+                property <string> top-mark: self.holds-top ? item.post.id : "";
+                changed top-mark => {
+                    if self.holds-top {
+                        posts-list.top-id = item.post.id;
+                        posts-list.top-gap = self.top-gap;
+                    }
+                }
                 bubble: min(720px, root.width - 100px);
                 react(id, k) => { root.react(id, k); }
                 edit(id) => { root.edit(id); }
@@ -577,14 +659,41 @@ export component ChannelPosts inherits Rectangle {
         running: posts-list.anchoring;
         triggered => {
             posts-list.anchoring = false;
-            posts-list.content-y = min(0px, posts-list.visible-height - posts-list.content-height);
-            posts-list.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+            // The posts came in above the cards the list had built, and the list kept those where
+            // they were: the card being read is where it was, nothing to put back.
+            if posts-list.anchor-id == "" || posts-list.top-id != posts-list.anchor-id
+                || abs(posts-list.top-gap - posts-list.anchor-gap) >= 1px {
+                posts-list.content-y = min(0px, posts-list.visible-height - posts-list.content-height);
+                posts-list.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+            }
         }
     }
     Timer {
         interval: 700ms;
         running: posts-list.asked;
         triggered => { posts-list.asked = false; }
+    }
+    // The wheel notches the cards took: the list moves by them a little each frame.
+    posts-glide := WheelGlide {
+        glide(d) => {
+            let to = min(0px, max(posts-list.visible-height - posts-list.content-height, posts-list.content-y + d));
+            if to == posts-list.content-y {
+                self.stop();
+            }
+            posts-list.content-y = to;
+            posts-list.recheck();
+            Motion.scrolling = true;
+            posts-idle.restart();
+        }
+    }
+    // The user stopped scrolling: cards that come into view animate again.
+    posts-idle := Timer {
+        interval: 250ms;
+        running: false;
+        triggered => {
+            Motion.scrolling = false;
+            self.running = false;
+        }
     }
 
     if root.loading-older: Rectangle {

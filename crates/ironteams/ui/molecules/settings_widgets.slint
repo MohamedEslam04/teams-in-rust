@@ -3,7 +3,6 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { SOption, SettingsStore } from "../stores/settings_store.slint";
-import { Button, ButtonVariant } from "../atoms/button.slint";
 
 // A round +/- button of the zoom row.
 component ZoomButton inherits Rectangle {
@@ -44,17 +43,6 @@ export component ZoomRow inherits Rectangle {
     }
 }
 
-// A titled group of settings.
-export component SSection inherits VerticalLayout {
-    in property <string> title;
-    in property <string> hint;
-    spacing: 8px;
-    padding-bottom: 18px;
-    if root.title != "": Text { horizontal-alignment: Theme.start-align; text: root.title; color: Theme.fg; font-size: Theme.font-heading; font-weight: 600; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-muted; font-size: Theme.font-small; wrap: word-wrap; }
-    @children
-}
-
 // One choice out of a few, as a row of pills. Each pill is labelled "<group>: <option>" for
 // screen readers, so groups with the same options (Auto, On, Off) stay distinct.
 // One pill of a `SChoice`.
@@ -64,6 +52,8 @@ component SChoicePill inherits Rectangle {
     in property <bool> on;
     in property <bool> enabled: true;
     callback picked();
+    // A Tab put the focus here: the ring shows (a click does not show it).
+    property <bool> focus-visible: false;
     width: opt-text.preferred-width + 24px;
     border-radius: self.height / 2;
     border-width: 1px;
@@ -81,11 +71,46 @@ component SChoicePill inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
     }
-    ot := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.picked(); } }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat {
+                root.picked();
+                return accept;
+            }
+            reject
+        }
+    }
+    ot := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            root.focus-visible = false;
+            root.picked();
+        }
+    }
+    if root.focus-visible: focus-ring := Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: self.height / 2;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
 }
 
 // Choices as pills in a row; when the row is wider than the space it has (a narrow window), the
-// pills stack one under another instead of pushing the page wider than the window.
+// pills stack one under another instead of pushing the page wider than the window. The first
+// option is on the start side: the left, or the right in a right to left language (Slint does not
+// mirror a row, so the row lists the options backwards there). Stacked, the first is on top.
 export component SChoice inherits Rectangle {
     in property <string> group;
     in property <[SOption]> options;
@@ -93,30 +118,52 @@ export component SChoice inherits Rectangle {
     in property <bool> enabled: true;
     callback picked(string);
     property <length> pill-height: 30px * max(1, Theme.font-scale) - 2px;
-    // The row's own width, measured whenever the row is shown.
-    property <length> row-width;
-    property <bool> fits: root.row-width <= root.width;
+    // The width the pills need side by side, measured from their labels below (always, so the
+    // choice follows a window that grows or shrinks, and a label that is translated).
+    property <bool> fits: measure.preferred-width <= root.width;
     // The page decides the width: the pills never widen it.
     min-width: 0px;
     height: root.fits ? root.pill-height + 2px : root.options.length * (root.pill-height + 6px);
     if root.fits: HorizontalLayout {
         spacing: 6px;
-        alignment: start;
-        init => { root.row-width = self.preferred-width; }
-        for o in root.options: SChoicePill {
+        alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+        for i in root.options.length: SChoicePill {
+            property <SOption> opt: root.options[Theme.rtl ? root.options.length - 1 - i : i];
             height: root.pill-height;
             group: root.group;
-            o: o;
-            on: root.value == o.v;
+            o: self.opt;
+            on: root.value == self.opt.v;
             enabled: root.enabled;
-            picked => { root.picked(o.v); }
+            picked => { root.picked(self.opt.v); }
+        }
+    }
+    // The labels again, never drawn and squeezed to nothing: only their preferred width counts
+    // (a pill is its label plus 12px on each side, as `SChoicePill`).
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        measure := HorizontalLayout {
+            spacing: 6px;
+            for o in root.options: HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                Text {
+                    text: o.l;
+                    font-size: Theme.font-body;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
         }
     }
     if !root.fits: VerticalLayout {
         spacing: 6px;
         alignment: start;
         for o in root.options: HorizontalLayout {
-            alignment: start;
+            alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
             SChoicePill {
                 height: root.pill-height;
                 group: root.group;
@@ -129,35 +176,6 @@ export component SChoice inherits Rectangle {
     }
 }
 
-// A labelled choice: the label above, the pills below.
-export component SChoiceRow inherits VerticalLayout {
-    in property <string> label;
-    in property <string> hint;
-    in property <[SOption]> options;
-    in property <string> value;
-    in property <bool> enabled: true;
-    callback picked(string);
-    spacing: 4px;
-    // Opened by a Find result: tells the page where this row is.
-    Timer {
-        running: root.label != "" && root.label == SettingsStore.target;
-        interval: 60ms;
-        triggered => {
-            SettingsStore.target-y = root.absolute-position.y;
-            SettingsStore.target = "";
-        }
-    }
-    Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; }
-    if root.hint != "": Text { horizontal-alignment: Theme.start-align; text: root.hint; color: Theme.fg-subtle; font-size: Theme.font-small; wrap: word-wrap; }
-    SChoice {
-        group: root.label;
-        options: root.options;
-        value: root.value;
-        enabled: root.enabled;
-        picked(v) => { root.picked(v); }
-    }
-}
-
 // A vertical list of choices (devices, accounts): one radio row each.
 export component SRadio inherits Rectangle {
     in property <string> group;
@@ -165,6 +183,11 @@ export component SRadio inherits Rectangle {
     in property <string> detail;
     in property <bool> checked;
     callback picked();
+    // A Tab put the focus here: the ring shows (a click does not show it).
+    property <bool> focus-visible: false;
+    // The dot sits at the row's start edge, in line with the labels of the rows around it; the
+    // label follows it (both mirrored in a right to left language).
+    property <length> label-x: 16px + 10px;
     min-height: max(32px, rcol.preferred-height + 8px);
     border-radius: 4px;
     background: rt.has-hover ? Theme.surface-hover : transparent;
@@ -172,25 +195,54 @@ export component SRadio inherits Rectangle {
     accessible-label: root.group + ": " + root.label;
     accessible-checked: root.checked;
     accessible-action-default => { root.picked(); }
-    HorizontalLayout {
-        padding-left: 6px;
-        spacing: 10px;
-        Rectangle {
-            width: 16px;
-            height: 16px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 8px;
-            border-width: 2px;
-            border-color: root.checked ? Theme.accent : Theme.fg-muted;
-            if root.checked: Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.accent; }
+    dot := Rectangle {
+        x: Theme.rtl ? root.width - self.width : 0px;
+        width: 16px;
+        height: 16px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: root.checked ? Theme.accent : Theme.fg-muted;
+        if root.checked: Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.accent; }
+    }
+    rcol := VerticalLayout {
+        x: Theme.rtl ? 0px : root.label-x;
+        width: max(0px, root.width - root.label-x);
+        alignment: center;
+        Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; wrap: word-wrap; }
+        if root.detail != "": Text { horizontal-alignment: Theme.start-align; text: root.detail; color: Theme.fg-subtle; font-size: Theme.font-small; }
+    }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
         }
-        rcol := VerticalLayout {
-            alignment: center;
-            Text { horizontal-alignment: Theme.start-align; text: root.label; color: Theme.fg; font-size: Theme.font-body; wrap: word-wrap; }
-            if root.detail != "": Text { horizontal-alignment: Theme.start-align; text: root.detail; color: Theme.fg-subtle; font-size: Theme.font-small; }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat {
+                root.picked();
+                return accept;
+            }
+            reject
         }
     }
-    rt := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
+    rt := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            root.focus-visible = false;
+            root.picked();
+        }
+    }
+    // Around the row, clear of the dot.
+    if root.focus-visible: focus-ring := Rectangle {
+        x: -6px;
+        width: parent.width + 12px;
+        border-radius: 4px;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
 }
 
 // The sounds of one setting (ringtone, message sound, urgent sound): Teams' own, listed from the
@@ -212,19 +264,6 @@ export component SRadioList inherits VerticalLayout {
     }
     for o in root.teams: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
     for o in root.others: SRadio { group: root.label; label: o.l; checked: root.value == o.v; picked => { root.picked(o.v); } }
-}
-
-// A person row with one action button (Unblock, Remove).
-export component SPersonRow inherits Rectangle {
-    in property <string> name;
-    in property <string> action;
-    callback act();
-    height: 40px;
-    HorizontalLayout {
-        spacing: 10px;
-        Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-        Button { variant: ButtonVariant.settings; label: root.action; accessible-label: root.action + " " + root.name; y: 5px; clicked => { root.act(); } }
-    }
 }
 
 // The left list entry of the page.

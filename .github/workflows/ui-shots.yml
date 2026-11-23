@@ -1,0 +1,52 @@
+# Pictures of the Settings pages (src/ui_tests/settings_shots.rs): the real window drawn by
+# Slint's software renderer, in the dark and light themes, wide, narrow and in Arabic. Push a
+# branch as ci/shots-<name>, or run it by hand on any branch, then fetch the pictures with
+# `gh run download <run> -n settings-shots -D <dir>`.
+name: UI shots
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/shots-*']
+
+concurrency:
+  group: ui-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # The same as ci.yml, so the cached dependencies of its `check` job match this build.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  # Named like the CI job so Swatinem/rust-cache restores that job's cache.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      # The GUI crate's test build outgrows the runner's memory without it (exit 143).
+      - name: More swap
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
+          free -h
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold fonts-dejavu-core
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: Draw the Settings pages
+        env:
+          IRONTEAMS_SHOTS_DIR: ${{ github.workspace }}/shots
+        run: cargo test -p ironteams --bin ironteams -- --ignored --exact ui_tests::settings_shots::settings_pages_to_png
+      - uses: actions/upload-artifact@v7
+        with:
+          name: settings-shots
+          path: shots/
+          if-no-files-found: error

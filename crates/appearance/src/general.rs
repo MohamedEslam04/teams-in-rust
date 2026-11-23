@@ -207,6 +207,27 @@ fn lenient_on<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     Ok(v.as_bool().unwrap_or(true))
 }
 
+/// How far a mouse wheel notch scrolls the conversation lists, as a multiple of the notch: the
+/// allowed range and the default (the window system's own 60px notch felt slow in long chats).
+pub const WHEEL_SPEED_MIN: f32 = 1.0;
+pub const WHEEL_SPEED_MAX: f32 = 5.0;
+pub const WHEEL_SPEED_DEFAULT: f32 = 2.5;
+
+/// `v` in the allowed wheel speeds; a value that is not a number gives the default.
+pub fn clamp_wheel_speed(v: f32) -> f32 {
+    if v.is_finite() {
+        v.clamp(WHEEL_SPEED_MIN, WHEEL_SPEED_MAX)
+    } else {
+        WHEEL_SPEED_DEFAULT
+    }
+}
+
+fn de_wheel_speed<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(v.as_f64()
+        .map_or(WHEEL_SPEED_DEFAULT, |f| clamp_wheel_speed(f as f32)))
+}
+
 fn lenient_days<'de, D: Deserializer<'de>>(d: D) -> Result<[bool; 7], D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(<[bool; 7]>::deserialize(v).unwrap_or([true; 7]))
@@ -314,6 +335,10 @@ pub struct GeneralPrefs {
     /// Messages show a card for the links in them (title, description, picture).
     #[serde(deserialize_with = "lenient")]
     pub link_previews: bool,
+    /// A mouse wheel notch scrolls the conversation lists by the notch times this
+    /// ([`WHEEL_SPEED_MIN`] to [`WHEEL_SPEED_MAX`]).
+    #[serde(deserialize_with = "de_wheel_speed")]
+    pub wheel_speed: f32,
 }
 
 impl Default for GeneralPrefs {
@@ -339,6 +364,7 @@ impl Default for GeneralPrefs {
             focus_duration: FocusDuration::default(),
             keyword_alerts: Vec::new(),
             link_previews: true,
+            wheel_speed: WHEEL_SPEED_DEFAULT,
         }
     }
 }
@@ -415,6 +441,31 @@ mod tests {
         );
         let off: GeneralPrefs = serde_json::from_str(r#"{"link_previews":false}"#).unwrap();
         assert!(!off.link_previews);
+    }
+
+    #[test]
+    fn wheel_speed_defaults_to_two_and_a_half_and_stays_in_range() {
+        assert_eq!(GeneralPrefs::default().wheel_speed, WHEEL_SPEED_DEFAULT);
+        assert_eq!(WHEEL_SPEED_DEFAULT, 2.5);
+        let old = r#"{"language":"ar"}"#;
+        assert_eq!(
+            serde_json::from_str::<GeneralPrefs>(old)
+                .unwrap()
+                .wheel_speed,
+            2.5,
+            "a file written before the setting existed"
+        );
+        let speed = |json: &str| {
+            serde_json::from_str::<GeneralPrefs>(json)
+                .unwrap()
+                .wheel_speed
+        };
+        assert_eq!(speed(r#"{"wheel_speed":4}"#), 4.0);
+        assert_eq!(speed(r#"{"wheel_speed":40}"#), WHEEL_SPEED_MAX);
+        assert_eq!(speed(r#"{"wheel_speed":0.2}"#), WHEEL_SPEED_MIN);
+        assert_eq!(speed(r#"{"wheel_speed":"fast"}"#), WHEEL_SPEED_DEFAULT);
+        assert_eq!(clamp_wheel_speed(f32::NAN), WHEEL_SPEED_DEFAULT);
+        assert_eq!(clamp_wheel_speed(-3.0), WHEEL_SPEED_MIN);
     }
 
     #[test]
@@ -650,6 +701,7 @@ mod tests {
             focus_duration: FocusDuration::Tomorrow,
             keyword_alerts: vec!["deploy".into(), "نشر".into()],
             link_previews: false,
+            wheel_speed: 4.0,
         };
         p.save_to(&path).unwrap();
         assert_eq!(GeneralPrefs::load_from(&path), p);

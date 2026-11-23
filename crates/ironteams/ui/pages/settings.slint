@@ -8,6 +8,8 @@ import { Icon, IconButton } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { SettingsStore, SFind } from "../stores/settings_store.slint";
 import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
+import { SettingsLinkRow, SettingsMetrics, SettingsNote, SettingsSection } from "../molecules/settings_kit.slint";
+import { Space } from "../tokens/space.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage, StoragePage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
@@ -131,60 +133,57 @@ export component SettingsPage inherits Rectangle {
             VerticalLayout {
                 horizontal-stretch: 1;
                 sv := ScrollView {
-                    VerticalLayout {
-                        padding: root.narrow ? 16px : 24px;
-                        padding-right: root.narrow ? 16px : 32px;
-                        spacing: 12px;
-                        alignment: start;
-                        if SettingsStore.query != "": VerticalLayout {
-                            spacing: 6px;
-                            Text { horizontal-alignment: Theme.start-align; text: @tr("Results for \"{}\"", SettingsStore.query); color: Theme.fg; font-size: Theme.font-title; font-weight: 700; }
-                            if SettingsStore.found.length == 0: Text { horizontal-alignment: Theme.start-align; text: @tr("No setting matches."); color: Theme.fg-muted; font-size: Theme.font-body; }
-                            for f in SettingsStore.found: Rectangle {
-                                height: max(40px, fr.preferred-height + 12px);
-                                border-radius: 4px;
-                                background: ft.has-hover ? Theme.surface-hover : Theme.surface;
-                                accessible-role: button;
-                                accessible-label: @tr("Result: {} in {}", f.label, f.page-title);
-                                accessible-action-default => { SettingsStore.query = ""; find-input.text = ""; SettingsStore.target = f.label; SettingsStore.page = f.page; SettingsStore.command("page", f.page); }
-                                fr := VerticalLayout {
-                                    padding-left: 12px;
-                                    alignment: center;
-                                    Text { horizontal-alignment: Theme.start-align; text: f.label; color: Theme.fg; font-size: Theme.font-body; }
-                                    Text { horizontal-alignment: Theme.start-align; text: f.page-title; color: Theme.fg-subtle; font-size: Theme.font-small; }
-                                }
-                                ft := TouchArea {
-                                    mouse-cursor: pointer;
+                    // The page column: as wide as the window lets it, up to a readable width, on
+                    // the start side.
+                    HorizontalLayout {
+                        padding: root.narrow ? SettingsMetrics.page-pad-narrow : SettingsMetrics.page-pad;
+                        // What the column leaves (a wide window) goes to the end side.
+                        if Theme.rtl: Rectangle { horizontal-stretch: 1; }
+                        VerticalLayout {
+                            max-width: SettingsMetrics.content-max;
+                            horizontal-stretch: 1000;
+                            spacing: Space.xl;
+                            alignment: start;
+                            if SettingsStore.query != "": Text { horizontal-alignment: Theme.start-align; text: @tr("Results for \"{}\"", SettingsStore.query); color: Theme.fg; font-size: Theme.font-title; font-weight: 700; }
+                            if SettingsStore.query != "" && SettingsStore.found.length == 0: SettingsNote { text: @tr("No setting matches."); font-size: Theme.font-body; }
+                            // One card of results: each row is the setting and the page it is on;
+                            // it opens that page and scrolls the setting into view.
+                            if SettingsStore.query != "" && SettingsStore.found.length > 0: SettingsSection {
+                                for f in SettingsStore.found: SettingsLinkRow {
+                                    label: f.label;
+                                    description: f.page-title;
+                                    a11y-label: @tr("Result: {} in {}", f.label, f.page-title);
                                     clicked => { SettingsStore.query = ""; find-input.text = ""; SettingsStore.target = f.label; SettingsStore.page = f.page; SettingsStore.command("page", f.page); }
                                 }
                             }
+                            if SettingsStore.query == "": Text {
+                                horizontal-alignment: Theme.start-align;
+                                text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
+                                color: Theme.fg;
+                                font-size: Theme.font-title;
+                                font-weight: 700;
+                                accessible-role: text;
+                                accessible-label: @tr("Settings page");
+                                accessible-value: self.text;
+                            }
+                            if SettingsStore.query == "" && SettingsStore.page == "general": GeneralPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "chats": ChatsPage {
+                                enter-sends: root.enter-sends;
+                                set-enter-sends(on) => { root.set-enter-sends(on); }
+                            }
+                            if SettingsStore.query == "" && SettingsStore.page == "accounts": AccountsPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "privacy": PrivacyPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "notifications": NotificationsPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "appearance": AppearancePage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "accessibility": AccessibilityPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "devices": DevicesPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "calls": CallsSettingsPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "files": FilesPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "storage": StoragePage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "permissions": PermissionsPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "about": AboutPage { }
                         }
-                        if SettingsStore.query == "": Text {
-                            horizontal-alignment: Theme.start-align;
-                            text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
-                            color: Theme.fg;
-                            font-size: Theme.font-title;
-                            font-weight: 700;
-                            accessible-role: text;
-                            accessible-label: @tr("Settings page");
-                            accessible-value: self.text;
-                        }
-                        if SettingsStore.query == "" && SettingsStore.page == "general": GeneralPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "chats": ChatsPage {
-                            enter-sends: root.enter-sends;
-                            set-enter-sends(on) => { root.set-enter-sends(on); }
-                        }
-                        if SettingsStore.query == "" && SettingsStore.page == "accounts": AccountsPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "privacy": PrivacyPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "notifications": NotificationsPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "appearance": AppearancePage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "accessibility": AccessibilityPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "devices": DevicesPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "calls": CallsSettingsPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "files": FilesPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "storage": StoragePage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "permissions": PermissionsPage { }
-                        if SettingsStore.query == "" && SettingsStore.page == "about": AboutPage { }
+                        if !Theme.rtl: Rectangle { horizontal-stretch: 1; }
                     }
                 }
                 if SettingsStore.notice != "": Rectangle {

@@ -1,4 +1,4 @@
-Docs synced to commit be977c73 ("Merge feat/ui-organisms: composer and app.slint split into organisms, duplicate component names resolved", 2026-11-22)
+Docs synced to commit 931bf3b9 ("fix(settings): a radio row's focus ring clears its dot; the landing shot is taken once the opened page's rows exist", 2026-11-23)
 
 # IronTeams UI (Slint)
 
@@ -86,6 +86,8 @@ Properties: `label`, `placeholder`, `text` (in-out; a binding is the starting te
   `SwitchRow`, `.icon` was the pre-join `MicSwitch`): state in `checked` (was `on` on Settings);
   `settings` flips it itself, the others leave it to their owner. The `icon` variant's owner
   sets `width: self.natural-width`.
+- `SwitchTrack`: the track and knob of a settings switch alone (no label, no click target, hidden
+  from screen readers); `SettingsSwitchRow` is the switch it belongs to.
 
 ### `atoms/avatar.slint`: `Avatar`, `PresenceDot`, `GlyphAvatar`
 
@@ -130,6 +132,40 @@ list `MenuRow`). The row carries the accessible name; its texts are hidden from 
 - `atoms/heading.slint`: `Heading` (`.title` was Recaps' `Heading`, `.section` the App store's
   shelf title, `.group` the shortcut list's `Heading`, `.caption` the video effects' `Heading` and
   the call's More panel `SectionTitle`).
+
+## The Settings kit
+
+`molecules/settings_kit.slint` builds every Settings page; `tokens/space.slint` holds the spacing
+scale (`Space.xxs` 2px to `Space.xxl` 32px) and `SettingsMetrics` the kit's sizes (section gap,
+row padding, smallest row height, content width), both exported to Rust for the UI tests.
+
+- `SettingsSections`: a page's column of sections, `SettingsMetrics.section-gap` apart.
+- `SettingsSection` (`title`, `description`, `danger`): a heading over a card (`Theme.card`, a
+  border, rounded); `danger` draws the heading and border in `Theme.danger`.
+- `SettingsRow` (`label`, `description`, `enabled`, `stacked`, `divider`): text on the start side,
+  the children (the control) on the end side, mirrored for a right-to-left language; `stacked`
+  puts the control under the text. A line above every row but the first of its card.
+- `SettingsSwitchRow` (`label`, `description`, `checked`, `enabled`, `toggled(bool)`): the whole
+  row is the switch: click target, hover tint, Tab focus with a ring, Space or Enter flips it,
+  and it carries the accessible name and description (its texts are hidden from screen readers).
+- `SettingsChoiceRow` (`options`, `value`, `picked(string)`): pills under the text (`SChoice`).
+- `SettingsChoiceRow`'s pills (`SChoice`) list the first option on the start side, also in a
+  right-to-left language (the row lists them backwards there; stacked, the first is on top).
+- `SettingsButtonRow` (`button-label`, `primary`, `danger`, `button-enabled`, `clicked()`),
+  `SPersonRow` (`name`, `action`, `act()`; the button reads "<action> <name>").
+- `SettingsLinkRow` (`label`, `description`, `a11y-label`, `clicked()`): a row that goes somewhere,
+  with a chevron on the end side; Find in Settings lists its results with it, in one card.
+- `SettingsBlock` (free content in a card, stacked) and `SettingsNote` (a muted paragraph).
+- `SRadio`: a radio row whose dot sits on the row's start edge, in line with the row labels.
+
+Keyboard: a switch row, a link row, each pill, each radio row and a `settings` button are reached
+with Tab and act on Space or Enter. A ring (`focus-ring`) shows only when Tab put the focus there,
+never after a click.
+
+Every row with a `label` answers Find in Settings: it reports where it is when its label is the
+target, and is tinted (`Theme.selected`) for a moment after the page scrolls to it. Element ids
+the tests use: `SettingsSection::card`, `SettingsRow::divider-line`, `SettingsSwitchRow::focus-ring`,
+`SChoicePill::focus-ring`, `ButtonBody::focus-ring`.
 
 ## The window and the composer
 

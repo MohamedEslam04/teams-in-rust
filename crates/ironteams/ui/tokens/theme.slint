@@ -27,6 +27,9 @@ export global Theme {
     // The dimmed backdrop behind a dialog or an overlay.
     in-out property <color> scrim: #00000080;
     in-out property <length> radius: 6px;
+    // A group of settings (a card on the page): one step off the page background, in every
+    // palette (dark, light, high contrast).
+    out property <color> card: sidebar;
     // Set at runtime from the appearance and accessibility settings (backend/settings.rs).
     in-out property <bool> dark: true;
     in-out property <float> font-scale: 1.0;

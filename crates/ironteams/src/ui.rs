@@ -40,6 +40,7 @@ mod gifs;
 mod lists;
 mod media;
 pub(crate) mod message_toast;
+mod model_sync;
 pub(crate) mod motion;
 mod ongoing_call;
 mod palette;
@@ -56,6 +57,9 @@ thread_local! {
     static MESSAGES: RefCell<Option<Rc<VecModel<Msg>>>> = const { RefCell::new(None) };
     /// The fingerprint of each row of `MESSAGES` (see `row_fingerprint`), in the same order.
     static MESSAGE_PRINTS: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+    /// The chat list's sections (favorites, chats, channels) and the print of each row.
+    static CHAT_LISTS: RefCell<Vec<model_sync::Synced<ChatRow>>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 fn rgb(c: u32) -> Color {
@@ -71,6 +75,33 @@ fn img(p: &Option<Pixels>) -> (Image, bool) {
 
 fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(v))
+}
+
+/// Makes section `i` of the chat list (favorites, chats, channels) show `rows`, patching the model
+/// it shows (`shown`, put there with `set` when it is not ours).
+fn patch_chats(
+    i: usize,
+    shown: ModelRc<ChatRow>,
+    set: impl FnOnce(ModelRc<ChatRow>),
+    rows: Vec<ChatData>,
+) {
+    let rows = rows
+        .into_iter()
+        .map(|c| ((c.id.clone(), row_fingerprint::of_chat(&c)), c))
+        .collect();
+    CHAT_LISTS.with(|cell| {
+        let mut lists = cell.borrow_mut();
+        while lists.len() <= i {
+            lists.push((Rc::new(VecModel::default()), vec![]));
+        }
+        let (m, prints) = &mut lists[i];
+        if !model_sync::is_shown(&shown, m) {
+            m.set_vec(vec![]);
+            prints.clear();
+            set(ModelRc::from(m.clone()));
+        }
+        model_sync::patch(m, prints, rows, chat_row);
+    });
 }
 
 fn chat_row(c: ChatData) -> ChatRow {
@@ -607,9 +638,21 @@ impl UiHandle {
             let list = w.global::<crate::ListStore>();
             list.set_meetings_count(meetings.len() as i32);
             list.set_meetings_unread(meetings.iter().filter(|c| c.unread).count() as i32);
-            w.set_chats_favorites(model(fav.into_iter().map(chat_row).collect()));
-            w.set_chats_main(model(main.into_iter().map(chat_row).collect()));
-            w.set_chats_channels(model(chans.into_iter().map(chat_row).collect()));
+            // Patched, not replaced (`model_sync`): every presence change or avatar built every
+            // row again, which dropped the hover under the pointer and flickered.
+            patch_chats(
+                0,
+                w.get_chats_favorites(),
+                |m| w.set_chats_favorites(m),
+                fav,
+            );
+            patch_chats(1, w.get_chats_main(), |m| w.set_chats_main(m), main);
+            patch_chats(
+                2,
+                w.get_chats_channels(),
+                |m| w.set_chats_channels(m),
+                chans,
+            );
         });
     }
 

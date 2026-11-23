@@ -230,3 +230,28 @@ export component Switch inherits Rectangle {
     }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.flip(); } }
 }
+
+// The track and knob of a settings switch, alone: no label, no click target, nothing for a
+// screen reader. The row that owns it (molecules/settings_kit.slint) is the switch.
+export component SwitchTrack inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    // The row under the pointer: the track says it will flip.
+    in property <bool> hovered;
+    width: 40px;
+    height: 20px;
+    border-radius: self.height / 2;
+    border-width: root.checked && root.enabled ? 0px : 1px;
+    border-color: !root.enabled ? Theme.fg-subtle : root.hovered ? Theme.fg : Theme.fg-muted;
+    background: !root.checked ? transparent : !root.enabled ? Theme.surface-hover : root.hovered ? Theme.accent : Theme.accent-strong;
+    accessible-role: none;
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 4px : 4px;
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: !root.enabled ? Theme.fg-subtle : root.checked ? #ffffff : root.hovered ? Theme.fg : Theme.fg-muted;
+        animate x { duration: Theme.reduced-motion ? 0ms : 120ms; }
+    }
+}

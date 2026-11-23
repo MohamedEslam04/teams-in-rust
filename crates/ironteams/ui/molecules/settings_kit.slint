@@ -1,0 +1,407 @@
+// The building blocks of every Settings page. A page is a column of sections; a section is a
+// heading over a card; a card holds rows, one setting each, with a thin line between them:
+//
+//     SettingsSections {
+//         SettingsSection {
+//             title: "Writing";
+//             SettingsSwitchRow { label: "Check spelling"; description: "…"; checked: …; toggled(on) => { … } }
+//             SettingsChoiceRow { label: "Time format"; options: …; value: …; picked(v) => { … } }
+//             SettingsButtonRow { label: "Sounds"; button-label: "Play"; clicked => { … } }
+//         }
+//     }
+//
+// A row puts its text on the start side and its control on the end side (mirrored for a right to
+// left language). A switch row is one click target from edge to edge, with a hover tint, a focus
+// ring for the keyboard (Tab, then Space or Enter) and the label read out as the switch's name,
+// so a click and a screen reader always reach the switch of the row the label is in. Sizes come
+// from `Space` and `SettingsMetrics`, colours from `Theme`.
+import { Theme } from "../tokens/theme.slint";
+import { Space } from "../tokens/space.slint";
+import { SettingsStore, SOption } from "../stores/settings_store.slint";
+import { SwitchTrack } from "../atoms/check.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { SChoice } from "settings_widgets.slint";
+
+export global SettingsMetrics {
+    // The page column: the padding around it and the widest it grows.
+    out property <length> page-pad: Space.xxl;
+    out property <length> page-pad-narrow: Space.l;
+    out property <length> content-max: 820px;
+    // Between two sections, and between a section's heading and its card.
+    out property <length> section-gap: Space.xxl;
+    out property <length> heading-gap: Space.s;
+    // A row: its padding, its smallest height and the room between its text and its control.
+    out property <length> row-pad-x: Space.l;
+    out property <length> row-pad-y: Space.m;
+    out property <length> row-min: 52px;
+    out property <length> control-gap: Space.xl;
+    out property <length> radius: 8px;
+}
+
+// A page's sections, one under the other with the same gap.
+export component SettingsSections inherits VerticalLayout {
+    alignment: start;
+    spacing: SettingsMetrics.section-gap;
+}
+
+// A heading, an optional description, and the card that holds the section's rows. `danger`
+// marks a section whose actions delete something.
+export component SettingsSection inherits VerticalLayout {
+    in property <string> title;
+    in property <string> description;
+    in property <bool> danger: false;
+    spacing: SettingsMetrics.heading-gap;
+    if root.title != "" || root.description != "": VerticalLayout {
+        spacing: Space.xxs;
+        padding-left: Space.xxs;
+        padding-right: Space.xxs;
+        if root.title != "": Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.title;
+            color: root.danger ? Theme.danger : Theme.fg;
+            font-size: Theme.font-heading;
+            font-weight: 600;
+            wrap: word-wrap;
+        }
+        if root.description != "": Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.description;
+            color: Theme.fg-muted;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+        }
+    }
+    card := Rectangle {
+        border-radius: SettingsMetrics.radius;
+        border-width: 1px;
+        border-color: root.danger ? Theme.danger : Theme.border;
+        background: Theme.card;
+        // The rows' hover tint keeps the card's rounded corners.
+        clip: true;
+        VerticalLayout {
+            padding: 1px;
+            @children
+        }
+    }
+}
+
+// One row of a section: the label and its description on the start side, the control (the
+// row's children) on the end side, centred vertically. `stacked` puts the control under the text,
+// as wide as the row (choice pills, lists, forms). A row has a line above it unless it is the
+// first of its card.
+export component SettingsRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in property <bool> enabled: true;
+    in property <bool> stacked: false;
+    // Tinted as under the pointer (a row that is one click target).
+    in property <bool> highlight: false;
+    // The row itself is the control a screen reader reads (a switch row): its texts stay quiet.
+    in property <bool> quiet-text: false;
+    // The line above the row: every row but the first of its card (which sits at y = 1px).
+    in property <bool> divider: root.y > 2px;
+    property <length> pad-x: SettingsMetrics.row-pad-x;
+    property <length> pad-y: SettingsMetrics.row-pad-y;
+    property <length> inner: max(0px, root.width - 2 * root.pad-x);
+    property <bool> has-text: root.label != "" || root.description != "";
+    // A control that would leave the text less than 40% of the row (a narrow window, a long
+    // button label) goes under the text too.
+    property <bool> stack: root.stacked || (root.has-text && root.inner - min(ctl.preferred-width, root.inner) - SettingsMetrics.control-gap < max(140px, root.inner * 0.4));
+    // The control's width: what it asks for, never wider than the row.
+    property <length> ctl-w: root.stack ? root.inner : min(ctl.preferred-width, root.inner);
+    property <length> gap: root.stack || root.ctl-w <= 0px || !root.has-text ? 0px : SettingsMetrics.control-gap;
+    property <length> text-w: root.stack ? root.inner : max(0px, root.inner - root.ctl-w - root.gap);
+    property <length> text-h: root.has-text ? txt.preferred-height : 0px;
+    property <length> ctl-h: ctl.preferred-height;
+    property <length> stack-gap: root.has-text && root.ctl-h > 0px ? Space.s : 0px;
+    height: root.stack ? max(SettingsMetrics.row-min, 2 * root.pad-y + root.text-h + root.stack-gap + root.ctl-h)
+        : max(SettingsMetrics.row-min, 2 * root.pad-y + max(root.text-h, root.ctl-h));
+    // Opened by a Find result: the row is tinted for a moment, so the eye lands on it.
+    property <bool> landed: false;
+    background: root.highlight ? Theme.surface-hover : (root.landed ? Theme.selected : transparent);
+    animate background { duration: Theme.reduced-motion ? 0ms : 100ms; }
+    // Opened by a Find result: tells the page where this row is.
+    Timer {
+        running: root.label != "" && root.label == SettingsStore.target;
+        interval: 60ms;
+        triggered => {
+            SettingsStore.target-y = root.absolute-position.y;
+            SettingsStore.target = "";
+            root.landed = true;
+        }
+    }
+    Timer {
+        running: root.landed;
+        interval: 1600ms;
+        triggered => { root.landed = false; }
+    }
+    if root.divider: divider-line := Rectangle {
+        x: root.pad-x;
+        y: 0px;
+        width: root.inner;
+        height: 1px;
+        background: Theme.border;
+    }
+    txt := VerticalLayout {
+        x: Theme.rtl && !root.stack ? root.width - root.pad-x - root.text-w : root.pad-x;
+        y: root.stack ? root.pad-y : (root.height - root.text-h) / 2;
+        width: root.text-w;
+        height: root.text-h;
+        spacing: Space.xxs;
+        if root.label != "" && !root.quiet-text: Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.label;
+            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            font-size: Theme.font-body;
+            wrap: word-wrap;
+        }
+        if root.label != "" && root.quiet-text: Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.label;
+            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            font-size: Theme.font-body;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+        if root.description != "" && !root.quiet-text: Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.description;
+            color: root.enabled ? Theme.fg-muted : Theme.fg-subtle;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+        }
+        if root.description != "" && root.quiet-text: Text {
+            horizontal-alignment: Theme.start-align;
+            text: root.description;
+            color: root.enabled ? Theme.fg-muted : Theme.fg-subtle;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+    }
+    ctl := HorizontalLayout {
+        x: root.stack ? root.pad-x : Theme.rtl ? root.pad-x : root.width - root.pad-x - root.ctl-w;
+        y: root.stack ? root.pad-y + root.text-h + root.stack-gap : (root.height - root.ctl-h) / 2;
+        width: root.ctl-w;
+        height: root.ctl-h;
+        spacing: Space.s;
+        // Stacked on purpose: the control takes the row's width (choice pills). Otherwise it
+        // keeps its size, on the start side when it moved under the text for room (beside the
+        // text the layout is exactly as wide as the control, so the side does not matter).
+        alignment: root.stacked ? LayoutAlignment.stretch : Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+        @children
+    }
+}
+
+// Free content in a card (a paragraph, a list, a form): padded like a row, its children one
+// under the other, with the line above it unless it is the first of its card.
+export component SettingsBlock inherits Rectangle {
+    if root.y > 2px: Rectangle {
+        x: SettingsMetrics.row-pad-x;
+        y: 0px;
+        width: max(0px, root.width - 2 * SettingsMetrics.row-pad-x);
+        height: 1px;
+        background: Theme.border;
+    }
+    VerticalLayout {
+        padding-left: SettingsMetrics.row-pad-x;
+        padding-right: SettingsMetrics.row-pad-x;
+        padding-top: SettingsMetrics.row-pad-y;
+        padding-bottom: SettingsMetrics.row-pad-y;
+        spacing: Space.s;
+        alignment: start;
+        @children
+    }
+}
+
+// A paragraph in a section: explanation, status or "not available yet".
+export component SettingsNote inherits Text {
+    color: Theme.fg-muted;
+    font-size: Theme.font-small;
+    wrap: word-wrap;
+    horizontal-alignment: Theme.start-align;
+}
+
+// An on/off setting. The whole row flips it: a click anywhere on it, or Space or Enter while it
+// has the keyboard focus. It is the switch for a screen reader, named by its label and described
+// by its description. Like the old settings switch it flips `checked` itself, then says so
+// through `toggled`.
+export component SettingsSwitchRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    // A Tab put the focus here (a click does not show the ring).
+    property <bool> focus-visible: false;
+    height: row.height;
+    accessible-role: switch;
+    accessible-label: root.label;
+    accessible-description: root.description;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.flip(); }
+    public function flip() {
+        if root.enabled {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+    row := SettingsRow {
+        width: parent.width;
+        divider: root.y > 2px;
+        label: root.label;
+        description: root.description;
+        enabled: root.enabled;
+        quiet-text: true;
+        highlight: touch.has-hover && root.enabled;
+        SwitchTrack {
+            checked: root.checked;
+            enabled: root.enabled;
+            hovered: touch.has-hover;
+        }
+    }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta {
+                root.flip();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            // The keys go to this row from now on, without the keyboard's focus ring.
+            keys.focus();
+            root.focus-visible = false;
+            root.flip();
+        }
+    }
+    if root.focus-visible: focus-ring := Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: SettingsMetrics.radius - 2px;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
+}
+
+// One choice out of a few: the label and description, the pills under them (they stack when the
+// row is too narrow). Each pill is the radio button "<label>: <option>".
+export component SettingsChoiceRow inherits SettingsRow {
+    in property <[SOption]> options;
+    in property <string> value;
+    callback picked(string);
+    stacked: true;
+    SChoice {
+        group: root.label;
+        options: root.options;
+        value: root.value;
+        enabled: root.enabled;
+        picked(v) => { root.picked(v); }
+    }
+}
+
+// A setting changed with a button on the end side (Play, Clear, Restart…).
+export component SettingsButtonRow inherits SettingsRow {
+    in property <string> button-label;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> button-enabled: true;
+    callback clicked();
+    Button {
+        variant: ButtonVariant.settings;
+        label: root.button-label;
+        primary: root.primary;
+        danger: root.danger;
+        enabled: root.button-enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A name with one action on the end side (Unblock, Remove): the button is read out as
+// "<action> <name>".
+export component SPersonRow inherits SettingsRow {
+    in property <string> name;
+    in property <string> action;
+    callback act();
+    label: root.name;
+    Button {
+        variant: ButtonVariant.settings;
+        label: root.action;
+        accessible-label: root.action + " " + root.name;
+        clicked => { root.act(); }
+    }
+}
+
+// A row that takes you somewhere (a Find in Settings result): the label and where it is, a
+// chevron on the end side. The whole row is one button: click, or Tab then Space or Enter.
+export component SettingsLinkRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    // What a screen reader says for the row ("" says the label).
+    in property <string> a11y-label;
+    callback clicked();
+    property <bool> focus-visible: false;
+    height: row.height;
+    accessible-role: button;
+    accessible-label: root.a11y-label != "" ? root.a11y-label : root.label;
+    accessible-description: root.description;
+    accessible-action-default => { root.clicked(); }
+    row := SettingsRow {
+        width: parent.width;
+        divider: root.y > 2px;
+        label: root.label;
+        description: root.description;
+        quiet-text: true;
+        highlight: touch.has-hover;
+        Icon {
+            source: Theme.rtl ? @image-url("../icons/chevron-left.svg") : @image-url("../icons/chevron-right.svg");
+            tint: Theme.fg-muted;
+            width: 16px;
+            height: 16px;
+        }
+    }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    if root.focus-visible: focus-ring := Rectangle {
+        x: 2px;
+        y: 2px;
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        border-radius: SettingsMetrics.radius - 2px;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
+}

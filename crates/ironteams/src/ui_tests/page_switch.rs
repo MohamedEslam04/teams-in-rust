@@ -10,8 +10,8 @@ use slint::platform::{Platform, WindowAdapter};
 use std::time::{Duration, Instant};
 use store::{ConvKind, ConversationRow, MessageRow};
 
-const W: u32 = 1920;
-const H: u32 = 1080;
+pub(super) const W: u32 = 1920;
+pub(super) const H: u32 = 1080;
 
 /// How much of the window a frame repaints: only what changed (`ReusedBuffer`, the default) or
 /// everything (`IRONTEAMS_BENCH_REPAINT=new`, what the winit backend does when the window system
@@ -24,7 +24,7 @@ fn repaint() -> RepaintBufferType {
 }
 
 /// Windows drawn by the software renderer into memory; the testing backend draws nothing.
-struct SoftwarePlatform;
+pub(super) struct SoftwarePlatform;
 
 thread_local!(static WINDOWS: RefCell<Vec<Rc<MinimalSoftwareWindow>>> = const { RefCell::new(vec![]) });
 
@@ -42,13 +42,30 @@ impl Platform for SoftwarePlatform {
 }
 
 /// Draws one frame of every window, the way the event loop does after an event.
-struct Screen {
+pub(super) struct Screen {
     windows: Vec<Rc<MinimalSoftwareWindow>>,
     buffer: Vec<PremultipliedRgbaColor>,
 }
 
+/// Makes this thread's windows draw with the software renderer into memory (`Screen`). Call it
+/// before the first window is created; a test runs on its own thread, so it has its own platform.
+pub(super) fn use_software_renderer() {
+    assert!(
+        !PLATFORM_SET.replace(true),
+        "the software renderer must be set before the first window"
+    );
+    slint::platform::set_platform(Box::new(SoftwarePlatform)).unwrap();
+}
+
 impl Screen {
-    fn frame(&mut self) {
+    /// Draws the windows created so far on this thread.
+    pub(super) fn new() -> Self {
+        Screen {
+            windows: WINDOWS.with(|ws| ws.borrow().clone()),
+            buffer: vec![PremultipliedRgbaColor::default(); (W * H) as usize],
+        }
+    }
+    pub(super) fn frame(&mut self) {
         for w in &self.windows {
             w.draw_if_needed(|r| {
                 r.render(&mut self.buffer, W as usize);
@@ -152,22 +169,14 @@ fn ms(d: Duration) -> f64 {
 #[test]
 #[ignore = "a measurement, not a check"]
 fn page_switch_cost_and_scroll_frames_of_a_long_chat() {
-    assert!(
-        !PLATFORM_SET.replace(true),
-        "run the measurement on its own thread"
-    );
-    slint::platform::set_platform(Box::new(SoftwarePlatform)).unwrap();
+    use_software_renderer();
     let h = Harness::with_store(seeded_store(400, 150));
     let run = h.runner();
     h.app.on_activity_refresh({
         let run = run.clone();
         move || run(Cmd::Activity(crate::backend::ActivityCmd::Refresh))
     });
-    let mut screen = Screen {
-        windows: vec![],
-        buffer: vec![PremultipliedRgbaColor::default(); (W * H) as usize],
-    };
-    screen.windows = WINDOWS.with(|ws| ws.borrow().clone());
+    let mut screen = Screen::new();
     h.app.window().set_size(PhysicalSize::new(W, H));
     let size = h.app.window().size();
     assert_eq!((size.width, size.height), (W, H));

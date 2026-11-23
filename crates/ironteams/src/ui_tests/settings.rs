@@ -15,10 +15,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use teams_proto::user_settings::{NotificationSettings, PrivacySettings};
 
 /// A temporary home, removed when dropped.
-struct Home(PathBuf);
+pub(super) struct Home(PathBuf);
 
 impl Home {
-    fn new(tag: &str) -> Home {
+    pub(super) fn new(tag: &str) -> Home {
         let d = std::env::temp_dir().join(format!(
             "ironteams-ui-settings-{tag}-{}-{:?}",
             std::process::id(),
@@ -39,7 +39,7 @@ impl Home {
     }
 
     /// A config with two fake accounts; the first is active.
-    fn with_accounts(self) -> Home {
+    pub(super) fn with_accounts(self) -> Home {
         let p = self.paths();
         let mut cfg = session::Config {
             display_name: Some("Test User".into()),
@@ -64,7 +64,7 @@ impl Drop for Home {
     }
 }
 
-fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv {
+pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv {
     let rec = |l: &Log, what: &'static str| {
         let l = l.clone();
         move || l.borrow_mut().push(what.into())
@@ -124,14 +124,14 @@ fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv
     }
 }
 
-struct Ui {
-    app: AppWindow,
+pub(super) struct Ui {
+    pub(super) app: AppWindow,
     log: Log,
     tokens: Arc<session::MemoryStore>,
     home: Home,
 }
 
-fn window(home: Home) -> Ui {
+pub(super) fn window(home: Home) -> Ui {
     window_full(home, None, false, |_| {})
 }
 
@@ -174,12 +174,12 @@ fn window_full(
     }
 }
 
-fn store(app: &AppWindow) -> SettingsStore<'_> {
+pub(super) fn store(app: &AppWindow) -> SettingsStore<'_> {
     app.global::<SettingsStore>()
 }
 
 /// The one element with this label that is not plain text (a control and its caption share it).
-fn control(app: &AppWindow, label: &str) -> ElementHandle {
+pub(super) fn control(app: &AppWindow, label: &str) -> ElementHandle {
     // Let pending property changes reach the item tree first: an element behind an `if` (the
     // "Restart needed" section) is only created when the tree is next updated, which on a slower
     // machine (CI) has not happened yet right after the click that turned the condition on.
@@ -211,7 +211,7 @@ fn value_of(app: &AppWindow, label: &str) -> String {
         .to_string()
 }
 
-fn checked(app: &AppWindow, label: &str) -> bool {
+pub(super) fn checked(app: &AppWindow, label: &str) -> bool {
     control(app, label).accessible_checked().unwrap_or(false)
 }
 
@@ -224,7 +224,7 @@ fn tall_window(app: &AppWindow) {
     }
 }
 
-fn open_page(app: &AppWindow, page: &str) {
+pub(super) fn open_page(app: &AppWindow, page: &str) {
     store(app).invoke_show(page.into());
 }
 
@@ -998,6 +998,33 @@ fn changing_graphics_saves_it_and_asks_for_a_restart_without_changing_what_runs(
     assert!(!text_shown(app, "Restart IronTeams to apply"));
 }
 
+/// Chats > Scrolling: the mouse wheel speed is 2.5 times a notch until it is changed, a choice
+/// is saved and read again by the next window, and a value out of range is brought into it.
+#[test]
+fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
+    let ui = window(Home::new("wheel-speed"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    open_page(app, "chats");
+    assert_eq!(store(app).get_wheel_speed(), 2.5);
+    assert!(checked(app, "Mouse wheel speed: 2.5×"));
+    press(app, "Mouse wheel speed: 4×");
+    assert_eq!(store(app).get_wheel_speed(), 4.0);
+    assert!(checked(app, "Mouse wheel speed: 4×"));
+    assert_eq!(Local::load(&config).general.wheel_speed, 4.0);
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(
+        store(&again.app).get_wheel_speed(),
+        4.0,
+        "a new window starts with the saved speed"
+    );
+    store(app).invoke_command("wheel-speed".into(), "40".into());
+    assert_eq!(store(app).get_wheel_speed(), 5.0, "at most 5 times");
+    store(app).invoke_command("wheel-speed".into(), "0.1".into());
+    assert_eq!(store(app).get_wheel_speed(), 1.0, "at least once");
+    assert_eq!(Local::load(&config).general.wheel_speed, 1.0);
+}
+
 #[test]
 fn find_in_settings_reaches_the_chats_page() {
     let ui = window(Home::new("chats-find"));
@@ -1232,6 +1259,8 @@ fn font_size_and_larger_text_scale_the_theme_font() {
     let ui = window(Home::new("font"));
     let app = &ui.app;
     open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     let t = app.global::<Theme>();
     assert_eq!(t.get_font_scale(), 1.0);
     press(app, "Larger font");
@@ -1259,6 +1288,8 @@ fn local_preferences_round_trip_through_the_temp_home() {
     let ui = window(home);
     let app = &ui.app;
     open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     press(app, "Message density: Compact");
     assert!(app.global::<Theme>().get_compact());
     open_page(app, "files");
@@ -1293,7 +1324,7 @@ fn local_preferences_round_trip_through_the_temp_home() {
     std::mem::forget(again.home); // `ui.home` removes the directory
 }
 
-fn server(privacy: PrivacySettings) -> ServerData {
+pub(super) fn server(privacy: PrivacySettings) -> ServerData {
     ServerData {
         chat_service: "https://chat.invalid".into(),
         middle_tier: "https://mt.invalid".into(),
@@ -1434,6 +1465,8 @@ fn autostart_switch_follows_and_writes_the_desktop_entry() {
     let ui = window(home);
     let app = &ui.app;
     open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     assert!(checked(app, "Start IronTeams when I sign in"));
     press(app, "Start IronTeams when I sign in");
     assert!(!tray::autostart::is_enabled_in(&xdg));
@@ -1761,6 +1794,8 @@ fn refresh_license_asks_the_engine_and_restarts_only_when_it_worked() {
     let ui = window_with(Home::new("license").with_accounts(), Some(tx), false);
     let app = &ui.app;
     open_page(app, "accounts");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     // Opening the page asked for the Teams settings; skip that read.
     while rx.try_recv().is_ok() {}
     press(app, "Refresh license and restart");
@@ -1847,6 +1882,8 @@ fn time_format_and_keep_running_reach_the_helpers_that_read_them() {
     let ui = window_with(Home::new("general-globals"), Some(tx), true);
     let app = &ui.app;
     open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     while rx.try_recv().is_ok() {}
 
     assert!(!appearance::formats::is_h24(), "12-hour is the default");
@@ -1898,7 +1935,17 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         for _ in 0..3 {
             testing::mock_elapsed_time(std::time::Duration::from_millis(16));
         }
-        for kind in ["SChoice", "Switch", "Button", "SPersonRow", "Field"] {
+        for kind in [
+            "SChoice",
+            "Switch",
+            "SettingsSwitchRow",
+            "SettingsRow",
+            "SettingsChoiceRow",
+            "SettingsButtonRow",
+            "Button",
+            "SPersonRow",
+            "Field",
+        ] {
             for row in ElementHandle::find_by_element_type_name(app, kind)
                 .filter(|r| !super::overflow::texts(r).is_empty())
             {
@@ -2193,7 +2240,7 @@ fn the_update_rows_stay_inside_a_narrow_window() {
     for _ in 0..3 {
         testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     }
-    for kind in ["Switch", "Button"] {
+    for kind in ["Switch", "SettingsSwitchRow", "SettingsButtonRow", "Button"] {
         for row in ElementHandle::find_by_element_type_name(app, kind)
             .filter(|r| !super::overflow::texts(r).is_empty())
         {
