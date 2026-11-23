@@ -696,7 +696,8 @@ pub fn directions(sdp: &str) -> String {
 }
 
 /// The transport of an SDP's audio section, for the live log of a renegotiation:
-/// `mid <mid> ufrag <ufrag> setup <role> candidates [<type> <transport>, ...]` (`-` when missing).
+/// `mid <mid> ufrag <ufrag> setup <role> candidates [<type> <transport>, ...]` (`-` when missing),
+/// then ` ice-lite` when the SDP says so.
 /// Enough to tell a restart (new mid or ufrag), who is the DTLS client (`setup`), and which
 /// paths ICE had to try; no password, no address.
 pub fn transport_summary(sdp: &str) -> String {
@@ -726,8 +727,14 @@ pub fn transport_summary(sdp: &str) -> String {
             format!("{kind} {transport}")
         })
         .collect();
+    // A lite agent on their side makes us the controlling one (RFC 8445 6.1.1; webrtc-rs reads it).
+    let lite = if parsed.session.iter().any(|l| l == "a=ice-lite") {
+        " ice-lite"
+    } else {
+        ""
+    };
     format!(
-        "mid {} ufrag {} setup {} candidates [{}]",
+        "mid {} ufrag {} setup {} candidates [{}]{lite}",
         value("mid"),
         value("ice-ufrag"),
         value("setup"),

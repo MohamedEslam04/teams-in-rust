@@ -107,32 +107,40 @@ impl Call {
         }
     }
 
-    /// Answers a re-offer. One that restarts ICE (the lobby's admission: new mids and ufrags) is
-    /// refused by the connected session and answered on a fresh one, which replaces it; its
-    /// events are returned so the caller follows them. It supersedes our pending re-offer (hold,
+    /// Answers a re-offer. One that restarts ICE (the lobby's admission, a 1:1 call moved to a
+    /// media server: new mids and ufrags) is refused by the connected session and answered on a
+    /// fresh one, which waits in [`Call::next`] and takes over once connected (the run loop); a
+    /// follow-up offer for that one is answered on it. It supersedes our pending re-offer (hold,
     /// resume, camera, share): the answer says what that asked for, `held` included, and its own
     /// answer or rejection, should one still come, changes nothing.
     pub(super) async fn renegotiate(
         &mut self,
         offer: &SdpBlob,
         links: &Links,
-        sender: &watch::Sender<AudioSender>,
         held: bool,
         sink: &EventSink,
-    ) -> Option<MediaEvents> {
+    ) {
         let sdp = match offer.decode() {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(%e, "undecodable re-offer");
-                return None;
+                self.links.0.extend(links.0.clone());
+                return;
             }
         };
-        let restarts = self.media.offer_restarts(&sdp).await;
+        let for_next = match &self.next {
+            Some(n) => !n.media.offer_restarts(&sdp).await,
+            None => false,
+        };
+        let restarts = !for_next && self.media.offer_restarts(&sdp).await;
         // Their offer met our pending re-offer (glare): theirs wins, and our answer says what
         // ours asked for (the hold, camera and share as they are now). A restart leaves ours on
         // the old session; otherwise ours is withdrawn so the session can answer.
         if self.reoffer.is_some() {
-            if !restarts && let Err(e) = self.media.rollback_offer().await {
+            if !restarts
+                && !for_next
+                && let Err(e) = self.media.rollback_offer().await
+            {
                 tracing::warn!(%e, "pending re-offer not rolled back");
             }
             self.pending_offer = None;
@@ -144,62 +152,37 @@ impl Call {
                 "their offer superseded our pending re-offer"
             );
         }
-        let mut fresh_events = None;
-        let answer = match self.media.accept_offer(&sdp).await {
-            Ok(a) => Ok(a),
-            Err(e) => {
-                tracing::info!(%e, "re-offer answered on a new media session");
-                if self.ice.is_empty() {
-                    self.ice = self.hub.ice_servers(&self.ngc.endpoints().region).await;
-                }
-                match MediaSession::with_options(
-                    self.ice.clone(),
-                    media_options(self.meeting, self.video_lines),
-                )
-                .await
-                {
-                    Ok((fresh, ev)) => match fresh.accept_offer(&sdp).await {
-                        Ok(ans) => {
-                            let old = std::mem::replace(&mut self.media, fresh);
-                            let _ = old.close().await;
-                            sender.send_replace(self.media.audio_sender());
-                            self.link = Link::New;
-                            tracing::info!(
-                                theirs = %calling::media::sdp::transport_summary(&sdp),
-                                ours = %calling::media::sdp::transport_summary(&ans),
-                                "media restart answered on a new session"
-                            );
-                            fresh_events = Some(ev);
-                            Ok(ans)
-                        }
-                        Err(e) => {
-                            let _ = fresh.close().await;
-                            Err(e)
-                        }
-                    },
-                    Err(e) => Err(e),
-                }
-            }
+        // The answer, and whether it is the waiting session's.
+        let answer = if for_next && let Some(n) = &self.next {
+            n.media.accept_offer(&sdp).await.map(|a| (a, true))
+        } else {
+            self.accept_or_restart(&sdp).await
         };
         // A 1:1 answer says what we send: the camera line sends only while the camera is on,
         // the sharing line only while we share (webrtc-rs would say both send).
-        let answer = answer.map(|ans| {
+        let answer = answer.map(|(ans, to_next)| {
             if self.meeting {
-                return ans;
+                return (ans, to_next);
             }
             let ans = direct_reanswer(&ans, &sdp, self.camera.on(), self.share.sharing(), held);
             tracing::info!(
                 held,
+                to_next,
                 theirs = %calling::media::sdp::directions(&sdp),
                 ours = %calling::media::sdp::directions(&ans),
                 "1:1 re-offer answered"
             );
-            ans
+            (ans, to_next)
         });
         match answer {
-            Ok(ans) => {
-                // The media server's offer names its lines' stream ids.
-                self.video.negotiated(&self.media, &sdp).await;
+            Ok((ans, to_next)) => {
+                // The media server's offer names its lines' stream ids (the waiting session's
+                // are read when it takes over).
+                match self.next.as_mut().filter(|_| to_next) {
+                    Some(n) => n.offer = sdp.clone(),
+                    None => self.video.negotiated(&self.media, &sdp).await,
+                }
+                let mut leg = links.clone();
                 if let Some(url) = links.get("mediaAnswer") {
                     match self
                         .ngc
@@ -208,7 +191,13 @@ impl Call {
                     {
                         // Teams ignored the first state update after admission (mautrix-teams),
                         // so publish the mute state again.
-                        Ok(()) => {
+                        Ok(answered) => {
+                            if !answered.0.is_empty() {
+                                let names: Vec<&str> =
+                                    answered.0.keys().map(String::as_str).collect();
+                                tracing::info!(links = %names.join(","), "media answer named leg links");
+                            }
+                            leg.0.extend(answered.0);
                             let r = self
                                 .ngc
                                 .repeat_muted(
@@ -228,12 +217,68 @@ impl Call {
                         }
                     }
                 }
+                // The new leg's links are the call's once its session takes over.
+                match self.next.as_mut().filter(|_| to_next) {
+                    Some(n) => n.links.0.extend(leg.0),
+                    None => self.links.0.extend(leg.0),
+                }
             }
             Err(e) => {
                 tracing::warn!(%e, "re-offer not answered");
                 sink.send(Event::Error("Couldn't update the call's media.".into()));
+                self.links.0.extend(links.0.clone());
             }
         }
-        fresh_events
+    }
+
+    /// Answers `sdp` on the current session, or, when it restarts the media, on a fresh session
+    /// that waits in [`Call::next`] (replacing one already waiting). `true`: the fresh one.
+    async fn accept_or_restart(&mut self, sdp: &str) -> calling::Result<(String, bool)> {
+        match self.media.accept_offer(sdp).await {
+            Ok(a) => Ok((a, false)),
+            Err(e) => {
+                tracing::info!(%e, "re-offer answered on a new media session");
+                if self.ice.is_empty() {
+                    self.ice = self.hub.ice_servers(&self.ngc.endpoints().region).await;
+                }
+                // None: host and server-reflexive candidates only, no relay to fall back on.
+                tracing::info!(ice_servers = self.ice.len(), "new media session's TURN");
+                match MediaSession::with_options(
+                    self.ice.clone(),
+                    media_options(self.meeting, self.video_lines),
+                )
+                .await
+                {
+                    Ok((fresh, events)) => match fresh.accept_offer(sdp).await {
+                        Ok(ans) => {
+                            tracing::info!(
+                                theirs = %calling::media::sdp::transport_summary(sdp),
+                                ours = %calling::media::sdp::transport_summary(&ans),
+                                "media restart answered on a new session; it takes over once connected"
+                            );
+                            let waiting = NextMedia {
+                                media: fresh,
+                                events,
+                                offer: sdp.to_owned(),
+                                links: Links::default(),
+                                since: Instant::now(),
+                            };
+                            if let Some(replaced) = self.next.replace(waiting) {
+                                tracing::info!(
+                                    "a newer restart replaced the session still connecting"
+                                );
+                                let _ = replaced.media.close().await;
+                            }
+                            Ok((ans, true))
+                        }
+                        Err(e) => {
+                            let _ = fresh.close().await;
+                            Err(e)
+                        }
+                    },
+                    Err(e) => Err(e),
+                }
+            }
+        }
     }
 }

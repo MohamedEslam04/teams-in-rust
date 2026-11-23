@@ -436,4 +436,11 @@ fn the_transport_summary_names_mid_ufrag_setup_and_candidate_kinds() {
         "mid 1 ufrag aUdI setup actpass candidates [relay udp, relay tcp-pass]"
     );
     assert_eq!(transport_summary("v=0\r\ns=-\r\n"), "no audio");
+    assert_eq!(
+        transport_summary(
+            "v=0\r\na=ice-lite\r\nm=audio 9 RTP/AVP 111\r\na=mid:0\r\na=ice-ufrag:u\r\n\
+             a=setup:active\r\n"
+        ),
+        "mid 0 ufrag u setup active candidates [] ice-lite"
+    );
 }

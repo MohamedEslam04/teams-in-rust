@@ -157,6 +157,28 @@ pub(crate) fn direct_reanswer(
     if held { hold_offer(&ans) } else { ans }
 }
 
+/// A media session answering the other side's restart offer while the current one keeps the
+/// call's audio: it takes over once connected (ICE and DTLS), and is dropped if it fails, as
+/// rusty-teams keeps its old peer until the new one is up.
+struct NextMedia {
+    media: MediaSession,
+    events: MediaEvents,
+    /// The latest offer it answered (its lines' stream ids, read when it takes over).
+    offer: String,
+    /// The new leg's links (the offer's and those our answer got back), the call's once it takes
+    /// over.
+    links: Links,
+    since: Instant,
+}
+
+/// The next state of the session waiting to take over; never resolves without one.
+async fn next_state(next: &mut Option<NextMedia>) -> Option<MediaState> {
+    match next {
+        Some(n) => n.events.state.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
 /// One joined call.
 struct Call {
     hub: Arc<Hub>,
@@ -190,6 +212,8 @@ struct Call {
     reoffer: Option<Reoffer>,
     /// Our re-offer a media restart left behind ([`supersede`]): its rejection undoes nothing.
     superseded: Option<Reoffer>,
+    /// The session answering a media restart, until it connects or fails ([`NextMedia`]).
+    next: Option<NextMedia>,
     /// Who we are transferring the call to, until `call/transferCompletion`.
     transferring: Option<String>,
     camera: Camera,
