@@ -78,9 +78,11 @@ and sign in with your work account.
 
 ### Windows, macOS and the AppImage
 
-Tagged releases (`v*`, `.github/workflows/release.yml`) build a Windows `Setup.exe` (a per-user
-install, no administrator needed) and a portable zip, a macOS `.pkg` for Apple Silicon and for
-Intel, and a Linux AppImage, next to the tarball, RPM and Flatpak. To build yourself:
+Tagged releases (`v*`, `.github/workflows/release.yml`) build a Linux AppImage, next to the
+tarball, RPM and Flatpak. A Windows `Setup.exe` (a per-user install, no administrator needed) and a
+portable zip, and a macOS `.pkg` for Apple Silicon and for Intel, are added to the same release
+afterwards (`.github/workflows/release-add.yml`), so a release may have them a little later than
+the Linux files, or not at all. To build yourself:
 `cargo build --release -p ironteams` with Rust and CMake (Windows: the MSVC build tools; macOS:
 the Xcode command line tools). The installers are not signed yet: Windows SmartScreen asks once
 ("More info › Run anyway"), and on macOS the `.pkg` opens with right click › Open.
@@ -110,13 +112,19 @@ Velopack release has to be installed by hand once (also by users of an older MSI
 every release after it arrives on its own.
 
 To ship a release: `git tag vX.Y.Z && git push --tags`. The release workflow runs fmt, clippy and
-every test on Linux, Windows and both macOS runners, builds every package, starts each packaged
-app with `--self-check --packaged`, and only then publishes the release. A tag like
+every test on Linux, builds the Linux packages, starts the packaged AppImage with
+`--self-check --packaged`, and only then publishes the release. To add Windows or macOS to it:
+`gh workflow run release-add.yml -f tag=vX.Y.Z -f platform=windows` (or `platform=macos`). That
+runs every test on that system, builds and smoke-tests its packages from the tag's commit, and
+only then uploads that system's files to the existing release; it never creates a release or
+replaces a file. Until then, installed Windows and macOS copies simply see no update (Velopack
+skips releases without their feed). Setting the repository variable `RELEASE_ADD_PLATFORMS` to
+`windows macos` makes every tag add both right after the Linux release. A tag like
 `vX.Y.Z-beta.1` is published as a GitHub pre-release: only copies with **Get beta updates** on
 take it, so try a beta on your own machine first, then tag the stable version.
 
 Signing is optional in the workflow: it signs when the repository has the secrets listed at the
-top of `release.yml`, and warns otherwise. Free Windows signing for open-source projects:
+top of `release.yml` (used by `release-add.yml`), and warns otherwise. Free Windows signing for open-source projects:
 [SignPath Foundation](https://signpath.org). macOS notarization needs an Apple Developer ID.
 
 ## Platforms
