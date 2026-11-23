@@ -317,6 +317,21 @@ Where the links come from (live 1:1 dump, names only):
    - Neither reference posts to the acknowledgement's `hold` link; IronTeams does not either.
    - A refused re-offer leaves webrtc-rs with a pending local offer (IronTeams cannot roll it back
      outside `crates/calling/src/media`); the GUI puts the hold state back and shows an error.
+   - Live 2026-11-23 (IronTeams placed the call, Teams web answered): Hold worked; Resume went out
+     on the browser session and, instead of an answer, the service sent a `mediaRenegotiation`
+     from a media server (audio mid 0 -> 1, ten `main-video` lines, sharing and `x-data`, new
+     ufrags), which IronTeams answered on a fresh media session. About 6 s later
+     `call/rejection` refused the resume. IronTeams applied that to the new session: hold back on
+     (it stopped sending), "Couldn't resume the call.", and Teams web kept showing it on hold.
+     The new session never connected (no selected ICE pair, so no DTLS and no SRTP context) and
+     the call dropped 30 s later (ICE's 5 s + 25 s timeouts). Now: the other side's offer
+     supersedes our pending re-offer (rolled back unless the media restarts), the answer says what
+     the re-offer asked for (every line `inactive` while held), and the superseded re-offer's
+     answer or rejection changes nothing. A refused re-offer's reason is read from
+     `mediaNegotiationFailure` (rusty-teams; glare is 491), which the log showed as code 0.
+     Why the new session's ICE never connected is open; the info log now names hold and resume
+     re-offers and answers (directions, audio mid, ufrag, `setup`, candidate kinds), each media
+     request's status, the restart, and ICE and peer state changes.
 3. **Transfer now** (blind; UNVERIFIED). `POST transfer` (the acknowledgement's link):
    `{callTransfer: {target: {id: <MRI>}, transferor: {details: {id, endpointId, participantId,
    languageId}, authorizationToken: null}, links: {transferAcceptance, transferCompletion}
