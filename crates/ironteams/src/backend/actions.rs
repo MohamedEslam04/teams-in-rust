@@ -328,11 +328,12 @@ impl Engine {
         }
         self.ui.forward_done();
         self.mark(|d| d.messages = true);
-        self.ui.banner(if ok == targets.len() {
-            "Forwarded".to_string()
+        if ok == targets.len() {
+            self.ui.info("Forwarded".to_string());
         } else {
-            format!("Forwarded to {ok} of {} recipients", targets.len())
-        });
+            self.ui
+                .banner(format!("Forwarded to {ok} of {} recipients", targets.len()));
+        }
         Ok(())
     }
 
