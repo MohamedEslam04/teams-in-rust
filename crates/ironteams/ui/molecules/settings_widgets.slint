@@ -81,16 +81,15 @@ export component SChoice inherits Rectangle {
     in property <bool> enabled: true;
     callback picked(string);
     property <length> pill-height: 30px * max(1, Theme.font-scale) - 2px;
-    // The row's own width, measured whenever the row is shown.
-    property <length> row-width;
-    property <bool> fits: root.row-width <= root.width;
+    // The width the pills need side by side, measured from their labels below (always, so the
+    // choice follows a window that grows or shrinks, and a label that is translated).
+    property <bool> fits: measure.preferred-width <= root.width;
     // The page decides the width: the pills never widen it.
     min-width: 0px;
     height: root.fits ? root.pill-height + 2px : root.options.length * (root.pill-height + 6px);
     if root.fits: HorizontalLayout {
         spacing: 6px;
         alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
-        init => { root.row-width = self.preferred-width; }
         for o in root.options: SChoicePill {
             height: root.pill-height;
             group: root.group;
@@ -98,6 +97,28 @@ export component SChoice inherits Rectangle {
             on: root.value == o.v;
             enabled: root.enabled;
             picked => { root.picked(o.v); }
+        }
+    }
+    // The labels again, never drawn and squeezed to nothing: only their preferred width counts
+    // (a pill is its label plus 12px on each side, as `SChoicePill`).
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        visible: false;
+        measure := HorizontalLayout {
+            spacing: 6px;
+            for o in root.options: HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                Text {
+                    text: o.l;
+                    font-size: Theme.font-body;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+            }
         }
     }
     if !root.fits: VerticalLayout {

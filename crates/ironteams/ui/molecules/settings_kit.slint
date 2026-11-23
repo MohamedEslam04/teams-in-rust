@@ -105,14 +105,17 @@ export component SettingsRow inherits Rectangle {
     property <length> pad-y: SettingsMetrics.row-pad-y;
     property <length> inner: max(0px, root.width - 2 * root.pad-x);
     property <bool> has-text: root.label != "" || root.description != "";
+    // A control that would leave the text less than 40% of the row (a narrow window, a long
+    // button label) goes under the text too.
+    property <bool> stack: root.stacked || (root.has-text && root.inner - min(ctl.preferred-width, root.inner) - SettingsMetrics.control-gap < max(140px, root.inner * 0.4));
     // The control's width: what it asks for, never wider than the row.
-    property <length> ctl-w: root.stacked ? root.inner : min(ctl.preferred-width, root.inner);
-    property <length> gap: root.stacked || root.ctl-w <= 0px || !root.has-text ? 0px : SettingsMetrics.control-gap;
-    property <length> text-w: root.stacked ? root.inner : max(0px, root.inner - root.ctl-w - root.gap);
+    property <length> ctl-w: root.stack ? root.inner : min(ctl.preferred-width, root.inner);
+    property <length> gap: root.stack || root.ctl-w <= 0px || !root.has-text ? 0px : SettingsMetrics.control-gap;
+    property <length> text-w: root.stack ? root.inner : max(0px, root.inner - root.ctl-w - root.gap);
     property <length> text-h: root.has-text ? txt.preferred-height : 0px;
     property <length> ctl-h: ctl.preferred-height;
     property <length> stack-gap: root.has-text && root.ctl-h > 0px ? Space.s : 0px;
-    height: root.stacked ? max(SettingsMetrics.row-min, 2 * root.pad-y + root.text-h + root.stack-gap + root.ctl-h)
+    height: root.stack ? max(SettingsMetrics.row-min, 2 * root.pad-y + root.text-h + root.stack-gap + root.ctl-h)
         : max(SettingsMetrics.row-min, 2 * root.pad-y + max(root.text-h, root.ctl-h));
     background: root.highlight ? Theme.surface-hover : transparent;
     animate background { duration: Theme.reduced-motion ? 0ms : 100ms; }
@@ -133,8 +136,8 @@ export component SettingsRow inherits Rectangle {
         background: Theme.border;
     }
     txt := VerticalLayout {
-        x: Theme.rtl && !root.stacked ? root.width - root.pad-x - root.text-w : root.pad-x;
-        y: root.stacked ? root.pad-y : (root.height - root.text-h) / 2;
+        x: Theme.rtl && !root.stack ? root.width - root.pad-x - root.text-w : root.pad-x;
+        y: root.stack ? root.pad-y : (root.height - root.text-h) / 2;
         width: root.text-w;
         height: root.text-h;
         spacing: Space.xxs;
@@ -170,12 +173,14 @@ export component SettingsRow inherits Rectangle {
         }
     }
     ctl := HorizontalLayout {
-        x: root.stacked ? root.pad-x : Theme.rtl ? root.pad-x : root.width - root.pad-x - root.ctl-w;
-        y: root.stacked ? root.pad-y + root.text-h + root.stack-gap : (root.height - root.ctl-h) / 2;
+        x: root.stack ? root.pad-x : Theme.rtl ? root.pad-x : root.width - root.pad-x - root.ctl-w;
+        y: root.stack ? root.pad-y + root.text-h + root.stack-gap : (root.height - root.ctl-h) / 2;
         width: root.ctl-w;
         height: root.ctl-h;
         spacing: Space.s;
-        alignment: root.stacked ? LayoutAlignment.stretch : LayoutAlignment.end;
+        // Stacked on purpose: the control takes the row's width (choice pills); stacked for
+        // room: it keeps its size on the start side.
+        alignment: root.stacked ? LayoutAlignment.stretch : !root.stack ? LayoutAlignment.end : Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
         @children
     }
 }

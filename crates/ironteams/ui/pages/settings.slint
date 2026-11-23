@@ -137,10 +137,11 @@ export component SettingsPage inherits Rectangle {
                     // the start side.
                     HorizontalLayout {
                         padding: root.narrow ? SettingsMetrics.page-pad-narrow : SettingsMetrics.page-pad;
-                        alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                        // What the column leaves (a wide window) goes to the end side.
+                        if Theme.rtl: Rectangle { horizontal-stretch: 1; }
                         VerticalLayout {
                             max-width: SettingsMetrics.content-max;
-                            horizontal-stretch: 1;
+                            horizontal-stretch: 1000;
                             spacing: Space.xl;
                             alignment: start;
                             if SettingsStore.query != "": VerticalLayout {
@@ -193,6 +194,7 @@ export component SettingsPage inherits Rectangle {
                             if SettingsStore.query == "" && SettingsStore.page == "permissions": PermissionsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "about": AboutPage { }
                         }
+                        if !Theme.rtl: Rectangle { horizontal-stretch: 1; }
                     }
                 }
                 if SettingsStore.notice != "": Rectangle {

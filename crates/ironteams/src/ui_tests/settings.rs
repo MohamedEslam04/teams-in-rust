@@ -1259,6 +1259,8 @@ fn font_size_and_larger_text_scale_the_theme_font() {
     let ui = window(Home::new("font"));
     let app = &ui.app;
     open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     let t = app.global::<Theme>();
     assert_eq!(t.get_font_scale(), 1.0);
     press(app, "Larger font");
@@ -1286,6 +1288,8 @@ fn local_preferences_round_trip_through_the_temp_home() {
     let ui = window(home);
     let app = &ui.app;
     open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     press(app, "Message density: Compact");
     assert!(app.global::<Theme>().get_compact());
     open_page(app, "files");
@@ -1461,6 +1465,8 @@ fn autostart_switch_follows_and_writes_the_desktop_entry() {
     let ui = window(home);
     let app = &ui.app;
     open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     assert!(checked(app, "Start IronTeams when I sign in"));
     press(app, "Start IronTeams when I sign in");
     assert!(!tray::autostart::is_enabled_in(&xdg));
@@ -1788,6 +1794,8 @@ fn refresh_license_asks_the_engine_and_restarts_only_when_it_worked() {
     let ui = window_with(Home::new("license").with_accounts(), Some(tx), false);
     let app = &ui.app;
     open_page(app, "accounts");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     // Opening the page asked for the Teams settings; skip that read.
     while rx.try_recv().is_ok() {}
     press(app, "Refresh license and restart");
@@ -1874,6 +1882,8 @@ fn time_format_and_keep_running_reach_the_helpers_that_read_them() {
     let ui = window_with(Home::new("general-globals"), Some(tx), true);
     let app = &ui.app;
     open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
     while rx.try_recv().is_ok() {}
 
     assert!(!appearance::formats::is_h24(), "12-hour is the default");
