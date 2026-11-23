@@ -60,6 +60,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("chats", "Link previews", "url cards preview website"),
     (
         "chats",
+        "Mouse wheel speed",
+        "scroll scrolling wheel mouse fast slow faster speed",
+    ),
+    (
+        "chats",
         "Snippets",
         "quick replies saved reply template slash canned",
     ),

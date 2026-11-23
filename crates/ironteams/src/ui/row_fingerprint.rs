@@ -9,10 +9,10 @@
 //! fingerprint covers it, so a changed field can never be skipped silently.
 
 use crate::data::{
-    FileData, ImgData, LinkData, LoopData, MeetingCardData, MsgData, Pixels, ReactData,
+    ChatData, FileData, ImgData, LinkData, LoopData, MeetingCardData, MsgData, Pixels, ReactData,
     VideoClipData, VoiceData,
 };
-use crate::lists_data::{CardCellData, CardRowData};
+use crate::lists_data::{CardCellData, CardRowData, PostData, ReplierData};
 use std::hash::{Hash, Hasher};
 
 /// Pixel buffers are shared, not copied: the same buffer is the same picture. A new decode is a
@@ -185,6 +185,83 @@ fn card_row(h: &mut impl Hasher, r: &CardRowData) {
         cell(h, c);
     }
     pixels(h, px);
+}
+
+/// The fingerprint of a chat list row.
+pub(crate) fn of_chat(c: &ChatData) -> u64 {
+    let ChatData {
+        id,
+        title,
+        preview,
+        time,
+        unread,
+        initials,
+        color,
+        avatar,
+        section,
+        rtl_title,
+        rtl_preview,
+        favorite,
+        draft,
+        mention,
+        group,
+        muted,
+        channel,
+        presence,
+        person,
+        private,
+        kind,
+    } = c;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (
+        id, title, preview, time, initials, section, presence, person, kind,
+    )
+        .hash(&mut h);
+    (
+        unread,
+        color,
+        rtl_title,
+        rtl_preview,
+        favorite,
+        draft,
+        mention,
+        group,
+        muted,
+        channel,
+        private,
+    )
+        .hash(&mut h);
+    pixels(&mut h, avatar);
+    h.finish()
+}
+
+/// The fingerprint of a channel's post card: the post, its day divider and its replies summary.
+pub(crate) fn of_post(p: &PostData) -> u64 {
+    let PostData {
+        post,
+        day,
+        reply_count,
+        repliers,
+        following,
+    } = p;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    of(post).hash(&mut h);
+    day.hash(&mut h);
+    reply_count.hash(&mut h);
+    following.hash(&mut h);
+    for r in repliers {
+        let ReplierData {
+            name,
+            initials,
+            color,
+            avatar,
+        } = r;
+        name.hash(&mut h);
+        initials.hash(&mut h);
+        color.hash(&mut h);
+        pixels(&mut h, avatar);
+    }
+    h.finish()
 }
 
 /// The fingerprint of one row: equal data gives an equal value.

@@ -162,6 +162,16 @@ export component ChatsPage inherits VerticalLayout {
         }
     }
     SSection {
+        title: @tr("Scrolling");
+        SChoiceRow {
+            label: @tr("Mouse wheel speed");
+            hint: @tr("How far one notch of the mouse wheel scrolls messages and posts. A touchpad scrolls as it always does.");
+            options: [{v: "1", l: "1×"}, {v: "2", l: "2×"}, {v: "2.5", l: "2.5×"}, {v: "3", l: "3×"}, {v: "4", l: "4×"}, {v: "5", l: "5×"}];
+            value: Math.round(SettingsStore.wheel-speed * 10) == 25 ? "2.5" : "" + Math.round(SettingsStore.wheel-speed);
+            picked(v) => { SettingsStore.wheel-speed = v.to-float(); SettingsStore.command("wheel-speed", v); }
+        }
+    }
+    SSection {
         title: @tr("Privacy and previews");
         Switch { variant: SwitchVariant.settings;
             label: @tr("Read receipts");

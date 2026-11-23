@@ -6,6 +6,7 @@
 // Nothing here runs while idle: a looping animation reads `animation-tick()` only while its element
 // exists (the skeletons and the spinner are created under an `if` on the loading flag, so they are
 // gone once the content is there) and not at all with reduced motion.
+import { SettingsStore } from "../stores/settings_store.slint";
 import { Theme } from "theme.slint";
 
 export global Motion {
@@ -257,6 +258,49 @@ export component TypingIndicator inherits Rectangle {
             font-size: 12px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
+        }
+    }
+}
+
+// Smooth, faster wheel scrolling for a list whose rows take the wheel (`scroll-event`) before the
+// list does. A notch of a mouse wheel (a whole number of the 60px the window system reports per
+// notch) moves the list by the notch times the wheel speed (Settings > Chats), spread over a few
+// frames: about a third of what is left each frame. A touchpad's pixel-precise steps are not
+// notches: `take` leaves them to the list, which moves by them as they come.
+export component WheelGlide {
+    // Move the list's content by this much (positive: up, as `content-y` grows); the list calls
+    // `stop()` when it is at an end.
+    callback glide(length);
+    // What the notches taken so far still have to move.
+    property <length> left: 0px;
+    public function take(e: PointerScrollEvent) -> EventResult {
+        let notches = abs(e.delta-y / 60px);
+        if e.delta-y == 0px || notches < 1 || abs(notches - round(notches)) > 0.001 {
+            return EventResult.reject;
+        }
+        root.left += e.delta-y * max(1, min(5, SettingsStore.wheel-speed));
+        if Theme.reduced-motion {
+            root.glide(root.left);
+            root.left = 0px;
+        } else if !tick.running {
+            tick.start();
+        }
+        return EventResult.accept;
+    }
+    public function stop() {
+        root.left = 0px;
+        tick.stop();
+    }
+    tick := Timer {
+        interval: 16ms;
+        running: false;
+        triggered => {
+            let d = abs(root.left) <= 3px ? root.left : root.left * 0.35;
+            root.left -= d;
+            if root.left == 0px {
+                self.stop();
+            }
+            root.glide(d);
         }
     }
 }

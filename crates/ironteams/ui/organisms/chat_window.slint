@@ -8,6 +8,7 @@ import { MessageRow } from "message_row.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { ReactionCard } from "reaction_card.slint";
 import { ReactionHover } from "../atoms/reaction_hover.slint";
+import { WheelGlide } from "../tokens/motion.slint";
 
 export component ChatWindow inherits Window {
     in property <string> conv-id;
@@ -71,6 +72,7 @@ export component ChatWindow inherits Window {
                 self.content-y = min(0px, self.visible-height - self.content-height);
             }
             changed tick => {
+                pop-glide.stop();
                 self.pinned = true;
                 self.to-bottom();
             }
@@ -91,6 +93,8 @@ export component ChatWindow inherits Window {
             }
             for m in root.messages: MessageRow {
                 m: m;
+                // A wheel notch scrolls by the wheel speed, smoothly, as in the main window.
+                scroll-event(e) => { return pop-glide.take(e); }
                 max-bubble: min(640px, pop-list.width * 0.8);
                 react(k) => { root.react(m.id, k); }
                 open-url(u) => { root.open-url(u); }
@@ -147,6 +151,18 @@ export component ChatWindow inherits Window {
                     clicked => { root.send-now(); }
                 }
             }
+        }
+    }
+
+    // The wheel notches the rows took: the list moves by them a little each frame.
+    pop-glide := WheelGlide {
+        glide(d) => {
+            let to = min(0px, max(pop-list.visible-height - pop-list.content-height, pop-list.content-y + d));
+            if to == pop-list.content-y {
+                self.stop();
+            }
+            pop-list.content-y = to;
+            pop-list.pinned = to <= pop-list.visible-height - pop-list.content-height + 4px;
         }
     }
 

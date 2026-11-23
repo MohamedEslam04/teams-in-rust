@@ -295,6 +295,57 @@ fn a_chat_scrolled_up_keeps_its_rows_still_when_a_row_at_the_top_grows() {
     );
 }
 
+/// Near the top of a chat, the older page lands above (as the engine sends it: the rows with the
+/// older ones first, `Scroll::Anchor`): the rows in view stay where they are in every frame.
+#[test]
+fn older_messages_landing_above_do_not_move_the_rows_in_view_in_any_frame() {
+    let mut r = rig();
+    let rows: Vec<MsgData> = (40..100).map(|i| row(&format!("m{i}"), i)).collect();
+    r.ui.messages(rows.clone(), Scroll::Bottom);
+    r.frames(30, |_| 0.);
+    for _ in 0..12 {
+        wheel(&r.app, "MessagePane::msg-list", 300.);
+        r.frames(4, |_| 0.);
+    }
+    r.frames(60, |_| 0.);
+    let seen = (40..100)
+        .map(|i| format!("subject m{i}"))
+        .find(|s| label_y(&r.app, s) > 300.)
+        .expect("a row in view");
+    let before = label_y(&r.app, &seen);
+    let mut all: Vec<MsgData> = (0..40).map(|i| row(&format!("m{i}"), i)).collect();
+    all.extend(rows);
+    r.ui.messages(all, Scroll::Anchor(40));
+    let trace = r.frames(60, |a| label_y(a, &seen));
+    assert_all_near(&trace, before, 1., &format!("the y of {seen:?}"));
+}
+
+/// The same for a channel's posts.
+#[test]
+fn older_posts_landing_above_do_not_move_the_cards_in_view_in_any_frame() {
+    let mut r = rig();
+    r.channel();
+    let newer: Vec<PostData> = (30..60).map(post).collect();
+    r.ui.posts(newer.clone(), false, None);
+    r.ui.messages(msg_rows(30), Scroll::Bottom);
+    r.frames(30, |_| 0.);
+    for _ in 0..12 {
+        wheel(&r.app, "ChannelPosts::posts-list", 300.);
+        r.frames(4, |_| 0.);
+    }
+    r.frames(60, |_| 0.);
+    let seen = (30..60)
+        .map(|i| format!("subject p{i}"))
+        .find(|s| label_y(&r.app, s) > 300.)
+        .expect("a card in view");
+    let before = label_y(&r.app, &seen);
+    let mut all: Vec<PostData> = (0..30).map(post).collect();
+    all.extend(newer);
+    r.ui.posts(all, false, Some(30));
+    let trace = r.frames(60, |a| label_y(a, &seen));
+    assert_all_near(&trace, before, 1., &format!("the y of {seen:?}"));
+}
+
 // ---- the wheel ---------------------------------------------------------------------------
 
 /// One wheel notch (60px as the window system reports it) moves the message list by the notch
@@ -319,6 +370,43 @@ fn a_wheel_notch_moves_the_message_list_by_the_wheel_speed_smoothly() {
     );
 }
 
+/// The wheel speed set in Settings applies at once: 4 times a notch.
+#[test]
+fn the_wheel_speed_setting_applies_to_the_next_notch() {
+    let mut r = rig();
+    r.ui.messages(msg_rows(80), Scroll::Bottom);
+    r.frames(60, |_| 0.);
+    r.app.global::<crate::SettingsStore>().set_wheel_speed(4.0);
+    let seen = middle_subject(&r.app, "MessagePane::msg-list", "m", 80);
+    let before = label_y(&r.app, &seen);
+    wheel(&r.app, "MessagePane::msg-list", 60.);
+    r.frames(30, |_| 0.);
+    let moved = label_y(&r.app, &seen) - before;
+    assert!(
+        (moved - 240.).abs() <= 2.,
+        "one notch at 4x moved {moved}px"
+    );
+}
+
+/// A wheel notch over a channel's posts moves them by the wheel speed too.
+#[test]
+fn a_wheel_notch_moves_the_posts_by_the_wheel_speed() {
+    let mut r = rig();
+    r.channel();
+    r.ui.posts(posts(40), false, None);
+    r.ui.messages(msg_rows(40), Scroll::Bottom);
+    r.frames(60, |_| 0.);
+    let seen = middle_subject(&r.app, "ChannelPosts::posts-list", "p", 40);
+    let before = label_y(&r.app, &seen);
+    wheel(&r.app, "ChannelPosts::posts-list", 60.);
+    r.frames(30, |_| 0.);
+    let moved = label_y(&r.app, &seen) - before;
+    assert!(
+        (moved - 150.).abs() <= 2.,
+        "one notch moved the posts {moved}px"
+    );
+}
+
 /// A touchpad's small, pixel-precise steps keep their own distance.
 #[test]
 fn touchpad_steps_move_the_message_list_by_their_own_distance() {
@@ -339,7 +427,8 @@ fn touchpad_steps_move_the_message_list_by_their_own_distance() {
     );
 }
 
-/// Wheeling up a chat still asks for the older page a screen and a half before the top, once.
+/// Wheeling up a chat still asks for the older page a screen and a half before the top, once
+/// while it is on its way (the list asks again only when nothing landed for 700 ms).
 #[test]
 fn wheeling_up_a_chat_asks_for_older_messages_once_before_the_top() {
     let mut r = rig();
@@ -351,19 +440,20 @@ fn wheeling_up_a_chat_asks_for_older_messages_once_before_the_top() {
     r.ui.messages(msg_rows(80), Scroll::Bottom);
     r.frames(60, |_| 0.);
     assert_eq!(*loads.borrow(), 0, "nothing is asked at the newest row");
-    let mut at_ask = None;
-    for _ in 0..200 {
+    let mut notches = 0;
+    while *loads.borrow() == 0 && notches < 300 {
         wheel(&r.app, "MessagePane::msg-list", 60.);
         r.frames(3, |_| 0.);
-        if *loads.borrow() > 0 && at_ask.is_none() {
-            at_ask = Some(find_label(&r.app, "subject m0").is_empty());
-        }
+        notches += 1;
     }
-    r.frames(60, |_| 0.);
-    assert_eq!(*loads.borrow(), 1, "one older page asked for");
-    assert_eq!(
-        at_ask,
-        Some(true),
+    assert_eq!(*loads.borrow(), 1, "an older page asked for");
+    assert!(
+        find_label(&r.app, "subject m0").is_empty(),
         "asked before the first row came into view"
     );
+    for _ in 0..6 {
+        wheel(&r.app, "MessagePane::msg-list", 60.);
+        r.frames(3, |_| 0.);
+    }
+    assert_eq!(*loads.borrow(), 1, "not asked again while it is on its way");
 }

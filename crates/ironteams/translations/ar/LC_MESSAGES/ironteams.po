@@ -495,6 +495,15 @@ msgstr "مستند Word"
 msgid "Writing"
 msgstr "الكتابة"
 
+msgid "Scrolling"
+msgstr "التمرير"
+
+msgid "Mouse wheel speed"
+msgstr "سرعة عجلة الماوس"
+
+msgid "How far one notch of the mouse wheel scrolls messages and posts. A touchpad scrolls as it always does."
+msgstr "المسافة التي تمررها نقرة واحدة من عجلة الماوس في الرسائل والمنشورات. لوحة اللمس تمرر كما هي دائمًا."
+
 msgid "You asked {} for control"
 msgstr "طلبت من {} التحكم"
 
