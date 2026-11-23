@@ -171,6 +171,8 @@ fn end_reason(body: &Value) -> EndReason {
         "sessionRejection",
         "conversationEnd",
         "callTransactionEnd",
+        // A refused re-offer (rusty-teams `signaling.rs`; 491 is glare).
+        "mediaNegotiationFailure",
     ]
     .iter()
     .find_map(|k| body.get(*k).filter(|v| v.is_object()))
