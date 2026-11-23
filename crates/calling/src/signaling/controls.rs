@@ -437,6 +437,24 @@ mod tests {
         assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
     }
 
+    /// A 1:1 call whose controller is not known (a placed call: live 2026-11-23, Teams web saw
+    /// none of IronTeams's reactions and IronTeams logged no refusal): the call leg's
+    /// `sendMessage`, the only one in its link map, answers 2xx and reaches no one. A
+    /// conversation's own link is still taken.
+    #[test]
+    fn without_a_controller_a_call_leg_link_does_not_take_the_reaction() {
+        let s = session();
+        let mut links = Links::default();
+        let leg = "https://api.flightproxy.teams.microsoft.com/api/v2/ep/cc-example.cc.skype.com/cc/v1/forked/LEG1/sendMessage";
+        links.0.insert("sendMessage".into(), leg.into());
+        let (url, _) = reaction_request(&s, &links, "", Reaction::Like);
+        assert_ne!(url, leg);
+        let own = "https://conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1";
+        links.0.insert("sendMessage".into(), own.into());
+        let (url, _) = reaction_request(&s, &links, "", Reaction::Like);
+        assert_eq!(url, own);
+    }
+
     #[test]
     fn a_received_reaction_is_read_back_from_what_we_send() {
         let s = session();

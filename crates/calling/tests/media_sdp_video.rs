@@ -3,8 +3,8 @@
 //! and the directions and labels Teams sees.
 
 use calling::media::sdp::{
-    answer_direction, from_teams, from_teams_with, mid_of_role, source_stream_ids,
-    to_teams_answer_with, to_teams_offer, to_teams_reoffer, with_role_direction,
+    answer_direction, direct_answer, directions, from_teams, from_teams_with, mid_of_role,
+    source_stream_ids, to_teams_answer_with, to_teams_offer, to_teams_reoffer, with_role_direction,
 };
 use calling::video::VideoRole;
 
@@ -285,4 +285,77 @@ fn a_first_offer_has_no_negotiated_lines_to_keep() {
     let offer = to_teams_offer(MOVED_REOFFER);
     assert_eq!(sections(&offer).len(), 4, "{offer}");
     assert!(offer.contains("a=group:BUNDLE 0 1 2 3\r\n"), "{offer}");
+}
+
+/// A browser's 1:1 offer: camera `recvonly` (mid 1), sharing `inactive` (mid 2).
+const WEB_VIDEO_OFFER: &str = include_str!("fixtures/media/teams_web_video_offer.sdp");
+
+/// Our answer to it as webrtc-rs wrote it on a live 1:1 call (see `NEGOTIATED`): a line with a
+/// track says it sends, camera on or not, and the declined `x-data` line is a stub.
+const WEBRTC_ANSWER: &str = "v=0\r\no=- 1 2 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n\
+a=group:BUNDLE 0 1 2\r\n\
+m=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\na=label:main-audio\r\n\
+m=video 9 RTP/SAVP 107\r\na=mid:1\r\na=sendonly\r\na=ssrc:1111 cname:x\r\n\
+a=label:main-video\r\n\
+m=video 9 RTP/SAVP 107\r\na=mid:2\r\na=sendonly\r\na=ssrc:2222 cname:x\r\n\
+a=label:applicationsharing-video\r\n\
+m=x-data 0 RTP/SAVP 34\r\nc=IN IP4 0.0.0.0\r\na=mid:3\r\na=label:data\r\n";
+
+/// After IronTeams stopped a share (camera off the whole time), Teams web showed IronTeams's tile
+/// as an empty video box: our SDP said a video line sends. A 1:1 answer says what we send: the
+/// camera line receives only while the camera is off, the sharing line sends only while we
+/// share, each within what the offer allows.
+#[test]
+fn a_direct_answer_sends_only_on_the_lines_we_send_on() {
+    let dirs = |sdp: &str| -> Vec<String> {
+        sections(sdp)
+            .iter()
+            .map(|s| {
+                ["sendrecv", "sendonly", "recvonly", "inactive"]
+                    .into_iter()
+                    .find(|d| has(s, &format!("a={d}")))
+                    .unwrap_or("-")
+                    .to_owned()
+            })
+            .collect()
+    };
+    // The browser sends neither: nothing flows on either line.
+    let idle = direct_answer(WEBRTC_ANSWER, WEB_VIDEO_OFFER, false, false);
+    assert_eq!(dirs(&idle), ["sendrecv", "inactive", "inactive", "-"]);
+    assert_eq!(
+        sections(&idle)[3],
+        sections(WEBRTC_ANSWER)[3],
+        "a stub stays a stub"
+    );
+    // Our camera on, sharing: we send on both lines the browser receives on.
+    let sending = direct_answer(WEBRTC_ANSWER, WEB_VIDEO_OFFER, true, true);
+    assert_eq!(dirs(&sending), ["sendrecv", "sendonly", "inactive", "-"]);
+    // The browser's camera on and it watches our share: its camera comes, ours does not go.
+    let theirs = WEB_VIDEO_OFFER
+        .replacen("a=recvonly", "a=sendrecv", 1)
+        .replacen("a=inactive", "a=recvonly", 1);
+    let watching = direct_answer(WEBRTC_ANSWER, &theirs, false, false);
+    assert_eq!(dirs(&watching), ["sendrecv", "recvonly", "inactive", "-"]);
+    let shared = direct_answer(WEBRTC_ANSWER, &theirs, false, true);
+    assert_eq!(dirs(&shared), ["sendrecv", "recvonly", "sendonly", "-"]);
+    assert_eq!(
+        idle.lines().count(),
+        WEBRTC_ANSWER.lines().count(),
+        "only the direction lines change"
+    );
+}
+
+/// What the live log prints of each 1:1 SDP: mid, label, direction and SSRC range per line.
+#[test]
+fn directions_name_each_line() {
+    assert_eq!(
+        directions(WEB_VIDEO_OFFER),
+        "0 main-audio sendrecv 12345678-12345678, 1 main-video recvonly 20000-20099, \
+         2 applicationsharing-video inactive 30000-30099, 3 data sendrecv 40000-40000"
+    );
+    assert_eq!(
+        directions(WEBRTC_ANSWER),
+        "0 main-audio sendrecv -, 1 main-video sendonly -, \
+         2 applicationsharing-video sendonly -, 3 data declined"
+    );
 }
