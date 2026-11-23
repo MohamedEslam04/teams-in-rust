@@ -320,6 +320,16 @@ fn step(observe: Observe<'_>, what: &str) {
     observe("step", what);
 }
 
+/// Our offer of a call being answered: the camera is off and nothing is shared yet, so the camera
+/// line receives only and the sharing line is inactive, as the web client offers them
+/// (webrtc-rs says both send).
+fn idle_video_offer(offer: &str) -> String {
+    use crate::media::sdp::with_role_direction;
+    use crate::video::VideoRole;
+    let offer = with_role_direction(offer, VideoRole::MainVideo, "recvonly");
+    with_role_direction(&offer, VideoRole::ApplicationSharing, "inactive")
+}
+
 /// Dumps a blob as it came, then decodes it.
 fn decode(observe: Observe<'_>, name: &str, blob: &SdpBlob) -> Result<String> {
     observe(
@@ -359,7 +369,7 @@ async fn drive(
                 );
                 let attach = async {
                     if with_offer {
-                        let offer = media.create_offer().await?;
+                        let offer = idle_video_offer(&media.create_offer().await?);
                         observe("our-offer", &offer);
                         let blob = SdpBlob::ngc(offer.as_str());
                         our_offer = Some(offer);
@@ -402,7 +412,19 @@ async fn drive(
                 step(observe, "answer the caller's offer");
                 ring(ngc, s, a.links(), &mut rang).await;
                 let sdp = decode(observe, "caller-offer", &offer)?;
-                let answer = media.accept_offer(&sdp).await?;
+                // The camera starts, and a share goes out, after the call runs (re-offers):
+                // until then our video lines only receive.
+                let answer = crate::media::sdp::direct_answer(
+                    &media.accept_offer(&sdp).await?,
+                    &sdp,
+                    false,
+                    false,
+                );
+                tracing::info!(
+                    theirs = %crate::media::sdp::directions(&sdp),
+                    ours = %crate::media::sdp::directions(&answer),
+                    "1:1 call answered"
+                );
                 observe("our-answer", &answer);
                 let links = ngc
                     .accept(s, a.links(), &modalities, &SdpBlob::ngc(answer))
@@ -415,7 +437,7 @@ async fn drive(
                 let offer = match our_offer.take() {
                     Some(o) => o,
                     None => {
-                        let o = media.create_offer().await?;
+                        let o = idle_video_offer(&media.create_offer().await?);
                         observe("our-offer", &o);
                         o
                     }
