@@ -65,6 +65,7 @@ export component DevicePicker inherits VerticalLayout {
         border-color: Theme.border;
         background: Theme.surface;
         ScrollView {
+            viewport-width: self.visible-width;
             VerticalLayout {
                 padding: 4px;
                 for name[i] in root.options: Rectangle {
