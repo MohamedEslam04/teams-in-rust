@@ -13,6 +13,16 @@ use store::{ConvKind, ConversationRow, MessageRow};
 const W: u32 = 1920;
 const H: u32 = 1080;
 
+/// How much of the window a frame repaints: only what changed (`ReusedBuffer`, the default) or
+/// everything (`IRONTEAMS_BENCH_REPAINT=new`, what the winit backend does when the window system
+/// does not report the buffer's age).
+fn repaint() -> RepaintBufferType {
+    match std::env::var("IRONTEAMS_BENCH_REPAINT").as_deref() {
+        Ok("new") => RepaintBufferType::NewBuffer,
+        _ => RepaintBufferType::ReusedBuffer,
+    }
+}
+
 /// Windows drawn by the software renderer into memory; the testing backend draws nothing.
 struct SoftwarePlatform;
 
@@ -20,7 +30,7 @@ thread_local!(static WINDOWS: RefCell<Vec<Rc<MinimalSoftwareWindow>>> = const { 
 
 impl Platform for SoftwarePlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        let w = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+        let w = MinimalSoftwareWindow::new(repaint());
         w.set_size(PhysicalSize::new(W, H));
         WINDOWS.with(|ws| ws.borrow_mut().push(w.clone()));
         Ok(w)
@@ -44,6 +54,16 @@ impl Screen {
                 r.render(&mut self.buffer, W as usize);
             });
         }
+    }
+    /// A frame asked for with nothing changed: the renderer's walk over the whole item tree to
+    /// find what changed (and, with `IRONTEAMS_BENCH_REPAINT=new`, the full repaint).
+    fn idle_frame_ms(&mut self) -> f64 {
+        let t = Instant::now();
+        for w in &self.windows {
+            w.request_redraw();
+        }
+        self.frame();
+        ms(t.elapsed())
     }
     /// `ms` of animation, one frame per 16 ms: what a page's opening animations cost.
     fn run(&mut self, ms: u64) {
@@ -163,11 +183,17 @@ fn page_switch_cost_and_scroll_frames_of_a_long_chat() {
         h.chats().len()
     );
 
+    let idle = |screen: &mut Screen| median((0..10).map(|_| screen.idle_frame_ms()).collect());
+    let idle_chat = idle(&mut screen);
     let in_chat = pss_kb();
     h.app.invoke_navigate("calendar".into());
     screen.frame();
     screen.run(320);
     let in_calendar = pss_kb();
+    eprintln!(
+        "page_switch idle_frame_ms chat={idle_chat:.2} calendar={:.2}",
+        idle(&mut screen)
+    );
     h.app.invoke_navigate("chat".into());
     screen.frame();
     screen.run(320);

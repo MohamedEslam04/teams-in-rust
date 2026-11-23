@@ -43,21 +43,25 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: false
-      - name: After (this commit), twice
+      - name: After (this commit)
         shell: bash
         run: |
-          for i in 1 2; do
-            cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
+          # Partial repaints (twice, for the spread), then a full repaint every frame.
+          for mode in reused reused new; do
+            echo "== repaint $mode"
+            IRONTEAMS_BENCH_REPAINT=$mode cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
             grep -E '^(page_switch|scroll)|test result' out.txt
             echo "slint long chain warnings: $(grep -c 'long changed callback chain' out.txt)"
           done
-      - name: Before (the base's UI files), twice
+      - name: Before (the base's UI files)
         shell: bash
         run: |
           git checkout "$BASE" -- crates/ironteams/ui
           git status --short
-          for i in 1 2; do
-            cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
+          # Partial repaints (twice, for the spread), then a full repaint every frame.
+          for mode in reused reused new; do
+            echo "== repaint $mode"
+            IRONTEAMS_BENCH_REPAINT=$mode cargo test -p ironteams --bin ironteams -- --ignored --nocapture page_switch_cost > out.txt 2>&1 || { tail -50 out.txt; exit 1; }
             grep -E '^(page_switch|scroll)|test result' out.txt
             echo "slint long chain warnings: $(grep -c 'long changed callback chain' out.txt)"
           done
