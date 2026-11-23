@@ -232,6 +232,52 @@ fn joining_goes_through_the_lobby_to_connected() {
     assert!(!c.shows("Reconnecting… Your connection was interrupted."));
 }
 
+/// The meeting started `ago` ms before now, by the server's clock.
+fn meeting_started(c: &CallHarness, ago: i64) {
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+        - ago;
+    c.h.engine
+        .calls
+        .set_meeting_start(move |chat| (chat == THREAD).then_some(started));
+}
+
+fn timer(c: &CallHarness) -> String {
+    cs(&c.h.app).get_timer().to_string()
+}
+
+#[test]
+fn a_meeting_joined_late_shows_the_time_since_it_started() {
+    let c = CallHarness::new();
+    meeting_started(&c, 21 * 60_000);
+    c.connected();
+    assert_eq!(timer(&c), "21:00", "the meeting's time, not ours");
+    // Leaving and joining again does not restart it.
+    click(&c.button("Leave"));
+    click(&c.button("Rejoin"));
+    click(&c.button("Join now"));
+    c.fake.emit(Event::Connected);
+    assert_eq!(timer(&c), "21:00");
+}
+
+#[test]
+fn a_meeting_with_no_start_time_counts_from_our_join() {
+    let c = CallHarness::new();
+    c.h.engine.calls.set_meeting_start(|_| None);
+    c.connected();
+    assert_eq!(timer(&c), "00:00");
+}
+
+#[test]
+fn a_start_time_after_our_join_is_not_believed() {
+    let c = CallHarness::new();
+    meeting_started(&c, -5 * 60_000);
+    c.connected();
+    assert_eq!(timer(&c), "00:00");
+}
+
 #[test]
 fn joining_with_the_mic_off_joins_muted() {
     let c = CallHarness::new();

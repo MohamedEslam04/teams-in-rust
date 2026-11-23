@@ -39,6 +39,9 @@ pub struct CallModel {
     pub error: String,
     pub ended: String,
     pub connected_at: Option<Instant>,
+    /// How long the meeting had run when we joined it ([`head_start`]); the header's timer counts
+    /// it too, so it shows the meeting's own time, the same for everyone.
+    pub head_start: Duration,
     /// How long the call was connected, once it ended.
     pub duration: Option<Duration>,
     pub devices: Devices,
@@ -110,6 +113,29 @@ pub fn recording_state(body: &Value) -> Option<bool> {
         Value::Array(a) => a.iter().find_map(recording_state),
         _ => None,
     }
+}
+
+/// A meeting running longer than this is taken for a start that never got its end, and the timer
+/// counts from the join instead.
+const LONGEST_HEAD_START: Duration = Duration::from_secs(24 * 3600);
+
+/// How long a meeting had run when we joined it: from the server's start time (unix ms, `None`
+/// when the server gave none) to `joined_ms`. The join time wins when the server's start is
+/// missing, not before it (clock skew), or too old to be this meeting's.
+pub fn head_start(server_start_ms: Option<i64>, joined_ms: i64) -> Duration {
+    let ran = server_start_ms
+        .and_then(|s| u64::try_from(joined_ms.checked_sub(s)?).ok())
+        .map(Duration::from_millis);
+    ran.filter(|d| *d <= LONGEST_HEAD_START)
+        .unwrap_or(Duration::ZERO)
+}
+
+/// Now, in unix ms (the server's message times are on this scale).
+pub(super) fn unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+        .unwrap_or_default()
 }
 
 /// A conversation that is a meeting's chat (the header's Join button shows on it).

@@ -166,6 +166,10 @@ pub(super) fn photos(
 /// Finds a person's profile photo by MRI ([`CallManager::set_photos`]).
 pub(super) type PhotoLookup = Arc<dyn Fn(&str) -> Option<Pixels> + Send + Sync>;
 
+/// Finds when a meeting's running call started, by its chat's id: unix ms from the server's
+/// "Meeting started" message ([`CallManager::set_meeting_start`]).
+pub(super) type StartLookup = Arc<dyn Fn(&str) -> Option<i64> + Send + Sync>;
+
 /// One live caption: who speaks and what they said so far. A later caption with the same `id`
 /// (the utterance) replaces it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

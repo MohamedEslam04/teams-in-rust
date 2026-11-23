@@ -386,3 +386,68 @@ fn the_roster_shows_our_own_state_and_the_lobby_last() {
     assert!(m.apply(Event::Recording(true), t0));
     assert!(m.data(t0).recording);
 }
+
+#[test]
+fn head_start_is_the_server_start_before_our_join() {
+    let joined = 1_795_000_000_000;
+    let min = 60_000;
+    let ran = |start| head_start(start, joined);
+    assert_eq!(ran(Some(joined - 21 * min)), Duration::from_secs(21 * 60));
+    assert_eq!(ran(None), Duration::ZERO, "no server time: the join time");
+    assert_eq!(ran(Some(joined)), Duration::ZERO);
+    assert_eq!(
+        ran(Some(joined + 5 * min)),
+        Duration::ZERO,
+        "a start after our join is clock skew"
+    );
+    assert_eq!(
+        ran(Some(joined - 23 * 3600 * 1000)),
+        Duration::from_secs(23 * 3600)
+    );
+    assert_eq!(
+        ran(Some(joined - 25 * 3600 * 1000)),
+        Duration::ZERO,
+        "too old to be this meeting's"
+    );
+    assert_eq!(ran(Some(i64::MIN)), Duration::ZERO, "no overflow");
+}
+
+#[test]
+fn the_timer_counts_the_meetings_head_start() {
+    let t0 = Instant::now();
+    let mut m = ready();
+    m.joining();
+    m.apply(Event::Connected, t0);
+    m.head_start = Duration::from_secs(21 * 60);
+    assert_eq!(m.data(t0 + Duration::from_secs(5)).timer, "21:05");
+    assert!(m.leave(t0 + Duration::from_secs(30)));
+    let d = m.data(t0 + Duration::from_secs(99));
+    assert_eq!((d.phase, d.timer.as_str()), ("ended", "21:30"));
+    assert_eq!(m.duration, Some(Duration::from_secs(30)), "our own time");
+}
+
+#[test]
+fn the_meeting_chat_is_where_its_start_is_looked_up() {
+    let mut m = ready();
+    assert_eq!(m.meeting_chat().as_deref(), Some("19:c"));
+    m.chat_id.clear();
+    assert_eq!(m.meeting_chat(), None, "a link with no thread");
+    m.target = Some(JoinTarget::Chat("19:meeting_x@thread.v2".into()));
+    assert_eq!(m.meeting_chat().as_deref(), Some("19:meeting_x@thread.v2"));
+    m.target = Some(JoinTarget::Link(
+        "https://teams.microsoft.com/l/meetup-join/19%3ameeting_y%40thread.v2/0?context=%7b%7d"
+            .into(),
+    ));
+    assert_eq!(m.meeting_chat().as_deref(), Some("19:meeting_y@thread.v2"));
+    m.target = Some(JoinTarget::Code {
+        id: "1".into(),
+        passcode: "p".into(),
+    });
+    assert_eq!(m.meeting_chat(), None);
+    m.kind = CallKind::Direct {
+        peer_name: "N".into(),
+        chat_id: "19:d".into(),
+    };
+    m.chat_id = "19:d".into();
+    assert_eq!(m.meeting_chat(), None, "a 1:1 call has no meeting start");
+}

@@ -94,6 +94,8 @@ pub(super) struct Shared {
     pub(super) ticking: AtomicBool,
     pub(super) ui: UiHandle,
     pub(super) photos: Mutex<Option<PhotoLookup>>,
+    /// Where a meeting's own start time comes from, for the header's timer.
+    pub(super) meeting_start: Mutex<Option<StartLookup>>,
     /// Where the call-quality ratings go; none: IronTeams's data dir (and nowhere in tests).
     pub(super) feedback_file: Mutex<Option<std::path::PathBuf>>,
     /// The Video effects panel's choices, which every camera picture goes through.
@@ -199,11 +201,16 @@ impl Shared {
         if generation != self.generation.load(Ordering::SeqCst) {
             return self.apply_held(generation, ev);
         }
-        let (mut changed, mut phase, share) = {
+        let (mut changed, mut phase, share, joined) = {
             let mut m = self.model.lock().unwrap();
+            let first = m.connected_at.is_none();
             let changed = m.apply(ev, Instant::now());
-            (changed, m.phase, m.take_share_when_ready())
+            let joined = first && m.connected_at.is_some();
+            (changed, m.phase, m.take_share_when_ready(), joined)
         };
+        if joined && self.start_from_server(generation) {
+            changed = true;
+        }
         if let Some(c) = share {
             self.control(c);
         }
@@ -222,6 +229,25 @@ impl Shared {
         if phase == Phase::Connected {
             self.tick();
         }
+    }
+
+    /// A meeting just connected: its timer counts from when the server says the meeting started,
+    /// not from our join. True when that moved the timer.
+    fn start_from_server(&self, generation: u64) -> bool {
+        let Some(chat) = self.model.lock().unwrap().meeting_chat() else {
+            return false;
+        };
+        let Some(lookup) = self.meeting_start.lock().unwrap().clone() else {
+            return false;
+        };
+        let ahead = head_start(lookup(&chat), unix_ms());
+        let mut m = self.model.lock().unwrap();
+        // Still the same call, and the server's start is before our join.
+        if generation != self.generation.load(Ordering::SeqCst) || ahead.is_zero() {
+            return false;
+        }
+        m.head_start = ahead;
+        true
     }
 
     /// "In a call" while connected (or reconnecting), Available once the call is over.
