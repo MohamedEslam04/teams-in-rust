@@ -16,6 +16,12 @@ on:
       all-platforms:
         type: boolean
         default: false
+      # Leaves the two macOS runners out of all-platforms (a tag release builds and publishes
+      # Linux and Windows only; macOS is added to that release by a manual run). Compared with
+      # true, not false: an unset input (push, manual run) must keep macOS.
+      skip-macos:
+        type: boolean
+        default: false
 
 # A newer push to the same branch cancels the older run.
 concurrency:
@@ -110,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, macos-15-intel]
+        os: ${{ fromJSON(inputs.skip-macos == true && '["windows-latest"]' || '["windows-latest","macos-latest","macos-15-intel"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
