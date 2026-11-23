@@ -33,6 +33,19 @@ pub(crate) fn assert_fits(app: &AppWindow, width: f32, what: &str) {
         .match_type_name("Text")
         .find_all();
     assert!(!texts.is_empty(), "{what}: no text");
+    if std::env::var_os("DUMP_FIT").is_some() || what.contains("More") {
+        for t in &texts {
+            let (p, s) = (t.absolute_position(), t.size());
+            eprintln!(
+                "DUMP {what} {width}: {:?} x {} y {} w {} h {}",
+                t.accessible_label(),
+                p.x,
+                p.y,
+                s.width,
+                s.height
+            );
+        }
+    }
     for t in texts {
         let (p, s) = (t.absolute_position(), t.size());
         let in_view = s.width > 0. && s.height > 0. && p.y >= 0. && p.y + s.height <= HEIGHT;
