@@ -45,6 +45,7 @@ mod format_live;
 mod global_search;
 mod language;
 mod list_parity;
+mod list_stability;
 mod lists;
 mod media;
 mod meeting_cards;
@@ -56,6 +57,7 @@ mod not_member;
 mod ongoing_call;
 pub(crate) mod overflow;
 mod overlay_order;
+mod page_switch;
 mod palette;
 mod people;
 mod reaction_card;
@@ -92,11 +94,13 @@ fn init_platform() {
             unsafe { std::env::set_var("SLINT_FONT_PATH", dir) };
         });
     }
-    thread_local!(static DONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
-    if !DONE.replace(true) {
+    if !PLATFORM_SET.replace(true) {
         testing::init_no_event_loop();
     }
 }
+
+// A thread's Slint platform is set (the testing one, or a measurement's own, `page_switch`).
+thread_local!(static PLATFORM_SET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
 
 /// A window with the composer's Rust side attached, like `main` builds it.
 fn new_window() -> AppWindow {

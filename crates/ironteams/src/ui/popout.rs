@@ -2,14 +2,18 @@
 //! send, reactions and links go through the main window's callbacks, so nothing new is wired in
 //! `main.rs`. One chat is popped out at a time; popping out another replaces it.
 
-use super::{UiHandle, model, msg};
+use super::{UiHandle, model, model_sync, msg, row_fingerprint};
 use crate::data::MsgData;
-use crate::{AppWindow, CalStore, ChatWindow, MediaStore, Theme};
-use slint::{CloseRequestResponse, ComponentHandle, Model};
+use crate::{AppWindow, CalStore, ChatWindow, MediaStore, Msg, SettingsStore, Theme};
+use slint::{CloseRequestResponse, ComponentHandle, Model, ModelRc, VecModel};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 thread_local! {
     static POPOUT: RefCell<Option<ChatWindow>> = const { RefCell::new(None) };
+    /// The popped-out chat's rows and the print of each (`model_sync`).
+    static ROWS: RefCell<Option<(Rc<VecModel<Msg>>, Vec<model_sync::Print>)>> =
+        const { RefCell::new(None) };
 }
 
 /// The second window copies the main window's look (each window has its own `Theme`).
@@ -120,6 +124,8 @@ impl UiHandle {
                 }
                 let Some(cw) = p.as_ref() else { return };
                 copy_theme(&app.global::<Theme>(), &cw.global::<Theme>());
+                cw.global::<SettingsStore>()
+                    .set_wheel_speed(app.global::<SettingsStore>().get_wheel_speed());
                 if cw.get_conv_id().as_str() != conv {
                     cw.set_draft("".into());
                     // The next messages are a new chat's: they start at the newest one.
@@ -139,7 +145,23 @@ impl UiHandle {
             POPOUT.with(|p| {
                 if let Some(cw) = p.borrow().as_ref() {
                     let first = cw.get_messages().row_count() == 0;
-                    cw.set_messages(model(msgs.into_iter().map(msg).collect()));
+                    // Patched, not replaced: a new model built every row again and the list
+                    // jumped for every avatar or reaction the engine drew.
+                    let rows = msgs
+                        .into_iter()
+                        .map(|m| ((m.id.clone(), row_fingerprint::of(&m)), m))
+                        .collect();
+                    ROWS.with(|cell| {
+                        let mut cell = cell.borrow_mut();
+                        let (m, prints) =
+                            cell.get_or_insert_with(|| (Rc::new(VecModel::default()), vec![]));
+                        if !model_sync::is_shown(&cw.get_messages(), m) {
+                            m.set_vec(vec![]);
+                            prints.clear();
+                            cw.set_messages(ModelRc::from(m.clone()));
+                        }
+                        model_sync::patch(m, prints, rows, msg);
+                    });
                     if first {
                         // A chat just opened: at its newest message, like the main view.
                         cw.set_scroll_tick(cw.get_scroll_tick() + 1);

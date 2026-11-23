@@ -8,7 +8,7 @@ import { ListView } from "std-widgets.slint";
 import { MessageRow } from "message_row.slint";
 import { Msg } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { Motion, SkeletonMessages, Spinner } from "../tokens/motion.slint";
+import { Motion, SkeletonMessages, Spinner, WheelGlide } from "../tokens/motion.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export component MessagePane inherits Rectangle {
@@ -129,10 +129,12 @@ export component MessagePane inherits Rectangle {
             root.at-bottom-changed(self.pinned);
         }
         changed tick => {
+            msg-glide.stop();
             self.pinned = true;
             self.content-y = min(0px, self.visible-height - self.content-height);
         }
         changed a-tick => {
+            msg-glide.stop();
             self.aligning = true;
             self.anchoring = true;
             self.pinned = false;
@@ -183,10 +185,27 @@ export component MessagePane inherits Rectangle {
         }
             for m in root.messages: MessageRow {
                 m: m;
+                // A wheel notch scrolls by the wheel speed, smoothly (`WheelGlide`).
+                scroll-event(e) => { return msg-glide.take(e); }
                 max-bubble: min(720px, msg-list.width * 0.75);
                 pane-top: msg-list.absolute-position.y;
                 in-channel: root.current-is-channel && root.thread-root == "";
                 select-mode: root.select-mode;
+                // A row that starts above the view's top got taller or shorter (a link card, a
+                // reaction row, an edit): the list lays its rows out downwards from the first, so
+                // every row below it, the ones being read, would move. The view moves with the
+                // row instead. `seen-id`: the list reuses a row for another message, whose other
+                // height is no change of this one.
+                property <length> seen-h: 0px;
+                property <string> seen-id;
+                changed height => {
+                    if self.seen-id == m.id && self.seen-h > 0px && !msg-list.pinned && !msg-list.aligning
+                        && !msg-list.anchoring && self.y < -msg-list.content-y {
+                        msg-list.content-y = min(0px, msg-list.content-y - (self.height - self.seen-h));
+                    }
+                    self.seen-h = self.height;
+                    self.seen-id = m.id;
+                }
                 // How far the view's top is below this row's top; the row that holds the view's
                 // top is the one older messages must not push away.
                 property <length> top-gap: -msg-list.content-y - self.y;
@@ -322,11 +341,21 @@ export component MessagePane inherits Rectangle {
         running: msg-list.anchoring;
         triggered => {
             msg-list.anchoring = false;
-            msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
-            msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
-            // ensure-row-visible only records the request: the scroll happens in the next layout,
-            // so the user's offset inside the row is applied a moment later (`offset-timer`).
-            msg-list.apply-off = root.anchor-off > 0px;
+            if root.top-id != "" && root.messages[root.anchor-index].id == root.top-id
+                && abs(root.top-off - root.anchor-off) < 1px {
+                // The row is at the view's top already, with the user's offset: the rows came in
+                // above the ones the list had built, and the list kept those where they were.
+                // Putting the row back would only make the view jump to the row's top and back
+                // to the user's offset a frame later.
+                msg-list.aligning = false;
+            } else {
+                msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
+                msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+                // ensure-row-visible only records the request: the scroll happens in the next
+                // layout, so the user's offset inside the row is applied a moment later
+                // (`offset-timer`).
+                msg-list.apply-off = root.anchor-off > 0px;
+            }
         }
     }
     // The anchor row is at the view's top by now: move down to where the user was inside it. The
@@ -339,6 +368,19 @@ export component MessagePane inherits Rectangle {
             if msg-list.content-y > msg-list.visible-height - msg-list.content-height + 2px {
                 msg-list.content-y = min(0px, msg-list.content-y - root.anchor-off);
             }
+        }
+    }
+    // The wheel notches the rows took: the list moves by them a little each frame.
+    msg-glide := WheelGlide {
+        glide(d) => {
+            let to = min(0px, max(msg-list.visible-height - msg-list.content-height, msg-list.content-y + d));
+            if to == msg-list.content-y {
+                self.stop();
+            }
+            msg-list.content-y = to;
+            msg-list.recheck();
+            Motion.scrolling = true;
+            scroll-idle.restart();
         }
     }
     // The user stopped scrolling.

@@ -96,6 +96,100 @@ scroll up and down for a minute with `IRONTEAMS_LOG=warn,ironteams=debug` and lo
 renderer. The older page now lands without the view moving (the row at the top of the view is put
 back with the user's offset) and is asked for from a screen and a half away from the top.
 
+## Switching pages and scrolling, frame by frame
+
+`page_switch_cost` (`src/ui_tests/page_switch.rs`, ignored) draws the real window with Slint's
+software renderer into memory at 1920x1080: a 400-row chat and 159 chats in the list, then
+Calendar → Chat → Activity → Teams → Chat five times, then 120 wheel notches. It prints each
+switch's first frame (the click to the drawn page), the frames of the next 320 ms, an idle frame
+(nothing changed: the renderer's walk over the item tree), PSS, and the scroll frames.
+`IRONTEAMS_BENCH_REPAINT=new` repaints the whole window every frame, as the winit backend does when
+the window system does not report the buffer's age. The test build is too big for this machine, so
+run it on CI: push the branch as `ci/bench-<name>` and the `Bench UI` workflow runs it on the
+commit and again with `crates/ironteams/ui` from `origin/dev`, on the same runner:
+
+```sh
+gh run view <run> --log | grep -E 'repaint|page_switch |scroll step'
+```
+
+The numbers are from a debug build on a GitHub runner, so only before/after on the same run compare.
+
+What it showed: Calendar, OneDrive and Calls destroyed the chat list (every row of a plain `for`)
+and the chat pane, and Activity shrank the list to 0 px so every message row was laid out again;
+coming back built or relaid all of it. The pages now sit over the chat, which stays built and is
+clipped to nothing underneath. Hiding something built is not free with partial repaints: the
+renderer's dirty-region walk (`partial_renderer.rs`) visits every item under it on the switch, and
+the chat list is a plain `for` over every chat (about 4000 items for 159 chats). So a chat list row
+outside the list now hides its content (`ChatItem.in-view`), which the walk skips on every frame;
+that also halved the idle frame and took a quarter off a scroll frame.
+
+Bench UI run 45157659433 (commit 47fc224e, debug build, partial repaints, ms, median):
+
+| Measure                           | Before (dev UI) | After |
+| --------------------------------- | --------------- | ----- |
+| Calendar → Chat, first frame      | 311             | 66    |
+| Teams → Chat, first frame         | 317             | 117   |
+| Chat → Activity, first frame      | 386             | 386   |
+| Chat → Calendar, first frame      | 36              | 64    |
+| Chat → Teams, first frame         | 18              | 27    |
+| Chat frames after the switch      | 7.7             | 2.7   |
+| Activity frames after the switch  | 9.2             | 3.7   |
+| Idle frame in Chat (tree walk)    | 10.0            | 5.1   |
+| Scroll frame, wheel notch         | 48.6            | 36.4  |
+| Scroll frame, 8 px step           | 40.6            | 31.6  |
+| Scroll frame, full repaint        | 65.0            | 59.0  |
+| PSS in Chat / Calendar (MB)       | 183 / 189       | 183 / 188 |
+
+Still open: leaving Chat costs one walk of the chat pane's rows; building the Activity page is
+most of Chat → Activity; a scroll frame is mostly the repaint of the message area (`draw_ms`), and
+every frame still walks all the chat list's row shells (a `ListView` would not).
+
+## Lists that change while they are on screen
+
+`src/ui_tests/list_stability.rs` draws the window every 16 ms frame with the software renderer
+(as `page_switch`) and records a position in every frame, not only the last: a list that ends in
+the right place after jumping on the way is what users describe as "it moves by itself". Rows have
+mixed heights (one to eighteen lines), so the list's estimate of the rows it has not laid out (the
+average of those it has) is wrong for most of them.
+
+What was wrong, found by those tests on the code before the fix (the same on `dev`: the files
+involved were not changed by the page-switch work):
+
+- **A new model on every render.** The engine draws the open conversation again for every avatar,
+  presence change, reaction or reply count (about every 120 ms while avatars load). The Posts tab,
+  the thread panel, the pop-out chat and the chat list were each given a new model every time.
+  Slint then drops every row and builds it again, and a `ListView` forgets the heights it measured
+  and where it was: a channel scrolled up lost its place entirely (the card being read was no
+  longer drawn), rows replayed their entrance animations and the row under the pointer lost its
+  hover. They are now patched (`src/ui/model_sync.rs`): the rows both versions share stay and are
+  written only when their fingerprint changed, older rows are inserted above and newer ones
+  added below, and reordered rows (a chat moving to the top) are rewritten where they are.
+- **A channel opened 250 px above its newest post** for its first 144 ms, then jumped down when
+  the engine's second scroll tick came. The cards got their real height under the view, which
+  moved the view, and the Posts tab took that move for the user scrolling away and unpinned
+  itself. It now ignores a move that comes with a new content height, as the message list does.
+- **A row above the view that grew pushed the rows being read down** (130 px in the test): the
+  list lays its rows out downwards from the first one. The message list and the Posts tab now
+  move the view with a row that starts above the view's top.
+- **Wheel notches were 60 px**, the window system's notch. Rows now take a notch before the list
+  and glide the list by the notch times the wheel speed (Settings > Chats > Scrolling, 1× to 5×,
+  2.5× by default) over about 130 ms (`WheelGlide`, `ui/tokens/motion.slint`). A touchpad's
+  pixel-precise steps are not whole notches and are left to the list as before. The Posts tab also
+  sets `Motion.scrolling` now, so cards scrolling into view do not replay their animations.
+
+| List | Cause candidates | Status |
+| ---- | ---------------- | ------ |
+| Message list (`message_pane.slint` `msg-list`) | estimates, pin, prefetch + anchor, rows growing above the view | Opening at the newest row was fine; a row growing above the view is fixed; wheel speed added |
+| Posts tab (`channel_posts.slint` `posts-list`) | new model every render, pin lost to estimates, cards growing above the view, no `Motion.scrolling` | Fixed |
+| Thread panel (`channel_posts.slint` `thread-scroll`) | new model every render | Fixed (patched; the post is written only when it changed); no frame test |
+| Pop-out chat (`chat_window.slint` `pop-list`) | new model every render | Fixed (patched, wheel speed); its pin logic was already there; no frame test |
+| Chat list (`sidebar.slint`, favourites, chats, channels) | new model on every presence, avatar and unread change | Fixed (patched); rows have a fixed height, so the place was kept before too |
+| Teams list (`sidebar.slint`) | new model on sync | Not changed: replaced only on sync and its rows have a fixed height |
+| Activity list and preview (`activity.slint`) | rows written in place already | Was fine |
+| Search results, quick views, top-bar search, palette, calls, shared items, pickers | new model per query or command | Not changed: a new query is a new list, and none of them pins or anchors |
+| Calendar, Settings, Apps, Teams page, dialogs | static content | Not covered: nothing changes them while they are read |
+| Call panels, device lists | | Out of scope here (another branch works on them) |
+
 ## Results
 
 | Measure                         | Baseline | After |

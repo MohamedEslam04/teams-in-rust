@@ -998,6 +998,33 @@ fn changing_graphics_saves_it_and_asks_for_a_restart_without_changing_what_runs(
     assert!(!text_shown(app, "Restart IronTeams to apply"));
 }
 
+/// Chats > Scrolling: the mouse wheel speed is 2.5 times a notch until it is changed, a choice
+/// is saved and read again by the next window, and a value out of range is brought into it.
+#[test]
+fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
+    let ui = window(Home::new("wheel-speed"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    open_page(app, "chats");
+    assert_eq!(store(app).get_wheel_speed(), 2.5);
+    assert!(checked(app, "Mouse wheel speed: 2.5×"));
+    press(app, "Mouse wheel speed: 4×");
+    assert_eq!(store(app).get_wheel_speed(), 4.0);
+    assert!(checked(app, "Mouse wheel speed: 4×"));
+    assert_eq!(Local::load(&config).general.wheel_speed, 4.0);
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(
+        store(&again.app).get_wheel_speed(),
+        4.0,
+        "a new window starts with the saved speed"
+    );
+    store(app).invoke_command("wheel-speed".into(), "40".into());
+    assert_eq!(store(app).get_wheel_speed(), 5.0, "at most 5 times");
+    store(app).invoke_command("wheel-speed".into(), "0.1".into());
+    assert_eq!(store(app).get_wheel_speed(), 1.0, "at least once");
+    assert_eq!(Local::load(&config).general.wheel_speed, 1.0);
+}
+
 #[test]
 fn find_in_settings_reaches_the_chats_page() {
     let ui = window(Home::new("chats-find"));

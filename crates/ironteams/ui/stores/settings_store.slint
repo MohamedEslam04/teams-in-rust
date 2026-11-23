@@ -85,6 +85,8 @@ export global SettingsStore {
     // When a chat opens: last-read (at the first unread message) | newest.
     in-out property <string> open-chat-at: "last-read";
     in-out property <bool> link-previews: true;
+    // How far a mouse wheel notch scrolls the conversation lists: the notch times this (1 to 5).
+    in-out property <float> wheel-speed: 2.5;
 
     // --- Accessibility (X1.3) ---
     in-out property <string> high-contrast: "auto"; // auto | on | off

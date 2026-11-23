@@ -93,6 +93,10 @@ fn settings_pages_to_png() {
         std::env::var_os("IRONTEAMS_SHOTS_DIR").expect("set IRONTEAMS_SHOTS_DIR to a directory"),
     );
     std::fs::create_dir_all(&dir).unwrap();
+    assert!(
+        !PLATFORM_SET.replace(true),
+        "draw the pictures on a thread of their own"
+    );
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(ShotPlatform(window.clone()))).unwrap();
     window.set_size(PhysicalSize::new(1920, 1080));
