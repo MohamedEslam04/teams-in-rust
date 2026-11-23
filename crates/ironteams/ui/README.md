@@ -1,4 +1,4 @@
-Docs synced to commit be977c73 ("Merge feat/ui-organisms: composer and app.slint split into organisms, duplicate component names resolved", 2026-11-22)
+Docs synced to commit 931bf3b9 ("fix(settings): a radio row's focus ring clears its dot; the landing shot is taken once the opened page's rows exist", 2026-11-23)
 
 # IronTeams UI (Slint)
 
