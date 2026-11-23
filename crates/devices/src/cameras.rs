@@ -47,6 +47,20 @@ fn cstr(bytes: &[u8]) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
+/// A camera's name as V4L2 reports it, tidied. The `card` field is 32 bytes and uvcvideo fills it
+/// with "<product>: <product>" cut at 32 ("Integrated Camera: Integrated C"): when what follows the
+/// colon repeats the start of what comes before it, only the first part is the name.
+fn clean_name(raw: &str) -> String {
+    let raw = raw.trim();
+    if let Some((head, tail)) = raw.split_once(':') {
+        let (head, tail) = (head.trim(), tail.trim());
+        if !head.is_empty() && !tail.is_empty() && head.starts_with(tail) {
+            return head.to_owned();
+        }
+    }
+    raw.to_owned()
+}
+
 /// The name and index of `videoN` from `/sys/class/video4linux`, used when the node cannot be
 /// opened. Only index 0 is listed: a camera's other nodes (metadata, IR) have higher indexes.
 fn sysfs_camera(sys_dir: &Path, dev_dir: &Path, node: &str) -> Option<Camera> {
@@ -56,7 +70,7 @@ fn sysfs_camera(sys_dir: &Path, dev_dir: &Path, node: &str) -> Option<Camera> {
     }
     Some(Camera {
         path: dev_dir.join(node).display().to_string(),
-        name: read("name")?.trim().to_string(),
+        name: clean_name(&read("name")?),
         driver: String::new(),
         bus: String::new(),
         formats: Vec::new(),
@@ -106,7 +120,7 @@ fn probe(path: &Path) -> io::Result<Option<Camera>> {
     }
     Ok(Some(Camera {
         path: path.display().to_string(),
-        name: cstr(&cap.card),
+        name: clean_name(&cstr(&cap.card)),
         driver: cstr(&cap.driver),
         bus: cstr(&cap.bus_info),
         formats: formats(fd),
@@ -275,6 +289,23 @@ mod tests {
             .collect();
         assert_eq!(got, ["video0", "video2", "video10"]);
         assert!(video_nodes(&d.join("missing")).is_empty());
+    }
+
+    #[test]
+    fn a_name_the_driver_repeated_and_cut_is_the_first_part() {
+        for (raw, shown) in [
+            ("Integrated Camera: Integrated C", "Integrated Camera"),
+            ("Integrated Camera: Integrated Camera", "Integrated Camera"),
+            ("  Integrated Camera: Integrated C \n", "Integrated Camera"),
+            ("HD Webcam: HD Webcam", "HD Webcam"),
+            ("USB Camera: Other thing", "USB Camera: Other thing"),
+            ("Logitech BRIO", "Logitech BRIO"),
+            ("Cam: ", "Cam:"),
+            (": x", ": x"),
+            ("", ""),
+        ] {
+            assert_eq!(clean_name(raw), shown, "{raw:?}");
+        }
     }
 
     #[test]
