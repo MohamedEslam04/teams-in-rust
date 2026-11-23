@@ -16,7 +16,7 @@ pub mod segment;
 pub use backgrounds::{BUILT_IN, BuiltIn, built_in};
 
 use super::{I420Frame, RgbFrame};
-use pixels::{Mask, blur, composite, half, upscale};
+use pixels::{Mask, Refiner, blur, composite, half, halve_plane, scale_plane};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -105,6 +105,10 @@ const STRONG_BLUR_RADIUS: usize = 14;
 /// Soft focus: a small blur mixed in at this share (of 8).
 const SOFT_FOCUS_RADIUS: usize = 2;
 const SOFT_FOCUS_SHARE: u16 = 3;
+/// The mask is refined against the picture at this width at most (a wider frame is halved for it
+/// and the result scaled up), within a window of this radius at 640 wide.
+const WORK_WIDTH: usize = 640;
+const REFINE_RADIUS: usize = 6;
 /// The model may take this long per frame before a mask serves several frames.
 const MASK_BUDGET: Duration = Duration::from_millis(20);
 /// One mask serves at most this many frames.
@@ -145,6 +149,11 @@ pub struct Processor {
     alpha_chroma: Vec<u8>,
     blurred: Vec<u8>,
     tmp: Vec<u8>,
+    refiner: Refiner,
+    /// The mask at the working size, the frame's luma there (the guide) and the refined mask.
+    work_mask: Vec<u8>,
+    work_guide: Vec<u8>,
+    work_alpha: Vec<u8>,
 }
 
 impl Processor {
@@ -165,6 +174,10 @@ impl Processor {
             alpha_chroma: Vec::new(),
             blurred: Vec::new(),
             tmp: Vec::new(),
+            refiner: Refiner::default(),
+            work_mask: Vec::new(),
+            work_guide: Vec::new(),
+            work_alpha: Vec::new(),
         }
     }
 
@@ -186,7 +199,9 @@ impl Processor {
             self.mask = None;
         }
         if fx.brighten {
-            pixels::apply_lut(frame.planes_mut().0, &pixels::brighten_lut());
+            let w = frame.width;
+            let (y, u, v) = frame.planes_mut();
+            pixels::brighten(y, u, v, w);
         }
         if fx.soft_focus {
             self.soften(frame);
@@ -211,9 +226,13 @@ impl Processor {
             &mut self.alpha_chroma,
             &mut self.blurred,
             &mut self.tmp,
+            &mut self.work_mask,
+            &mut self.work_guide,
+            &mut self.work_alpha,
         ] {
             *buf = Vec::new();
         }
+        self.refiner = Refiner::default();
     }
 
     /// Soft focus: a little of a blurred luma mixed into the luma.
@@ -268,29 +287,26 @@ impl Processor {
         let Some(mask) = &self.mask else {
             return false;
         };
-        // Feathered at the model's size, then scaled up: a soft edge for free.
-        let mut feathered = std::mem::take(&mut self.blurred);
-        blur(
-            &mask.data,
-            mask.width,
-            mask.height,
-            1,
-            &mut feathered,
-            &mut self.tmp,
-        );
-        let soft = Mask {
-            width: mask.width,
-            height: mask.height,
-            data: feathered,
-        };
-        upscale(&soft, frame.width, frame.height, &mut self.alpha);
-        half(
-            &self.alpha,
-            frame.width,
-            frame.height,
-            &mut self.alpha_chroma,
-        );
-        self.blurred = soft.data;
+        // Scaled up to the working size and made to follow the picture's edges there (see
+        // [`Refiner`]): a soft edge only where the picture has no edge of its own.
+        let (w, h) = (frame.width, frame.height);
+        let (ww, wh) = if w > WORK_WIDTH { (w / 2, h / 2) } else { (w, h) };
+        scale_plane(&mask.data, mask.width, mask.height, ww, wh, &mut self.work_mask);
+        let luma = frame.planes().0;
+        if (ww, wh) == (w, h) {
+            self.work_guide.clear();
+            self.work_guide.extend_from_slice(luma);
+        } else {
+            halve_plane(luma, w, h, &mut self.work_guide);
+        }
+        let radius = (REFINE_RADIUS * ww).div_ceil(640).max(1);
+        self.refiner.refine(&self.work_mask, &self.work_guide, ww, wh, radius, &mut self.work_alpha);
+        if (ww, wh) == (w, h) {
+            self.alpha.clone_from(&self.work_alpha);
+        } else {
+            scale_plane(&self.work_alpha, ww, wh, w, h, &mut self.alpha);
+        }
+        half(&self.alpha, w, h, &mut self.alpha_chroma);
         true
     }
 
