@@ -61,19 +61,33 @@ fn stap_units(payload: &[u8]) -> Vec<&[u8]> {
 }
 
 /// Reassembles access units from one track's packets. A lost packet (a gap in the sequence
-/// numbers, or a fragment without its start) drops the access unit it belonged to.
+/// numbers, or a fragment without its start) drops the access unit it belonged to. Padding-only
+/// packets (no payload) count in the sequence and add nothing.
 #[derive(Debug, Default)]
 pub struct H264Depacketizer {
     unit: Vec<u8>,
     timestamp: Option<u32>,
+    ssrc: Option<u32>,
     last_sequence: Option<u16>,
     in_fragment: bool,
     broken: bool,
+    dropped: u64,
 }
 
 impl H264Depacketizer {
     /// Takes the next packet; returns an access unit (Annex-B) when `packet` completed one.
     pub fn push(&mut self, packet: &VideoPacket) -> Option<Vec<u8>> {
+        if self.ssrc != Some(packet.ssrc) {
+            // Another stream (a camera back on a new SSRC): its sequence numbers start afresh.
+            self.discard();
+            self.ssrc = Some(packet.ssrc);
+            self.last_sequence = None;
+        }
+        if self.timestamp.is_some_and(|t| t != packet.timestamp) {
+            // The last unit never saw its marker: it is incomplete.
+            self.discard();
+        }
+        // After the reset above, so a loss at the start of this unit drops it.
         if let Some(last) = self.last_sequence
             && packet.sequence != last.wrapping_add(1)
         {
@@ -81,18 +95,27 @@ impl H264Depacketizer {
             self.in_fragment = false;
         }
         self.last_sequence = Some(packet.sequence);
-        if self.timestamp.is_some_and(|t| t != packet.timestamp) {
-            // The last unit never saw its marker: it is incomplete.
-            self.reset();
-        }
         self.timestamp = Some(packet.timestamp);
         self.append(&packet.payload);
         if !packet.marker {
             return None;
         }
         let done = (!self.broken && !self.unit.is_empty()).then(|| std::mem::take(&mut self.unit));
-        self.reset();
+        self.discard();
         done
+    }
+
+    /// Access units dropped so far for a lost packet.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    /// Ends the unit in progress, counting it as dropped when it held anything or lost a packet.
+    fn discard(&mut self) {
+        if !self.unit.is_empty() || self.broken {
+            self.dropped += 1;
+        }
+        self.reset();
     }
 
     fn reset(&mut self) {

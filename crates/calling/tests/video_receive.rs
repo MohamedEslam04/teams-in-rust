@@ -117,6 +117,53 @@ fn a_new_timestamp_without_a_marker_drops_the_unfinished_unit() {
 }
 
 #[test]
+fn a_new_ssrc_starts_afresh_instead_of_counting_as_a_loss() {
+    let mut d = H264Depacketizer::default();
+    assert!(d.push(&packet(100, 100, true, &[0x41, 1])).is_some());
+    // The camera came back on another SSRC, with sequence numbers of its own: its first unit is
+    // the keyframe everything after it needs.
+    let idr = VideoPacket {
+        ssrc: 9,
+        ..packet(5000, 900, true, &[0x65, 7])
+    };
+    assert_eq!(d.push(&idr), Some(vec![0, 0, 0, 1, 0x65, 7]));
+}
+
+#[test]
+fn a_loss_at_the_start_of_a_unit_drops_it_after_an_unfinished_one_too() {
+    let mut d = H264Depacketizer::default();
+    // Unit 100's last slice (sequence 2, with the marker) and unit 200's first (3) are lost.
+    assert_eq!(d.push(&packet(1, 100, false, &[0x41, 1])), None);
+    assert_eq!(d.push(&packet(4, 200, false, &[0x41, 4])), None);
+    assert_eq!(
+        d.push(&packet(5, 200, true, &[0x41, 5])),
+        None,
+        "half a picture"
+    );
+    assert_eq!(
+        d.push(&packet(6, 300, true, &[0x41, 6])),
+        Some(vec![0, 0, 0, 1, 0x41, 6])
+    );
+}
+
+#[test]
+fn padding_between_units_is_no_loss() {
+    let mut d = H264Depacketizer::default();
+    assert!(d.push(&packet(1, 100, true, &[0x41, 1])).is_some());
+    // Padding-only packets (a browser's bandwidth probes on the media SSRC): no payload left once
+    // the padding is stripped, a timestamp of their own.
+    assert_eq!(d.push(&packet(2, 150, false, &[])), None);
+    assert_eq!(d.push(&packet(3, 160, false, &[])), None);
+    assert_eq!(
+        d.push(&packet(4, 200, true, &[0x65, 2])),
+        Some(vec![0, 0, 0, 1, 0x65, 2])
+    );
+    // A loss after the padding still drops the unit it hit.
+    assert_eq!(d.push(&packet(5, 250, false, &[])), None);
+    assert_eq!(d.push(&packet(7, 300, true, &[0x41, 3])), None);
+}
+
+#[test]
 fn keyframes_are_seen_in_every_packetization() {
     assert!(carries_keyframe(&[0x65, 1]));
     assert!(carries_keyframe(&[0x67, 1]));
