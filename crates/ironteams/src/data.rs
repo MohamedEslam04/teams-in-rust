@@ -115,6 +115,34 @@ pub struct VideoClipData {
     pub thumb: Option<Pixels>,
 }
 
+/// Someone known to be in a call going on (the header's live-call strip).
+#[derive(Clone)]
+pub struct OngoingPersonData {
+    pub mri: String,
+    pub name: String,
+    pub initials: String,
+    pub color: u32,
+    pub avatar: Option<Pixels>,
+}
+
+/// The live-call strip of a chat or channel header (`ui/organisms/ongoing_call_strip.slint`),
+/// see `backend/ongoing_call.rs`.
+#[derive(Clone, Default)]
+pub struct OngoingCallData {
+    /// The conversation it belongs to.
+    pub chat_id: String,
+    /// A call is going on (else the strip is hidden).
+    pub live: bool,
+    /// How long it has run (`04:05`); "" when its start is unknown.
+    pub elapsed: String,
+    /// The people drawn (at most `ongoing_call::AVATARS_SHOWN`).
+    pub people: Vec<OngoingPersonData>,
+    /// Known people beyond the ones drawn ("+N").
+    pub more: i32,
+    /// Everyone known to be in it, for the tooltip (`Ada, Grace and Alan`).
+    pub names: String,
+}
+
 /// Someone on a meeting card.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeetingPersonData {

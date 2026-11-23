@@ -7,6 +7,8 @@ import { CallHeaderButtons } from "call_outgoing.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { ChannelMeetButton, MeetingJoinButton } from "web_parity.slint";
 import { ChannelTabButton } from "channel_tabs.slint";
+import { OngoingCallStore } from "../stores/ongoing_call_store.slint";
+import { OngoingCallStrip } from "ongoing_call_strip.slint";
 import { FindStore } from "../stores/find_store.slint";
 import { HeaderMoreButton } from "chat_header.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
@@ -60,6 +62,8 @@ export component ChatPaneHeader inherits Rectangle {
     in property <bool> single-pane;
     in property <string> thread-root;
     property <bool> compact: self.width < 720px;
+    // A call goes on in this conversation: the live-call strip shows.
+    property <bool> call-strip: OngoingCallStore.live && OngoingCallStore.chat-id == root.current-id && root.current-id != "";
     height: 60px;
     background: Theme.sidebar;
     HorizontalLayout {
@@ -204,12 +208,15 @@ export component ChatPaneHeader inherits Rectangle {
             tooltip: @tr("Schedule a meeting");
             clicked => { root.schedule-meeting(root.current-id); }
         }
-        if root.thread-root == "" && CallStore.is-meeting-chat(root.current-id): MeetingJoinButton {
+        // While the live-call strip shows, its Join is the meeting's.
+        if root.thread-root == "" && CallStore.is-meeting-chat(root.current-id) && !root.call-strip: MeetingJoinButton {
             y: 14px;
             live: root.current-meeting-live;
             clicked => { CallStore.command("join-chat", root.current-id); }
         }
         Rectangle { horizontal-stretch: 1; }
+        // A call going on here: live dot, how long, who is in it, Join.
+        if root.thread-root == "" && root.call-strip: OngoingCallStrip { chat-id: root.current-id; y: 14px; }
         if root.thread-root == "" && root.current-is-channel && !root.compact: ChannelMeetButton {
             y: 14px;
             meet-now => { root.meet-now(root.current-title); }

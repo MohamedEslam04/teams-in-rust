@@ -238,7 +238,7 @@ impl CallManager {
                     drop(m);
                     return self.join_now();
                 }
-                CallCmd::JoinChat(_) => None,
+                CallCmd::JoinChat(_) | CallCmd::JoinOngoing(_) => None,
                 CallCmd::Cancel => {
                     m.cancel();
                     None

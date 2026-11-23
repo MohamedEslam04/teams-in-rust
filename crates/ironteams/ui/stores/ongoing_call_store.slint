@@ -1,0 +1,28 @@
+// The open conversation's call going on, filled by `src/ui/ongoing_call.rs` from
+// `src/backend/ongoing_call.rs`. The chat and channel headers draw it as the live-call strip.
+
+// Someone known to be in the call.
+export struct OngoingPerson {
+    // Their MRI.
+    id: string,
+    name: string,
+    initials: string,
+    color: color,
+    photo: image,
+    has-photo: bool,
+}
+
+export global OngoingCallStore {
+    // The conversation the call belongs to (the header shows it only for that conversation).
+    in property <string> chat-id;
+    // A call is going on.
+    in property <bool> live;
+    // How long it has run ("04:05"); "" when its start is unknown.
+    in property <string> elapsed;
+    // The people drawn (at most five).
+    in property <[OngoingPerson]> people;
+    // Known people beyond the ones drawn ("+N").
+    in property <int> more;
+    // Everyone known to be in it ("Ada, Grace and Alan").
+    in property <string> names;
+}

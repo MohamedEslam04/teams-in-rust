@@ -41,6 +41,7 @@ mod lists;
 mod media;
 pub(crate) mod message_toast;
 pub(crate) mod motion;
+mod ongoing_call;
 mod palette;
 mod people;
 pub(crate) mod popout;

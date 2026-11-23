@@ -899,6 +899,8 @@ impl Engine {
         if thread.is_none() {
             self.ui
                 .meeting_live(super::meeting_cards::is_live(&visible, &plan));
+            // Every row: `visible` leaves out a call's end (its card sits at the start).
+            self.ongoing_rows(&conv, &rows.iter().collect::<Vec<_>>());
         }
         let info: Vec<(i64, bool)> = visible
             .iter()

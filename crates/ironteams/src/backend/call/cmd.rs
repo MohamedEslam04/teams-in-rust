@@ -5,6 +5,8 @@ use super::*;
 pub enum CallCmd {
     /// The meeting chat header's Join: the pre-join screen for that chat's meeting.
     JoinChat(String),
+    /// The live-call strip's Join in a chat or channel header (`ongoing_call`).
+    JoinOngoing(String),
     JoinNow,
     Cancel,
     /// The pre-join microphone switch.
@@ -66,6 +68,7 @@ impl CallCmd {
         }
         Some(match name {
             "join-chat" if is_meeting_chat(arg) => CallCmd::JoinChat(arg.into()),
+            "join-ongoing" if arg.starts_with("19:") => CallCmd::JoinOngoing(arg.into()),
             "join-now" => CallCmd::JoinNow,
             "cancel" => CallCmd::Cancel,
             "prejoin-mic" => CallCmd::PrejoinMic(arg == "on"),
