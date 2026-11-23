@@ -14,6 +14,9 @@ use std::rc::Rc;
 /// What a row was made from: its id and a fingerprint of everything drawn.
 pub(crate) type Print = (String, u64);
 
+/// A list's model, kept between updates, and the print of each of its rows.
+pub(crate) type Synced<T> = (Rc<VecModel<T>>, Vec<Print>);
+
 /// Whether a list shows `m` (and not a model set elsewhere, such as an empty one when another
 /// conversation opened).
 pub(crate) fn is_shown<T: Clone + 'static>(shown: &ModelRc<T>, m: &Rc<VecModel<T>>) -> bool {
