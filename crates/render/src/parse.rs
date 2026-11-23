@@ -393,6 +393,7 @@ impl Walker {
     fn quote(&mut self, el: ElementRef) {
         self.flush_paragraph();
         let is_reply = attr_lower(&el, "itemtype").ends_with("/reply");
+        let forwarded = attr_lower(&el, "itemtype").ends_with("/forward");
         let mut message_id = None;
         let mut author_mri = None;
         let mut author = None;
@@ -422,6 +423,7 @@ impl Walker {
             author_mri,
             author,
             time_ms,
+            forwarded,
             preview,
             dir,
         });
@@ -930,6 +932,7 @@ mod tests {
                     author_mri: Some("8:orgid:11111111-2222-3333-4444-555555555555".into()),
                     author: Some("Sara Hassan".into()),
                     time_ms: Some(1731234567890),
+                    forwarded: false,
                     preview: "the original message text".into(),
                     dir: Dir::Ltr
                 },
@@ -967,6 +970,7 @@ mod tests {
                 author_mri: Some("8:x".into()),
                 author: Some("Bob".into()),
                 time_ms: Some(5),
+                forwarded: false,
                 preview: "hello there".into(),
                 dir: Dir::Ltr
             }]
@@ -992,6 +996,7 @@ mod tests {
             author_mri: Some(format!("8:orgid:{id}")),
             author: Some(name.into()),
             time_ms: id.parse().ok(),
+            forwarded: false,
             preview: preview.into(),
             dir,
         };
@@ -1021,11 +1026,31 @@ mod tests {
                     author_mri: None,
                     author: None,
                     time_ms: None,
+                    forwarded: false,
                     preview: "quoted text".into(),
                     dir: Dir::Ltr
                 },
                 ltr("x")
             ]
+        );
+    }
+
+    #[test]
+    fn forwarded_blockquotes_are_marked_and_keep_their_paragraphs() {
+        let html = r#"<blockquote itemtype="http://schema.skype.com/Forward"><p>one</p><p>two</p></blockquote><blockquote itemtype="http://schema.skype.com/Forward"><p>مرحبا</p></blockquote>"#;
+        let blocks = parse(html);
+        let quote = |preview: &str, dir| Block::Quote {
+            message_id: None,
+            author_mri: None,
+            author: None,
+            time_ms: None,
+            forwarded: true,
+            preview: preview.into(),
+            dir,
+        };
+        assert_eq!(
+            blocks,
+            vec![quote("one\ntwo", Dir::Ltr), quote("مرحبا", Dir::Rtl)]
         );
     }
 

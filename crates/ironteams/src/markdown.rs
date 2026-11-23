@@ -218,17 +218,19 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
     let mut first_dir: Option<Dir> = None;
     for b in &rt.blocks {
         match b {
-            // A Teams reply quote is a card wherever it stands; a plain blockquote only when it
-            // opens the message.
+            // A Teams reply quote and each message of a forward is a card wherever it stands; a
+            // plain blockquote only when it opens the message.
             Block::Quote {
                 message_id,
                 author,
                 time_ms,
+                forwarded,
                 preview,
                 dir,
                 ..
             } if message_id.is_some()
                 || author.is_some()
+                || *forwarded
                 || (r.quotes.is_empty() && md.is_empty()) =>
             {
                 r.quotes.push(QuoteCard {
@@ -616,6 +618,52 @@ mod tests {
             "id is the quoted message, for the jump to it"
         );
         assert_eq!(x.markdown, "my reply");
+    }
+
+    const FWD: &str = r#"<blockquote itemtype="http://schema.skype.com/Forward">"#;
+
+    #[test]
+    fn every_forwarded_message_is_a_quote_card() {
+        let html = format!(
+            "{FWD}<p>سطر واحد</p><p>سطر اثنان</p></blockquote>\
+             {FWD}<p>first</p><p>second</p></blockquote>\
+             {FWD}<h1><span style=\"font-size:x-large\"><strong>Something went wrong</strong></span></h1></blockquote>"
+        );
+        let x = r(&html);
+        let cards: Vec<(&str, bool)> = x.quotes.iter().map(|q| (q.text.as_str(), q.rtl)).collect();
+        assert_eq!(
+            cards,
+            vec![
+                ("سطر واحد\nسطر اثنان", true),
+                ("first\nsecond", false),
+                ("Something went wrong", false),
+            ]
+        );
+        assert!(
+            x.quotes
+                .iter()
+                .all(|q| q.author.is_empty() && q.id.is_empty())
+        );
+        assert_eq!(x.markdown, "", "no quote is left as '> ' text");
+        assert!(x.segments.is_empty());
+    }
+
+    #[test]
+    fn a_forward_after_text_is_still_a_card() {
+        let x = r(&format!("<p>look</p>{FWD}<p>fwd</p></blockquote>"));
+        assert_eq!(x.quotes.len(), 1);
+        assert_eq!(x.quotes[0].text, "fwd");
+        assert_eq!(x.markdown, "look");
+    }
+
+    #[test]
+    fn a_plain_blockquote_after_the_first_stays_a_text_line() {
+        let x = r(
+            "<blockquote>one</blockquote><blockquote>two</blockquote><blockquote>three</blockquote>",
+        );
+        assert_eq!(x.quotes.len(), 1, "only the one that opens the message");
+        assert_eq!(x.quotes[0].text, "one");
+        assert_eq!(x.markdown, "> two\n\n> three");
     }
 
     #[test]
