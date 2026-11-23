@@ -49,7 +49,7 @@ use webrtc::peer_connection::{
 };
 use webrtc::rtp_transceiver::{RtpSender, RtpTransceiver};
 
-use crate::video::receive::{VideoPacket, carries_keyframe};
+use crate::video::receive::{KeyframeRequest, VideoPacket};
 use crate::video::{VideoRole, h264};
 use crate::{Error, IceServer, OpusPacket, Result};
 
@@ -66,7 +66,8 @@ const AUDIO_QUEUE: usize = 250;
 const DATA_QUEUE: usize = 256;
 /// Incoming video packets waiting for the decoder: about a second of 640x360.
 const VIDEO_QUEUE: usize = 512;
-/// How often a remote video track is asked for a keyframe (PLI) until it sends one.
+/// How often at most a remote video track is asked for a keyframe (PLI) while its decoder wants
+/// one.
 const KEYFRAME_ASK: Duration = Duration::from_secs(2);
 
 /// Where the peer binds its UDP sockets, and which candidates it may use.
@@ -913,22 +914,24 @@ async fn mid_of(
 }
 
 /// Reads one remote video track into `video` until it ends. Asks the sender for a keyframe (an
-/// RTCP PLI) at the first packet and every [`KEYFRAME_ASK`] until one comes, so a picture shows
-/// soon after the track starts.
+/// RTCP PLI) at the first packet, so a picture shows soon after the track starts, and whenever
+/// the decoder asks (a picture it cannot decode), at most every [`KEYFRAME_ASK`]. Padding-only
+/// packets go too: the depacketizer counts them in the sequence, or it takes each for a loss.
 async fn forward_video(
     track: Arc<dyn TrackRemote>,
     id: Arc<str>,
     mid: Option<Arc<str>>,
     video: mpsc::Sender<VideoPacket>,
 ) {
-    let mut keyframe_seen = false;
+    let keyframe = KeyframeRequest::default();
+    keyframe.request();
     let mut asked: Option<Instant> = None;
     while let Some(event) = track.poll().await {
         match event {
-            TrackRemoteEvent::OnRtpPacket(packet) if !packet.payload.is_empty() => {
-                keyframe_seen |= carries_keyframe(&packet.payload);
-                if !keyframe_seen && asked.is_none_or(|t| t.elapsed() >= KEYFRAME_ASK) {
+            TrackRemoteEvent::OnRtpPacket(packet) => {
+                if asked.is_none_or(|t| t.elapsed() >= KEYFRAME_ASK) && keyframe.take() {
                     asked = Some(Instant::now());
+                    tracing::debug!(ssrc = packet.header.ssrc, "keyframe asked");
                     let pli = PictureLossIndication {
                         sender_ssrc: 0,
                         media_ssrc: packet.header.ssrc,
@@ -945,6 +948,7 @@ async fn forward_video(
                     timestamp: packet.header.timestamp,
                     marker: packet.header.marker,
                     payload: packet.payload.to_vec(),
+                    keyframe: keyframe.clone(),
                 };
                 // Full: the decoder is behind and this packet is lost (it recovers at the next
                 // keyframe). Closed: nobody shows video; keep draining.

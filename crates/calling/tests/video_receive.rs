@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use calling::video::receive::{H264Depacketizer, VideoPacket, carries_keyframe};
+use calling::video::receive::{H264Depacketizer, KeyframeRequest, VideoPacket, carries_keyframe};
 use calling::video::{I420Frame, i420_to_rgb, step_for};
 
 fn frame(w: usize, h: usize, y: impl Fn(usize, usize) -> u8, u: u8, v: u8) -> I420Frame {
@@ -63,6 +63,7 @@ fn packet(sequence: u16, timestamp: u32, marker: bool, payload: &[u8]) -> VideoP
         timestamp,
         marker,
         payload: payload.to_vec(),
+        keyframe: KeyframeRequest::default(),
     }
 }
 
@@ -104,6 +105,7 @@ fn a_lost_packet_drops_its_access_unit_and_the_next_one_comes_through() {
     );
     // A middle fragment without its start is no picture either.
     assert_eq!(d.push(&packet(5, 300, true, &[0x7c, 0x45, 3])), None);
+    assert_eq!(d.dropped(), 2);
 }
 
 #[test]
@@ -176,4 +178,151 @@ fn keyframes_are_seen_in_every_packetization() {
         "not the first fragment"
     );
     assert!(!carries_keyframe(&[]));
+}
+
+/// The decoder end to end, on a genuine OpenH264 camera stream packetized as a browser sends it.
+#[cfg(feature = "camera")]
+mod decoding {
+    use super::packet;
+    use calling::video::I420Frame;
+    use calling::video::h264::{EncoderSettings, H264Encoder, is_keyframe, nal_type, split_annexb};
+    use calling::video::receive::{KeyframeRequest, VideoPacket, spawn_decoder};
+    use tokio::sync::mpsc;
+
+    const MTU: usize = 1000;
+
+    /// One access unit's RTP payloads: SPS and PPS together in a STAP-A, a small slice whole, a
+    /// large one in FU-A fragments.
+    fn packetize(unit: &[u8]) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut stap = vec![0x78];
+        for nal in split_annexb(unit) {
+            if matches!(nal_type(nal), Some(7 | 8)) {
+                stap.extend_from_slice(&u16::try_from(nal.len()).unwrap().to_be_bytes());
+                stap.extend_from_slice(nal);
+                continue;
+            }
+            if stap.len() > 1 {
+                out.push(std::mem::replace(&mut stap, vec![0x78]));
+            }
+            if nal.len() <= MTU {
+                out.push(nal.to_vec());
+                continue;
+            }
+            let chunks: Vec<_> = nal[1..].chunks(MTU).collect();
+            for (i, chunk) in chunks.iter().enumerate() {
+                let mut header = nal[0] & 0x1f;
+                if i == 0 {
+                    header |= 0x80;
+                }
+                if i + 1 == chunks.len() {
+                    header |= 0x40;
+                }
+                let mut p = vec![(nal[0] & 0xe0) | 28, header];
+                p.extend_from_slice(chunk);
+                out.push(p);
+            }
+        }
+        out
+    }
+
+    /// A camera picture: a noisy texture sliding one pixel a frame, so the keyframe takes many
+    /// packets and the P frames stay small.
+    fn picture(n: usize) -> I420Frame {
+        let (w, h) = (320, 240);
+        let mut seed = 0x9e37_79b9u32;
+        let texture: Vec<u8> = (0..(w + 64) * h)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 24) as u8
+            })
+            .collect();
+        let mut data = Vec::with_capacity(w * h * 3 / 2);
+        for row in 0..h {
+            let at = row * (w + 64) + n % 64;
+            data.extend_from_slice(&texture[at..at + w]);
+        }
+        data.extend(std::iter::repeat_n(128, w * h / 2));
+        I420Frame::new(w, h, data).unwrap()
+    }
+
+    /// A browser's camera: a keyframe (SPS, PPS, IDR) first, then P frames only.
+    fn encoder() -> H264Encoder {
+        H264Encoder::new(EncoderSettings {
+            bitrate_bps: 2_000_000,
+            keyframe_interval: 1000,
+            ..EncoderSettings::camera()
+        })
+        .unwrap()
+    }
+
+    /// `count` more access units from `enc`.
+    fn encoded(enc: &mut H264Encoder, n: &mut usize, count: usize) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        while out.len() < count {
+            *n += 1;
+            assert!(*n < 200, "the encoder keeps skipping frames");
+            if let Some(f) = enc.encode(&picture(*n)).unwrap() {
+                out.push(f.data);
+            }
+        }
+        out
+    }
+
+    /// Sends `units` through [`spawn_decoder`], losing the packets `lose(unit, packet)` names;
+    /// whether a picture came out, and whether the decoder asked for a keyframe.
+    fn decode(units: &[Vec<u8>], lose: impl Fn(usize, usize) -> bool) -> (bool, bool) {
+        let ask = KeyframeRequest::default();
+        let (tx, rx) = mpsc::channel(4096);
+        let mut frames = spawn_decoder(rx, 320);
+        let mut sequence = 0u16;
+        for (i, unit) in units.iter().enumerate() {
+            let payloads = packetize(unit);
+            let last = payloads.len() - 1;
+            for (j, payload) in payloads.iter().enumerate() {
+                sequence = sequence.wrapping_add(1);
+                if lose(i, j) {
+                    continue;
+                }
+                let timestamp = 6000 * u32::try_from(i).unwrap();
+                tx.blocking_send(VideoPacket {
+                    keyframe: ask.clone(),
+                    ..packet(sequence, timestamp, j == last, payload)
+                })
+                .unwrap();
+            }
+        }
+        drop(tx);
+        let mut pictures = 0;
+        while frames.blocking_recv().is_some() {
+            pictures += 1;
+        }
+        (pictures > 0, ask.take())
+    }
+
+    #[test]
+    fn a_whole_stream_shows_without_asking_for_a_keyframe() {
+        let units = encoded(&mut encoder(), &mut 0, 5);
+        assert!(is_keyframe(&units[0]) && !units[1..].iter().any(|u| is_keyframe(u)));
+        assert!(packetize(&units[0]).len() > 3, "a keyframe of many packets");
+        assert_eq!(decode(&units, |_, _| false), (true, false));
+    }
+
+    #[test]
+    fn a_lost_keyframe_packet_asks_for_another_and_its_picture_shows() {
+        let (mut enc, mut n) = (encoder(), 0);
+        let mut units = encoded(&mut enc, &mut n, 4);
+        // Without a new keyframe, the P frames after a broken one never show.
+        let lost_idr = |i: usize, j: usize| i == 0 && j == 2;
+        assert_eq!(
+            decode(&units, lost_idr),
+            (false, true),
+            "a keyframe asked for"
+        );
+        // The sender answers the request: from its keyframe on, the picture shows.
+        enc.request_keyframe();
+        units.extend(encoded(&mut enc, &mut n, 2));
+        assert!(is_keyframe(&units[4]));
+        assert_eq!(decode(&units, lost_idr), (true, true));
+    }
 }

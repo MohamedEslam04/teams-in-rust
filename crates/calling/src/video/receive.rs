@@ -9,6 +9,32 @@
 //! `docs/protocol-calls.md`, Remote video).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// A remote video track's want of a keyframe: its decoder asks (a picture it cannot decode), the
+/// track's reader sends the sender a PLI. Shared by every packet of the track.
+#[derive(Debug, Clone, Default)]
+pub struct KeyframeRequest(Arc<AtomicBool>);
+
+impl KeyframeRequest {
+    pub fn request(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether a keyframe was asked for since the last call.
+    pub fn take(&self) -> bool {
+        self.0.swap(false, Ordering::Relaxed)
+    }
+}
+
+/// The same track's request.
+impl PartialEq for KeyframeRequest {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for KeyframeRequest {}
 
 /// One RTP packet of a remote video track.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +49,10 @@ pub struct VideoPacket {
     pub timestamp: u32,
     /// The last packet of an access unit.
     pub marker: bool,
+    /// Empty for a padding-only packet.
     pub payload: Vec<u8>,
+    /// Asks the track's sender for a keyframe.
+    pub keyframe: KeyframeRequest,
 }
 
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
@@ -170,13 +199,68 @@ pub use decoder::{H264Decoder, spawn_decoder};
 #[cfg(feature = "camera")]
 mod decoder {
     use super::{H264Depacketizer, VideoPacket};
+    use crate::video::h264::{nal_type, split_annexb};
     use crate::video::{I420Frame, RgbFrame, i420_to_rgb, step_for};
     use crate::{Error, Result};
     use openh264::OpenH264API;
     use openh264::decoder::{Decoder, DecoderConfig};
     use openh264::formats::YUVSource;
     use std::sync::Arc;
+    use std::time::{Duration, Instant};
     use tokio::sync::mpsc;
+
+    /// How often at most a decoder that keeps failing says so at info.
+    const FAILURE_LOG: Duration = Duration::from_secs(5);
+
+    /// What a decoder was given, for a low-noise log when it cannot decode: enough to tell a
+    /// stream whose keyframe never came whole from one that sends something else.
+    #[derive(Default)]
+    struct Failures {
+        /// Whether a whole access unit held an SPS, a PPS, an IDR slice since the decoder started.
+        sps: bool,
+        pps: bool,
+        idr: bool,
+        /// Failures since the last log.
+        failed: u64,
+        told: Option<Instant>,
+    }
+
+    impl Failures {
+        fn saw(&mut self, unit: &[u8]) {
+            for nal in split_annexb(unit) {
+                match nal_type(nal) {
+                    Some(7) => self.sps = true,
+                    Some(8) => self.pps = true,
+                    Some(5) => self.idr = true,
+                    _ => {}
+                }
+            }
+        }
+
+        /// Logs at info at most every [`FAILURE_LOG`]: the failing unit's NAL units (type:size).
+        fn failed(&mut self, e: &Error, unit: &[u8], dropped: u64) {
+            self.failed += 1;
+            if self.told.is_some_and(|t| t.elapsed() < FAILURE_LOG) {
+                return;
+            }
+            self.told = Some(Instant::now());
+            let units: Vec<String> = split_annexb(unit)
+                .iter()
+                .map(|n| format!("{}:{}", n[0] & 0x1f, n.len()))
+                .collect();
+            tracing::info!(
+                %e,
+                failed = self.failed,
+                dropped,
+                sps = self.sps,
+                pps = self.pps,
+                idr = self.idr,
+                units = %units.join(" "),
+                "remote video not decoding, keyframe asked"
+            );
+            self.failed = 0;
+        }
+    }
 
     /// OpenH264's decoder. Not `Send`: it lives on the thread [`spawn_decoder`] starts.
     pub struct H264Decoder {
@@ -239,25 +323,43 @@ mod decoder {
                 };
                 let mut depacketizer = H264Depacketizer::default();
                 let mut track: Option<Arc<str>> = None;
+                let mut failures = Failures::default();
+                let mut decoding = false;
                 while let Some(p) = packets.blocking_recv() {
                     if track.is_none() && super::carries_keyframe(&p.payload) {
                         tracing::info!(track = %p.track, ssrc = p.ssrc, "showing remote video");
                         track = Some(Arc::clone(&p.track));
                     }
                     if track.as_ref() != Some(&p.track) {
+                        if track.is_none() {
+                            p.keyframe.request();
+                        }
                         continue;
                     }
                     let Some(unit) = depacketizer.push(&p) else {
                         continue;
                     };
+                    failures.saw(&unit);
                     let frame = match decoder.decode(&unit) {
                         Ok(Some(f)) => f,
                         Ok(None) => continue,
                         Err(e) => {
+                            // OpenH264 (without error concealment) decodes nothing more until
+                            // the next IDR with its SPS and PPS: ask the sender for one.
+                            p.keyframe.request();
+                            decoding = false;
                             tracing::debug!(%e, "remote video frame not decoded");
+                            failures.failed(&e, &unit, depacketizer.dropped());
                             continue;
                         }
                     };
+                    if !std::mem::replace(&mut decoding, true) {
+                        tracing::info!(
+                            width = frame.width,
+                            height = frame.height,
+                            "remote video decoding"
+                        );
+                    }
                     let rgb = i420_to_rgb(&frame, step_for(frame.width, max_width), false);
                     match tx.try_send(rgb) {
                         Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
