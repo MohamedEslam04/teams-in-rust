@@ -251,6 +251,8 @@ fn settings_pages_to_png() {
     let first = g.get_found().row_data(0).expect("a setting about sound");
     find(&format!("Result: {} in {}", first.label, first.page_title))
         .invoke_accessible_default_action();
+    // The page's rows are made when the tree is next read (here), and the tint starts then.
+    find(&first.label);
     shoot(
         &window,
         1920,

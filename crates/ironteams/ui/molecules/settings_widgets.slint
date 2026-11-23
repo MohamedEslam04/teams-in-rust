@@ -235,7 +235,10 @@ export component SRadio inherits Rectangle {
             root.picked();
         }
     }
+    // Around the row, clear of the dot.
     if root.focus-visible: focus-ring := Rectangle {
+        x: -6px;
+        width: parent.width + 12px;
         border-radius: 4px;
         border-width: 2px;
         border-color: Theme.accent;
