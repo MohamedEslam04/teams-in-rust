@@ -91,6 +91,40 @@ fn the_camera_role_takes_the_first_main_video_line() {
     assert_eq!(value(&kept[1], "label"), Some("main-video"));
 }
 
+fn ssrc_lines(section: &[&str]) -> Vec<String> {
+    section
+        .iter()
+        .filter(|l| l.starts_with("a=ssrc:"))
+        .map(|l| (*l).to_owned())
+        .collect()
+}
+
+#[test]
+fn a_one_ssrc_range_is_declared_as_that_ssrc_and_a_wider_one_is_not() {
+    // webrtc-rs routes an undeclared SSRC only with a single RTP line: next to the camera line
+    // the audio line's SSRC must be declared, or every packet of it is dropped.
+    let browser = from_teams_with(FULL_REOFFER, &[VideoRole::MainVideo], false).unwrap();
+    let kept = sections(&browser);
+    assert_eq!(kept.len(), 2, "{browser}");
+    assert_eq!(
+        ssrc_lines(&kept[0]),
+        ["a=ssrc:1000 cname:1000"],
+        "{browser}"
+    );
+    // The camera line's range is 2200-2299: no one SSRC to name.
+    assert!(ssrc_lines(&kept[1]).is_empty(), "{browser}");
+    // A section that declares its own SSRC keeps just that one.
+    let own = FULL_REOFFER.replace(
+        "a=x-ssrc-range:1000-1000",
+        "a=x-ssrc-range:1000-1000\na=ssrc:1000 cname:own",
+    );
+    let browser = from_teams_with(&own, &[VideoRole::MainVideo], false).unwrap();
+    assert_eq!(
+        ssrc_lines(&sections(&browser)[0]),
+        ["a=ssrc:1000 cname:own"]
+    );
+}
+
 #[test]
 fn a_role_named_n_times_keeps_its_first_n_lines() {
     let roles = [
