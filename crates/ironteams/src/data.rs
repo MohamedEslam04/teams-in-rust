@@ -186,6 +186,8 @@ pub struct MsgData {
     /// The message the reply quote points to (`""`: none): a click on the quote jumps there.
     pub quote_id: String,
     pub markdown: String,
+    /// The text and code blocks of the body, in order; empty when it has no code block.
+    pub segments: Vec<crate::markdown::Segment>,
     pub plain: String,
     pub rtl: bool,
     pub images: Vec<ImgData>,

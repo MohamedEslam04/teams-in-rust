@@ -214,6 +214,21 @@ Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
   - **Done when.** A UI test covers each; a live check pages a long chat back to its start.
   - **Status (2026-11-22).** Built with tests (`cargo test -p ironteams ui_tests::chat_navigation`, `shortcuts::`, `pins_and_receipts::day_tests`, `store oldest_compose_ms`). Not checked live: paging a real chat back to its first message, and a channel (only chats have the items; a channel's Posts list has its own paging). The notices from the engine are English only, like the other engine notices.
 
+### 5.12 What a message shows and offers
+- [x] Impact 3, effort 3. Seen: Teams chat (code blocks, mentions, message menu, drop zone).
+  - **What.**
+    - Code in a message is a box of its own (monospace, `Theme.code-bg`, wraps long lines) with a Copy button that shows while the pointer is over it.
+    - A mention is bold text in `Theme.mention`.
+    - The message menu has "Copy text" (the message's plain text).
+    - While a file is dragged over the window, a chat that takes attachments shows a dashed frame and "Drop to attach".
+  - **How.**
+    - `markdown::Rendered.segments` splits a body into text and code (empty when there is no code block; `markdown` stays the whole body). `MsgData.segments` becomes `Msg.parts` (`BodyPart`); a row with parts draws each text run as `StyledText` and each block as `molecules/code_block.slint`. The row fingerprint hashes `segments`.
+    - The mention color is the palette's `mention`, set into the markdown path by `ui/settings/push.rs` (`markdown::set_mention_color`); `StyledText` has no background span, so it is a colored bold, not a chip. The memo version of a row includes the color.
+    - `Copy text` and the block's Copy button both send `MediaStore.command("text-copy", text)` (`MediaCmd::CopyText`, banner "Text copied").
+    - `src/file_hover.rs` turns winit's `HoveredFile`, `HoveredFileCancelled` and `DroppedFile` into `AppWindow.file-hover`; `app.slint` shows `molecules/drop_zone.slint` when `accepts-files` (a chat or channel with its composer showing).
+  - **Done when.** UI tests cover each part.
+  - **Status.** Written without a local build (CI is the compile gate). Tests: `cargo test -p ironteams markdown::` (segments, mention color), `ui_tests::message_ui` (block in its row, taller with more lines, Copy button, "Copy text" and where it hides, drop zone), `ui::row_fingerprint`, `backend::media` (`text-copy`), `backend::settings` (code box color). Not done: a language label on the block (`Block::Code` carries no language), selecting text inside a block (use Copy), a mention chip with a background and a stronger look for a mention of me per mention (the bubble of a message that mentions me is already tinted), a keyboard shortcut for Copy text (the menu's letter keys are Teams' own, not one per entry), the drop zone on Wayland (winit 0.30 sends no drag events) and the OneDrive page (a drop uploads there).
+
 ---
 
 ## Phase 6: people and conversations

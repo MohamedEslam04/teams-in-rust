@@ -68,6 +68,9 @@ pub(super) fn apply_look(w: &AppWindow, c: &Ctl) {
     t.set_bubble_mine(rgb(p.bubble_mine));
     t.set_bubble_other(rgb(p.bubble_other));
     t.set_mention(rgb(p.mention));
+    t.set_code_bg(rgb(p.code_bg));
+    // Rows drawn from now on show mentions in this colour (`markdown::spans_md`).
+    crate::markdown::set_mention_color(p.mention);
     t.set_danger(rgb(p.danger));
     t.set_unread_badge(rgb(p.unread_badge));
     t.set_dark(lk.dark);

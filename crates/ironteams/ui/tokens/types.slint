@@ -90,6 +90,9 @@ export struct MeetingCard { kind: string, title: string, detail: string, people:
 // One person who has seen my message: their initials in a small coloured circle, and their name.
 export struct ReaderItem { initials: string, color: color, name: string }
 
+// One part of a message's text when it has code blocks: a run of text (`body`) or a block (`code`).
+export struct BodyPart { body: styled-text, code: string, is-code: bool }
+
 export struct Msg {
     id: string,
     sender: string,
@@ -109,6 +112,7 @@ export struct Msg {
     quote-text: string,
     quote-id: string,      // the message the reply quote points to ("": none)
     body: styled-text,
+    parts: [BodyPart],     // the text and code blocks in order; empty when there is no code block (then `body` is the text)
     plain: string,
     rtl: bool,
     images: [ImageItem],

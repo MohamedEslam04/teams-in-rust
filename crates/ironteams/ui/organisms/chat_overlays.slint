@@ -274,6 +274,8 @@ export component MessageMenuLayer inherits Rectangle {
         unpin => { root.menu-open = false; PeopleStore.command("pin-unpin", root.menu-msg.id); }
         open-link(u) => { root.menu-open = false; root.open-url(u); }
         copy-link-url(u) => { root.menu-open = false; MediaStore.command("link-copy", u); }
+        has-text: root.menu-msg.plain != "" && !root.menu-msg.system && !root.menu-msg.deleted;
+        copy-text => { root.menu-open = false; MediaStore.command("text-copy", root.menu-msg.plain); }
         immersive-reader => { root.menu-open = false; root.reader-msg = root.menu-msg; root.reader-open = true; }
         share-outlook => { root.menu-open = false; MediaStore.command("outlook", root.menu-msg.id); }
         report => { root.menu-open = false; MediaStore.command("report", root.menu-msg.id); }

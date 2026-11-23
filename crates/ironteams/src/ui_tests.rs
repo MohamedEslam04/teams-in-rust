@@ -49,6 +49,7 @@ mod lists;
 mod media;
 mod meeting_cards;
 mod message_toast;
+mod message_ui;
 mod motion;
 mod msg_extras;
 mod not_member;
@@ -445,6 +446,7 @@ fn menu_for_others_message() {
         [
             "Reply with quote",
             "Forward",
+            "Copy text",
             "Copy message link",
             "Save this message",
             "Pin for everyone",
@@ -468,6 +470,7 @@ fn menu_for_own_message_has_edit_and_delete_but_no_save() {
         [
             "Reply with quote",
             "Forward",
+            "Copy text",
             "Copy message link",
             "Pin for everyone",
             "Mark as unread",

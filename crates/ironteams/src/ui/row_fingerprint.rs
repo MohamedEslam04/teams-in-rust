@@ -207,6 +207,7 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         quote_text,
         quote_id,
         markdown,
+        segments,
         plain,
         rtl,
         images,
@@ -264,6 +265,7 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         quote_text,
         quote_id,
         markdown,
+        segments,
         plain,
         rtl,
         reply_count,
@@ -345,6 +347,7 @@ pub(crate) fn sample_row(id: &str, text: &str) -> MsgData {
         quote_text: String::new(),
         quote_id: String::new(),
         markdown: text.into(),
+        segments: vec![],
         plain: text.into(),
         rtl: false,
         images: vec![],
@@ -418,6 +421,18 @@ mod tests {
             people: vec![],
         });
         assert_ne!(of(&reacted), base);
+    }
+
+    #[test]
+    fn a_changed_code_block_changes_the_fingerprint() {
+        use crate::markdown::Segment;
+        let mut a = sample();
+        a.segments = vec![Segment::Code("let a = 1;".into())];
+        let mut b = sample();
+        b.segments = vec![Segment::Code("let a = 2;".into())];
+        assert_ne!(of(&a), of(&sample()));
+        assert_ne!(of(&a), of(&b));
+        assert_eq!(of(&a), of(&a.clone()));
     }
 
     #[test]

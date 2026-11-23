@@ -30,6 +30,7 @@ fn copy_theme(from: &Theme, to: &Theme) {
     to.set_bubble_mine(from.get_bubble_mine());
     to.set_bubble_other(from.get_bubble_other());
     to.set_mention(from.get_mention());
+    to.set_code_bg(from.get_code_bg());
     to.set_danger(from.get_danger());
     to.set_unread_badge(from.get_unread_badge());
     to.set_radius(from.get_radius());

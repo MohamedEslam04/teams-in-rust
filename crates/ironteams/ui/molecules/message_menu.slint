@@ -22,6 +22,10 @@ export component MessageMenu inherits Rectangle {
     in property <int> reader-count: 0;
     // Opened from the Activity preview: only what works outside the open chat.
     in property <bool> preview: false;
+    // The message has text of its own to copy (not a system line, a deleted message or a bare
+    // picture): "Copy text" shows.
+    in property <bool> has-text: false;
+    callback copy-text();
     callback unpin();
     callback open-link(string);
     callback copy-link-url(string);
@@ -102,6 +106,7 @@ export component MessageMenu inherits Rectangle {
         MenuItem { variant: MenuItemVariant.message; label: @tr("Forward"); icon: @image-url("../icons/forward.svg"); chevron: !root.preview; clicked => { if root.preview { root.forward-one(); } else { root.forward-open = !root.forward-open; } } }
         if root.forward-open: MenuItem { variant: MenuItemVariant.message; label: @tr("This message"); indent: true; clicked => { root.forward-one(); } }
         if root.forward-open: MenuItem { variant: MenuItemVariant.message; label: @tr("Multiple messages"); indent: true; clicked => { root.forward-many(); } }
+        if root.has-text: MenuItem { variant: MenuItemVariant.message; label: @tr("Copy text"); icon: @image-url("../icons/copy.svg"); clicked => { root.copy-text(); } }
         MenuItem { variant: MenuItemVariant.message; label: @tr("Copy message link"); icon: @image-url("../icons/link.svg"); clicked => { root.copy-link(); } }
         // A right click cannot tell which link was under the pointer, so every link is offered.
         if root.urls.length > 0: MenuItem { variant: MenuItemVariant.message;

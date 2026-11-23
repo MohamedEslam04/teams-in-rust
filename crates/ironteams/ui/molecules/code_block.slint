@@ -1,0 +1,64 @@
+// A code block of a message: the code in a monospace box that wraps long lines, with a Copy button
+// in its top corner that shows while the pointer is over the block. The owner copies the code
+// (`copy(code)`); the block never touches the clipboard itself.
+import { Theme } from "../tokens/theme.slint";
+import { Motion } from "../tokens/motion.slint";
+import { Icon } from "../atoms/widgets.slint";
+
+export component CodeBlock inherits Rectangle {
+    in property <string> code;
+    callback copy(string);
+
+    background: Theme.code-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    // Only to know the pointer is over the block (the button is above it).
+    block-hover := TouchArea { }
+
+    VerticalLayout {
+        padding-left: 10px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        // Room for the Copy button, so a long first line never runs under it.
+        padding-right: 38px;
+        code-text := Text {
+            text: root.code;
+            color: Theme.fg;
+            font-family: "monospace";
+            font-size: 13px * Theme.font-scale;
+            wrap: char-wrap;
+            // Code reads left to right, also in a right-to-left interface.
+            horizontal-alignment: left;
+        }
+    }
+
+    copy-button := Rectangle {
+        x: parent.width - self.width - 6px;
+        y: 6px;
+        width: 26px;
+        height: 26px;
+        border-radius: 4px;
+        background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        opacity: block-hover.has-hover || copy-touch.has-hover ? 1.0 : 0.0;
+        animate opacity { duration: Motion.quick; }
+        accessible-role: button;
+        accessible-label: @tr("Copy code");
+        accessible-action-default => { root.copy(root.code); }
+        Icon {
+            source: @image-url("../icons/copy.svg");
+            tint: copy-touch.has-hover ? Theme.accent : Theme.fg-muted;
+            width: 14px;
+            height: 14px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+        copy-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.copy(root.code); }
+        }
+    }
+}
