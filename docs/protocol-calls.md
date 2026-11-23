@@ -330,8 +330,21 @@ Where the links come from (live 1:1 dump, names only):
      answer or rejection changes nothing. A refused re-offer's reason is read from
      `mediaNegotiationFailure` (rusty-teams; glare is 491), which the log showed as code 0.
      Why the new session's ICE never connected is open; the info log now names hold and resume
-     re-offers and answers (directions, audio mid, ufrag, `setup`, candidate kinds), each media
-     request's status, the restart, and ICE and peer state changes.
+     re-offers and answers (directions, audio mid, ufrag, `setup`, candidate kinds, `ice-lite`),
+     each media request's status, the restart, the new session's TURN server count, and ICE and
+     peer state changes. From the code: the restart offer's candidates are inline (no trickle
+     callback exists), webrtc-rs reads them from the audio section, TURN from `trap/tokens` goes
+     into the new session, and a remote `a=ice-lite` would make us controlling (we logged
+     controlled, so the offer had none).
+   - A restart's session no longer replaces the current one at once: it waits beside it and
+     takes over (audio sender, events, links) only once connected (ICE and DTLS), as rusty-teams
+     keeps its old peer. If it fails, the call stays on the current session; the call ends only
+     when both are gone. A follow-up offer that matches the waiting session is answered on it,
+     and Hold or Resume meanwhile is refused with a message.
+   - The new leg's links are kept: a restart push's sibling `links` objects (rusty-teams
+     `nested_links`) and those in the response to our media answer become the call's links when
+     the session takes over, so a later hold or resume goes to the new leg's
+     `mediaRenegotiation`.
 3. **Transfer now** (blind; UNVERIFIED). `POST transfer` (the acknowledgement's link):
    `{callTransfer: {target: {id: <MRI>}, transferor: {details: {id, endpointId, participantId,
    languageId}, authorizationToken: null}, links: {transferAcceptance, transferCompletion}
