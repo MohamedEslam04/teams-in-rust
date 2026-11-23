@@ -104,6 +104,20 @@ fn chat_time_at(zone: Option<Tz>, now_ms: i64, ms: i64) -> String {
     }
 }
 
+/// When a quoted message was sent, as a quote card shows it: the date with the year and the
+/// time, in the chosen formats (Teams web: "11/23/2026 11:54 AM").
+pub(super) fn quote_time(ms: i64) -> String {
+    quote_time_at(formats::time_zone(), ms)
+}
+
+fn quote_time_at(zone: Option<Tz>, ms: i64) -> String {
+    let Some(t) = formats::local_in(zone, ms).filter(|_| ms > 0) else {
+        return String::new();
+    };
+    let pattern = formats::date_pattern(true).replace("%y", "%Y");
+    format!("{} {}", t.format(&pattern), formats::time_of(&t))
+}
+
 /// The day a meeting chat's row names after a generic title ("Meet now · Nov 10"), with the
 /// year when it is not this year.
 pub(super) fn meeting_day(ms: i64) -> String {
@@ -494,6 +508,18 @@ mod tests {
         assert!(utc.starts_with("08:00") || utc.starts_with("8:00"), "{utc}");
         assert!(eg.starts_with("10:00"), "{eg}");
         assert_eq!(chat_time_at(cairo, now, 0), "");
+    }
+
+    #[test]
+    fn a_quote_time_has_the_full_date_and_the_clock_in_the_chosen_zone() {
+        // 2023-11-14 22:13 UTC is 2023-11-15 00:13 in Cairo (UTC+2).
+        let at = 1_700_000_000_000;
+        let utc = quote_time_at(Some(Tz::UTC), at);
+        let eg = quote_time_at(Some(Tz::Africa__Cairo), at);
+        assert!(utc.contains("2023"), "{utc}");
+        assert!(utc.contains("10:13") || utc.contains("22:13"), "{utc}");
+        assert!(eg.contains("12:13") || eg.contains("00:13"), "{eg}");
+        assert_eq!(quote_time_at(Some(Tz::UTC), 0), "");
     }
 
     #[test]

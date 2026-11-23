@@ -16,8 +16,8 @@ use crate::reactions;
 use crate::ui_api::UiHandle;
 use crate::{
     AppWindow, BodyPart, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem,
-    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, ReactionItem, Reactor,
-    ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
+    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, QuoteItem,
+    ReactionItem, Reactor, ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
 };
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
 use std::cell::RefCell;
@@ -167,9 +167,18 @@ fn msg(m: MsgData) -> Msg {
         deleted: m.deleted,
         system: m.system,
         subject: m.subject.into(),
-        quote_author: m.quote_author.into(),
-        quote_text: m.quote_text.into(),
-        quote_id: m.quote_id.into(),
+        quotes: model(
+            m.quotes
+                .into_iter()
+                .map(|q| QuoteItem {
+                    author: q.author.into(),
+                    text: q.text.into(),
+                    id: q.id.into(),
+                    time: q.time.into(),
+                    rtl: q.rtl,
+                })
+                .collect(),
+        ),
         body: styled(&m.markdown),
         parts: model(m.segments.iter().map(body_part).collect()),
         plain: m.plain.into(),

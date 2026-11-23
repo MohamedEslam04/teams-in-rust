@@ -70,11 +70,14 @@ pub enum Block {
         dir: Dir,
         spans: Vec<Span>,
     },
-    /// Teams reply quote.
+    /// Teams reply quote. A message can carry several, one per quoted message.
     Quote {
         message_id: Option<String>,
         author_mri: Option<String>,
         author: Option<String>,
+        /// When the quoted message was sent (epoch ms), from the `time` element.
+        time_ms: Option<i64>,
+        /// The quoted text; a line break of the original is a `'\n'`.
         preview: String,
         dir: Dir,
     },
@@ -123,7 +126,9 @@ pub fn plain_text(rt: &RichText) -> String {
     for block in &rt.blocks {
         match block {
             Block::Paragraph { spans, .. } => lines.push(spans_text(spans)),
-            Block::Quote { preview, .. } => lines.push(format!("> {preview}")),
+            Block::Quote { preview, .. } => {
+                lines.push(format!("> {}", preview.replace('\n', " ")));
+            }
             Block::List { ordered, items } => {
                 for (i, item) in items.iter().enumerate() {
                     let text = spans_text(item);
@@ -193,6 +198,7 @@ mod tests {
                     message_id: None,
                     author_mri: None,
                     author: None,
+                    time_ms: None,
                     preview: "orig".into(),
                     dir: Dir::Ltr,
                 },

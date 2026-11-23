@@ -396,6 +396,7 @@ impl Walker {
         let mut message_id = None;
         let mut author_mri = None;
         let mut author = None;
+        let mut time_ms = None;
         let preview = if is_reply {
             message_id = non_empty(attr(&el, "itemid"));
             let find = |prop: &str| {
@@ -407,18 +408,20 @@ impl Walker {
                 author_mri = non_empty(attr(&mri, "itemid"));
                 author = Some(inline_text(mri, false)).filter(|s| !s.is_empty());
             }
+            time_ms = find("time").and_then(|t| attr(&t, "itemid")?.trim().parse().ok());
             match find("preview") {
-                Some(p) => inline_text(p, false),
-                None => inline_text(el, true),
+                Some(p) => quote_lines(p, false),
+                None => quote_lines(el, true),
             }
         } else {
-            inline_text(el, false)
+            quote_lines(el, false)
         };
         let dir = base_direction(&preview);
         self.blocks.push(Block::Quote {
             message_id,
             author_mri,
             author,
+            time_ms,
             preview,
             dir,
         });
@@ -435,6 +438,22 @@ fn inline_text(el: ElementRef, skip_quote_meta: bool) -> String {
     w.walk_children(el, &Ctx::default(), 0);
     let text = plain_text(&w.finish());
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Like [`inline_text`] but keeps the line breaks (`<br>`, one `<p>` per line) of a quoted
+/// message as `'\n'`; empty lines are dropped.
+fn quote_lines(el: ElementRef, skip_quote_meta: bool) -> String {
+    let mut w = Walker {
+        skip_quote_meta,
+        ..Walker::default()
+    };
+    w.walk_children(el, &Ctx::default(), 0);
+    plain_text(&w.finish())
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Verbatim descendant text (for `<pre>`), `<br>` as newline.
@@ -910,6 +929,7 @@ mod tests {
                     message_id: Some("1731234567890".into()),
                     author_mri: Some("8:orgid:11111111-2222-3333-4444-555555555555".into()),
                     author: Some("Sara Hassan".into()),
+                    time_ms: Some(1731234567890),
                     preview: "the original message text".into(),
                     dir: Dir::Ltr
                 },
@@ -946,9 +966,48 @@ mod tests {
                 message_id: Some("5".into()),
                 author_mri: Some("8:x".into()),
                 author: Some("Bob".into()),
+                time_ms: Some(5),
                 preview: "hello there".into(),
                 dir: Dir::Ltr
             }]
+        );
+    }
+
+    fn reply_html(id: &str, name: &str, preview: &str) -> String {
+        format!(
+            r#"<blockquote itemscope="" itemtype="http://schema.skype.com/Reply" itemid="{id}"><strong itemprop="mri" itemid="8:orgid:{id}">{name}</strong><span itemprop="time" itemid="{id}"></span><p itemprop="preview">{preview}</p></blockquote>"#
+        )
+    }
+
+    #[test]
+    fn several_reply_quotes_and_the_text_after_them() {
+        let html = format!(
+            "{}<p>&nbsp;</p>{}{}<p>my answer</p>",
+            reply_html("1731234100000", "Sara Hassan", "first line<br>second line"),
+            reply_html("1731234200000", "Omar Ali", "بص انا غلطت<br>خلاص"),
+            reply_html("1731234300000", "Sara Hassan", "one<br><br>two"),
+        );
+        let quote = |id: &str, name: &str, preview: &str, dir| Block::Quote {
+            message_id: Some(id.into()),
+            author_mri: Some(format!("8:orgid:{id}")),
+            author: Some(name.into()),
+            time_ms: id.parse().ok(),
+            preview: preview.into(),
+            dir,
+        };
+        assert_eq!(
+            parse(&html),
+            vec![
+                quote(
+                    "1731234100000",
+                    "Sara Hassan",
+                    "first line\nsecond line",
+                    Dir::Ltr
+                ),
+                quote("1731234200000", "Omar Ali", "بص انا غلطت\nخلاص", Dir::Rtl),
+                quote("1731234300000", "Sara Hassan", "one\ntwo", Dir::Ltr),
+                ltr("my answer"),
+            ]
         );
     }
 
@@ -961,6 +1020,7 @@ mod tests {
                     message_id: None,
                     author_mri: None,
                     author: None,
+                    time_ms: None,
                     preview: "quoted text".into(),
                     dir: Dir::Ltr
                 },

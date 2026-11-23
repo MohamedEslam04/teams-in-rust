@@ -8,8 +8,8 @@ use super::outsider::{Outsider, classify, is_guest_upn, tagged};
 use super::unread::{divider_index, open_at_divider, unread_after};
 use super::util::*;
 use crate::data::{
-    ChatData, FileData, HeaderData, MsgData, Pixels, ReactData, Scroll, TeamChannel, TeamData,
-    color_for, initials,
+    ChatData, FileData, HeaderData, MsgData, Pixels, QuoteData, ReactData, Scroll, TeamChannel,
+    TeamData, color_for, initials,
 };
 use crate::markdown::reaction_emoji;
 use serde_json::Value;
@@ -1165,9 +1165,17 @@ impl Engine {
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
-                quote_author: parsed.quote_author,
-                quote_text: parsed.quote_text,
-                quote_id: parsed.quote_id,
+                quotes: parsed
+                    .quotes
+                    .into_iter()
+                    .map(|q| QuoteData {
+                        author: q.author,
+                        text: q.text,
+                        id: q.id,
+                        time: q.time_ms.map(quote_time).unwrap_or_default(),
+                        rtl: q.rtl,
+                    })
+                    .collect(),
                 markdown: parsed.markdown,
                 segments: parsed.segments,
                 rtl: parsed.rtl,

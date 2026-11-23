@@ -255,7 +255,7 @@ export component MessageRow inherits TouchArea {
                         wrap: word-wrap;
                     }
 
-                    if root.m.quote-text != "": quote-box := Rectangle {
+                    for q in root.m.quotes: quote-box := Rectangle {
                         property <bool> hover: false;
                         background: self.hover ? Theme.surface-hover : Theme.sidebar;
                         border-radius: 4px;
@@ -264,18 +264,19 @@ export component MessageRow inherits TouchArea {
                             VerticalLayout {
                                 padding: 8px;
                                 spacing: 2px;
-                                Text { text: root.m.quote-author; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; font-weight: 600; overflow: elide; }
-                                Text { text: root.m.quote-text; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; max-height: 48px; overflow: elide; }
+                                if q.time != "": Text { text: q.time; color: Theme.accent; font-size: 11px * Theme.font-scale; overflow: elide; }
+                                Text { text: q.author; color: Theme.fg-muted; font-size: 11px * Theme.font-scale; font-weight: 600; overflow: elide; }
+                                Text { text: q.text; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; max-height: 120px; overflow: elide; horizontal-alignment: q.rtl ? right : left; }
                             }
                         }
                         // A click goes to the quoted message.
-                        if root.can-jump && root.m.quote-id != "": quote-touch := TouchArea {
+                        if root.can-jump && q.id != "": quote-touch := TouchArea {
                             mouse-cursor: pointer;
                             accessible-role: button;
                             accessible-label: @tr("Go to the original message");
-                            accessible-action-default => { root.jump-to-message(root.m.quote-id); }
+                            accessible-action-default => { root.jump-to-message(q.id); }
                             changed has-hover => { quote-box.hover = self.has-hover; }
-                            clicked => { root.jump-to-message(root.m.quote-id); }
+                            clicked => { root.jump-to-message(q.id); }
                         }
                     }
 
