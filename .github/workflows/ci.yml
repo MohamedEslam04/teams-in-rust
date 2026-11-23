@@ -2,8 +2,8 @@ name: CI
 
 on:
   push:
-    # Feature branches too: local builds are memory-bound, so CI does the full check.
-    branches: [dev, 'feat/**']
+    # Feature and fix branches too: local builds are memory-bound, so CI does the full check.
+    branches: [dev, 'feat/**', 'fix/**']
     # Docs-only pushes need no build.
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
   pull_request:
