@@ -550,14 +550,16 @@ export component ChannelPosts inherits Rectangle {
                 self.anchor-id = self.top-id;
                 self.anchor-gap = self.top-gap;
                 self.pinned = false;
+                // Also while the card is put back now: the view passes the newest post on its
+                // way, which must not pin the list there.
+                self.anchoring = true;
                 if self.top-gap < 1px && ChannelStore.posts[ChannelStore.anchor-index].post.id == self.top-id {
                     // The first card's top was the view's top: putting it back is exact, so it
                     // is done now, in the layout that shows the new cards, and no frame shows
-                    // them misplaced.
+                    // them misplaced. The timer puts it back once more, measured (no anchor).
+                    self.anchor-id = "";
                     self.content-y = min(0px, self.visible-height - self.content-height);
                     self.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
-                } else {
-                    self.anchoring = true;
                 }
             }
             // The user scrolled (wheel, drag, scrollbar).

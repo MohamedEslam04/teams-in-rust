@@ -155,6 +155,13 @@ involved were not changed by the page-switch work):
 - **A row above the view that grew pushed the rows being read down** (130 px in the test): the
   list lays its rows out downwards from the first one. The message list and the Posts tab now
   move the view with a row that starts above the view's top.
+- **Older rows landing above showed in the wrong place for a few frames.** The list put the row
+  that held the view's top back 30 ms after the rows came, and its offset inside the row 40 ms
+  later. When the row's top was the view's top it is now put back in the layout that shows the
+  new rows (and once more 30 ms later, measured: a list given a whole new model only reads it in
+  the next layout); when the list kept its rows in place by itself (all the new ones landed above the rows
+  it had built) it is left alone; only a row read part way, after a reset of the list, still goes
+  through the two steps. The Posts tab does the same with the card at the top.
 - **Wheel notches were 60 px**, the window system's notch. Rows now take a notch before the list
   and glide the list by the notch times the wheel speed (Settings > Chats > Scrolling, 1× to 5×,
   2.5× by default) over about 130 ms (`WheelGlide`, `ui/tokens/motion.slint`). A touchpad's
