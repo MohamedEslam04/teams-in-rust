@@ -606,334 +606,350 @@ export component AppWindow inherits Window {
             }
 
             // The area right of the rail: the chat list and the chat, with a page over them.
-            Rectangle {
+            area := Rectangle {
                 horizontal-stretch: 1;
-                HorizontalLayout {
-                    // Sidebar
-                    Sidebar {
-                        visible: !root.page-shown && root.view != "search" && !root.chat-only;
-                        width: root.view == "search" || root.chat-only ? 0px
-                            : root.list-only ? root.width - AppsStore.rail-width : root.list-width;
-                        max-height: 100000px;
-                        // Under a page the list keeps what it showed (Chat unless Teams).
-                        view: root.view == "teams" ? "teams" : "chat";
-                        filter <=> root.filter;
-                        chats-favorites: root.chats-favorites;
-                        chats-main: root.chats-main;
-                        chats-channels: root.chats-channels;
-                        teams: root.teams;
-                        current-id: root.current-id;
-                        catch-chats: root.catch-chats;
-                        catch-mentions: root.catch-counts.length > 1 ? root.catch-counts[1] : 0;
-                        away-visible: root.synced && !root.away-dismissed && root.catch-chats > 0;
-                        loading: root.connected && !root.synced && root.chats-main.length == 0 && root.chats-favorites.length == 0 && root.chats-channels.length == 0;
-                        catch-up => { root.catch-up(0); }
-                        dismiss-away => { root.away-dismissed = true; }
-                        mark-unread(id) => { root.mark-chat-unread(id); }
-                        mark-all-read => { root.mark-all-read(); }
-                        leave-chat(id) => { PeopleStore.leave-confirm = id; }
-                        new-chat => {
-                            PeopleStore.new-chat-open = true;
-                            PeopleStore.command("new-chat-open", "");
-                        }
-                        meet-now => { root.meet-now(""); }
-                        manage-teams => { TeamsStore.open = true; TeamsStore.command("open", ""); }
-                        open-community(id) => { EngageStore.open = true; EngageStore.command("open", id); }
-                        select-chat(id) => { FindStore.quick-open = false; root.select-chat(id); }
-                        select-channel(id, title) => { FindStore.quick-open = false; root.select-channel(id, title); }
-                        toggle-team(i) => { root.toggle-team(i); }
-                        toggle-favorite(id) => { root.toggle-favorite(id); }
-                        set-filter(f) => { root.set-filter(f); }
-                        quick-view(kind) => { FindStore.command("quick", kind); }
-                    }
-
-                    // The divider: drag to resize the list, as in Teams.
-                    if root.view != "search" && !root.single-pane: Rectangle {
-                        visible: !root.page-shown;
-                        width: 5px;
-                        background: list-split.pressed || list-split.has-hover ? Theme.accent : Theme.border;
-                        accessible-role: slider;
-                        accessible-label: @tr("Chat list width");
-                        accessible-value: round(root.sidebar-width / 1px);
-                        accessible-value-minimum: 220;
-                        accessible-value-maximum: 600;
-                        accessible-action-increment => { root.sidebar-width = min(600px, root.sidebar-width + 20px); }
-                        accessible-action-decrement => { root.sidebar-width = max(220px, root.sidebar-width - 20px); }
-                        list-split := TouchArea {
-                            mouse-cursor: col-resize;
-                            moved => {
-                                if self.pressed {
-                                    root.sidebar-width = max(220px, min(600px, root.sidebar-width + self.mouse-x - self.pressed-x));
-                                }
+                // Under a page the list and the chat keep their size and place but are clipped to
+                // nothing. A clip that changes size hides them in one step; `visible: false` would
+                // make the renderer re-mark every row under it each time (docs/perf.md).
+                Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: root.page-shown ? 0px : parent.height;
+                    clip: true;
+                    HorizontalLayout {
+                        width: area.width;
+                        height: area.height;
+                        // Sidebar
+                        Sidebar {
+                            visible: root.view != "search" && !root.chat-only;
+                            width: root.view == "search" || root.chat-only ? 0px
+                                : root.list-only ? root.width - AppsStore.rail-width : root.list-width;
+                            max-height: 100000px;
+                            // Under a page the list keeps what it showed (Chat unless Teams).
+                            view: root.view == "teams" ? "teams" : "chat";
+                            filter <=> root.filter;
+                            chats-favorites: root.chats-favorites;
+                            chats-main: root.chats-main;
+                            chats-channels: root.chats-channels;
+                            teams: root.teams;
+                            current-id: root.current-id;
+                            catch-chats: root.catch-chats;
+                            catch-mentions: root.catch-counts.length > 1 ? root.catch-counts[1] : 0;
+                            away-visible: root.synced && !root.away-dismissed && root.catch-chats > 0;
+                            loading: root.connected && !root.synced && root.chats-main.length == 0 && root.chats-favorites.length == 0 && root.chats-channels.length == 0;
+                            catch-up => { root.catch-up(0); }
+                            dismiss-away => { root.away-dismissed = true; }
+                            mark-unread(id) => { root.mark-chat-unread(id); }
+                            mark-all-read => { root.mark-all-read(); }
+                            leave-chat(id) => { PeopleStore.leave-confirm = id; }
+                            new-chat => {
+                                PeopleStore.new-chat-open = true;
+                                PeopleStore.command("new-chat-open", "");
                             }
+                            meet-now => { root.meet-now(""); }
+                            manage-teams => { TeamsStore.open = true; TeamsStore.command("open", ""); }
+                            open-community(id) => { EngageStore.open = true; EngageStore.command("open", id); }
+                            select-chat(id) => { FindStore.quick-open = false; root.select-chat(id); }
+                            select-channel(id, title) => { FindStore.quick-open = false; root.select-channel(id, title); }
+                            toggle-team(i) => { root.toggle-team(i); }
+                            toggle-favorite(id) => { root.toggle-favorite(id); }
+                            set-filter(f) => { root.set-filter(f); }
+                            quick-view(kind) => { FindStore.command("quick", kind); }
                         }
-                    }
 
-                    // Conversation (in one-pane mode, not while the list has the window)
-                    if !(root.list-only && root.view != "search"): Rectangle {
-                        visible: !root.page-shown;
-                        background: Theme.main;
-                        if root.view == "search": SearchView {
-                            z: 40;
-                            width: parent.width;
-                            height: parent.height;
-                            close => { root.view = "chat"; }
-                        }
-                        if FindStore.quick-open && root.view == "chat": QuickView {
-                            z: 18;
-                            width: parent.width;
-                            height: parent.height;
-                            close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); }
-                        }
-                        if PeopleStore.new-chat-open && root.view != "activity": NewChatPane {
-                            z: 30;
-                            width: parent.width;
-                            height: parent.height;
-                            to: PeopleStore.new-chat-to;
-                            results: PeopleStore.new-chat-results;
-                            hint: PeopleStore.new-chat-hint;
-                            query(q) => { PeopleStore.command("new-chat-query", q); }
-                            add(id) => { PeopleStore.command("new-chat-add", id); }
-                            remove(id) => { PeopleStore.command("new-chat-remove", id); }
-                            name(n) => { PeopleStore.command("new-chat-name", n); }
-                            send(t) => { PeopleStore.command("new-chat-send", t); }
-                            close => {
-                                PeopleStore.new-chat-open = false;
-                                PeopleStore.command("new-chat-close", "");
-                            }
-                        }
-                        if root.current-id == "" && !root.teams-no-channel: VerticalLayout {
-                            alignment: center;
-                            Image { source: @image-url("icons/chat.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
-                            Text { text: @tr("Select a chat to start messaging"); color: Theme.fg-subtle; horizontal-alignment: center; }
-                        }
-                        if root.teams-no-channel: VerticalLayout {
-                            alignment: center;
-                            Image { source: @image-url("icons/teams.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
-                            Text { text: @tr("Pick a channel"); color: Theme.fg-subtle; horizontal-alignment: center; }
-                        }
-                        if root.banner != "": NoticeBanner {
-                            z: 10;
-                            banner: root.banner;
-                            banner-action: root.banner-action;
-                            banner-action-clicked => { root.banner-action-clicked(); }
-                            banner-info: root.banner-info;
-                            dismiss-banner => { root.dismiss-banner(); }
-                            area-width: parent.width;
-                        }
-                        if root.current-id != "" && !root.teams-no-channel: VerticalLayout {
-                            // Header. When it is narrow (half a laptop screen), participants, find,
-                            // details and Schedule a meeting move into the … menu so the name stays readable.
-                            ChatPaneHeader {
-                                close-thread => { root.close-thread(); }
-                                current-avatar: root.current-avatar;
-                                current-color: root.current-color;
-                                current-has-avatar: root.current-has-avatar;
-                                current-id: root.current-id;
-                                current-initials: root.current-initials;
-                                current-is-channel: root.current-is-channel;
-                                current-meeting-live: root.current-meeting-live;
-                                current-muted: root.current-muted;
-                                current-person: root.current-person;
-                                current-presence: root.current-presence;
-                                current-title: root.current-title;
-                                header-glyph: root.header-glyph;
-                                mark-chat-unread(a0) => { root.mark-chat-unread(a0); }
-                                meet-now(a0) => { root.meet-now(a0); }
-                                pane-list <=> root.pane-list;
-                                rename-text <=> root.rename-text;
-                                renaming <=> root.renaming;
-                                schedule-meeting(a0) => { root.schedule-meeting(a0); }
-                                single-pane: root.single-pane;
-                                thread-root: root.thread-root;
-                            }
-
-                            if FindStore.chat-find-open && root.thread-root == "": ChatFindBar { channel: root.current-is-channel; }
-
-                            if PeopleStore.pinned.length > 0 && root.thread-root == "": PinnedBanner {
-                                items: PeopleStore.pinned;
-                                index <=> PeopleStore.pinned-index;
-                                jump(id) => { PeopleStore.command("pin-jump", id); }
-                                unpin(id) => { PeopleStore.command("pin-unpin", id); }
-                            }
-
-                            // Messages
-                            MessagePane {
-                                anchor-index: root.anchor-index;
-                                anchor-off: root.anchor-off;
-                                anchor-tick: root.anchor-tick;
-                                top-id <=> root.msg-top-id;
-                                top-off <=> root.msg-top-off;
-                                top-cy <=> root.msg-top-cy;
-                                view-y <=> root.msg-view-y;
-                                at-bottom <=> root.at-bottom;
-                                at-bottom-changed(a0) => { root.at-bottom-changed(a0); }
-                                current-is-channel: root.current-is-channel;
-                                current-title: root.current-title;
-                                discard-send(a0) => { root.discard-send(a0); }
-                                divider-index: root.divider-index;
-                                divider-tick: root.divider-tick;
-                                edit(a0) => { root.edit(a0); }
-                                focus-tick <=> root.focus-tick;
-                                jump-to-message(a0) => { PeopleStore.command("quote-jump", a0); }
-                                jump-to-newest => { root.jump-to-newest(); }
-                                load-older => { root.load-older(); }
-                                loading-latest: root.loading-latest;
-                                loading-older: root.loading-older;
-                                loading-progress: root.loading-progress;
-                                menu-msg <=> root.menu-msg;
-                                menu-open <=> root.menu-open;
-                                menu-preview <=> root.menu-preview;
-                                menu-x <=> root.menu-x;
-                                menu-y <=> root.menu-y;
-                                messages: root.messages;
-                                msg-focus-tick: root.msg-focus-tick;
-                                new-count: root.new-count;
-                                open-thread(a0) => { root.open-thread(a0); }
-                                open-url(a0) => { root.open-url(a0); }
-                                picker-msg-id <=> root.picker-msg-id;
-                                picker-open <=> root.picker-open;
-                                picker-search(a0) => { root.picker-search(a0); }
-                                picker-x <=> root.picker-x;
-                                picker-y <=> root.picker-y;
-                                posts-mode: root.posts-mode;
-                                react(a0, a1) => { root.react(a0, a1); }
-                                readers-bottom <=> root.readers-bottom;
-                                readers-msg <=> root.readers-msg;
-                                readers-open <=> root.readers-open;
-                                readers-top <=> root.readers-top;
-                                readers-x <=> root.readers-x;
-                                reply(a0) => { root.reply(a0); }
-                                retry-send(a0) => { root.retry-send(a0); }
-                                scroll-tick <=> root.scroll-tick;
-                                select-mode: root.select-mode;
-                                thread-root: root.thread-root;
-                                toggle-select(a0) => { root.toggle-select(a0); }
-                                unavailable: root.unavailable;
-                                unavailable-text: root.unavailable-text;
-                                unread-count: root.unread-count;
-                                unread-index: root.unread-index;
-                            }
-
-                            // The chat's scheduled messages ("Sending on …"), below the newest message.
-                            if SendStore.scheduled.length > 0 && root.thread-root == "" && !root.posts-mode: ScheduledList {
-                                max-bubble: min(720px, parent.width * 0.75);
-                            }
-
-                            TypingIndicator { }
-
-                            if root.select-mode: SelectBar {
-                                count: root.select-count;
-                                forward => {
-                                    root.forward-count = root.select-count;
-                                    root.forward-preview-author = "";
-                                    root.forward-preview-text = "";
-                                    root.forward-open = true;
-                                    root.forward-begin-selected();
-                                }
-                                cancel => {
-                                    root.select-mode = false;
-                                    root.select-cancel();
-                                }
-                            }
-
-                            if root.posts-mode && ChannelStore.compose-open: AnnouncementBar { }
-
-                            // Composer
-                            if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable: Composer {
-                                vertical-stretch: 0;
-                                window-width: root.width;
-                                current-is-channel: root.current-is-channel;
-                                thread-root: root.thread-root;
-                                reply-author: root.reply-author;
-                                reply-preview: root.reply-preview;
-                                editing-id: root.editing-id;
-                                draft <=> root.draft;
-                                post-subject <=> root.post-subject;
-                                focus-tick <=> root.focus-tick;
-                                enter-sends <=> root.enter-sends;
-                                expanded <=> root.composer-expanded;
-                                important <=> root.important;
-                                urgent <=> root.urgent;
-                                input-focus(f) => { root.composer-focused = f; }
-                                edit-last => {
-                                    if ShortcutApi.last-own(root.messages) != "" { root.edit(ShortcutApi.last-own(root.messages)); }
-                                }
-                                set-enter-sends(on) => { root.set-enter-sends(on); }
-                                skin-tone <=> root.skin-tone;
-                                recent-emoji: root.recent-emoji;
-                                pending-attachments: root.pending-attachments;
-                                paste-image => { root.paste-image(); }
-                                remove-attachment(i) => { root.remove-attachment(i); }
-                                cursor-tick: root.cursor-tick;
-                                emoji-used(e) => { root.emoji-used(e); }
-                                skin-tone-changed(t) => { root.skin-tone-changed(t); }
-                                send(text) => {
-                                    if root.posts-mode && ChannelStore.announcement {
-                                        ChannelStore.command("announce", root.post-subject + "\u{9}" + ChannelStore.headline + "\u{9}" + ChannelStore.theme + "\u{9}" + text);
-                                    } else {
-                                        root.send(text);
-                                    }
-                                    if root.posts-mode {
-                                        ChannelStore.compose-open = false;
-                                        ChannelStore.announcement = false;
-                                        ChannelStore.headline = "";
+                        // The divider: drag to resize the list, as in Teams.
+                        if root.view != "search" && !root.single-pane: Rectangle {
+                            width: 5px;
+                            background: list-split.pressed || list-split.has-hover ? Theme.accent : Theme.border;
+                            accessible-role: slider;
+                            accessible-label: @tr("Chat list width");
+                            accessible-value: round(root.sidebar-width / 1px);
+                            accessible-value-minimum: 220;
+                            accessible-value-maximum: 600;
+                            accessible-action-increment => { root.sidebar-width = min(600px, root.sidebar-width + 20px); }
+                            accessible-action-decrement => { root.sidebar-width = max(220px, root.sidebar-width - 20px); }
+                            list-split := TouchArea {
+                                mouse-cursor: col-resize;
+                                moved => {
+                                    if self.pressed {
+                                        root.sidebar-width = max(220px, min(600px, root.sidebar-width + self.mouse-x - self.pressed-x));
                                     }
                                 }
-                                typing-tick => { root.typing-tick(); }
-                                draft-edited(text) => { root.draft-edited(text); }
-                                cancel-reply => { root.cancel-reply(); }
-                                attach-image => { root.attach-image(); }
-                                attach-file => { root.attach-file(); }
-                                attach-cloud => { DriveStore.command("pick-begin", "attach"); }
                             }
                         }
-                        if root.current-id != "" && FindStore.chat-tab == "storyline" && root.view != "activity": StorylineView {
-                            z: 8;
-                            y: 60px;
-                            width: parent.width;
-                            height: parent.height - 60px;
-                        }
-                        // The Shared (Files) tab and the details pane sit below the 60px header.
-                        if root.current-id != "" && !root.teams-no-channel && FindStore.chat-tab == "shared" && root.view != "activity": SharedView {
-                            z: 8;
-                            y: 60px;
-                            width: parent.width;
-                            height: parent.height - 60px;
-                        }
-                        // A meeting chat's Recap tab (the Meeting Recaps recap page).
-                        if root.current-id != "" && !root.teams-no-channel && FindStore.chat-tab == "recap" && root.view != "activity": RecapsChatPane {
-                            z: 8;
-                            y: 60px;
-                            width: parent.width;
-                            height: parent.height - 60px;
-                        }
-                        if root.current-id != "" && !root.teams-no-channel && FindStore.details-open && root.thread-root == "" && root.view != "activity": DetailsPane {
-                            z: 9;
-                            x: parent.width - self.width;
-                            y: 60px;
-                            height: parent.height - 60px;
-                            title: root.current-title;
-                        }
-                        if root.file-hover && root.accepts-files: DropZone {
-                            z: 25;
-                            width: parent.width;
-                            height: parent.height;
+
+                        // Conversation (in one-pane mode, not while the list has the window)
+                        if !(root.list-only && root.view != "search"): Rectangle {
+                            background: Theme.main;
+                            if root.view == "search": SearchView {
+                                z: 40;
+                                width: parent.width;
+                                height: parent.height;
+                                close => { root.view = "chat"; }
+                            }
+                            if FindStore.quick-open && root.view == "chat": QuickView {
+                                z: 18;
+                                width: parent.width;
+                                height: parent.height;
+                                close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); }
+                            }
+                            if PeopleStore.new-chat-open && root.view != "activity": NewChatPane {
+                                z: 30;
+                                width: parent.width;
+                                height: parent.height;
+                                to: PeopleStore.new-chat-to;
+                                results: PeopleStore.new-chat-results;
+                                hint: PeopleStore.new-chat-hint;
+                                query(q) => { PeopleStore.command("new-chat-query", q); }
+                                add(id) => { PeopleStore.command("new-chat-add", id); }
+                                remove(id) => { PeopleStore.command("new-chat-remove", id); }
+                                name(n) => { PeopleStore.command("new-chat-name", n); }
+                                send(t) => { PeopleStore.command("new-chat-send", t); }
+                                close => {
+                                    PeopleStore.new-chat-open = false;
+                                    PeopleStore.command("new-chat-close", "");
+                                }
+                            }
+                            if root.current-id == "" && !root.teams-no-channel: VerticalLayout {
+                                alignment: center;
+                                Image { source: @image-url("icons/chat.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
+                                Text { text: @tr("Select a chat to start messaging"); color: Theme.fg-subtle; horizontal-alignment: center; }
+                            }
+                            if root.teams-no-channel: VerticalLayout {
+                                alignment: center;
+                                Image { source: @image-url("icons/teams.svg"); colorize: Theme.border; width: 96px; height: 96px; x: (parent.width - 96px) / 2; }
+                                Text { text: @tr("Pick a channel"); color: Theme.fg-subtle; horizontal-alignment: center; }
+                            }
+                            if root.banner != "": NoticeBanner {
+                                z: 10;
+                                banner: root.banner;
+                                banner-action: root.banner-action;
+                                banner-action-clicked => { root.banner-action-clicked(); }
+                                banner-info: root.banner-info;
+                                dismiss-banner => { root.dismiss-banner(); }
+                                area-width: parent.width;
+                            }
+                            if root.current-id != "" && !root.teams-no-channel: VerticalLayout {
+                                // Header. When it is narrow (half a laptop screen), participants, find,
+                                // details and Schedule a meeting move into the … menu so the name stays readable.
+                                ChatPaneHeader {
+                                    close-thread => { root.close-thread(); }
+                                    current-avatar: root.current-avatar;
+                                    current-color: root.current-color;
+                                    current-has-avatar: root.current-has-avatar;
+                                    current-id: root.current-id;
+                                    current-initials: root.current-initials;
+                                    current-is-channel: root.current-is-channel;
+                                    current-meeting-live: root.current-meeting-live;
+                                    current-muted: root.current-muted;
+                                    current-person: root.current-person;
+                                    current-presence: root.current-presence;
+                                    current-title: root.current-title;
+                                    header-glyph: root.header-glyph;
+                                    mark-chat-unread(a0) => { root.mark-chat-unread(a0); }
+                                    meet-now(a0) => { root.meet-now(a0); }
+                                    pane-list <=> root.pane-list;
+                                    rename-text <=> root.rename-text;
+                                    renaming <=> root.renaming;
+                                    schedule-meeting(a0) => { root.schedule-meeting(a0); }
+                                    single-pane: root.single-pane;
+                                    thread-root: root.thread-root;
+                                }
+
+                                if FindStore.chat-find-open && root.thread-root == "": ChatFindBar { channel: root.current-is-channel; }
+
+                                if PeopleStore.pinned.length > 0 && root.thread-root == "": PinnedBanner {
+                                    items: PeopleStore.pinned;
+                                    index <=> PeopleStore.pinned-index;
+                                    jump(id) => { PeopleStore.command("pin-jump", id); }
+                                    unpin(id) => { PeopleStore.command("pin-unpin", id); }
+                                }
+
+                                // Messages
+                                MessagePane {
+                                    anchor-index: root.anchor-index;
+                                    anchor-off: root.anchor-off;
+                                    anchor-tick: root.anchor-tick;
+                                    top-id <=> root.msg-top-id;
+                                    top-off <=> root.msg-top-off;
+                                    top-cy <=> root.msg-top-cy;
+                                    view-y <=> root.msg-view-y;
+                                    at-bottom <=> root.at-bottom;
+                                    at-bottom-changed(a0) => { root.at-bottom-changed(a0); }
+                                    current-is-channel: root.current-is-channel;
+                                    current-title: root.current-title;
+                                    discard-send(a0) => { root.discard-send(a0); }
+                                    divider-index: root.divider-index;
+                                    divider-tick: root.divider-tick;
+                                    edit(a0) => { root.edit(a0); }
+                                    focus-tick <=> root.focus-tick;
+                                    jump-to-message(a0) => { PeopleStore.command("quote-jump", a0); }
+                                    jump-to-newest => { root.jump-to-newest(); }
+                                    load-older => { root.load-older(); }
+                                    loading-latest: root.loading-latest;
+                                    loading-older: root.loading-older;
+                                    loading-progress: root.loading-progress;
+                                    menu-msg <=> root.menu-msg;
+                                    menu-open <=> root.menu-open;
+                                    menu-preview <=> root.menu-preview;
+                                    menu-x <=> root.menu-x;
+                                    menu-y <=> root.menu-y;
+                                    messages: root.messages;
+                                    msg-focus-tick: root.msg-focus-tick;
+                                    new-count: root.new-count;
+                                    open-thread(a0) => { root.open-thread(a0); }
+                                    open-url(a0) => { root.open-url(a0); }
+                                    picker-msg-id <=> root.picker-msg-id;
+                                    picker-open <=> root.picker-open;
+                                    picker-search(a0) => { root.picker-search(a0); }
+                                    picker-x <=> root.picker-x;
+                                    picker-y <=> root.picker-y;
+                                    posts-mode: root.posts-mode;
+                                    react(a0, a1) => { root.react(a0, a1); }
+                                    readers-bottom <=> root.readers-bottom;
+                                    readers-msg <=> root.readers-msg;
+                                    readers-open <=> root.readers-open;
+                                    readers-top <=> root.readers-top;
+                                    readers-x <=> root.readers-x;
+                                    reply(a0) => { root.reply(a0); }
+                                    retry-send(a0) => { root.retry-send(a0); }
+                                    scroll-tick <=> root.scroll-tick;
+                                    select-mode: root.select-mode;
+                                    thread-root: root.thread-root;
+                                    toggle-select(a0) => { root.toggle-select(a0); }
+                                    unavailable: root.unavailable;
+                                    unavailable-text: root.unavailable-text;
+                                    unread-count: root.unread-count;
+                                    unread-index: root.unread-index;
+                                }
+
+                                // The chat's scheduled messages ("Sending on …"), below the newest message.
+                                if SendStore.scheduled.length > 0 && root.thread-root == "" && !root.posts-mode: ScheduledList {
+                                    max-bubble: min(720px, parent.width * 0.75);
+                                }
+
+                                TypingIndicator { }
+
+                                if root.select-mode: SelectBar {
+                                    count: root.select-count;
+                                    forward => {
+                                        root.forward-count = root.select-count;
+                                        root.forward-preview-author = "";
+                                        root.forward-preview-text = "";
+                                        root.forward-open = true;
+                                        root.forward-begin-selected();
+                                    }
+                                    cancel => {
+                                        root.select-mode = false;
+                                        root.select-cancel();
+                                    }
+                                }
+
+                                if root.posts-mode && ChannelStore.compose-open: AnnouncementBar { }
+
+                                // Composer
+                                if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable: Composer {
+                                    vertical-stretch: 0;
+                                    window-width: root.width;
+                                    current-is-channel: root.current-is-channel;
+                                    thread-root: root.thread-root;
+                                    reply-author: root.reply-author;
+                                    reply-preview: root.reply-preview;
+                                    editing-id: root.editing-id;
+                                    draft <=> root.draft;
+                                    post-subject <=> root.post-subject;
+                                    focus-tick <=> root.focus-tick;
+                                    enter-sends <=> root.enter-sends;
+                                    expanded <=> root.composer-expanded;
+                                    important <=> root.important;
+                                    urgent <=> root.urgent;
+                                    input-focus(f) => { root.composer-focused = f; }
+                                    edit-last => {
+                                        if ShortcutApi.last-own(root.messages) != "" { root.edit(ShortcutApi.last-own(root.messages)); }
+                                    }
+                                    set-enter-sends(on) => { root.set-enter-sends(on); }
+                                    skin-tone <=> root.skin-tone;
+                                    recent-emoji: root.recent-emoji;
+                                    pending-attachments: root.pending-attachments;
+                                    paste-image => { root.paste-image(); }
+                                    remove-attachment(i) => { root.remove-attachment(i); }
+                                    cursor-tick: root.cursor-tick;
+                                    emoji-used(e) => { root.emoji-used(e); }
+                                    skin-tone-changed(t) => { root.skin-tone-changed(t); }
+                                    send(text) => {
+                                        if root.posts-mode && ChannelStore.announcement {
+                                            ChannelStore.command("announce", root.post-subject + "\u{9}" + ChannelStore.headline + "\u{9}" + ChannelStore.theme + "\u{9}" + text);
+                                        } else {
+                                            root.send(text);
+                                        }
+                                        if root.posts-mode {
+                                            ChannelStore.compose-open = false;
+                                            ChannelStore.announcement = false;
+                                            ChannelStore.headline = "";
+                                        }
+                                    }
+                                    typing-tick => { root.typing-tick(); }
+                                    draft-edited(text) => { root.draft-edited(text); }
+                                    cancel-reply => { root.cancel-reply(); }
+                                    attach-image => { root.attach-image(); }
+                                    attach-file => { root.attach-file(); }
+                                    attach-cloud => { DriveStore.command("pick-begin", "attach"); }
+                                }
+                            }
+                            if root.current-id != "" && FindStore.chat-tab == "storyline" && root.view != "activity": StorylineView {
+                                z: 8;
+                                y: 60px;
+                                width: parent.width;
+                                height: parent.height - 60px;
+                            }
+                            // The Shared (Files) tab and the details pane sit below the 60px header.
+                            if root.current-id != "" && !root.teams-no-channel && FindStore.chat-tab == "shared" && root.view != "activity": SharedView {
+                                z: 8;
+                                y: 60px;
+                                width: parent.width;
+                                height: parent.height - 60px;
+                            }
+                            // A meeting chat's Recap tab (the Meeting Recaps recap page).
+                            if root.current-id != "" && !root.teams-no-channel && FindStore.chat-tab == "recap" && root.view != "activity": RecapsChatPane {
+                                z: 8;
+                                y: 60px;
+                                width: parent.width;
+                                height: parent.height - 60px;
+                            }
+                            if root.current-id != "" && !root.teams-no-channel && FindStore.details-open && root.thread-root == "" && root.view != "activity": DetailsPane {
+                                z: 9;
+                                x: parent.width - self.width;
+                                y: 60px;
+                                height: parent.height - 60px;
+                                title: root.current-title;
+                            }
+                            if root.file-hover && root.accepts-files: DropZone {
+                                z: 25;
+                                width: parent.width;
+                                height: parent.height;
+                            }
                         }
                     }
                 }
                 // At least as large as their content needs, as the layout they were in gave them.
                 if root.view == "calendar": CalendarView {
+                    x: 0px;
+                    y: 0px;
                     width: max(parent.width, self.min-width);
                     height: max(parent.height, self.min-height);
                     window-width: root.width;
                 }
                 if root.view == "onedrive": OneDriveView {
+                    x: 0px;
+                    y: 0px;
                     width: max(parent.width, self.min-width);
                     height: max(parent.height, self.min-height);
                     window-width: root.width;
                 }
                 if root.view == "calls": CallsPage {
+                    x: 0px;
+                    y: 0px;
                     width: max(parent.width, self.min-width);
                     height: max(parent.height, self.min-height);
                     window-width: root.width;

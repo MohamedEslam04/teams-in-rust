@@ -80,6 +80,32 @@ scroll up and down for a minute with `IRONTEAMS_LOG=warn,ironteams=debug` and lo
 renderer. The older page now lands without the view moving (the row at the top of the view is put
 back with the user's offset) and is asked for from a screen and a half away from the top.
 
+## Switching pages and scrolling, frame by frame
+
+`page_switch_cost` (`src/ui_tests/page_switch.rs`, ignored) draws the real window with Slint's
+software renderer into memory at 1920x1080: a 400-row chat and 159 chats in the list, then
+Calendar → Chat → Activity → Teams → Chat five times, then 120 wheel notches. It prints each
+switch's first frame (the click to the drawn page), the frames of the next 320 ms, an idle frame
+(nothing changed: the renderer's walk over the item tree), PSS, and the scroll frames.
+`IRONTEAMS_BENCH_REPAINT=new` repaints the whole window every frame, as the winit backend does when
+the window system does not report the buffer's age. The test build is too big for this machine, so
+run it on CI: push the branch as `ci/bench-<name>` and the `Bench UI` workflow runs it on the
+commit and again with `crates/ironteams/ui` from `origin/dev`, on the same runner:
+
+```sh
+gh run view <run> --log | grep -E 'repaint|page_switch |scroll frames'
+```
+
+The numbers are from a debug build on a GitHub runner, so only before/after on the same run compare.
+
+What it showed: Calendar, OneDrive and Calls destroyed the chat list (every row of a plain `for`)
+and the chat pane, and Activity shrank the list to 0 px so every message row was laid out again;
+coming back built or relaid all of it. The pages now sit over the chat, which stays built and is
+clipped to nothing underneath. Hiding with `visible: false` was tried first: the renderer then
+re-marks every item under the hidden element on each switch (`partial_renderer.rs`,
+`must_refresh_children`), which made Chat → Calendar and Chat → Teams about 50 ms slower; a clip
+that changes size only walks them once, cheaply.
+
 ## Results
 
 | Measure                         | Baseline | After |
