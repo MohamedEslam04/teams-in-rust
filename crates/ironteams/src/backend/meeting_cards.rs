@@ -5,11 +5,11 @@
 //! status updates); the earlier ones are left out of the chat. The messages are parsed by
 //! `teams_proto::meeting_events`; anything it cannot read stays the grey line it was.
 
-use crate::data::{MeetingCardData, MeetingPersonData, color_for, initials};
+use crate::data::{color_for, initials, MeetingCardData, MeetingPersonData};
 use std::collections::HashMap;
 use store::MessageRow;
 use teams_proto::meeting_events::{
-    CallEvent, MeetingEvent, RecordingEvent, RecordingState, parse_meeting_event,
+    parse_meeting_event, CallEvent, MeetingEvent, RecordingEvent, RecordingState,
 };
 
 /// At most this many people are drawn on a call card.
@@ -45,6 +45,17 @@ pub(crate) fn is_live(rows: &[&MessageRow], plan: &Plan) -> bool {
             _ => None,
         })
         .unwrap_or(false)
+}
+
+/// When the chat's running call started, by the server's clock: the time of its "Meeting started"
+/// message, among the chat's newest `rows`. `None` when no call is running, as in [`is_live`].
+pub(crate) fn live_call_start_ms(rows: &[MessageRow]) -> Option<i64> {
+    let (shown, plan) = visible_rows(rows);
+    let (row, card) = shown.iter().rev().find_map(|r| match plan.get(&r.id) {
+        Some(Some(c)) if c.kind == "call" => Some((r, c)),
+        _ => None,
+    })?;
+    (card.state == "started").then_some(row.compose_ms)
 }
 
 fn is_meeting_chat(id: &str) -> bool {
@@ -480,6 +491,25 @@ pub(crate) mod tests {
         assert!(live(&all[..5]), "started, still talking");
         assert!(!live(&all[..8]), "ended");
         assert!(!live(&all), "ended, recording processed");
+    }
+
+    use super::live_call_start_ms as live_start;
+
+    #[test]
+    fn the_running_call_started_when_its_started_message_says() {
+        assert_eq!(live_start(&[]), None);
+        let all = meeting();
+        let at = all[0].compose_ms;
+        assert_eq!(live_start(&all[..1]), Some(at), "started");
+        assert_eq!(live_start(&all[..5]), Some(at), "still talking");
+        assert_eq!(live_start(&all[..8]), None, "ended");
+        // A later occurrence of the meeting counts from its own start.
+        let mut rows = all.clone();
+        let second = |id: &str, at: i64, body: String| {
+            row(id, at, "Event/Call", &body.replace("call-1", "call-2"))
+        };
+        rows.push(second("c3", 90_000, started()));
+        assert_eq!(live_start(&rows), Some(rows.last().unwrap().compose_ms));
     }
 
     #[test]
