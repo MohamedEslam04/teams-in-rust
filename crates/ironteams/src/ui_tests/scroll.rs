@@ -305,3 +305,57 @@ fn coming_back_to_the_newest_message_trims_a_list_paged_far_back() {
     let trimmed = h.app.get_messages().row_count();
     assert!(trimmed <= 60, "back at the newest, {trimmed} rows are kept");
 }
+
+/// How much the list's update costs when one row of a long chat changed (an avatar or a reaction
+/// arrived) against when every row changed, which is what every update cost before rows were
+/// compared. Run with `cargo test -p ironteams -- --ignored --nocapture update_cost` and put the
+/// numbers in docs/perf.md.
+#[test]
+#[ignore = "a measurement, not a check"]
+fn update_cost_of_a_long_list_with_one_changed_row_against_every_row_changed() {
+    use crate::ui::row_fingerprint::sample_row;
+    const ROWS: usize = 400;
+    let app = app_with_messages(vec![]);
+    let ui = UiHandle::new(app.as_weak());
+    let rows = |tag: &str| -> Vec<crate::data::MsgData> {
+        (0..ROWS)
+            .map(|i| {
+                let mut r = sample_row(
+                    &format!("m{i}"),
+                    &format!("message **{i}** with _some_ text {tag}"),
+                );
+                r.time = format!("{tag}:{i}");
+                r
+            })
+            .collect()
+    };
+    let time = |f: &mut dyn FnMut()| {
+        let t = std::time::Instant::now();
+        for _ in 0..20 {
+            f();
+        }
+        t.elapsed().as_micros() as f64 / 20.
+    };
+    ui.messages(rows("a"), crate::data::Scroll::Keep);
+    assert_eq!(app.get_messages().row_count(), ROWS);
+    // Every row differs from the one shown: all of them are written, as every update used to.
+    let mut flip = false;
+    let all = time(&mut || {
+        flip = !flip;
+        ui.messages(
+            rows(if flip { "b" } else { "a" }),
+            crate::data::Scroll::Keep,
+        );
+    });
+    // The same rows with one changed: only that one is written.
+    let base = rows("a");
+    ui.messages(base.clone(), crate::data::Scroll::Keep);
+    let mut n = 0;
+    let one = time(&mut || {
+        n += 1;
+        let mut next = base.clone();
+        next[ROWS / 2].markdown = format!("changed {n}");
+        ui.messages(next, crate::data::Scroll::Keep);
+    });
+    eprintln!("update_cost rows={ROWS} every_row_changed_us={all:.0} one_row_changed_us={one:.0}");
+}

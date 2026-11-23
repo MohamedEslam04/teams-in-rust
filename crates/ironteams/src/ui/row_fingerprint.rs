@@ -322,6 +322,63 @@ pub(crate) fn of(m: &MsgData) -> u64 {
     h.finish()
 }
 
+/// A message row with every field filled in, for tests and measurements.
+#[cfg(test)]
+pub(crate) fn sample_row(id: &str, text: &str) -> MsgData {
+    MsgData {
+        id: id.into(),
+        sender: "Ann".into(),
+        initials: "A".into(),
+        color: 0x112233,
+        avatar: None,
+        mine: false,
+        time: "10:00".into(),
+        day: "Today".into(),
+        show_header: true,
+        edited: false,
+        deleted: false,
+        system: false,
+        subject: String::new(),
+        quote_author: String::new(),
+        quote_text: String::new(),
+        markdown: text.into(),
+        plain: text.into(),
+        rtl: false,
+        images: vec![],
+        files: vec![],
+        reactions: vec![],
+        reply_count: 0,
+        pending: false,
+        saved: false,
+        selected: false,
+        failed: false,
+        new_above: false,
+        sender_id: "8:a".into(),
+        presence: String::new(),
+        mentions_me: false,
+        receipt: String::new(),
+        receipt_names: String::new(),
+        receipt_readers: vec![],
+        flash: false,
+        fresh: false,
+        card: vec![],
+        headline: String::new(),
+        importance: String::new(),
+        grid_w: 0.0,
+        grid_h: 0.0,
+        translate: "",
+        translate_from: String::new(),
+        links: vec![],
+        pinned: false,
+        urls: vec![],
+        loops: vec![],
+        joins: vec![],
+        voices: vec![],
+        videos: vec![],
+        meeting: vec![],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,58 +386,7 @@ mod tests {
     use slint::{Rgba8Pixel, SharedPixelBuffer};
 
     fn sample() -> MsgData {
-        MsgData {
-            id: "1".into(),
-            sender: "Ann".into(),
-            initials: "A".into(),
-            color: 0x112233,
-            avatar: None,
-            mine: false,
-            time: "10:00".into(),
-            day: "Today".into(),
-            show_header: true,
-            edited: false,
-            deleted: false,
-            system: false,
-            subject: String::new(),
-            quote_author: String::new(),
-            quote_text: String::new(),
-            markdown: "hello".into(),
-            plain: "hello".into(),
-            rtl: false,
-            images: vec![],
-            files: vec![],
-            reactions: vec![],
-            reply_count: 0,
-            pending: false,
-            saved: false,
-            selected: false,
-            failed: false,
-            new_above: false,
-            sender_id: "8:a".into(),
-            presence: String::new(),
-            mentions_me: false,
-            receipt: String::new(),
-            receipt_names: String::new(),
-            receipt_readers: vec![],
-            flash: false,
-            fresh: false,
-            card: vec![],
-            headline: String::new(),
-            importance: String::new(),
-            grid_w: 0.0,
-            grid_h: 0.0,
-            translate: "",
-            translate_from: String::new(),
-            links: vec![],
-            pinned: false,
-            urls: vec![],
-            loops: vec![],
-            joins: vec![],
-            voices: vec![],
-            videos: vec![],
-            meeting: vec![],
-        }
+        super::sample_row("1", "hello")
     }
 
     #[test]

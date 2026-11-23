@@ -44,7 +44,7 @@ mod palette;
 mod people;
 pub(crate) mod popout;
 mod remind;
-mod row_fingerprint;
+pub(crate) mod row_fingerprint;
 pub(crate) mod settings;
 mod teams;
 pub(crate) mod topbar;

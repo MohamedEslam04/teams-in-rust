@@ -89,9 +89,19 @@ back with the user's offset) and is asked for from a screen and a half away from
 | Idle wakeups (per minute)       |          |       |
 | Cached chat-open time (ms)      |          |       |
 | `render_messages` on a mark (µs)|          |       |
-| `ui_messages` rows written on a mark |     |       |
-| `ui_messages` on a mark (µs)    |          |       |
+| `ui_messages` rows written on a mark (400-row list) | 400 | 1 |
+| `ui_messages` on a mark (µs, 400-row list, debug build) | 8308 | 1490 |
 | Release binary size (MB)        |          |       |
+
+### How the `ui_messages` numbers were taken
+
+`cargo test -p ironteams --bin ironteams update_cost -- --ignored --nocapture` (2026-11-23, debug
+build, software renderer is not involved): `UiHandle::messages` with a 400-row list, mean of 20
+calls. "Before" is every row differing from the one shown, which is what every update cost before
+rows were compared (all 400 rows converted, markdown parsed again, written to the model); "after"
+is the same list with one row changed. Both figures include building the input rows (a few
+hundred microseconds), so the ratio (about 5.6x) is indicative, not exact. It is the UI-thread
+cost of one update, not an on-screen scroll measurement.
 
 ## Dependencies
 
