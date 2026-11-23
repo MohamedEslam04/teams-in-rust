@@ -161,7 +161,7 @@ impl Engine {
         });
     }
 
-    pub(super) fn conv_kind(&self, conv: &str) -> Option<ConvKind> {
+    pub(in super::super) fn conv_kind(&self, conv: &str) -> Option<ConvKind> {
         self.store
             .lock()
             .unwrap()

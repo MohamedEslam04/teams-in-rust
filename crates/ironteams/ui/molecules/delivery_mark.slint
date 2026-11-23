@@ -1,0 +1,75 @@
+// The delivery mark at the right edge of my message in a 1:1 chat, like Teams: a clock while it is
+// being sent, a circle with a check once it is sent, and the circle filled with an eye (accent
+// colour) on the newest message the other person has read. It sits at the bottom of its column,
+// level with the bubble's bottom edge; resting the pointer on it names the state.
+import { Theme } from "../tokens/theme.slint";
+import { Motion } from "../tokens/motion.slint";
+import { Icon } from "../atoms/widgets.slint";
+
+export component DeliveryMark inherits Rectangle {
+    // "" (nothing drawn, the column stays) | "sending" | "sent" | "seen"
+    in property <string> state;
+    property <string> label: root.state == "sending" ? @tr("Sending") : (root.state == "seen" ? @tr("Seen") : (root.state == "sent" ? @tr("Sent") : ""));
+    width: 20px;
+    accessible-role: text;
+    accessible-label: root.label;
+
+    // The glyphs cross-fade (200 ms) when the state changes in place.
+    Icon {
+        source: @image-url("../icons/clock.svg");
+        tint: Theme.fg-subtle;
+        width: 16px;
+        height: 16px;
+        x: 2px;
+        y: root.height - 18px;
+        opacity: root.state == "sending" ? 1.0 : 0.0;
+        animate opacity { duration: Motion.normal; easing: ease-out; }
+    }
+    Icon {
+        source: @image-url("../icons/sent.svg");
+        tint: Theme.fg-subtle;
+        width: 16px;
+        height: 16px;
+        x: 2px;
+        y: root.height - 18px;
+        opacity: root.state == "sent" ? 1.0 : 0.0;
+        transform-scale: root.state == "sent" ? 1.0 : 0.6;
+        animate opacity { duration: Motion.normal; easing: ease-out; }
+        animate transform-scale { duration: Motion.normal; easing: ease-out; }
+    }
+    Icon {
+        source: @image-url("../icons/seen.svg");
+        tint: Theme.accent;
+        width: 16px;
+        height: 16px;
+        x: 2px;
+        y: root.height - 18px;
+        opacity: root.state == "seen" ? 1.0 : 0.0;
+        transform-scale: root.state == "seen" ? 1.0 : 0.6;
+        animate opacity { duration: Motion.normal; easing: ease-out; }
+        animate transform-scale { duration: Motion.normal; easing: ease-out; }
+    }
+
+    hover := TouchArea {
+        enabled: root.label != "";
+    }
+    // The name of the state, to the left of the mark.
+    if hover.has-hover && root.label != "": tip := Rectangle {
+        width: tip-text.preferred-width + 16px;
+        height: 22px;
+        x: -self.width - 2px;
+        y: root.height - 21px;
+        border-radius: 4px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        tip-text := Text {
+            x: 8px;
+            text: root.label;
+            color: Theme.fg;
+            font-size: 11px * Theme.font-scale;
+            vertical-alignment: center;
+            height: parent.height;
+        }
+    }
+}

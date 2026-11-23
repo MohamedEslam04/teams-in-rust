@@ -91,7 +91,7 @@ pub(in super::super) fn sort_pins(pins: &mut [teams_proto::actions::PinnedMessag
     pins.sort_by(|a, b| b.pinned_at.cmp(&a.pinned_at));
 }
 
-/// My newest message and its read receipt, as `receipt` works it out.
+/// A message of mine and its read receipt, as `receipt` and `delivery_states` work it out.
 pub(in super::super) struct ReceiptMark {
     pub msg_id: String,
     /// `"sent"` or `"seen"`.
@@ -100,6 +100,18 @@ pub(in super::super) struct ReceiptMark {
     pub names: String,
     /// Every reader's name.
     pub readers: Vec<String>,
+}
+
+impl ReceiptMark {
+    /// A mark of just the state, with no names (a 1:1 chat has one possible reader).
+    pub fn plain(msg_id: &str, state: &str) -> Self {
+        Self {
+            msg_id: msg_id.into(),
+            state: state.into(),
+            names: String::new(),
+            readers: Vec::new(),
+        }
+    }
 }
 
 /// The receipt state of my newest message: `("sent", "", [])` until someone has read it, then
@@ -126,6 +138,27 @@ pub(in super::super) fn receipt(
         n => format!("{} +{n}", all[..3].join(", ")),
     };
     ("seen".into(), line, all)
+}
+
+/// The delivery state of each of my messages in a 1:1 chat, like Teams: the newest one the other
+/// person has read is `"seen"`, the ones before it show nothing (`""`), the ones after it are
+/// `"sent"`. When they have read none of them, all are `"sent"`. `mine` is `(id, ms)` of my
+/// messages that are on the server, oldest first; the answer has one entry per message.
+pub(in super::super) fn delivery_states(
+    horizons: &[Horizon],
+    me: &str,
+    mine: &[(&str, i64)],
+) -> Vec<&'static str> {
+    let newest_read = mine
+        .iter()
+        .rposition(|(id, ms)| !seen_by(horizons, me, id, *ms).is_empty());
+    (0..mine.len())
+        .map(|i| match newest_read {
+            Some(k) if i < k => "",
+            Some(k) if i == k => "seen",
+            _ => "sent",
+        })
+        .collect()
 }
 
 pub(super) fn is_chat(kind: ConvKind) -> bool {

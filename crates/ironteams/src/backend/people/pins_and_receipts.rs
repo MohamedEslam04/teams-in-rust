@@ -447,7 +447,7 @@ impl Engine {
         }
     }
 
-    pub(super) async fn refresh_horizons(self: &Arc<Self>, conv: &str) {
+    pub(in super::super) async fn refresh_horizons(self: &Arc<Self>, conv: &str) {
         if !self.receipts_apply(conv)
             || !self.receipts_enabled()
             || self.offline.load(std::sync::atomic::Ordering::Relaxed)
@@ -468,23 +468,23 @@ impl Engine {
         }
     }
 
-    /// The receipt of my newest message in `conv`, or `None` when receipts are off, do not apply
-    /// to this chat, or the newest message is still being sent.
-    pub(in super::super) fn receipt_mark(
+    /// The receipts of my messages in `conv`: in a group the newest message only (with who has
+    /// seen it), in a 1:1 chat the newest one they have read and the ones after it (see
+    /// `delivery_states`). Empty when receipts are off or do not apply to this chat. A message
+    /// that is still being sent has none.
+    pub(in super::super) fn receipt_marks(
         &self,
         conv: &str,
         rows: &[&MessageRow],
-    ) -> Option<ReceiptMark> {
+    ) -> Vec<ReceiptMark> {
         if !self.receipts_enabled() || !self.receipts_apply(conv) {
-            return None;
+            return Vec::new();
         }
-        let mine = rows
+        let mine: Vec<&MessageRow> = rows
             .iter()
-            .rev()
-            .find(|r| r.sender_mri == self.me && super::super::util::system_text(r).is_none())?;
-        if mine.id.starts_with(PENDING_PREFIX) {
-            return None;
-        }
+            .copied()
+            .filter(|r| r.sender_mri == self.me && super::super::util::system_text(r).is_none())
+            .collect();
         let horizons = self
             .people
             .lock()
@@ -493,17 +493,37 @@ impl Engine {
             .get(conv)
             .cloned()
             .unwrap_or_default();
-        let one = self.conv_kind(conv) == Some(ConvKind::OneOnOne);
-        let (state, names, readers) =
-            receipt(&horizons, &self.me, &mine.id, mine.compose_ms, one, |m| {
-                self.name_of(m)
-            });
-        Some(ReceiptMark {
-            msg_id: mine.id.clone(),
+        if self.conv_kind(conv) == Some(ConvKind::OneOnOne) {
+            let sent: Vec<&MessageRow> = mine
+                .into_iter()
+                .filter(|r| !r.id.starts_with(PENDING_PREFIX))
+                .collect();
+            let ids: Vec<(&str, i64)> =
+                sent.iter().map(|r| (r.id.as_str(), r.compose_ms)).collect();
+            return sent
+                .iter()
+                .zip(delivery_states(&horizons, &self.me, &ids))
+                .filter(|(_, state)| !state.is_empty())
+                .map(|(r, state)| ReceiptMark::plain(&r.id, state))
+                .collect();
+        }
+        let Some(newest) = mine.last().filter(|r| !r.id.starts_with(PENDING_PREFIX)) else {
+            return Vec::new();
+        };
+        let (state, names, readers) = receipt(
+            &horizons,
+            &self.me,
+            &newest.id,
+            newest.compose_ms,
+            false,
+            |m| self.name_of(m),
+        );
+        vec![ReceiptMark {
+            msg_id: newest.id.clone(),
             state,
             names,
             readers,
-        })
+        }]
     }
 
     // ---- chat list marker ----------------------------------------------------
