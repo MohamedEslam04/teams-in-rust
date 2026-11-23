@@ -24,6 +24,8 @@ pub type Handler = Box<dyn Fn(Action) + Send + Sync>;
 pub const START_TIMEOUT: Duration = Duration::from_secs(5);
 /// Host starts per run of the app.
 pub const MAX_STARTS: u32 = 3;
+/// How many cards taken away before they were shown are remembered.
+const WITHDRAWN_KEPT: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -41,6 +43,9 @@ struct Inner {
     stdin: Option<ChildStdin>,
     child: Option<Child>,
     handlers: HashMap<u32, Arc<Handler>>,
+    /// Cards taken away before the host had them (a call stopped ringing while the host was
+    /// still starting): `show` skips them. The oldest go first.
+    withdrawn: Vec<u32>,
 }
 
 struct Client {
@@ -57,6 +62,7 @@ fn client() -> &'static Client {
             stdin: None,
             child: None,
             handlers: HashMap::new(),
+            withdrawn: Vec::new(),
         }),
         changed: Condvar::new(),
     })
@@ -194,10 +200,14 @@ pub fn show(card: Card, on_action: Handler) -> bool {
             .unwrap_or_else(|e| e.into_inner())
             .0;
     }
+    let id = card.id;
+    if let Some(at) = g.withdrawn.iter().position(|w| *w == id) {
+        g.withdrawn.remove(at);
+        return true;
+    }
     if g.phase != Phase::Ready {
         return false;
     }
-    let id = card.id;
     g.handlers.insert(id, Arc::new(on_action));
     if let Err(err) = write(&mut g, &ToHost::Show(card)) {
         tracing::warn!(%err, "desktop cards: the card host went away");
@@ -212,7 +222,15 @@ pub fn show(card: Card, on_action: Handler) -> bool {
 pub fn dismiss(id: u32) {
     let c = client();
     let mut g = lock(c);
-    if g.phase == Phase::Ready && g.handlers.remove(&id).is_some() {
-        let _ = write(&mut g, &ToHost::Dismiss { id });
+    if g.handlers.remove(&id).is_some() {
+        if g.phase == Phase::Ready {
+            let _ = write(&mut g, &ToHost::Dismiss { id });
+        }
+    } else {
+        // Not shown (yet): `show` must not put it up later.
+        if g.withdrawn.len() >= WITHDRAWN_KEPT {
+            g.withdrawn.remove(0);
+        }
+        g.withdrawn.push(id);
     }
 }

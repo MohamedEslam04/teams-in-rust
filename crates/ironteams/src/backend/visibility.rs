@@ -43,6 +43,14 @@ impl Engine {
         *self.visible.borrow()
     }
 
+    /// The window's focus or visibility changed (`focused` and `set_visible` are up to date): what
+    /// rings on it follows, so a ringing call is on the window's banner or the desktop's, never
+    /// both.
+    pub fn window_changed(self: &Arc<Self>) {
+        #[cfg(feature = "calls")]
+        self.sync_ring_banner();
+    }
+
     /// The main window was shown, hidden to the tray or minimized. Showing it draws what was
     /// held back and refreshes what was paused (the loops wake on the change themselves).
     pub fn set_visible(self: &Arc<Self>, visible: bool) {

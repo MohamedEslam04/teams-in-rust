@@ -3,7 +3,8 @@
 //! owns the calling trouter) adopts the call and shows the in-call window.
 //!
 //! Incoming: the manager hands us each `callInvitation`. The toast rings (a generated tone through
-//! cpal) and, when the window is not focused, a desktop notification goes out. Accept builds a
+//! cpal) and, when the window is not in front, the desktop's banner replaces the toast (one at a
+//! time, swapped as the window's focus changes: `sync_ring_banner`). Accept builds a
 //! media session and runs `calling::incoming::answer_invitation`: attach first when the
 //! invitation is forked (asking for the caller's offer when the ring has none, as seen live
 //! 2026-11-19), then ringing, then accept with our answer; or, when no offer comes at all, accept
@@ -293,8 +294,13 @@ struct IncomingCall {
     /// Our session (endpoint) id once Accept started: its callbacks go to `events`.
     session: Option<String>,
     events: Option<mpsc::UnboundedSender<CallEvent>>,
-    /// Its card on the desktop (`desktop_cards`), taken away when it stops ringing.
+    /// The desktop's banner rings it, not the toast in the window ([`Engine::sync_ring_banner`]).
+    global: bool,
+    /// Its card on the desktop (`desktop_cards`), taken away when it stops ringing or the window
+    /// takes the ring over.
     card: Option<u32>,
+    /// Its system notification: dropping this (or sending on it) takes the notification away.
+    system: Option<std::sync::mpsc::Sender<()>>,
 }
 
 struct OutgoingCall {
@@ -343,6 +349,36 @@ fn later(f: impl Future<Output = ()> + Send + 'static) {
     if let Ok(rt) = tokio::runtime::Handle::try_current() {
         rt.spawn(f);
     }
+}
+
+/// The desktop's notification for a call, shown on a blocking thread. On Linux, `stop` takes it
+/// away again: a message on it, or its sender dropped, closes the notification (it closes by
+/// itself after 30 s otherwise).
+fn system_call_notification(
+    summary: String,
+    body: String,
+    stop: Option<std::sync::mpsc::Receiver<()>>,
+) {
+    tokio::task::spawn_blocking(move || {
+        let shown = notify_rust::Notification::new()
+            .appname("IronTeams")
+            .summary(&summary)
+            .body(&body)
+            .icon("call-start")
+            .timeout(notify_rust::Timeout::Milliseconds(30_000))
+            .show();
+        #[cfg(target_os = "linux")]
+        if let (Ok(handle), Some(stop)) = (shown, stop)
+            && !matches!(
+                stop.recv_timeout(Duration::from_secs(30)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            )
+        {
+            handle.close();
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = (shown, stop);
+    });
 }
 
 /// What Accept does with a ring that carries no offer: `IRONTEAMS_CALL_NO_OFFER=fetch|new-offer|
@@ -543,7 +579,9 @@ impl Engine {
             inv,
             session: None,
             events: None,
+            global: false,
             card: None,
+            system: None,
         });
         // Over a call, a short beep rather than the full ringtone.
         c.ringtone = if waiting {
@@ -556,17 +594,9 @@ impl Engine {
         let mut view = self.call_view(&mri, &name);
         view.video = video;
         view.waiting = waiting;
+        // One banner rings it: the toast here, or the desktop's while the window is away.
         self.ui.call_incoming(view);
-        self.notify_ring(
-            id,
-            &mri,
-            &name,
-            if video {
-                "Incoming video call"
-            } else {
-                "Incoming call"
-            },
-        );
+        self.sync_ring_banner();
         let e = self.clone();
         later(async move {
             // The photo may arrive after the toast opened.
@@ -607,11 +637,12 @@ impl Engine {
         if state == before {
             return Some(state);
         }
-        // Answered, declined or over: its desktop card goes.
-        let card = if state != IncomingState::Ringing {
-            call.card.take()
+        // Answered, declined or over: its desktop card and notification go.
+        let (card, system) = if state != IncomingState::Ringing {
+            call.global = false;
+            (call.card.take(), call.system.take())
         } else {
-            None
+            (None, None)
         };
         if state != IncomingState::Ringing {
             c.ringtone = None;
@@ -623,8 +654,13 @@ impl Engine {
         if let Some(card) = card {
             crate::desktop_cards::client::dismiss(card);
         }
+        drop(system);
         match &state {
-            IncomingState::Accepting => self.refresh_incoming(id),
+            IncomingState::Accepting => {
+                // "Connecting…" shows in the window, whichever banner rang.
+                self.ui.call_incoming_shown(true);
+                self.refresh_incoming(id)
+            }
             IncomingState::Connected => {
                 self.ui.call_incoming(CallView::default());
                 // Only with the camera switched off (`IRONTEAMS_CAMERA=0`).
@@ -862,24 +898,81 @@ impl Engine {
         }
     }
 
-    /// The ringing call on the desktop: a call card with Accept and Decline when the cards are on
-    /// (`cards.rs`), else the system notification. Not while the window is the active one: its
-    /// own incoming-call toast rings there.
-    fn notify_ring(self: &Arc<Self>, id: u64, mri: &str, name: &str, what: &str) {
-        if crate::external::suppressed()
-            || self.focused.load(Ordering::Relaxed)
-            || crate::tray_wiring::notifications_muted()
-        {
+    /// Rings the incoming call on one banner only: the toast in the window while it is in sight
+    /// and focused, else the desktop's (a card with Accept and Decline, or the system
+    /// notification). Called when the call starts ringing and at every focus or visibility change
+    /// of the window while it rings: the banner that is not wanted is taken away and the other
+    /// put up. The ringtone and the call's state are not touched, so a swap loses nothing.
+    pub(super) fn sync_ring_banner(self: &Arc<Self>) {
+        let global_ok =
+            !crate::external::suppressed() && !crate::tray_wiring::notifications_muted();
+        let which = super::banner::ring_banner(
+            self.is_visible(),
+            self.focused.load(Ordering::Relaxed),
+            global_ok,
+        );
+        let want = which == super::banner::RingBanner::Global;
+        let mut c = self.direct();
+        let Some(i) = c
+            .incoming
+            .as_mut()
+            .filter(|i| i.state == IncomingState::Ringing)
+        else {
             return;
+        };
+        let (id, mri, name, video) = (i.id, i.mri.clone(), i.name.clone(), i.video);
+        let was = std::mem::replace(&mut i.global, want);
+        let gone = (was && !want).then(|| (i.card.take(), i.system.take()));
+        drop(c);
+        self.ui.call_incoming_shown(!want);
+        if let Some((card, system)) = gone {
+            if let Some(card) = card {
+                crate::desktop_cards::client::dismiss(card);
+            }
+            drop(system);
         }
+        if want && !was {
+            let what = if video {
+                "Incoming video call"
+            } else {
+                "Incoming call"
+            };
+            self.ring_on_desktop(id, &mri, &name, what);
+        }
+    }
+
+    /// The desktop's banner for the ringing call `id`: a call card when the cards are on
+    /// (`cards.rs`), else the system notification.
+    fn ring_on_desktop(self: &Arc<Self>, id: u64, mri: &str, name: &str, what: &str) {
         let e = self.clone();
         let (n, w) = (name.to_owned(), what.to_owned());
-        let Some(card) = self.call_card(mri, name, what, move || e.notify_call(&n, &w)) else {
-            return self.notify_call(name, what);
+        let Some(card) = self.call_card(mri, name, what, move || e.ring_system(id, &n, &w)) else {
+            return self.ring_system(id, name, what);
         };
-        if let Some(i) = self.direct().incoming.as_mut().filter(|i| i.id == id) {
-            i.card = Some(card);
+        // The window may have taken the ring back meanwhile: then this card is not wanted.
+        let wanted = match self.direct().incoming.as_mut() {
+            Some(i) if i.id == id && i.global => {
+                i.card = Some(card);
+                true
+            }
+            _ => false,
+        };
+        if !wanted {
+            crate::desktop_cards::client::dismiss(card);
         }
+    }
+
+    /// The system notification of the ringing call `id`, while it still rings on the desktop.
+    /// It is taken away again when the window takes the ring over or the call stops ringing.
+    fn ring_system(self: &Arc<Self>, id: u64, name: &str, what: &str) {
+        let (stop, listen) = std::sync::mpsc::channel();
+        match self.direct().incoming.as_mut() {
+            Some(i) if i.id == id && i.global && i.state == IncomingState::Ringing => {
+                i.system = Some(stop);
+            }
+            _ => return,
+        }
+        system_call_notification(name.to_owned(), what.to_owned(), Some(listen));
     }
 
     /// "Missed call" as a desktop card, or the system notification.
@@ -904,16 +997,7 @@ impl Engine {
         {
             return;
         }
-        let (summary, body) = (name.to_owned(), what.to_owned());
-        tokio::task::spawn_blocking(move || {
-            let _ = notify_rust::Notification::new()
-                .appname("IronTeams")
-                .summary(&summary)
-                .body(&body)
-                .icon("call-start")
-                .timeout(notify_rust::Timeout::Milliseconds(30_000))
-                .show();
-        });
+        system_call_notification(name.to_owned(), what.to_owned(), None);
     }
 
     // --- outgoing ------------------------------------------------------------------------------

@@ -76,6 +76,29 @@ pub fn route(decision: &Decision<'_>, source: Source, w: &Where) -> Route {
     }
 }
 
+/// The one banner that rings an incoming call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RingBanner {
+    /// The toast inside the IronTeams window.
+    InApp,
+    /// The card (or notification) on the desktop.
+    Global,
+}
+
+/// Which banner rings a call, whatever the window is doing: the toast in the window while the
+/// window is in sight and has the focus, else the desktop's banner, never both. `visible` and
+/// `focused` are the window's (`window_watch::WindowStatus`: a minimized or tray-hidden window
+/// is neither). `global_ok` is false when the desktop's banner cannot show (muted, demo mode,
+/// tests): the toast then stays, so the call is never left without one. Decided again at every
+/// focus or visibility change while the call rings.
+pub fn ring_banner(visible: bool, focused: bool, global_ok: bool) -> RingBanner {
+    if (visible && focused) || !global_ok {
+        RingBanner::InApp
+    } else {
+        RingBanner::Global
+    }
+}
+
 /// Where a reply to a message goes: the chat, or in a channel the thread of the message.
 pub fn reply_target(conversation: &str, channel: bool, thread_root: &str) -> String {
     if channel && !thread_root.is_empty() {
@@ -579,6 +602,51 @@ mod tests {
             route(&SHOW, Source::Call, &at(false, false, false)),
             Route::System
         );
+    }
+
+    #[test]
+    fn a_call_rings_on_one_banner_chosen_by_the_window() {
+        use crate::window_watch::{Mode, status};
+        let banner = |m: Mode, has_focus: bool, global_ok: bool| {
+            let s = status(m, has_focus);
+            ring_banner(s.visible, s.focused, global_ok)
+        };
+        // In sight and focused: the toast in the window only.
+        assert_eq!(banner(Mode::Visible, true, true), RingBanner::InApp);
+        // On screen behind another window: the desktop's banner only.
+        assert_eq!(banner(Mode::Visible, false, true), RingBanner::Global);
+        // Minimized, or closed to the tray (the window system may still say "focused").
+        assert_eq!(banner(Mode::Minimized, false, true), RingBanner::Global);
+        assert_eq!(banner(Mode::Minimized, true, true), RingBanner::Global);
+        assert_eq!(banner(Mode::Hidden, false, true), RingBanner::Global);
+        assert_eq!(banner(Mode::Hidden, true, true), RingBanner::Global);
+    }
+
+    #[test]
+    fn the_banner_follows_the_focus_while_the_call_rings() {
+        use crate::window_watch::{Mode, status};
+        let at = |m, f| {
+            let s = status(m, f);
+            ring_banner(s.visible, s.focused, true)
+        };
+        // Rings while away, the user switches in, and out again.
+        let steps = [
+            (Mode::Hidden, false, RingBanner::Global),
+            (Mode::Visible, true, RingBanner::InApp),
+            (Mode::Visible, false, RingBanner::Global),
+            (Mode::Minimized, false, RingBanner::Global),
+            (Mode::Visible, true, RingBanner::InApp),
+        ];
+        for (m, f, want) in steps {
+            assert_eq!(at(m, f), want, "{m:?} focused={f}");
+        }
+    }
+
+    #[test]
+    fn the_toast_stays_when_the_desktop_banner_cannot_show() {
+        for (visible, focused) in [(true, true), (true, false), (false, false)] {
+            assert_eq!(ring_banner(visible, focused, false), RingBanner::InApp);
+        }
     }
 
     #[test]

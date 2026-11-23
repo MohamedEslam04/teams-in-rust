@@ -34,7 +34,16 @@ impl UiHandle {
             s.set_incoming_status(v.status.into());
             s.set_incoming_waiting(v.waiting);
             s.set_incoming_open(v.open);
+            if !v.open {
+                s.set_incoming_shown(true);
+            }
         });
+    }
+
+    /// Shows or hides the open incoming-call toast: hidden while the call rings on the desktop's
+    /// banner instead (the window is out of focus).
+    pub fn call_incoming_shown(&self, shown: bool) {
+        self.run(move |w: AppWindow| w.global::<DirectCallStore>().set_incoming_shown(shown));
     }
 
     /// Opens, fills or closes (`open: false`) the outgoing ringing screen.
