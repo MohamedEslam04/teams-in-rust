@@ -558,7 +558,10 @@ export component ChannelPosts inherits Rectangle {
                     // is done now, in the layout that shows the new cards, and no frame shows
                     // them misplaced. The timer puts it back once more, measured (no anchor).
                     self.anchor-id = "";
-                    self.content-y = min(0px, self.visible-height - self.content-height);
+                    // From far below: the content height is still the old one until the next
+                    // layout, and from the old bottom the card would seem to be below the view
+                    // and be put at its bottom edge. From below it goes to the top edge.
+                    self.content-y = -1000000px;
                     self.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
                 }
             }

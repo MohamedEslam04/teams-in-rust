@@ -144,7 +144,10 @@ export component MessagePane inherits Rectangle {
                 // (the list only keeps its rows in place by itself when all the new ones are
                 // above the rows it built). The list may not have seen the new rows yet (a new
                 // model is only read in the next layout), so the timer puts it back once more.
-                self.content-y = min(0px, self.visible-height - self.content-height);
+                // From far below: the content height is still the old one until the next layout,
+                // and from the old bottom the row would seem to be below the view and be put at
+                // its bottom edge. From below it goes to the top edge.
+                self.content-y = -1000000px;
                 self.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
             }
         }
