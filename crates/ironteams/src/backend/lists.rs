@@ -591,11 +591,13 @@ impl Engine {
     pub(super) fn lists_apply_teams(&self, teams: &[TeamEntry]) {
         let mut st = self.lists.lock().unwrap();
         st.channels.clear();
+        let mut names = Vec::new();
         for t in teams.iter().filter(|t| !t.is_archived && !t.is_deleted) {
             for c in t.channels.iter().filter(|c| !c.is_deleted) {
                 if c.is_muted {
                     st.muted.insert(c.id.clone());
                 }
+                names.push((c.id.clone(), c.name.clone()));
                 st.channels.insert(
                     c.id.clone(),
                     ChannelInfo {
@@ -609,6 +611,12 @@ impl Engine {
                     },
                 );
             }
+        }
+        drop(st);
+        // The stored titles come from the sync, which may have had no name for a channel (a
+        // private one) and stored a stand-in: the names of this list correct them.
+        if let Err(err) = self.store.lock().unwrap().set_channel_titles(&names) {
+            tracing::warn!(%err, "correcting the channel titles failed");
         }
     }
 

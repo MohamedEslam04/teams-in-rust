@@ -109,20 +109,21 @@ impl Engine {
                     .cloned()
                     .map(|(a, b, cn)| (Some(a), Some(b), Some(cn)))
                     .unwrap_or((None, None, None));
-                // A blank topic is no topic: Teams sends "" for a group chat nobody named.
-                let named = |t: Option<String>| t.filter(|t| !t.trim().is_empty());
+                // The team list of the chat service (`listed`) names a channel best; then the
+                // aggregator snapshot, the chat's own title and the thread's topic.
+                let listed = self.channel_info(&c.id).map(|i| i.name);
+                let chat_title = meta.get(c.id.as_str()).and_then(|m| m.title.clone());
                 let title = match kind {
                     ConvKind::Notes => format!("{} (You)", self.my_name),
-                    _ => row_title(
+                    _ => stored_title(
                         kind,
-                        &named(channel_name)
-                            .or_else(|| {
-                                named(meta.get(c.id.as_str()).and_then(|m| m.title.clone()))
-                            })
-                            .or_else(|| named(c.topic.clone()))
-                            .unwrap_or_default(),
+                        &[
+                            listed.as_deref(),
+                            channel_name.as_deref(),
+                            chat_title.as_deref(),
+                            c.topic.as_deref(),
+                        ],
                         &others,
-                        "",
                     ),
                 };
                 let last = c

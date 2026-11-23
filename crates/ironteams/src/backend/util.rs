@@ -328,6 +328,28 @@ pub(super) fn row_title(kind: ConvKind, title: &str, names: &[String], channel: 
     }
 }
 
+/// The title a sync stores for a conversation. `candidates` are the possible names, best first
+/// (blank ones are skipped). A channel nobody named yet gets a blank title, not a stand-in:
+/// the store keeps the name it already knows for a blank one, and the real name arrives with the
+/// team list. Teams sends no name for the General channel, which is why the stand-in "General"
+/// must not be stored for any other channel. Other kinds fall back as [`row_title`] does.
+pub(super) fn stored_title(
+    kind: ConvKind,
+    candidates: &[Option<&str>],
+    names: &[String],
+) -> String {
+    let named = candidates
+        .iter()
+        .flatten()
+        .find(|t| !t.trim().is_empty())
+        .copied()
+        .unwrap_or_default();
+    match kind {
+        ConvKind::Channel => named.to_string(),
+        _ => row_title(kind, named, names, ""),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +407,33 @@ mod tests {
         assert_eq!(row_title(ConvKind::Channel, "", &[], "Roadmap"), "Roadmap");
         assert_eq!(row_title(ConvKind::Channel, " ", &[], ""), "General");
         assert_eq!(row_title(ConvKind::Channel, "Ops", &[], "Roadmap"), "Ops");
+    }
+
+    #[test]
+    fn a_private_channel_takes_its_name_from_the_next_source_never_general() {
+        let none: Option<&str> = None;
+        // The team list has no name for it, the thread's topic does.
+        assert_eq!(
+            stored_title(
+                ConvKind::Channel,
+                &[none, Some(" "), Some("frontend"), Some("other")],
+                &[]
+            ),
+            "frontend"
+        );
+        // Nothing names it: blank, so the store keeps what it knows (never the "General" stand-in).
+        assert_eq!(stored_title(ConvKind::Channel, &[none, Some("")], &[]), "");
+        // The best source wins.
+        assert_eq!(
+            stored_title(ConvKind::Channel, &[Some("Ops"), Some("frontend")], &[]),
+            "Ops"
+        );
+        // Other kinds keep their fallbacks.
+        let names = vec!["Ann".to_string(), "Bo".to_string()];
+        assert_eq!(
+            stored_title(ConvKind::Group, &[none, Some("")], &names),
+            "Ann, Bo"
+        );
     }
 
     use serde_json::{Value, json};
