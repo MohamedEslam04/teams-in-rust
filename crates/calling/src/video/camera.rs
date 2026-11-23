@@ -92,12 +92,25 @@ pub struct CameraSettings {
 
 impl Default for CameraSettings {
     /// 640x360 at 15 frames a second: small enough for OpenH264 in real time on one core and for
-    /// any `max-fs` a media server answers (UNVERIFIED: no capture shows the main-video line's
-    /// limits being enforced).
+    /// any `max-fs` a media server answers. Video clips use it; a call uses [`Self::call`].
     fn default() -> Self {
         CameraSettings {
             size: (640, 360),
             fps: 15,
+        }
+    }
+}
+
+impl CameraSettings {
+    /// What a call sends: 1280x720 at 30 frames a second, as the web client does and as a webcam
+    /// delivers natively (its MJPEG mode; scaling that down to 640x360 threw away three quarters
+    /// of the picture). The media server's answer allows it (`max-fs=3600;max-mbps=108000;
+    /// max-br=2000;max-fps=3000`, `docs/protocol-calls.md`). The encoder steps down on a machine
+    /// that cannot keep up ([`super::h264::Governor`]).
+    pub fn call() -> Self {
+        CameraSettings {
+            size: (1280, 720),
+            fps: 30,
         }
     }
 }
@@ -593,6 +606,19 @@ Device found:
         assert_eq!(cams[1].name, "USB Camera");
         assert_eq!(cams[1].source, ["avfvideosrc", "device-index=1"]);
         assert!(parse_device_monitor("Probing devices...\n").is_empty());
+    }
+
+    #[test]
+    fn a_call_captures_the_camera_at_720p30_and_a_clip_at_the_small_size() {
+        let s = CameraSettings::call();
+        assert_eq!((s.size, s.fps), ((1280, 720), 30));
+        let args = gstreamer_args(&CameraSource::V4l2("/dev/video0".into()), s.size, s.fps);
+        assert!(
+            args.iter()
+                .any(|a| a.contains("width=1280,height=720,framerate=30/1"))
+        );
+        let clip = CameraSettings::default();
+        assert_eq!((clip.size, clip.fps), ((640, 360), 15));
     }
 
     #[test]

@@ -178,6 +178,31 @@ pub fn i420_to_rgb(frame: &I420Frame, step: usize, mirror: bool) -> RgbFrame {
     }
 }
 
+/// `frame` at half the width and height (rounded down to even), every 2x2 block averaged: what a
+/// scaler does well, so a picture can be sent smaller without jagged edges.
+pub fn halve(frame: &I420Frame) -> I420Frame {
+    let (w, h) = ((frame.width / 2) & !1, (frame.height / 2) & !1);
+    let (y, u, v) = frame.planes();
+    let mut data = Vec::with_capacity(I420Frame::len_for(w, h));
+    for (plane, src_w, out_w, out_h) in [
+        (y, frame.width, w, h),
+        (u, frame.width / 2, w / 2, h / 2),
+        (v, frame.width / 2, w / 2, h / 2),
+    ] {
+        for row in 0..out_h {
+            for col in 0..out_w {
+                let at = |dy: usize, dx: usize| u32::from(plane[(2 * row + dy) * src_w + 2 * col + dx]);
+                data.push(((at(0, 0) + at(0, 1) + at(1, 0) + at(1, 1) + 2) / 4) as u8);
+            }
+        }
+    }
+    I420Frame {
+        width: w,
+        height: h,
+        data,
+    }
+}
+
 /// The step [`i420_to_rgb`] needs for a picture of `width` to be at most `max_width` wide.
 pub fn step_for(width: usize, max_width: usize) -> usize {
     width.div_ceil(max_width.max(1)).max(1)
