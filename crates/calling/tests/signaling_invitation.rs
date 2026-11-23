@@ -160,6 +160,21 @@ fn media_answer_end_progress_and_roster() {
     )
     .unwrap();
     assert!(matches!(ev, CallEvent::Rejected(r) if r.code == 480 && r.phrase == "Unavailable"));
+    // A refused re-offer names why in mediaNegotiationFailure (rusty-teams `signaling.rs`, glare
+    // is 491); live 2026-11-23 a refused resume logged code 0 with no phrase.
+    let (_, ev) = parse_call_event(
+        &cb("call/rejection/"),
+        &json!({"mediaNegotiationFailure": {"code": 491, "subCode": 3118, "phrase": "Glare"}}),
+    )
+    .unwrap();
+    assert_eq!(
+        ev,
+        CallEvent::Rejected(EndReason {
+            code: 491,
+            sub_code: 3118,
+            phrase: "Glare".into(),
+        })
+    );
 
     let (_, ev) = parse_call_event(
         &cb("call/progress/"),

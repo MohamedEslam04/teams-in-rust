@@ -137,7 +137,8 @@ impl Call {
                             self.links.0.extend(links.0);
                         }
                         CallEvent::MediaRenegotiation { offer, links } => {
-                            let swapped = self.renegotiate(&offer, &links, &sender_tx, &sink).await;
+                            let held = audio.held.load(Ordering::Relaxed);
+                            let swapped = self.renegotiate(&offer, &links, &sender_tx, held, &sink).await;
                             if let Some(ev) = swapped {
                                 // The share was sent on the old session's line.
                                 if self.share.stop().await {
@@ -163,10 +164,15 @@ impl Call {
                         // Our re-offer refused (a browser that can't answer it: 488/3102
                         // `CallEndReasonMediaAnswerError`), not the call: it goes on, and the
                         // other side's recovery offer comes as `call/mediaRenegotiation`.
-                        CallEvent::Rejected(r) if self.reoffer.is_some() => {
+                        CallEvent::Rejected(r) if self.reoffer.is_some() || self.superseded.is_some() => {
                             tracing::warn!(code = r.code, sub = r.sub_code, phrase = %r.phrase, "re-offer refused");
-                            if let Some(reoffer) = self.reoffer.take() {
-                                self.refused(reoffer, &audio, &sink).await;
+                            match refused_reoffer(&mut self.superseded, &mut self.reoffer) {
+                                Some(Refused::Pending(reoffer)) => self.refused(reoffer, &audio, &sink).await,
+                                Some(Refused::Superseded(reoffer)) => tracing::info!(
+                                    ?reoffer,
+                                    "the refused re-offer was for the session the media restart replaced: nothing undone"
+                                ),
+                                None => {}
                             }
                         }
                         CallEvent::Rejected(r) | CallEvent::Ended(r) => {

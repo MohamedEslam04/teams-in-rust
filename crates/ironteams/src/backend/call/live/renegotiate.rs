@@ -115,6 +115,7 @@ impl Call {
         offer: &SdpBlob,
         links: &Links,
         sender: &watch::Sender<AudioSender>,
+        held: bool,
         sink: &EventSink,
     ) -> Option<MediaEvents> {
         let sdp = match offer.decode() {
@@ -144,6 +145,7 @@ impl Call {
                             let _ = old.close().await;
                             sender.send_replace(self.media.audio_sender());
                             self.link = Link::New;
+                            supersede(&mut self.reoffer, &mut self.superseded);
                             fresh_events = Some(ev);
                             Ok(ans)
                         }
@@ -162,12 +164,7 @@ impl Call {
             if self.meeting {
                 return ans;
             }
-            let ans = calling::media::sdp::direct_answer(
-                &ans,
-                &sdp,
-                self.camera.on(),
-                self.share.sharing(),
-            );
+            let ans = direct_reanswer(&ans, &sdp, self.camera.on(), self.share.sharing(), held);
             tracing::info!(
                 theirs = %calling::media::sdp::directions(&sdp),
                 ours = %calling::media::sdp::directions(&ans),
