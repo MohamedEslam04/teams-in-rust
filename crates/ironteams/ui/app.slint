@@ -922,11 +922,20 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                if root.view == "calendar": CalendarView { width: parent.width; height: parent.height; window-width: root.width; }
-                if root.view == "onedrive": OneDriveView { width: parent.width; height: parent.height; window-width: root.width; }
+                // At least as large as their content needs, as the layout they were in gave them.
+                if root.view == "calendar": CalendarView {
+                    width: max(parent.width, self.min-width);
+                    height: max(parent.height, self.min-height);
+                    window-width: root.width;
+                }
+                if root.view == "onedrive": OneDriveView {
+                    width: max(parent.width, self.min-width);
+                    height: max(parent.height, self.min-height);
+                    window-width: root.width;
+                }
                 if root.view == "calls": CallsPage {
-                    width: parent.width;
-                    height: parent.height;
+                    width: max(parent.width, self.min-width);
+                    height: max(parent.height, self.min-height);
                     window-width: root.width;
                     open-chat(mri) => {
                         root.view = "chat";

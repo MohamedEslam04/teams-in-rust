@@ -296,6 +296,8 @@ fn chat_row_below(app: &AppWindow, y: f32) -> Option<(String, ElementHandle)> {
 #[test]
 fn the_chat_list_keeps_its_scroll_place_across_a_page_and_back() {
     let h = Harness::with_store(seeded_store(0, 80));
+    // Opening a chat renders the list.
+    h.select(NOTES);
     settle();
     let (title, row) = chat_row_below(&h.app, 400.).expect("a chat drawn low in the list");
     let y = |h: &Harness| {
