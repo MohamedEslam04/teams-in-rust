@@ -296,6 +296,7 @@ fn coming_back_to_the_newest_message_trims_a_list_paged_far_back() {
     h.select(NOTES);
     settle(&h.app);
     h.engine.widen_window(300);
+    h.engine.render_dirty();
     settle(&h.app);
     let paged = h.app.get_messages().row_count();
     assert!(paged > 240, "the window grew: {paged} rows");
