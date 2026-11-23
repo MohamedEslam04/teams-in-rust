@@ -695,6 +695,53 @@ pub fn directions(sdp: &str) -> String {
         .join(", ")
 }
 
+/// The transport of an SDP's audio section, for the live log of a renegotiation:
+/// `mid <mid> ufrag <ufrag> setup <role> candidates [<type> <transport>, ...]` (`-` when missing),
+/// then ` ice-lite` when the SDP says so.
+/// Enough to tell a restart (new mid or ufrag), who is the DTLS client (`setup`), and which
+/// paths ICE had to try; no password, no address.
+pub fn transport_summary(sdp: &str) -> String {
+    let parsed = Parsed::new(sdp);
+    let Some(audio) = parsed
+        .sections
+        .iter()
+        .find(|s| MediaLine::parse(&s[0]).is_some_and(|m| m.kind == "audio"))
+    else {
+        return "no audio".to_owned();
+    };
+    let value = |name: &str| {
+        audio
+            .iter()
+            .chain(&parsed.session)
+            .find_map(|l| attr(l, name))
+            .unwrap_or("-")
+            .to_owned()
+    };
+    let candidates: Vec<String> = audio
+        .iter()
+        .filter_map(|l| attr(l, "candidate"))
+        .map(|c| {
+            let f: Vec<&str> = c.split_whitespace().collect();
+            let kind = f.get(7).copied().unwrap_or("?");
+            let transport = f.get(2).copied().unwrap_or("?").to_ascii_lowercase();
+            format!("{kind} {transport}")
+        })
+        .collect();
+    // A lite agent on their side makes us the controlling one (RFC 8445 6.1.1; webrtc-rs reads it).
+    let lite = if parsed.session.iter().any(|l| l == "a=ice-lite") {
+        " ice-lite"
+    } else {
+        ""
+    };
+    format!(
+        "mid {} ufrag {} setup {} candidates [{}]{lite}",
+        value("mid"),
+        value("ice-ufrag"),
+        value("setup"),
+        candidates.join(", ")
+    )
+}
+
 /// Each section's `a=x-source-streamid` by mid: what a meeting's subscription names as the
 /// line's `streamMsid` (rusty-teams `sdp.rs` `stream_lines`). Sections without one are left out.
 pub fn source_stream_ids(sdp: &str) -> HashMap<String, u32> {

@@ -260,7 +260,13 @@ impl NgcClient {
             .map(str::to_owned);
         let text = resp.text().await.map_err(teams_proto::Error::from)?;
         self.observe(op, &method, &target, body, status, &text);
-        tracing::debug!(op, %method, status, "ngc request");
+        // The media negotiation's requests are what a live log of hold, resume or a media restart
+        // needs; the rest stay at debug.
+        if op.starts_with("media_") {
+            tracing::info!(op, %method, status, "ngc request");
+        } else {
+            tracing::debug!(op, %method, status, "ngc request");
+        }
         if !(200..300).contains(&status) {
             return Err(status_error(op, status, &text));
         }
@@ -578,16 +584,20 @@ impl NgcClient {
             .map(drop)
     }
 
-    /// Sends our answer to a media offer on its `mediaAnswer` link.
+    /// Sends our answer to a media offer on its `mediaAnswer` link; returns the call leg links its
+    /// response names (none for most answers).
     pub async fn send_media_answer(
         &self,
         s: &CallSession,
         url: &str,
         modalities: &[Modality],
         answer: &SdpBlob,
-    ) -> Result<()> {
+    ) -> Result<Links> {
         let body = bodies::media_answer_body(s, modalities, answer);
-        self.post("media_answer", s, url, &body).await.map(drop)
+        let r = self.post("media_answer", s, url, &body).await?;
+        // After a media server's restart its answer may name the new leg's links (rusty-teams
+        // absorbs them as the leg's); later re-offers go there.
+        Ok(crate::invitation::nested_links(&r.body))
     }
 
     /// Leaves the call: the conversation's `leave` link when there is one, else ends the leg

@@ -157,14 +157,35 @@ impl Call {
     /// peer connection, every line `inactive` to hold (see [`calling::signaling::call_ops`]).
     /// A refused re-offer puts the hold back as it was.
     pub(super) async fn hold(&mut self, on: bool, audio: &mut Audio, sink: &EventSink) {
+        // A re-offer now would go on the session about to be replaced (rusty-teams also waits).
+        if self.next.is_some() {
+            tracing::info!(
+                hold = on,
+                "hold not sent: the media is moving to a new session"
+            );
+            sink.send(Event::Held(!on));
+            sink.send(Event::Error(
+                "The call is reconnecting its media. Try again in a moment.".into(),
+            ));
+            return;
+        }
         audio.held.store(on, Ordering::Relaxed);
         let sent = async {
             let ours = self.media.create_offer().await?;
             let signaled = if on { hold_offer(&ours) } else { ours.clone() };
+            let offered = calling::media::sdp::directions(&signaled);
+            let transport = calling::media::sdp::transport_summary(&signaled);
             let inline = self
                 .ngc
                 .renegotiate(&self.s, &self.links, &MODALITIES, &SdpBlob::ngc(signaled))
                 .await?;
+            tracing::info!(
+                hold = on,
+                inline = inline.is_some(),
+                %offered,
+                %transport,
+                "1:1 hold re-offer sent"
+            );
             anyhow::Ok((ours, inline))
         }
         .await;
@@ -219,11 +240,17 @@ impl Call {
         sink: &EventSink,
     ) {
         let applied = match answer.decode() {
-            Ok(sdp) => self
-                .media
-                .set_answer(&keep_media_running(&sdp, ours))
-                .await
-                .map_err(anyhow::Error::from),
+            Ok(sdp) => {
+                tracing::info!(
+                    theirs = %calling::media::sdp::directions(&sdp),
+                    transport = %calling::media::sdp::transport_summary(&sdp),
+                    "1:1 hold answer"
+                );
+                self.media
+                    .set_answer(&keep_media_running(&sdp, ours))
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
             Err(e) => Err(anyhow::Error::from(e)),
         };
         if let Err(e) = applied {

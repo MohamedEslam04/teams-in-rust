@@ -46,6 +46,90 @@ fn a_refused_re_offer_puts_its_control_back() {
     assert!(Reoffer::Share(false).refused().is_empty());
 }
 
+/// Live 2026-11-23 (1:1 call, Teams web): Resume went out on the browser session, the service
+/// answered it with a media restart (a media server's offer, new mids and ICE ufrags), and a few
+/// seconds later refused the resume. That refusal was for the replaced session: it must not put
+/// the call back on hold on the new one.
+#[test]
+fn a_media_restart_supersedes_the_pending_resume() {
+    let (mut pending, mut superseded) = (Some(Reoffer::Hold(false)), None);
+    supersede(&mut pending, &mut superseded);
+    assert_eq!(pending, None, "no re-offer is pending on the new session");
+    assert_eq!(
+        refused_reoffer(&mut superseded, &mut pending),
+        Some(Refused::Superseded(Reoffer::Hold(false)))
+    );
+    // Nothing of ours is out any more: a later rejection is the call's own.
+    assert_eq!(refused_reoffer(&mut superseded, &mut pending), None);
+}
+
+#[test]
+fn a_rejection_without_a_restart_refuses_the_pending_re_offer() {
+    let (mut pending, mut superseded) = (Some(Reoffer::Hold(true)), None);
+    assert_eq!(
+        refused_reoffer(&mut superseded, &mut pending),
+        Some(Refused::Pending(Reoffer::Hold(true)))
+    );
+    assert_eq!(pending, None);
+    // A restart with nothing pending leaves nothing behind.
+    supersede(&mut pending, &mut superseded);
+    assert_eq!(refused_reoffer(&mut superseded, &mut pending), None);
+}
+
+#[test]
+fn the_superseded_re_offer_is_refused_before_one_made_on_the_new_session() {
+    let (mut pending, mut superseded) = (Some(Reoffer::Hold(false)), None);
+    supersede(&mut pending, &mut superseded);
+    pending = Some(Reoffer::Camera(true));
+    assert_eq!(
+        refused_reoffer(&mut superseded, &mut pending),
+        Some(Refused::Superseded(Reoffer::Hold(false)))
+    );
+    assert_eq!(
+        refused_reoffer(&mut superseded, &mut pending),
+        Some(Refused::Pending(Reoffer::Camera(true)))
+    );
+}
+
+/// A media server's restart offer (structure only): audio, camera, sharing, the data line.
+const RESTART_OFFER: &str = "v=0\r\no=- 1 0 IN IP4 198.51.100.20\r\ns=session\r\nt=0 0\r\n\
+a=group:BUNDLE 1 2 3\r\n\
+m=audio 3478 RTP/AVP 111\r\na=mid:1\r\na=label:main-audio\r\na=sendrecv\r\n\
+m=video 3478 RTP/AVP 107\r\na=mid:2\r\na=label:main-video\r\na=sendrecv\r\n\
+m=video 3478 RTP/AVP 107\r\na=mid:3\r\na=label:applicationsharing-video\r\na=sendrecv\r\n\
+m=x-data 3478 RTP/AVP 127\r\na=mid:4\r\na=label:data\r\na=sendrecv\r\n";
+
+/// Our answer to it as webrtc-rs makes it: every line it has a track for sends.
+const RESTART_ANSWER: &str = "v=0\r\no=- 2 0 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n\
+a=group:BUNDLE 1 2 3\r\n\
+m=audio 50000 RTP/SAVP 111\r\na=mid:1\r\na=label:main-audio\r\na=sendrecv\r\n\
+m=video 50000 RTP/SAVP 107\r\na=mid:2\r\na=label:main-video\r\na=sendrecv\r\n\
+m=video 50000 RTP/SAVP 107\r\na=mid:3\r\na=label:applicationsharing-video\r\na=sendrecv\r\n\
+m=x-data 0 RTP/SAVP 34\r\nc=IN IP4 0.0.0.0\r\na=mid:4\r\na=label:data\r\n";
+
+#[test]
+fn a_restart_answered_while_held_keeps_the_call_held() {
+    let directions = |held| {
+        calling::media::sdp::directions(&direct_reanswer(
+            RESTART_ANSWER,
+            RESTART_OFFER,
+            false,
+            false,
+            held,
+        ))
+    };
+    assert_eq!(
+        directions(false),
+        "1 main-audio sendrecv -, 2 main-video recvonly -, \
+         3 applicationsharing-video recvonly -, 4 data declined"
+    );
+    assert_eq!(
+        directions(true),
+        "1 main-audio inactive -, 2 main-video inactive -, \
+         3 applicationsharing-video inactive -, 4 data declined"
+    );
+}
+
 /// The React menu's picks reach `send_reaction`: each one the window sends
 /// (`Control::React`) is a reaction the call knows, so none is skipped quietly.
 #[test]

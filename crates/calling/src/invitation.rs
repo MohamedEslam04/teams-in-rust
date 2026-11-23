@@ -28,6 +28,57 @@ fn links_of(v: &Value) -> Links {
     )
 }
 
+/// Names that mark a `links` object as a call leg's (rusty-teams `trouter_events.rs`).
+const LEG_LINK_NAMES: [&str; 12] = [
+    "mediaAnswer",
+    "rejection",
+    "mediaAcknowledgement",
+    "acknowledgement",
+    "updateMediaDescriptions",
+    "applyChannelParameters",
+    "controlVideoStreaming",
+    "callLeg",
+    "retargetCompletion",
+    "mediaRenegotiation",
+    "transfer",
+    "replacement",
+];
+
+/// Every call leg's `links` object anywhere in `body`, merged (outer first, so an inner object's
+/// link wins). A media server's restart offer, and the answer to our media answer, can put the
+/// new leg's links (`mediaRenegotiation`, `callLeg`, ...) beside the media holder rather than in
+/// it (rusty-teams `nested_links`: "keeping only the holder's `mediaAnswer` left us posting at the
+/// ended leg").
+pub fn nested_links(body: &Value) -> Links {
+    fn collect(v: &Value, depth: usize, out: &mut Links) {
+        if depth > 8 {
+            return;
+        }
+        match v {
+            Value::Object(map) => {
+                if let Some(links) = map.get("links") {
+                    let found = links_of(links);
+                    if found.0.keys().any(|k| LEG_LINK_NAMES.contains(&k.as_str())) {
+                        out.0.extend(found.0);
+                    }
+                }
+                for child in map.values() {
+                    collect(child, depth + 1, out);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    collect(item, depth + 1, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Links::default();
+    collect(body, 0, &mut out);
+    out
+}
+
 /// A modality as `callModalities` names it (any case).
 pub fn parse_modality(name: &str) -> Option<Modality> {
     match name.to_ascii_lowercase().as_str() {
@@ -171,6 +222,8 @@ fn end_reason(body: &Value) -> EndReason {
         "sessionRejection",
         "conversationEnd",
         "callTransactionEnd",
+        // A refused re-offer (rusty-teams `signaling.rs`; 491 is glare).
+        "mediaNegotiationFailure",
     ]
     .iter()
     .find_map(|k| body.get(*k).filter(|v| v.is_object()))
@@ -259,9 +312,12 @@ pub fn parse_call_event(url: &str, body: &Value) -> Option<(CallbackPath, CallEv
         }
         ("call", "mediaRenegotiation") => {
             let holder = media_holder(body)?;
+            // The holder's own links (its `mediaAnswer`) win over a sibling leg's.
+            let mut links = nested_links(body);
+            links.0.extend(links_of(&holder["links"]).0);
             CallEvent::MediaRenegotiation {
                 offer: sdp_of(&holder["mediaContent"])?,
-                links: links_of(&holder["links"]),
+                links,
             }
         }
         ("call", "rejection") => CallEvent::Rejected(end_reason(body)),

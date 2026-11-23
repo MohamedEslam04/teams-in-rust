@@ -114,6 +114,71 @@ impl Reoffer {
     }
 }
 
+/// Which re-offer of ours a `call/rejection` refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refused {
+    /// One a media restart left behind: the session it was made on is gone, so nothing is put
+    /// back (the restart's answer already says what we send).
+    Superseded(Reoffer),
+    /// The one pending on the current session: put back as it was ([`Reoffer::refused`]).
+    Pending(Reoffer),
+}
+
+/// A media restart (the other side's offer answered on a new session) while our re-offer is
+/// pending: that re-offer belonged to the old session, and its answer or rejection may still come.
+pub(crate) fn supersede(pending: &mut Option<Reoffer>, superseded: &mut Option<Reoffer>) {
+    if let Some(r) = pending.take() {
+        *superseded = Some(r);
+    }
+}
+
+/// What a `call/rejection` refuses: the re-offer a media restart superseded first (it went out
+/// earlier), else the pending one. `None`: no re-offer of ours is out, the rejection is the call's.
+pub(crate) fn refused_reoffer(
+    superseded: &mut Option<Reoffer>,
+    pending: &mut Option<Reoffer>,
+) -> Option<Refused> {
+    superseded
+        .take()
+        .map(Refused::Superseded)
+        .or_else(|| pending.take().map(Refused::Pending))
+}
+
+/// Our answer to the other side's 1:1 offer as the wire carries it: what each video line sends
+/// ([`calling::media::sdp::direct_answer`]), and, while we hold the call, every line `inactive`.
+pub(crate) fn direct_reanswer(
+    answer: &str,
+    offer: &str,
+    camera_on: bool,
+    sharing: bool,
+    held: bool,
+) -> String {
+    let ans = calling::media::sdp::direct_answer(answer, offer, camera_on, sharing);
+    if held { hold_offer(&ans) } else { ans }
+}
+
+/// A media session answering the other side's restart offer while the current one keeps the
+/// call's audio: it takes over once connected (ICE and DTLS), and is dropped if it fails, as
+/// rusty-teams keeps its old peer until the new one is up.
+struct NextMedia {
+    media: MediaSession,
+    events: MediaEvents,
+    /// The latest offer it answered (its lines' stream ids, read when it takes over).
+    offer: String,
+    /// The new leg's links (the offer's and those our answer got back), the call's once it takes
+    /// over.
+    links: Links,
+    since: Instant,
+}
+
+/// The next state of the session waiting to take over; never resolves without one.
+async fn next_state(next: &mut Option<NextMedia>) -> Option<MediaState> {
+    match next {
+        Some(n) => n.events.state.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
 /// One joined call.
 struct Call {
     hub: Arc<Hub>,
@@ -145,6 +210,10 @@ struct Call {
     /// Our re-offer (hold, resume, camera, share) while its answer is due: a `call/rejection`
     /// then refuses only it, and the call goes on ([`Reoffer::refused`]).
     reoffer: Option<Reoffer>,
+    /// Our re-offer a media restart left behind ([`supersede`]): its rejection undoes nothing.
+    superseded: Option<Reoffer>,
+    /// The session answering a media restart, until it connects or fails ([`NextMedia`]).
+    next: Option<NextMedia>,
     /// Who we are transferring the call to, until `call/transferCompletion`.
     transferring: Option<String>,
     camera: Camera,

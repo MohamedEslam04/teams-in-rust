@@ -425,3 +425,22 @@ fn to_teams_answer_stubs_every_non_audio_section_of_a_full_offer() {
     assert_eq!(m[12], "m=x-data 0 RTP/SAVP 34");
     assert!(out.contains("a=mid:3\r\na=label:applicationsharing-video\r\n"));
 }
+
+/// The live log of a renegotiation names the audio transport: a restart shows as a new mid or
+/// ufrag, `setup` says who starts DTLS, and the candidates which paths ICE could try.
+#[test]
+fn the_transport_summary_names_mid_ufrag_setup_and_candidate_kinds() {
+    use calling::media::sdp::transport_summary;
+    assert_eq!(
+        transport_summary(FULL_REOFFER),
+        "mid 1 ufrag aUdI setup actpass candidates [relay udp, relay tcp-pass]"
+    );
+    assert_eq!(transport_summary("v=0\r\ns=-\r\n"), "no audio");
+    assert_eq!(
+        transport_summary(
+            "v=0\r\na=ice-lite\r\nm=audio 9 RTP/AVP 111\r\na=mid:0\r\na=ice-ufrag:u\r\n\
+             a=setup:active\r\n"
+        ),
+        "mid 0 ufrag u setup active candidates [] ice-lite"
+    );
+}

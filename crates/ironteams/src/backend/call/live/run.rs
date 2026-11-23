@@ -33,6 +33,8 @@ impl Call {
         self.video.show(events.video, &sink);
         let mut talk = Talk::default();
         let mut speakers_open = true;
+        // The current session's state channel; shut once it failed while a restarted one connects.
+        let mut state_open = true;
         if !opts.mic_on {
             self.control(Control::Mute(true), &mut audio, &sink).await;
         }
@@ -105,11 +107,70 @@ impl Call {
                     }
                     Err(_) => speakers_open = false,
                 },
-                st = state_rx.recv() => match st {
+                st = state_rx.recv(), if state_open => match st {
+                    // The session answering a media restart may still take over.
+                    Some(MediaState::Failed | MediaState::Closed) | None if self.next.is_some() => {
+                        tracing::info!(state = ?st, "media lost; waiting for the restarted session");
+                        state_open = false;
+                        self.link = Link::Disconnected;
+                    }
                     Some(MediaState::Failed | MediaState::Closed) | None => {
+                        tracing::info!(state = ?st, "media lost");
                         break Some("The connection was lost.".into());
                     }
-                    Some(st) => self.link = link_of(st),
+                    Some(st) => {
+                        tracing::info!(state = ?st, "media state");
+                        self.link = link_of(st);
+                    }
+                },
+                st = next_state(&mut self.next), if self.next.is_some() => match st {
+                    // Connected (ICE and DTLS): it takes over the call's media.
+                    Some(MediaState::Connected) => {
+                        if let Some(NextMedia { media, events: ev, offer, links, since }) = self.next.take() {
+                            let old = std::mem::replace(&mut self.media, media);
+                            sender_tx.send_replace(self.media.audio_sender());
+                            self.links.0.extend(links.0);
+                            tracing::info!(
+                                after_ms = since.elapsed().as_millis() as u64,
+                                "the restarted media session connected and took over"
+                            );
+                            // The share was sent on the old session's line.
+                            if self.share.stop().await {
+                                share::leave_session(&self.ngc, &self.s, &mut self.share).await;
+                                sink.send(Event::Error("Screen sharing stopped: the call's media restarted.".into()));
+                            }
+                            // So was the camera: it comes back on the new session's line.
+                            camera_wanted |= self.camera.stop(&sink).await;
+                            let _ = old.close().await;
+                            self.video.negotiated(&self.media, &offer).await;
+                            self.video.show(ev.video, &sink);
+                            state_rx = ev.state;
+                            state_open = true;
+                            speakers_rx = ev.speakers;
+                            speakers_open = true;
+                            data_rx = ev.data;
+                            depacketizer = Depacketizer::default();
+                            forwarders.push(forward(play_rx.clone(), audio.held.clone(), ev.audio));
+                            self.link = Link::Connected;
+                            roster_changed = true;
+                        }
+                    }
+                    // It never connected: the call stays on its current session, if that is
+                    // still up.
+                    Some(MediaState::Failed | MediaState::Closed) | None => {
+                        if let Some(n) = self.next.take() {
+                            tracing::warn!(
+                                state = ?st,
+                                after_ms = n.since.elapsed().as_millis() as u64,
+                                "the restarted media session failed; the call stays on its current one"
+                            );
+                            let _ = n.media.close().await;
+                        }
+                        if !state_open {
+                            break Some("The connection was lost.".into());
+                        }
+                    }
+                    Some(st) => tracing::info!(state = ?st, "restarted media session state"),
                 },
                 p = pushes.recv() => {
                     let Some(p) = p else { break Some(self.ended_text()) };
@@ -128,6 +189,14 @@ impl Call {
                             }
                             self.start_keep_alive(keep_alive_interval_s);
                         }
+                        // The answer to a re-offer their offer superseded: its session moved on.
+                        CallEvent::MediaAnswer { links, .. }
+                            if self.reoffer.is_none() && self.superseded.is_some() =>
+                        {
+                            let superseded = self.superseded.take();
+                            tracing::info!(?superseded, "answer to a superseded re-offer ignored");
+                            self.links.0.extend(links.0);
+                        }
                         CallEvent::MediaAnswer { answer, links } => {
                             self.reoffer = None;
                             match self.pending_offer.take() {
@@ -137,24 +206,10 @@ impl Call {
                             self.links.0.extend(links.0);
                         }
                         CallEvent::MediaRenegotiation { offer, links } => {
-                            let swapped = self.renegotiate(&offer, &links, &sender_tx, &sink).await;
-                            if let Some(ev) = swapped {
-                                // The share was sent on the old session's line.
-                                if self.share.stop().await {
-                                    share::leave_session(&self.ngc, &self.s, &mut self.share).await;
-                                    sink.send(Event::Error("Screen sharing stopped: the call's media restarted.".into()));
-                                }
-                                // So was the camera: it comes back on the new session's line.
-                                camera_wanted |= self.camera.stop(&sink).await;
-                                self.video.show(ev.video, &sink);
-                                state_rx = ev.state;
-                                speakers_rx = ev.speakers;
-                                speakers_open = true;
-                                data_rx = ev.data;
-                                depacketizer = Depacketizer::default();
-                                forwarders.push(forward(play_rx.clone(), audio.held.clone(), ev.audio));
-                            }
-                            self.links.0.extend(links.0);
+                            let held = audio.held.load(Ordering::Relaxed);
+                            // A restart's session takes over once connected (`next_state` above);
+                            // `renegotiate` keeps the links.
+                            self.renegotiate(&offer, &links, held, &sink).await;
                             // Admission re-offers the media; we are out of the lobby.
                             in_lobby = false;
                             // The lines may have changed: the subscriptions start over.
@@ -162,11 +217,18 @@ impl Call {
                         }
                         // Our re-offer refused (a browser that can't answer it: 488/3102
                         // `CallEndReasonMediaAnswerError`), not the call: it goes on, and the
-                        // other side's recovery offer comes as `call/mediaRenegotiation`.
-                        CallEvent::Rejected(r) if self.reoffer.is_some() => {
+                        // other side's recovery offer comes as `call/mediaRenegotiation`. One their
+                        // offer superseded (live 2026-11-23: a resume met a media restart, then was
+                        // refused) puts nothing back: the answer to theirs said what it asked for.
+                        CallEvent::Rejected(r) if self.reoffer.is_some() || self.superseded.is_some() => {
                             tracing::warn!(code = r.code, sub = r.sub_code, phrase = %r.phrase, "re-offer refused");
-                            if let Some(reoffer) = self.reoffer.take() {
-                                self.refused(reoffer, &audio, &sink).await;
+                            match refused_reoffer(&mut self.superseded, &mut self.reoffer) {
+                                Some(Refused::Pending(reoffer)) => self.refused(reoffer, &audio, &sink).await,
+                                Some(Refused::Superseded(reoffer)) => tracing::info!(
+                                    ?reoffer,
+                                    "the refused re-offer was for the session the media restart replaced: nothing undone"
+                                ),
+                                None => {}
                             }
                         }
                         CallEvent::Rejected(r) | CallEvent::Ended(r) => {
@@ -381,6 +443,9 @@ impl Call {
         self.video.stop(&sink);
         audio.stop();
         let _ = self.media.close().await;
+        if let Some(n) = self.next.take() {
+            let _ = n.media.close().await;
+        }
         for f in forwarders {
             f.abort();
         }
