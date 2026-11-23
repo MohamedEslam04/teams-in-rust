@@ -561,23 +561,26 @@ impl UiHandle {
                         ),
                     )
                 });
-                (c.id, c.name, thumb)
+                (c.id, c.name, thumb, c.loading)
             })
             .collect();
         let p = v.prefs;
+        let teams_note = v.teams_note;
         self.run(move |w| {
             let fx = w.global::<VideoFxStore>();
             fx.set_backgrounds(model(
                 tiles
                     .into_iter()
-                    .map(|(id, name, thumb)| crate::FxChoice {
+                    .map(|(id, name, thumb, loading)| crate::FxChoice {
                         id: id.into(),
                         name: name.into(),
+                        loading,
                         has_thumb: thumb.is_some(),
                         thumb: thumb.map(Image::from_rgb8).unwrap_or_default(),
                     })
                     .collect(),
             ));
+            fx.set_teams_note(teams_note.into());
             fx.set_background(p.background.into());
             fx.set_filter(p.filter.into());
             fx.set_brighten(p.brighten);

@@ -1,5 +1,6 @@
 // A background of the video effects: its picture, or its name for None and the blurs. The camera
-// menu draws it small, the Video effects panel at 88x54.
+// menu draws it small, the Video effects panel at 88x54. Hovering shows its name. A Teams picture
+// whose thumbnail is still on its way is a dim placeholder that cannot be picked yet.
 import { Theme } from "../tokens/theme.slint";
 import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
 
@@ -10,31 +11,57 @@ export component BackgroundTile inherits Rectangle {
     width: 88px;
     height: 54px;
     border-radius: 6px;
-    clip: true;
     background: Theme.surface;
     border-width: root.selected ? 2px : 1px;
-    border-color: root.selected ? Theme.accent : touch.has-hover ? Theme.fg-subtle : Theme.border;
+    border-color: root.selected ? Theme.accent : touch.has-hover && !root.choice.loading ? Theme.fg-subtle : Theme.border;
+    // The tile under the pointer draws over its neighbours, so its tooltip is not covered.
+    z: touch.has-hover ? 10 : 0;
     accessible-role: button;
     accessible-label: root.choice.name;
     accessible-checkable: true;
     accessible-checked: root.selected;
-    accessible-action-default => { root.picked(); }
-    if root.choice.has-thumb: Image {
-        width: root.width;
-        height: root.height;
-        source: root.choice.thumb;
-        image-fit: cover;
+    accessible-action-default => {
+        if !root.choice.loading { root.picked(); }
     }
-    if !root.choice.has-thumb: Text {
-        text: root.choice.name;
-        color: Theme.fg;
-        font-size: 12px * Theme.font-scale;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        wrap: word-wrap;
+    Rectangle {
+        border-radius: 5px;
+        clip: true;
+        if root.choice.has-thumb: Image {
+            width: root.width;
+            height: root.height;
+            source: root.choice.thumb;
+            image-fit: cover;
+        }
+        if !root.choice.has-thumb: Text {
+            text: root.choice.name;
+            color: root.choice.loading ? Theme.fg-subtle : Theme.fg;
+            font-size: 12px * Theme.font-scale;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
     }
     touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.picked(); }
+        mouse-cursor: root.choice.loading ? MouseCursor.default : MouseCursor.pointer;
+        clicked => {
+            if !root.choice.loading { root.picked(); }
+        }
+    }
+    if touch.has-hover: Rectangle {
+        y: root.height + 4px;
+        x: min(0px, root.width - self.width);
+        width: tip.preferred-width + 16px;
+        height: tip.preferred-height + 10px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.surface;
+        tip := Text {
+            x: 8px;
+            y: 5px;
+            text: root.choice.name;
+            color: Theme.fg;
+            font-size: 12px * Theme.font-scale;
+        }
     }
 }

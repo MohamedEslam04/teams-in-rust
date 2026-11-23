@@ -46,8 +46,8 @@ component AddTile inherits Rectangle {
     }
 }
 
-// The tiles in rows of three: None, Standard blur, "Add new", then the pictures. (The blur's
-// strength is chosen under the grid.)
+// The tiles in rows of three: None, Standard blur, "Add new", then Teams' pictures (as they
+// download), the bundled ones and your own. (The blur's strength is chosen under the grid.)
 component BackgroundGrid inherits Rectangle {
     property <int> cols: 3;
     property <int> count: VideoFxStore.backgrounds.length + 1;
@@ -268,6 +268,12 @@ export component VideoEffectsPanel inherits Rectangle {
                     }
                 }
                 BackgroundGrid { }
+                if VideoFxStore.teams-note != "": Text {
+                    text: VideoFxStore.teams-note;
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
                 if VideoFxStore.background.starts-with("custom:"): HorizontalLayout {
                     alignment: start;
                     Rectangle {
