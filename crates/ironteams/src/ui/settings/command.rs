@@ -124,6 +124,14 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
+        // Graphics: saved now, used by the next start (the renderer cannot change while running).
+        "renderer" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.renderer = appearance::Renderer::parse(arg).unwrap_or_default();
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         // --- Accessibility ---
         "high-contrast" | "reduced-motion" | "larger-text" | "a11y" => {
             let mut c = shared.borrow_mut();

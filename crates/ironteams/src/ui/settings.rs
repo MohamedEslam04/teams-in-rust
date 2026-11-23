@@ -8,7 +8,7 @@
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
 //! open, close, page, query, profile, theme, accent, density, font-step, font-scale, skin-tone,
-//! language, date-format, time-format, time-zone, startup, high-contrast, reduced-motion,
+//! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
 //! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,

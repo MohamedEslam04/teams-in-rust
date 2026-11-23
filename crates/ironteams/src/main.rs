@@ -27,6 +27,7 @@ mod mention;
 mod native_tray;
 mod offline_start;
 mod reactions;
+mod renderer;
 mod send_options;
 mod shortcuts;
 mod snippets;
@@ -492,13 +493,16 @@ fn main() -> anyhow::Result<()> {
             paths.data_dir
         });
 
-    // Software rendering keeps memory low (docs/adr/0001-ui-toolkit.md).
-    // IRONTEAMS_RENDERER=femtovg switches to the GPU renderer.
-    let renderer = compat::var("IRONTEAMS_RENDERER").unwrap_or_else(|_| "software".into());
-    slint::BackendSelector::new()
-        .backend_name("winit".into())
-        .renderer_name(renderer)
-        .select()?;
+    // Software rendering keeps memory low (docs/adr/0001-ui-toolkit.md). The GPU renderer
+    // (femtovg) is a Settings choice or IRONTEAMS_RENDERER=femtovg; when it cannot start, the
+    // software one runs (renderer.rs).
+    let wanted = renderer::wanted(support::quiet::load_prefs().renderer);
+    renderer::record(renderer::start(wanted, |name| {
+        slint::BackendSelector::new()
+            .backend_name("winit".into())
+            .renderer_name(name.into())
+            .select()
+    })?);
     // The desktop file is named after the app id (inside Flatpak too), so the window uses it.
     let _ = slint::set_xdg_app_id(std::env::var("FLATPAK_ID").unwrap_or_else(|_| APP_ID.into()));
     // The ScreenCast, RemoteDesktop and Camera dialogs name IronTeams, not the terminal it ran from.
