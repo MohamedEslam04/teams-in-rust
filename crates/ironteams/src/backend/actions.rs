@@ -361,7 +361,7 @@ impl Engine {
         people
     }
 
-    fn fetch_names(self: &Arc<Self>, mris: Vec<String>) {
+    pub(super) fn fetch_names(self: &Arc<Self>, mris: Vec<String>) {
         let todo: Vec<String> = {
             let mut asked = self.name_requests.lock().unwrap();
             mris.into_iter()

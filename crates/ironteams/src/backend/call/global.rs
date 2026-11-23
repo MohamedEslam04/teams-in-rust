@@ -181,6 +181,7 @@ impl Engine {
                 self.calls
                     .prejoin(title, JoinTarget::Chat(thread.clone()), thread);
             }
+            CallCmd::JoinOngoing(thread) => self.join_ongoing(&thread)?,
             CallCmd::Find(q) => return Ok(self.call_find(&q)),
             #[cfg(all(feature = "calls", not(test)))]
             CallCmd::Fx(video_fx::FxCmd::AddBackground) => {

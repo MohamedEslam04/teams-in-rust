@@ -185,6 +185,19 @@ impl CallManager {
         same_link || same_chat
     }
 
+    /// Who is in `chat_id`'s call while we are in it, as (MRI, name): the lobby and bots left
+    /// out. `None` when we are not in that conversation's call (the header's live-call strip).
+    pub fn roster_of(&self, chat_id: &str) -> Option<Vec<(String, String)>> {
+        let m = self.shared.model.lock().unwrap();
+        (m.phase.active() && !chat_id.is_empty() && m.chat_id == chat_id).then(|| {
+            m.roster
+                .iter()
+                .filter(|p| !p.lobby && !p.is_bot())
+                .map(|p| (p.mri.clone(), p.name.clone()))
+                .collect()
+        })
+    }
+
     /// Opens the pre-join screen for a meeting. A running call stays; the window shows why.
     pub fn prejoin(&self, title: String, target: JoinTarget, chat_id: String) {
         let devices = self.driver().devices();
@@ -245,7 +258,7 @@ impl CallManager {
                     drop(m);
                     return self.join_now();
                 }
-                CallCmd::JoinChat(_) => None,
+                CallCmd::JoinChat(_) | CallCmd::JoinOngoing(_) => None,
                 CallCmd::Cancel => {
                     m.cancel();
                     None

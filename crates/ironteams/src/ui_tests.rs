@@ -53,6 +53,7 @@ mod message_ui;
 mod motion;
 mod msg_extras;
 mod not_member;
+mod ongoing_call;
 pub(crate) mod overflow;
 mod overlay_order;
 mod palette;

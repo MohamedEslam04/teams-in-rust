@@ -57,6 +57,7 @@ pub(crate) mod meeting_cards;
 mod mentions;
 mod msg_memo;
 mod my_presence;
+mod ongoing_call;
 mod outbox;
 pub(crate) mod outsider;
 mod people;
@@ -375,6 +376,8 @@ pub struct Engine {
     voice: Mutex<voice_messages::State>,
     clips: Mutex<video_clips::State>,
     channels: Mutex<channels::State>,
+    /// The open conversation's live-call strip (`ongoing_call`).
+    ongoing: Mutex<ongoing_call::State>,
     media: Mutex<media::State>,
     apps: Mutex<appstore::Apps>,
     /// The active call or meeting and the calling signalling.
@@ -500,6 +503,7 @@ impl Engine {
             voice: Mutex::default(),
             clips: Mutex::default(),
             channels: Mutex::new(channels::State::default()),
+            ongoing: Mutex::default(),
             media: Mutex::new(media::State::default()),
             apps: Mutex::new(appstore::Apps::default()),
             #[cfg(feature = "calls")]
@@ -646,6 +650,7 @@ impl Engine {
         self.start_my_presence();
         self.start_people_presence();
         self.start_reminders();
+        self.start_ongoing_calls();
         let e = self.clone();
         tokio::spawn(async move { e.live_loop().await });
         self.start_calendar();
