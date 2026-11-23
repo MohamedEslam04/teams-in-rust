@@ -38,7 +38,7 @@ pub(super) async fn run_meeting(
             Err(e) => {
                 let text = format!("{e:#}");
                 if !fallback::join_refused_video(video, &text) {
-                    tracing::warn!("join failed: {text}");
+                    tracing::warn!("join failed: {}", teams_proto::logsafe::text(&text));
                     sink.send(Event::Error(format!("Couldn't join: {text}")));
                     sink.send(Event::Ended("Couldn't join the meeting.".into()));
                     return;

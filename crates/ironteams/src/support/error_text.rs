@@ -42,7 +42,7 @@ pub(crate) fn plain_banner(text: &str) -> String {
     if code.len() != 3 {
         return text.to_owned();
     }
-    tracing::warn!(raw = %text, "an error with a raw HTTP answer would have reached the banner");
+    tracing::warn!(raw = %teams_proto::logsafe::text(text), "an error with a raw HTTP answer would have reached the banner");
     // The context word(s) in front of the status line belong to it ("messages", "delve person").
     let start = text[..at].rfind(": ").map_or(0, |i| i + 2);
     let sentence = status_text(code.parse().unwrap_or(0));
