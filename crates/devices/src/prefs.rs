@@ -15,6 +15,8 @@ pub struct DevicePrefs {
     pub noise_suppression: bool,
     /// Removes the echo of what the speaker plays from the microphone in calls.
     pub echo_cancellation: bool,
+    /// The volume of the call speaker, 0 to 100 (the call window's slider).
+    pub speaker_volume: u8,
 }
 
 impl Default for DevicePrefs {
@@ -25,6 +27,7 @@ impl Default for DevicePrefs {
             camera: None,
             noise_suppression: true,
             echo_cancellation: true,
+            speaker_volume: 100,
         }
     }
 }
@@ -100,6 +103,7 @@ mod tests {
             camera: Some("usb-0000:00:14.0-4".into()),
             noise_suppression: false,
             echo_cancellation: true,
+            speaker_volume: 40,
         };
         let json = serde_json::to_string(&p).unwrap();
         assert_eq!(serde_json::from_str::<DevicePrefs>(&json).unwrap(), p);

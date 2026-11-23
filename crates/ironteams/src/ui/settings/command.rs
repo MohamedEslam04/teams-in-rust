@@ -269,6 +269,20 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
+        // The call speaker's slider: `-live` while it moves (the call's playback follows, nothing
+        // is written), the plain one when it is let go (kept in the devices file).
+        "speaker-volume" | "speaker-volume-live" => {
+            let percent = arg.parse::<u8>().unwrap_or(100).min(100);
+            #[cfg(feature = "calls")]
+            calling::audio::set_output_volume(percent);
+            if name == "speaker-volume" {
+                let mut c = shared.borrow_mut();
+                c.local.devices.speaker_volume = percent;
+                if let Err(e) = c.local.save_devices() {
+                    tracing::warn!(error = %e, "the speaker volume was not saved");
+                }
+            }
+        }
         "all-devices" => {
             g.set_all_devices(bit(arg));
             push_devices(w, &shared.borrow());

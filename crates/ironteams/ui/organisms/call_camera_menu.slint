@@ -1,0 +1,145 @@
+// The camera menu under the toolbar's Camera chevron, as Teams has it: how we look (our camera,
+// shown to us only), the camera to use, the background (none, blur and its strength, a few
+// pictures), "Adjust brightness" and a way into the whole Video effects panel. It scrolls when the
+// window is shorter than it.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { VideoFxStore } from "../stores/video_fx_store.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
+import { RadioRow } from "../atoms/radio_row.slint";
+import { LinkRow } from "../atoms/link_row.slint";
+import { BackgroundTile } from "../molecules/background_tile.slint";
+
+export component CameraMenu inherits Rectangle {
+    // The tallest it may be (the window under the top bar).
+    in property <length> avail-height: 600px;
+    // The blur's strengths are listed under its row.
+    property <bool> strengths;
+    // Pictures shown: the first eight after None and the blur, four to a row.
+    property <int> pictures: min(max(VideoFxStore.backgrounds.length - 2, 0), 8);
+    width: 300px;
+    height: min(col.preferred-height, root.avail-height);
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: Theme.scrim;
+    accessible-role: list;
+    accessible-label: "Camera settings";
+    ScrollView {
+        width: root.width;
+        height: root.height;
+        content-width: self.width;
+        col := VerticalLayout {
+            width: parent.width;
+            padding: 12px;
+            spacing: 4px;
+            Rectangle {
+                height: 150px;
+                border-radius: 6px;
+                clip: true;
+                background: Theme.rail;
+                if VideoFxStore.has-preview: Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: VideoFxStore.preview;
+                    image-fit: cover;
+                    accessible-role: image;
+                    accessible-label: "Camera menu preview";
+                }
+                if !VideoFxStore.has-preview && CallStore.has-self-view: Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: CallStore.self-view;
+                    image-fit: cover;
+                    accessible-role: image;
+                    accessible-label: "Camera menu preview";
+                }
+                if !VideoFxStore.has-preview && !CallStore.has-self-view: Text {
+                    width: parent.width - 24px;
+                    x: 12px;
+                    text: VideoFxStore.preview-status != "" ? VideoFxStore.preview-status : "Starting your camera…";
+                    color: Theme.fg-subtle;
+                    font-size: 12px * Theme.font-scale;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+            Heading { variant: HeadingVariant.caption; text: "Camera"; height: 28px; vertical-alignment: bottom; }
+            for cam[i] in VideoFxStore.cameras: RadioRow {
+                label: cam;
+                selected: i == VideoFxStore.camera;
+                picked => { CallStore.command("camera-device", "" + i); }
+            }
+            Heading { variant: HeadingVariant.caption; text: "Backgrounds"; height: 28px; vertical-alignment: bottom; }
+            RadioRow {
+                label: "None";
+                selected: VideoFxStore.background == "none";
+                picked => { CallStore.command("fx-background", "none"); }
+            }
+            Rectangle {
+                height: 32px;
+                RadioRow {
+                    width: parent.width;
+                    height: parent.height;
+                    label: "Standard blur";
+                    selected: VideoFxStore.background == "blur" || VideoFxStore.background == "strong-blur";
+                    picked => { CallStore.command("fx-background", "blur"); }
+                }
+                // The blur's strength.
+                IconButton {
+                    x: parent.width - self.width - 4px;
+                    y: (parent.height - self.height) / 2;
+                    icon: root.strengths ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg");
+                    tooltip: "Blur strength";
+                    size: 24px;
+                    clicked => { root.strengths = !root.strengths; }
+                }
+            }
+            if root.strengths: VerticalLayout {
+                padding-left: 26px;
+                RadioRow {
+                    label: "Standard";
+                    selected: VideoFxStore.background == "blur";
+                    picked => { CallStore.command("fx-background", "blur"); }
+                }
+                RadioRow {
+                    label: "Strong";
+                    selected: VideoFxStore.background == "strong-blur";
+                    picked => { CallStore.command("fx-background", "strong-blur"); }
+                }
+            }
+            if root.pictures > 0: Rectangle {
+                height: ceil(root.pictures / 4) * 44px + 4px;
+                for c[i] in VideoFxStore.backgrounds: BackgroundTile {
+                    visible: i >= 2 && i < 10;
+                    x: 8px + mod(i - 2, 4) * 68px;
+                    y: 4px + floor((i - 2) / 4) * 44px;
+                    width: 62px;
+                    height: 38px;
+                    choice: c;
+                    selected: VideoFxStore.background == c.id;
+                    picked => { CallStore.command("fx-background", c.id); }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            Switch { variant: SwitchVariant.panel;
+                label: "Adjust brightness";
+                checked: VideoFxStore.brighten;
+                toggled => { CallStore.command("fx-brighten", VideoFxStore.brighten ? "off" : "on"); }
+            }
+            LinkRow {
+                label: "More video effects and settings";
+                clicked => {
+                    CallStore.menu = "";
+                    VideoFxStore.open = true;
+                }
+            }
+        }
+    }
+}

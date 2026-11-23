@@ -1,0 +1,40 @@
+// A background of the video effects: its picture, or its name for None and the blurs. The camera
+// menu draws it small, the Video effects panel at 88x54.
+import { Theme } from "../tokens/theme.slint";
+import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
+
+export component BackgroundTile inherits Rectangle {
+    in property <FxChoice> choice;
+    in property <bool> selected;
+    callback picked();
+    width: 88px;
+    height: 54px;
+    border-radius: 6px;
+    clip: true;
+    background: Theme.surface;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent : touch.has-hover ? Theme.fg-subtle : Theme.border;
+    accessible-role: button;
+    accessible-label: root.choice.name;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-action-default => { root.picked(); }
+    if root.choice.has-thumb: Image {
+        width: root.width;
+        height: root.height;
+        source: root.choice.thumb;
+        image-fit: cover;
+    }
+    if !root.choice.has-thumb: Text {
+        text: root.choice.name;
+        color: Theme.fg;
+        font-size: 12px * Theme.font-scale;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}

@@ -694,28 +694,116 @@ fn while_we_present_the_call_says_so_and_never_waits_for_a_shared_screen() {
 }
 
 #[test]
-fn more_and_the_mic_dropdown_switch_devices_in_the_call() {
+fn the_mic_menu_lists_the_devices_by_name_and_switches_them_in_the_call() {
     let c = CallHarness::new();
     c.connected();
     click(&c.button("Audio devices"));
-    assert!(c.shows("Audio devices"));
-    let mic = ElementHandle::find_by_accessible_label(&c.h.app, "Microphone")
-        .find(|e| e.accessible_role() == Some(AccessibleRole::Combobox))
-        .unwrap();
-    click(&mic);
-    let usb = c
-        .all("USB Headset Microphone")
-        .into_iter()
-        .find(|e| e.accessible_role() == Some(AccessibleRole::ListItem))
-        .unwrap();
-    click(&usb);
+    assert_eq!(cs(&c.h.app).get_menu(), "devices");
+    let radio = |label: &str| c.with_role(label, AccessibleRole::RadioButton);
+    for label in [
+        "Speaker",
+        "Microphone",
+        "Noise suppression",
+        "More audio settings",
+    ] {
+        assert!(c.shows(label), "{label}");
+    }
+    c.with_role("Speaker volume", AccessibleRole::Slider);
+    c.with_role("Microphone level", AccessibleRole::ProgressIndicator);
+    assert_eq!(
+        radio("Built-in Microphone").accessible_checked(),
+        Some(true)
+    );
+    assert_eq!(
+        radio("USB Headset Microphone").accessible_checked(),
+        Some(false)
+    );
+
+    click(&radio("USB Headset Microphone"));
     assert_eq!(
         c.fake.calls().last().unwrap(),
         "devices mic-usb spk-builtin"
     );
+    assert_eq!(
+        radio("USB Headset Microphone").accessible_checked(),
+        Some(true)
+    );
+    assert_eq!(
+        radio("Built-in Microphone").accessible_checked(),
+        Some(false)
+    );
+
+    // The speaker is chosen in the same menu, and the call's devices follow at once.
+    click(&radio("USB Headset"));
+    assert_eq!(c.fake.calls().last().unwrap(), "devices mic-usb spk-usb");
+    assert_eq!(radio("USB Headset").accessible_checked(), Some(true));
+
     click(&c.button("More"));
     assert_eq!(cs(&c.h.app).get_panel(), "more");
     assert!(c.shows("Device settings"));
+}
+
+#[test]
+fn the_mic_menu_stays_clear_of_the_more_panel_and_inside_the_window() {
+    let c = CallHarness::new();
+    c.connected();
+    click(&c.button("More"));
+    click(&c.button("Audio devices"));
+    let menu = c.with_role("Audio settings", AccessibleRole::List);
+    let (pos, size) = (menu.absolute_position(), menu.size());
+    // The harness window is 1200x800.
+    assert!(pos.x >= 0.0 && pos.y >= 0.0, "{pos:?}");
+    assert!(
+        pos.x + size.width <= 1200.0 - 320.0 + 0.5,
+        "left of the More panel: {pos:?} {size:?}"
+    );
+    assert!(pos.y + size.height <= 800.0, "{pos:?} {size:?}");
+}
+
+#[test]
+fn the_noise_switch_applies_to_the_running_call() {
+    let c = CallHarness::new();
+    c.connected();
+    click(&c.button("Audio devices"));
+    let calls = c.fake.calls().len();
+    click(&c.with_role("Noise suppression", AccessibleRole::Switch));
+    assert!(
+        c.sent().iter().any(|s| s == "audio-refresh"),
+        "{:?}",
+        c.sent()
+    );
+    assert_eq!(
+        &c.fake.calls()[calls..],
+        ["devices mic-builtin spk-builtin"],
+        "the devices open again and read the new setting"
+    );
+}
+
+#[test]
+fn the_mic_menu_listens_to_the_microphone_only_while_it_is_open() {
+    use crate::ui::call::{MeterPoll, set_meter_source, watch};
+    fn quarter(_mic: Option<&str>) -> Option<MeterPoll> {
+        Some(Box::new(|| Some(0.25)))
+    }
+    set_meter_source(quarter);
+    let c = CallHarness::new();
+    c.connected();
+    watch(&c.h.app);
+    assert_eq!(cs(&c.h.app).get_mic_level(), 0.0, "the menu is closed");
+
+    click(&c.button("Audio devices"));
+    watch(&c.h.app);
+    // Square-rooted, so quiet speech still lights bars.
+    assert!((cs(&c.h.app).get_mic_level() - 0.5).abs() < 1e-4);
+
+    click(&c.button("Audio devices"));
+    assert_eq!(cs(&c.h.app).get_menu(), "");
+    watch(&c.h.app);
+    assert_eq!(
+        cs(&c.h.app).get_mic_level(),
+        0.0,
+        "the microphone is let go"
+    );
 }
 
 #[test]

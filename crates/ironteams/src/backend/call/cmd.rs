@@ -59,6 +59,12 @@ pub enum CallCmd {
     CameraDevice(usize),
     /// The Video effects panel.
     Fx(video_fx::FxCmd),
+    /// The self-preview of the Video effects panel and the camera menu, on or off.
+    VideoPreview(bool),
+    /// "Apply and turn on video".
+    VideoApply,
+    /// The audio devices open again (a change of noise suppression applies).
+    AudioRefresh,
 }
 
 impl CallCmd {
@@ -86,6 +92,9 @@ impl CallCmd {
             "camera" => CallCmd::ToggleCamera,
             "prejoin-camera" => CallCmd::PrejoinCamera(arg == "on"),
             "camera-device" => CallCmd::CameraDevice(arg.parse().ok()?),
+            "video-preview" => CallCmd::VideoPreview(arg == "on"),
+            "video-apply" => CallCmd::VideoApply,
+            "audio-refresh" => CallCmd::AudioRefresh,
             "leave" => CallCmd::Leave,
             "close" => CallCmd::Close,
             "feedback" => CallCmd::Feedback(Feedback::parse(arg)?),

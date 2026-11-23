@@ -8,7 +8,7 @@
 // Reactions are drawn but disabled (no reaction API, crates/calling/src/signaling/controls.rs).
 import { Theme } from "../tokens/theme.slint";
 import { CallStore, CallPerson, CallCaption, CallFound, CallVideo } from "../stores/call_store.slint";
-import { DeviceSettings } from "../molecules/call_widgets.slint";
+import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { PreJoin } from "../organisms/call_prejoin.slint";
 import { PeoplePanel, MorePanel } from "../organisms/call_people.slint";
 import { CaptionStrip } from "../molecules/call_captions.slint";
@@ -19,13 +19,20 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Stage, ViewMenu } from "../organisms/call_stage.slint";
 import { TopBar, ShareMenu, Banner, ControlBanner } from "../organisms/call_top_bar.slint";
 import { TransferCard } from "../organisms/call_transfer.slint";
+import { CameraMenu } from "../organisms/call_camera_menu.slint";
+import { AudioMenu } from "../organisms/call_audio_menu.slint";
+import { VideoEffectsPanel } from "../organisms/video_effects.slint";
 
 export { CallStore, CallPerson, CallCaption, CallFound, CallVideo }
 
 component InCall inherits Rectangle {
     callback open-chat();
-    // Below this width the top bar's ~14 buttons do not fit: the less used ones go to More.
-    property <bool> fold: root.width < 820px;
+    // Below this width the top bar's ~15 buttons do not fit: the less used ones go to More.
+    property <bool> fold: root.width < 840px;
+    // The side panel in use (People, More or the Video effects panel, which replaces them while
+    // it is open), and the width it takes from the stage.
+    property <bool> side-open: VideoFxStore.open || CallStore.panel != "";
+    property <length> side: root.side-open ? 320px : 0px;
     VerticalLayout {
         bar := TopBar { fold: root.fold; open-chat => { root.open-chat(); } }
         // A meeting on hold (call waiting) has the "On hold" bar instead, with its Resume.
@@ -53,8 +60,9 @@ component InCall inherits Rectangle {
         if CallStore.control-mode != "": ControlBanner { }
         HorizontalLayout {
             Stage { horizontal-stretch: 1; }
-            if CallStore.panel == "people": PeoplePanel { width: 320px; }
-            if CallStore.panel == "more": MorePanel { width: 320px; fold: root.fold; }
+            if VideoFxStore.open: VideoEffectsPanel { width: 320px; }
+            if !VideoFxStore.open && CallStore.panel == "people": PeoplePanel { width: 320px; }
+            if !VideoFxStore.open && CallStore.panel == "more": MorePanel { width: 320px; fold: root.fold; }
         }
     }
     // The View button's dropdown, under the button.
@@ -66,7 +74,7 @@ component InCall inherits Rectangle {
     // Live captions over the bottom of the stage.
     if CallStore.captions && CallStore.phase == "connected": CaptionStrip {
         x: 16px;
-        width: root.width - 32px - (CallStore.panel != "" ? 320px : 0px);
+        width: root.width - 32px - root.side;
         y: root.height - self.height - 16px;
         z: 20;
     }
@@ -74,7 +82,7 @@ component InCall inherits Rectangle {
     ReactionsOverlay {
         x: 0px;
         y: bar.height;
-        width: root.width - (CallStore.panel != "" ? 320px : 0px);
+        width: root.width - root.side;
         height: root.height - bar.height;
         z: 15;
     }
@@ -96,30 +104,19 @@ component InCall inherits Rectangle {
         y: 64px;
         z: 30;
     }
-    // The mic button's dropdown.
-    if CallStore.menu == "devices" || CallStore.menu == "card-mic" || CallStore.menu == "card-speaker": Rectangle {
-        x: root.width - self.width - 12px;
+    // The Camera chevron's menu and the Mic chevron's, under their buttons and inside the window
+    // (never over the side panel); they scroll when the window is short.
+    if CallStore.menu == "camera": CameraMenu {
+        x: max(12px, min(bar.camera-x - 139px, root.width - self.width - root.side - 12px));
         y: 64px;
         z: 30;
-        width: 300px;
-        height: card.preferred-height;
-        border-radius: Theme.radius;
-        border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.surface;
-        drop-shadow-blur: 12px;
-        drop-shadow-color: #00000080;
-        card := VerticalLayout {
-            padding: 12px;
-            spacing: 10px;
-            Text {
-                text: "Audio devices";
-                color: Theme.fg;
-                font-size: 14px * Theme.font-scale;
-                font-weight: 600;
-            }
-            DeviceSettings { prefix: "card"; }
-        }
+        avail-height: root.height - 64px - 12px;
+    }
+    if CallStore.menu == "devices": AudioMenu {
+        x: max(12px, min(bar.mic-x - 139px, root.width - self.width - root.side - 12px));
+        y: 64px;
+        z: 30;
+        avail-height: root.height - 64px - 12px;
     }
 }
 

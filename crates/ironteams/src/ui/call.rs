@@ -167,6 +167,7 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
             .map(|(i, p)| call_person(p, &images, Some(i) == owner))
             .collect(),
     ));
+    MIC_ID.with(|m| m.borrow_mut().clone_from(&d.mic_id));
     s.set_mics(texts(d.mics));
     s.set_mic(int(d.mic));
     s.set_speakers(texts(d.speakers));
@@ -423,6 +424,108 @@ pub fn wire(window: &AppWindow) {
     #[cfg(feature = "calls")]
     s.set_slot_videos(GALLERY.with(|g| slint::ModelRc::from(g.clone())));
     s.set_reactions(REACTIONS_MODEL.with(|m| slint::ModelRc::from(m.clone())));
+    start_watch(window);
+}
+
+/// How often the open menus are looked at ([`watch`]).
+const WATCH_EVERY: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// Reads what the chosen microphone hears, 0 to 1 (peak), or `None` until it has a reading.
+pub(crate) type MeterPoll = Box<dyn FnMut() -> Option<f32>>;
+/// Opens a level meter on a microphone (`None`: the system default).
+pub(crate) type MeterOpen = fn(Option<&str>) -> Option<MeterPoll>;
+
+fn open_meter(mic: Option<&str>) -> Option<MeterPoll> {
+    let stream = devices::mic_level(mic).ok()?;
+    Some(Box::new(move || stream.latest().map(|l| l.peak)))
+}
+
+struct Watch {
+    /// The camera menu was open at the last look (its self-preview runs).
+    camera_menu: bool,
+    /// The mic menu's meter: the microphone it listens to, and its reading.
+    meter: Option<(Option<String>, MeterPoll)>,
+    /// The microphone whose meter could not be opened (not tried again until the menu closes).
+    failed: Option<Option<String>>,
+    open: MeterOpen,
+    timer: Option<slint::Timer>,
+}
+
+thread_local! {
+    static WATCH: RefCell<Watch> = RefCell::new(Watch {
+        camera_menu: false,
+        meter: None,
+        failed: None,
+        open: open_meter,
+        timer: None,
+    });
+    /// The microphone the call uses now (its id; `None`: the system default).
+    static MIC_ID: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// The fill of the mic menu's level meter, 0 to 1, for a microphone's peak: square-rooted, so
+/// quiet speech still lights a few bars.
+pub(crate) fn meter_level(peak: f32) -> f32 {
+    peak.clamp(0.0, 1.0).sqrt()
+}
+
+/// Looks at the call window's open menus every [`WATCH_EVERY`].
+fn start_watch(window: &AppWindow) {
+    let weak = window.as_weak();
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, WATCH_EVERY, move || {
+        if let Some(w) = weak.upgrade() {
+            watch(&w);
+        }
+    });
+    WATCH.with(|x| x.borrow_mut().timer = Some(timer));
+}
+
+/// What the open menus need running: the camera menu shows our camera (the self-preview starts
+/// when it opens and ends when it closes), the mic menu its level meter (the microphone is
+/// listened to only while it is open).
+pub(crate) fn watch(w: &AppWindow) {
+    let s = w.global::<CallStore>();
+    let menu = s.get_menu();
+
+    let camera = menu == "camera";
+    let was = WATCH.with(|x| std::mem::replace(&mut x.borrow_mut().camera_menu, camera));
+    if camera != was {
+        let state = if camera { "on" } else { "off" };
+        s.invoke_command("video-preview".into(), state.into());
+    }
+
+    if menu != "devices" {
+        WATCH.with(|x| {
+            let mut x = x.borrow_mut();
+            x.meter = None;
+            x.failed = None;
+        });
+        if s.get_mic_level() != 0.0 {
+            s.set_mic_level(0.0);
+        }
+        return;
+    }
+    let mic = MIC_ID.with(|m| m.borrow().clone());
+    let reading = WATCH.with(|x| {
+        let mut x = x.borrow_mut();
+        if x.meter.as_ref().map(|(id, _)| id) != Some(&mic) && x.failed.as_ref() != Some(&mic) {
+            x.meter = (x.open)(mic.as_deref()).map(|poll| (mic.clone(), poll));
+            if x.meter.is_none() {
+                x.failed = Some(mic.clone());
+            }
+        }
+        x.meter.as_mut().and_then(|(_, poll)| poll())
+    });
+    if let Some(peak) = reading {
+        s.set_mic_level(meter_level(peak));
+    }
+}
+
+/// Tests: the meter reads from `open` instead of a real microphone.
+#[cfg(test)]
+pub(crate) fn set_meter_source(open: MeterOpen) {
+    WATCH.with(|x| x.borrow_mut().open = open);
 }
 
 #[cfg(feature = "calls")]

@@ -198,6 +198,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_camera(s(l.devices.camera.clone().unwrap_or_default()));
     g.set_noise_suppression(l.devices.noise_suppression);
     g.set_echo_cancellation(l.devices.echo_cancellation);
+    g.set_speaker_volume(f32::from(l.devices.speaker_volume));
     g.set_open_files(s(l.files.open_office_in.slug()));
     g.set_call_feedback(s(l.calls.ask_feedback.slug()));
     g.set_ringtone(s(l.calls.ringtone.slug()));

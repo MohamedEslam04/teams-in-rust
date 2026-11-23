@@ -142,6 +142,8 @@ export global CallStore {
     in property <bool> can-admit;
     in property <[string]> mics;
     in property <int> mic;
+    // What the chosen microphone hears while the mic menu is open, 0 to 1 (its level meter).
+    in-out property <float> mic-level;
     in property <[string]> speakers;
     in property <int> speaker;
     // The call window's layout: "gallery" (everyone in a grid) | "speaker" (the latest speaker

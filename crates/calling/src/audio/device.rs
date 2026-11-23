@@ -307,7 +307,8 @@ where
 
 impl FrameSink for Playback {
     async fn write_frame(&mut self, frame: &[i16]) -> Result<()> {
-        let samples = self.conv.convert(frame);
+        let frame = super::volume::scale(frame, super::volume::output_volume());
+        let samples = self.conv.convert(&frame);
         self.buffer
             .lock()
             .map_err(|_| Error::Audio("playback buffer poisoned".into()))?

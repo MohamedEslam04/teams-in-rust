@@ -10,6 +10,15 @@ pub(super) fn processing_wanted() -> ProcessingOptions {
     processing_from(&prefs, compat::var_os("IRONTEAMS_NO_AEC").as_deref())
 }
 
+/// The speaker volume kept in Settings (the call window's slider), applied to the call's
+/// playback each time the devices open.
+pub(super) fn apply_saved_volume() {
+    let prefs = session::Paths::new()
+        .map(|p| crate::backend::settings::Local::load(&p.config_dir).devices)
+        .unwrap_or_default();
+    calling::audio::set_output_volume(prefs.speaker_volume);
+}
+
 pub(super) fn processing_from(
     prefs: &devices::DevicePrefs,
     no_aec: Option<&std::ffi::OsStr>,
@@ -70,6 +79,7 @@ impl Audio {
     /// speaker plays. Without a microphone the speaker still plays.
     pub(super) fn start(&mut self, mic: Option<&str>, speaker: Option<&str>) -> anyhow::Result<()> {
         self.stop();
+        apply_saved_volume();
         let capture = match Capture::start(mic) {
             Ok(c) => c,
             Err(e) => {

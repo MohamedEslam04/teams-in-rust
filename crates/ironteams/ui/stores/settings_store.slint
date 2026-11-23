@@ -117,6 +117,8 @@ export global SettingsStore {
     in-out property <bool> all-devices: false;
     in-out property <bool> noise-suppression: true;
     in-out property <bool> echo-cancellation: true;
+    // The call speaker's volume, 0 to 100 (the call window's speaker slider).
+    in-out property <float> speaker-volume: 100;
     in-out property <float> mic-level;
     in-out property <bool> mic-testing: false;
     in-out property <string> devices-status;

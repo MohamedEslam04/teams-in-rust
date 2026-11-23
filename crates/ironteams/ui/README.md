@@ -122,6 +122,9 @@ list `MenuRow`). The row carries the accessible name; its texts are hidden from 
 - `atoms/dialog_frame.slint`: `DialogFrame` (OneDrive's titled panel) and `ModalDialog`
   (was the Teams `TFrame`: dims the window, centres the panel, shows an error band).
 - `atoms/file_kind.slint`: `KindBadge` and `DriveLook` (a file kind's tag and colour).
+- `atoms/radio_row.slint`: `RadioRow` (a radio choice of the call's camera and audio menus and the
+  Video effects panel). `atoms/link_row.slint`: `LinkRow` (a menu row that opens more).
+  `atoms/range_slider.slint`: `RangeSlider` (0 to 100; the call's speaker volume).
 - `atoms/widgets.slint`: `Icon`, `IconButton`, `SectionHeader`, `ReactionChip`,
   `AddReactionChip`. `atoms/reaction_hover.slint`: the `ReactionHover` global.
 - `atoms/heading.slint`: `Heading` (`.title` was Recaps' `Heading`, `.section` the App store's

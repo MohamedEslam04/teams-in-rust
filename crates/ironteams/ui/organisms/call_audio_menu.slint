@@ -1,0 +1,117 @@
+// The audio menu under the toolbar's Mic chevron, as Teams has it: the speaker (the sound
+// server's default or an output), its volume; the microphone (the default or an input), what it
+// hears now; noise suppression and the way into Settings > Devices. Choosing a device applies in
+// the call at once. It scrolls when the window is shorter than it.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Icon } from "../atoms/widgets.slint";
+import { CallStore } from "../stores/call_store.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { Heading, HeadingVariant } from "../atoms/heading.slint";
+import { RadioRow } from "../atoms/radio_row.slint";
+import { LinkRow } from "../atoms/link_row.slint";
+import { RangeSlider } from "../atoms/range_slider.slint";
+import { LevelMeter } from "../molecules/level_meter.slint";
+
+export component AudioMenu inherits Rectangle {
+    // The tallest it may be (the window under the top bar).
+    in property <length> avail-height: 600px;
+    width: 300px;
+    height: min(col.preferred-height, root.avail-height);
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.surface;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: Theme.scrim;
+    accessible-role: list;
+    accessible-label: "Audio settings";
+    ScrollView {
+        width: root.width;
+        height: root.height;
+        content-width: self.width;
+        col := VerticalLayout {
+            width: parent.width;
+            padding: 12px;
+            spacing: 4px;
+            Heading { variant: HeadingVariant.caption; text: "Speaker"; height: 24px; vertical-alignment: center; }
+            for name[i] in CallStore.speakers: RadioRow {
+                label: name;
+                selected: i == CallStore.speaker;
+                picked => { CallStore.command("speaker", "" + i); }
+            }
+            HorizontalLayout {
+                height: 30px;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    Icon { source: @image-url("../icons/volume.svg"); tint: Theme.fg; width: 18px; height: 18px; }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    RangeSlider {
+                        label: "Speaker volume";
+                        value: SettingsStore.speaker-volume;
+                        edited(v) => {
+                            SettingsStore.speaker-volume = v;
+                            SettingsStore.command("speaker-volume-live", "" + round(v));
+                        }
+                        released(v) => { SettingsStore.command("speaker-volume", "" + round(v)); }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            Heading { variant: HeadingVariant.caption; text: "Microphone"; height: 24px; vertical-alignment: center; }
+            for name[i] in CallStore.mics: RadioRow {
+                label: name;
+                selected: i == CallStore.mic;
+                picked => { CallStore.command("mic", "" + i); }
+            }
+            HorizontalLayout {
+                height: 30px;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    Icon {
+                        source: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
+                        tint: CallStore.muted ? Theme.danger : Theme.fg;
+                        width: 18px;
+                        height: 18px;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    LevelMeter {
+                        level: CallStore.mic-level;
+                        muted: CallStore.muted;
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.border; }
+            Switch { variant: SwitchVariant.panel;
+                label: "Noise suppression";
+                checked: SettingsStore.noise-suppression;
+                toggled(on) => {
+                    // Settings keeps the choice; the call's devices open again to apply it.
+                    SettingsStore.noise-suppression = on;
+                    SettingsStore.command("noise-suppression", on ? "1" : "0");
+                    CallStore.command("audio-refresh", "");
+                }
+            }
+            LinkRow {
+                label: "More audio settings";
+                clicked => {
+                    CallStore.menu = "";
+                    SettingsStore.show("devices");
+                }
+            }
+        }
+    }
+}

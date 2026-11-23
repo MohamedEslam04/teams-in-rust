@@ -29,8 +29,8 @@ pub struct Devices {
     pub speakers: Vec<Device>,
     pub mic: usize,
     pub speaker: usize,
-    /// "Default camera" (`id: None`) first, then the cameras found: a camera's bus on Linux, its
-    /// name on Windows and macOS.
+    /// The cameras found, by their names (a camera's bus on Linux, its name on Windows and macOS);
+    /// "Default camera" (`id: None`) only when none was found.
     pub cameras: Vec<Device>,
     pub camera: usize,
 }
@@ -134,6 +134,8 @@ pub struct CallData {
     pub can_admit: bool,
     pub mics: Vec<String>,
     pub mic: usize,
+    /// The chosen microphone's id (`None`: the system default), for the menu's level meter.
+    pub mic_id: Option<String>,
     pub speakers: Vec<String>,
     pub speaker: usize,
     pub cameras: Vec<String>,
