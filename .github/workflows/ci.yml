@@ -92,7 +92,10 @@ jobs:
         with:
           # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-      - run: cargo test --workspace
+      # A hung test used to run into the job timeout, and a cancelled job keeps no log. Stopping
+      # cargo first fails the step instead, and the log keeps libtest's "has been running for
+      # over 60 seconds" line naming the test.
+      - run: timeout --signal=INT --kill-after=60 22m cargo test --workspace
       - run: cargo test -p ironteams-cli --features mcp
 
   # The tests on Windows and macOS (Apple Silicon and Intel). Formatting and clippy run once, on

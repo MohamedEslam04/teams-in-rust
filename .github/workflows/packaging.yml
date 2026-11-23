@@ -81,14 +81,26 @@ jobs:
     steps:
       - name: More swap
         # As the rpm job: swap on the host's /mnt (bind-mounted), since it cannot sit on the
-        # container's overlay filesystem.
+        # container's overlay filesystem. This image has neither mkswap nor swapon, so Python
+        # writes the swap header and calls swapon(2) itself. Fails the job if no swap is added.
         run: |
-          command -v mkswap >/dev/null || dnf -y install util-linux >/dev/null 2>&1 || true
-          swapoff -a 2>/dev/null || true
           fallocate -l 12G /mnt/swapfile 2>/dev/null || dd if=/dev/zero of=/mnt/swapfile bs=1M count=12288 status=none
           chmod 600 /mnt/swapfile
-          mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
+          python3 -I -c '
+          import ctypes, os, struct, sys
+          path, ps = b"/mnt/swapfile", os.sysconf("SC_PAGE_SIZE")
+          pages = os.path.getsize(path) // ps
+          with open(path, "r+b") as f:
+              f.seek(1024)
+              f.write(struct.pack("<III16s16s", 1, pages - 1, 0, os.urandom(16), bytes(16)))
+              f.seek(ps - 10)
+              f.write(b"SWAPSPACE2")
+          libc = ctypes.CDLL(None, use_errno=True)
+          if libc.swapon(path, 0) != 0:
+              sys.exit("swapon: " + os.strerror(ctypes.get_errno()))
+          '
           cat /proc/swaps
+          grep -q /mnt/swapfile /proc/swaps
       - uses: actions/checkout@v7
       - name: Generate cargo-sources.json
         run: |
