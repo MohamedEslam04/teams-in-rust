@@ -19,28 +19,47 @@ pub(super) fn list_devices() -> Devices {
         .unwrap_or_default();
     let inputs = devices::audio_inputs().unwrap_or_default();
     let outputs = devices::audio_outputs().unwrap_or_default();
-    let index = |list: &[devices::AudioDevice], chosen: Option<&devices::AudioDevice>| {
-        chosen
-            .and_then(|c| list.iter().position(|d| d.id == c.id))
-            .or_else(|| list.iter().position(|d| d.is_default))
-            .unwrap_or(0)
-    };
-    let to = |list: &[devices::AudioDevice]| {
-        list.iter()
-            .map(|d| Device {
-                id: Some(d.id.clone()),
-                name: d.name.clone(),
-            })
-            .collect()
-    };
+    let (mics, mic) = device_rows(&inputs, prefs.find_microphone(&inputs));
+    let (speakers, speaker) = device_rows(&outputs, prefs.find_speaker(&outputs));
     let (cameras, camera) = camera::list(prefs.camera.as_deref());
     Devices {
-        mic: index(&inputs, prefs.find_microphone(&inputs)),
-        speaker: index(&outputs, prefs.find_speaker(&outputs)),
-        mics: to(&inputs),
-        speakers: to(&outputs),
+        mic,
+        speaker,
+        mics,
+        speakers,
         cameras,
         camera,
+    }
+}
+
+/// The picker's rows and the one selected. On Linux the first row is "Default", which follows
+/// whatever the sound server's default is (`id: None`) and is selected unless Settings chose a
+/// device that is still there; the devices follow, each once. An id saved by an older version
+/// is not among them and so selects the default as well.
+pub(super) fn device_rows(
+    list: &[devices::AudioDevice],
+    chosen: Option<&devices::AudioDevice>,
+) -> (Vec<Device>, usize) {
+    let device = |d: &devices::AudioDevice| Device {
+        id: Some(d.id.clone()),
+        name: d.name.clone(),
+    };
+    let at = |wanted: Option<&devices::AudioDevice>| {
+        wanted.and_then(|c| list.iter().position(|d| d.id == c.id))
+    };
+    if cfg!(target_os = "linux") {
+        let default = list.iter().find(|d| d.is_default);
+        let mut rows = vec![Device {
+            id: None,
+            name: default.map_or("Default".to_string(), |d| format!("Default ({})", d.name)),
+        }];
+        rows.extend(list.iter().map(device));
+        (rows, at(chosen).map_or(0, |i| i + 1))
+    } else {
+        let index = at(chosen)
+            .or_else(|| list.iter().position(|d| d.is_default))
+            .unwrap_or(0);
+        (list.iter().map(device).collect(), index)
     }
 }
 

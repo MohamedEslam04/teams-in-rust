@@ -240,6 +240,12 @@ pub(super) fn push_devices(w: &AppWindow, c: &Ctl) {
     match &c.lists {
         Some(l) => {
             let d = &c.local.devices;
+            // A saved device that is not in the list (an id from an older version, an unplugged
+            // one) is what calls use: the default. Show that one checked.
+            let id =
+                |d: Option<&devices::AudioDevice>| s(d.map(|d| d.id.clone()).unwrap_or_default());
+            g.set_mic(id(d.find_microphone(&l.inputs)));
+            g.set_speaker(id(d.find_speaker(&l.outputs)));
             g.set_mics(rows(st::audio_rows(
                 &l.inputs,
                 all,

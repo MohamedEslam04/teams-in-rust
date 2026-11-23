@@ -121,7 +121,49 @@ fn supports(d: &Device, input: bool) -> bool {
     }
 }
 
+/// Linux ALSA lists plumbing next to the cards (see [`crate::names::is_real_alsa_choice`]).
+#[cfg(target_os = "linux")]
+fn is_choice(id: &str) -> bool {
+    crate::names::is_real_alsa_choice(id)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_choice(_id: &str) -> bool {
+    true
+}
+
+/// Plain ALSA names, only what opens in this direction, each name once.
+#[cfg(target_os = "linux")]
+fn tidy(list: Vec<AudioDevice>) -> Vec<AudioDevice> {
+    crate::names::dedup_by_name(
+        list.into_iter()
+            .filter(|d| d.channels > 0)
+            .map(|d| AudioDevice {
+                name: crate::names::friendly_alsa_name(&d.id, &d.name),
+                ..d
+            })
+            .collect(),
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tidy(list: Vec<AudioDevice>) -> Vec<AudioDevice> {
+    list
+}
+
+/// The devices of this machine: on Linux the sound server's (PulseAudio or PipeWire) sinks and
+/// sources by the names the desktop shows, else cpal's list.
 fn list(input: bool) -> Result<Vec<AudioDevice>> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(list) = crate::pulse::list(input) {
+            return Ok(list);
+        }
+    }
+    list_cpal(input)
+}
+
+fn list_cpal(input: bool) -> Result<Vec<AudioDevice>> {
     let host = cpal::default_host();
     let default = if input {
         host.default_input_device()
@@ -130,8 +172,8 @@ fn list(input: bool) -> Result<Vec<AudioDevice>> {
     };
     let default_id = default.as_ref().map(device_id);
     let devices = host.devices().map_err(|e| audio_err("list devices", e))?;
-    Ok(devices
-        .filter(|d| supports(d, input))
+    let listed: Vec<AudioDevice> = devices
+        .filter(|d| supports(d, input) && is_choice(&device_id(d)))
         .map(|d| {
             let id = device_id(&d);
             let ranges: Vec<(u16, u32, u32)> = if input {
@@ -153,7 +195,8 @@ fn list(input: bool) -> Result<Vec<AudioDevice>> {
                 &ranges,
             )
         })
-        .collect())
+        .collect();
+    Ok(tidy(listed))
 }
 
 /// Microphones and other capture devices, the default flagged.
@@ -166,9 +209,48 @@ pub fn audio_outputs() -> Result<Vec<AudioDevice>> {
     list(false)
 }
 
-/// The system default device, or the one whose id or name matches `wanted` (see
-/// [`find_by_name`]).
-fn pick_device(wanted: Option<&str>, input: bool) -> Result<Device> {
+/// The device to open for `wanted` (`None` is the system default; else an id or name from
+/// [`audio_inputs`] / [`audio_outputs`], see [`find_by_name`]).
+///
+/// On Linux with a sound server the stream goes through the server: this returns its ALSA PCM
+/// and points the server at the chosen sink or source, so the stream reaches that device (the
+/// Bluetooth earbuds too) without taking the raw card from the server. A `wanted` that the
+/// server does not list (an id saved by an older version, an unplugged device) means the
+/// server's default.
+pub fn pick_audio_device(wanted: Option<&str>, input: bool) -> Result<Device> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(list) = crate::pulse::list(input) {
+            let chosen = wanted.and_then(|w| find_by_name(&list, w, |d| vec![&d.id, &d.name]));
+            crate::pulse::route(chosen.map(|d| d.id.as_str()), input);
+            return server_device(input);
+        }
+    }
+    cpal_device(wanted, input)
+}
+
+/// The sound server's own ALSA PCM (`pulse`) if installed, else the system default PCM, which
+/// is the server's on a desktop (`pipewire-alsa`).
+#[cfg(target_os = "linux")]
+fn server_device(input: bool) -> Result<Device> {
+    let host = cpal::default_host();
+    let pulse = host
+        .devices()
+        .ok()
+        .and_then(|mut all| all.find(|d| device_id(d) == "alsa:pulse"));
+    let default = if input {
+        host.default_input_device()
+    } else {
+        host.default_output_device()
+    };
+    pulse.or(default).ok_or_else(|| {
+        let kind = if input { "input" } else { "output" };
+        Error::Audio(format!("no {kind} device"))
+    })
+}
+
+/// The system default device, or the one whose id or name matches `wanted`.
+fn cpal_device(wanted: Option<&str>, input: bool) -> Result<Device> {
     let host = cpal::default_host();
     let kind = if input { "input" } else { "output" };
     let Some(wanted) = wanted else {
@@ -294,7 +376,7 @@ const TEST_TONE_LEVEL: f32 = 0.25;
 /// Play a short tone through `output` (default device when `None`, else an id or name from
 /// [`audio_outputs`]) and return once it has been heard. Makes a sound.
 pub fn test_sound(output: Option<&str>) -> Result<()> {
-    let device = pick_device(output, false)?;
+    let device = pick_audio_device(output, false)?;
     let rate = device
         .default_output_config()
         .map_err(|e| audio_err("output config", e))?;
@@ -343,7 +425,7 @@ pub fn open_input_stream<F>(
 where
     F: FnMut(&[f32]) + Send + 'static,
 {
-    let device = pick_device(input, true)?;
+    let device = pick_audio_device(input, true)?;
     let config = device
         .default_input_config()
         .map_err(|e| audio_err("input config", e))?;
@@ -367,7 +449,7 @@ pub fn open_output_stream<F>(
 where
     F: FnMut(&mut [f32]) + Send + 'static,
 {
-    let device = pick_device(output, false)?;
+    let device = pick_audio_device(output, false)?;
     let config = device
         .default_output_config()
         .map_err(|e| audio_err("output config", e))?;
@@ -404,7 +486,7 @@ impl MicLevelStream {
 /// Open `input` (default microphone when `None`) and report its level. Records nothing: the
 /// samples are reduced to RMS and peak and dropped.
 pub fn mic_level(input: Option<&str>) -> Result<MicLevelStream> {
-    let device = pick_device(input, true)?;
+    let device = pick_audio_device(input, true)?;
     let supported = device
         .default_input_config()
         .map_err(|e| audio_err("input config", e))?;
@@ -424,8 +506,8 @@ pub fn mic_level(input: Option<&str>) -> Result<MicLevelStream> {
 /// Echo test: route `input` to `output` (defaults when `None`) for `duration`, with at most
 /// 200 ms of delay. Use headphones, or this howls. Makes a sound.
 pub fn loopback(input: Option<&str>, output: Option<&str>, duration: Duration) -> Result<()> {
-    let in_dev = pick_device(input, true)?;
-    let out_dev = pick_device(output, false)?;
+    let in_dev = pick_audio_device(input, true)?;
+    let out_dev = pick_audio_device(output, false)?;
     let in_cfg = in_dev
         .default_input_config()
         .map_err(|e| audio_err("input config", e))?;

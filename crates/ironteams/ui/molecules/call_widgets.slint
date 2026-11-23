@@ -1,6 +1,7 @@
 // Controls of the call window: the top bar's buttons (with a hover tooltip, also on the disabled
 // ones that say why), the device dropdowns and the text buttons.
 import { Theme } from "../tokens/theme.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
@@ -57,42 +58,47 @@ export component DevicePicker inherits VerticalLayout {
         }
     }
     if root.open: Rectangle {
+        // Six rows at most; a longer list scrolls in its box instead of running off the window.
+        height: min(root.options.length * 30px + 8px, 188px);
         border-radius: 4px;
         border-width: 1px;
         border-color: Theme.border;
         background: Theme.surface;
-        VerticalLayout {
-            padding: 4px;
-            for name[i] in root.options: Rectangle {
-                height: 30px;
-                border-radius: 3px;
-                background: item.has-hover ? Theme.surface-hover : transparent;
-                accessible-role: list-item;
-                accessible-label: name;
-                accessible-item-selectable: true;
-                accessible-item-selected: i == root.current;
-                accessible-action-default => { CallStore.menu = ""; root.picked(i); }
-                HorizontalLayout {
-                    padding-left: 8px;
-                    spacing: 8px;
-                    Text {
-                        text: i == root.current ? "✓" : "";
-                        width: 12px;
-                        color: Theme.accent;
-                        font-size: 13px * Theme.font-scale;
-                        vertical-alignment: center;
+        ScrollView {
+            VerticalLayout {
+                width: parent.width - 12px;
+                padding: 4px;
+                for name[i] in root.options: Rectangle {
+                    height: 30px;
+                    border-radius: 3px;
+                    background: item.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: list-item;
+                    accessible-label: name;
+                    accessible-item-selectable: true;
+                    accessible-item-selected: i == root.current;
+                    accessible-action-default => { CallStore.menu = ""; root.picked(i); }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        Text {
+                            text: i == root.current ? "✓" : "";
+                            width: 12px;
+                            color: Theme.accent;
+                            font-size: 13px * Theme.font-scale;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: name;
+                            color: Theme.fg;
+                            font-size: 13px * Theme.font-scale;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
                     }
-                    Text {
-                        text: name;
-                        color: Theme.fg;
-                        font-size: 13px * Theme.font-scale;
-                        overflow: elide;
-                        vertical-alignment: center;
+                    item := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { CallStore.menu = ""; root.picked(i); }
                     }
-                }
-                item := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { CallStore.menu = ""; root.picked(i); }
                 }
             }
         }

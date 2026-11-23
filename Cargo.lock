@@ -929,6 +929,7 @@ dependencies = [
  "bytes",
  "compat",
  "cpal",
+ "devices",
  "flate2",
  "futures-util",
  "hound",
