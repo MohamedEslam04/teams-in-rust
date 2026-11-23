@@ -607,19 +607,92 @@ pub fn answer_direction(offered: &str, ours: &str) -> &'static str {
 pub fn with_role_direction(sdp: &str, role: VideoRole, direction: &str) -> String {
     let mut parsed = Parsed::new(sdp);
     for section in &mut parsed.sections {
-        if role_of(section) != Some(role) {
-            continue;
+        if role_of(section) == Some(role) {
+            set_direction(section, direction);
         }
-        section.retain(|l| !DIRECTIONS.iter().any(|d| l.strip_prefix("a=") == Some(*d)));
-        let at = section
-            .iter()
-            .position(|l| attr(l, "mid").is_some())
-            .map_or(section.len(), |i| i + 1);
-        section.insert(at, format!("a={direction}"));
     }
     let mut lines = parsed.session;
     lines.extend(parsed.sections.into_iter().flatten());
     join(lines)
+}
+
+fn set_direction(section: &mut Vec<String>, direction: &str) {
+    section.retain(|l| !DIRECTIONS.iter().any(|d| l.strip_prefix("a=") == Some(*d)));
+    let at = section
+        .iter()
+        .position(|l| attr(l, "mid").is_some())
+        .map_or(section.len(), |i| i + 1);
+    section.insert(at, format!("a={direction}"));
+}
+
+/// Our answer (Teams dialect) to the other side's 1:1 `offer`, saying on each video line what we
+/// send: the camera line sends only while `camera_on`, the sharing line only while `sharing`,
+/// each within what the offer allows ([`answer_direction`]). webrtc-rs answers every line it has
+/// a track for `sendonly`/`sendrecv`, so a 1:1 answer said our camera sent while it was off, and
+/// Teams web then shows our tile as an empty video box. Declined (port 0) lines stay as they are.
+pub fn direct_answer(answer: &str, offer: &str, camera_on: bool, sharing: bool) -> String {
+    let offered: HashMap<String, String> = Parsed::new(offer)
+        .sections
+        .iter()
+        .filter_map(|s| {
+            let mid = s.iter().find_map(|l| attr(l, "mid"))?;
+            Some((mid.to_owned(), direction_of(s).to_owned()))
+        })
+        .collect();
+    let mut parsed = Parsed::new(answer);
+    for section in &mut parsed.sections {
+        if MediaLine::parse(&section[0]).is_none_or(|m| m.port == "0") {
+            continue;
+        }
+        let ours = match role_of(section) {
+            Some(VideoRole::MainVideo) if camera_on => "sendrecv",
+            Some(VideoRole::ApplicationSharing) if sharing => "sendonly",
+            Some(_) => "recvonly",
+            None => continue,
+        };
+        let Some(theirs) = section
+            .iter()
+            .find_map(|l| attr(l, "mid"))
+            .and_then(|mid| offered.get(mid))
+        else {
+            continue;
+        };
+        let direction = answer_direction(theirs, ours);
+        set_direction(section, direction);
+    }
+    let mut lines = parsed.session;
+    lines.extend(parsed.sections.into_iter().flatten());
+    join(lines)
+}
+
+/// Each section of `sdp` as `<mid> <label> <direction> <x-ssrc-range>` (`-` when missing; a
+/// declined section is `<mid> <label> declined`), for the live log of a 1:1 negotiation: what
+/// each side says it sends on which line.
+pub fn directions(sdp: &str) -> String {
+    Parsed::new(sdp)
+        .sections
+        .iter()
+        .map(|s| {
+            let m = MediaLine::parse(&s[0]);
+            let found = |name| s.iter().find_map(|l| attr(l, name)).unwrap_or("-");
+            let label = s
+                .iter()
+                .find_map(|l| attr(l, "label"))
+                .or(m.as_ref().map(|m| m.kind))
+                .unwrap_or("-");
+            if m.is_some_and(|m| m.port == "0") {
+                format!("{} {label} declined", found("mid"))
+            } else {
+                format!(
+                    "{} {label} {} {}",
+                    found("mid"),
+                    direction_of(s),
+                    found("x-ssrc-range")
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Each section's `a=x-source-streamid` by mid: what a meeting's subscription names as the

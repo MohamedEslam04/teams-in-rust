@@ -332,7 +332,23 @@ impl NgcClient {
                 Some(&body),
             )
             .await?;
-        Ok(bodies::parse_inline_answer(&r.body))
+        let answer = bodies::parse_inline_answer(&r.body);
+        // What we told the other side we send, line by line, and what it answered (when inline;
+        // else `call/mediaAnswer/`): a live 1:1 run shows whether a line still said it sends.
+        let ours = offer.decode().map(|o| crate::media::sdp::directions(&o));
+        let theirs = answer
+            .as_ref()
+            .and_then(|a| a.decode().ok())
+            .map(|a| crate::media::sdp::directions(&a));
+        tracing::info!(
+            ?modalities,
+            negotiation_tag,
+            status = r.status,
+            ours = %ours.unwrap_or_default(),
+            theirs = %theirs.unwrap_or_else(|| "on call/mediaAnswer".into()),
+            "1:1 re-offer sent"
+        );
+        Ok(answer)
     }
 }
 

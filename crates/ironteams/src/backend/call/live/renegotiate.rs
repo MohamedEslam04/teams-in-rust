@@ -156,6 +156,25 @@ impl Call {
                 }
             }
         };
+        // A 1:1 answer says what we send: the camera line sends only while the camera is on,
+        // the sharing line only while we share (webrtc-rs would say both send).
+        let answer = answer.map(|ans| {
+            if self.meeting {
+                return ans;
+            }
+            let ans = calling::media::sdp::direct_answer(
+                &ans,
+                &sdp,
+                self.camera.on(),
+                self.share.sharing(),
+            );
+            tracing::info!(
+                theirs = %calling::media::sdp::directions(&sdp),
+                ours = %calling::media::sdp::directions(&ans),
+                "1:1 re-offer answered"
+            );
+            ans
+        });
         match answer {
             Ok(ans) => {
                 // The media server's offer names its lines' stream ids.

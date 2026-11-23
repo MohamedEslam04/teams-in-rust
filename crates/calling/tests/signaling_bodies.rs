@@ -302,6 +302,13 @@ fn parses_conversation_attach_and_acceptance_answers() {
     assert!(c.links.get("leave").unwrap().ends_with("/leave?i=4"));
     assert!(c.links.get("keepAlive").is_some());
     assert!(c.links.get("notALink").is_none());
+    // The links name the controller too, as an attach answer's do: a placed 1:1 call is adopted
+    // with these links, and its controls (reactions, mute) go under its controller.
+    assert_eq!(
+        c.links
+            .get(calling::signaling::bodies::CONVERSATION_CONTROLLER),
+        Some(c.controller.as_str())
+    );
     // The controller may come nested, or only as the Location header.
     let nested = json!({"conversationResponse": {"conversationController": "https://n"}});
     assert_eq!(

@@ -1014,7 +1014,14 @@ impl Engine {
             };
         let (media, media_events) =
             MediaSession::with_options(ice, call::share::media_options()).await?;
-        let offer = media.create_offer().await?;
+        // The camera is off and nothing is shared yet: the camera line receives only and the
+        // sharing line is inactive, as the web client offers them (webrtc-rs says both send).
+        let camera = media
+            .video_sender(calling::video::VideoRole::MainVideo)
+            .is_some()
+            .then_some(false);
+        let offer = call::share::direct_offer(&media.create_offer().await?, false, camera);
+        tracing::info!(ours = %calling::media::sdp::directions(&offer), "1:1 call offered");
         let s = CallSession::new(&surl, &self.me, &self.my_name);
         // Callbacks under our session come to this call from now on.
         if let Some(o) = self.direct().outgoing.as_mut().filter(|o| o.id == id) {

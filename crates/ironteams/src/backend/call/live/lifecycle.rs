@@ -21,6 +21,10 @@ impl Call {
         match answer.decode() {
             Ok(sdp) => match self.media.set_answer(&sdp).await {
                 Ok(()) => {
+                    if !self.meeting {
+                        let theirs = calling::media::sdp::directions(&sdp);
+                        tracing::info!(%theirs, "1:1 media answer applied");
+                    }
                     self.answered = true;
                     self.video.negotiated(&self.media, &sdp).await;
                     return true;

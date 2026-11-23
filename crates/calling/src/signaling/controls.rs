@@ -161,12 +161,17 @@ pub fn reaction_request(
 /// as Teams web posts it), or a `sendMessage` link that names the same conversation. The call's
 /// link map also holds the call leg's links (acceptance, media answer, renegotiation): a
 /// `sendMessage` there is not the conversation's, and a message posted to it reaches no one.
+/// With no controller known, only a conversation's link (`/conv/`) is taken; else the request
+/// fails as a refusal instead of going out to the call leg.
 pub fn send_message_url(links: &Links, controller: &str) -> String {
     let own = insert_path(controller, "/sendMessage");
     let path = |url: &str| url.split('?').next().unwrap_or_default().to_owned();
     let ours = path(&own);
     let Some(at) = ours.find("/conv/") else {
-        return control_url(links, controller, "sendMessage");
+        return links
+            .get("sendMessage")
+            .filter(|link| path(link).contains("/conv/"))
+            .map_or(own, str::to_owned);
     };
     links
         .get("sendMessage")
@@ -435,6 +440,24 @@ mod tests {
         );
         let (url, _) = reaction_request(&s, &links, CONTROLLER, Reaction::Heart);
         assert_eq!(url, insert_path(CONTROLLER, "/sendMessage"));
+    }
+
+    /// A 1:1 call whose controller is not known (a placed call: live 2026-11-23, Teams web saw
+    /// none of IronTeams's reactions and IronTeams logged no refusal): the call leg's
+    /// `sendMessage`, the only one in its link map, answers 2xx and reaches no one. A
+    /// conversation's own link is still taken.
+    #[test]
+    fn without_a_controller_a_call_leg_link_does_not_take_the_reaction() {
+        let s = session();
+        let mut links = Links::default();
+        let leg = "https://api.flightproxy.teams.microsoft.com/api/v2/ep/cc-example.cc.skype.com/cc/v1/forked/LEG1/sendMessage";
+        links.0.insert("sendMessage".into(), leg.into());
+        let (url, _) = reaction_request(&s, &links, "", Reaction::Like);
+        assert_ne!(url, leg);
+        let own = "https://conv-example.conv.skype.com/conv/AAAA/sendMessage?i=1";
+        links.0.insert("sendMessage".into(), own.into());
+        let (url, _) = reaction_request(&s, &links, "", Reaction::Like);
+        assert_eq!(url, own);
     }
 
     #[test]

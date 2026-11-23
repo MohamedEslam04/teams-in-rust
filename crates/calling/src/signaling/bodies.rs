@@ -516,7 +516,10 @@ pub fn parse_links(v: &Value) -> Links {
 }
 
 /// Parses a conversation answer. The controller may be top level, nested in
-/// `conversationResponse`, or only the `Location` header.
+/// `conversationResponse`, or only the `Location` header. The links also name the controller
+/// ([`CONVERSATION_CONTROLLER`], as [`parse_attach`] files it): a placed 1:1 call is handed on
+/// with its links alone, and without its controller its reactions went to the call leg's
+/// `sendMessage`, which takes them and shows them to no one.
 pub fn parse_conversation(body: &Value, location: Option<&str>) -> Result<Conversation> {
     let controller = body
         .pointer("/conversationController")
@@ -528,6 +531,9 @@ pub fn parse_conversation(body: &Value, location: Option<&str>) -> Result<Conver
         .to_owned();
     let mut links = parse_links(&body["conversationResponse"]["links"]);
     links.0.extend(parse_links(&body["links"]).0);
+    links
+        .0
+        .insert(CONVERSATION_CONTROLLER.into(), controller.clone());
     Ok(Conversation {
         controller,
         links,
