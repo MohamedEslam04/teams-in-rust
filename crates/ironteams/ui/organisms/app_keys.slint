@@ -10,7 +10,6 @@ import { PeopleStore } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ShortcutApi } from "shortcuts.slint";
 import { TopBarStore } from "topbar.slint";
-import { WebParityStore } from "web_parity.slint";
 
 export component AppKeys inherits FocusScope {
     callback attach-file;
@@ -121,8 +120,8 @@ export component AppKeys inherits FocusScope {
         if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
             DirectCallStore.command("dial", root.current-id);
         }
-        if a == "video-call" && root.view == "chat" && DirectCallStore.is-direct(root.current-id) {
-            WebParityStore.notice = @tr("Video calls aren't available in IronTeams yet. Alt+Shift+A starts an audio call.");
+        if a == "video-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
+            DirectCallStore.command("dial-video", root.current-id);
         }
         if a == "shortcuts" { root.shortcuts-open = !root.shortcuts-open; }
         if a == "palette" { PaletteStore.open = !PaletteStore.open; }

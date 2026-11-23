@@ -145,13 +145,16 @@ fn a_one_on_one_chat_header_has_call_with_a_dropdown_of_video_and_audio() {
     );
     click(&button(&h.app, "Call options"));
     let video = button(&h.app, "Video call");
-    assert_eq!(video.accessible_enabled(), Some(false));
+    assert_eq!(video.accessible_enabled(), Some(true));
+    // With the camera switched off it says the call goes ahead with audio.
+    let camera = h.app.global::<crate::CallStore>();
+    camera.set_camera_available(true);
+    assert_eq!(video.accessible_description().unwrap_or_default(), "");
+    camera.set_camera_available(false);
     assert_eq!(
-        video.accessible_description().unwrap(),
-        "Video isn't available yet"
+        video.accessible_description().unwrap_or_default(),
+        "Video isn't available: calls with audio"
     );
-    click(&video);
-    assert!(h.engine.call_log().is_empty(), "video does nothing");
     // The dropdown's own Audio call places the call.
     assert_eq!(buttons(&h.app, "Audio call").len(), 2);
     let audio = ElementHandle::find_by_element_type_name(&h.app, "CallChoice")
@@ -159,6 +162,48 @@ fn a_one_on_one_chat_header_has_call_with_a_dropdown_of_video_and_audio() {
         .expect("Audio call in the dropdown");
     click(&audio);
     assert_eq!(h.engine.call_log(), [format!("dial {PEER}")]);
+    assert!(cs(&h.app).get_outgoing_open());
+}
+
+/// What the fake backend logs for a Video call: the camera starts once connected, unless the
+/// camera is switched off (`IRONTEAMS_CAMERA=0`), when the call goes ahead with audio.
+fn video_call_log() -> Vec<String> {
+    let mut log = vec![format!("dial {PEER}")];
+    if crate::backend::call::camera::wanted() {
+        log.push("camera on when connected".into());
+    }
+    log
+}
+
+#[test]
+fn video_call_from_the_dropdown_calls_with_the_camera_on() {
+    let h = harness();
+    h.select(DIRECT);
+    click(&button(&h.app, "Call options"));
+    click(&button(&h.app, "Video call"));
+    assert_eq!(h.engine.call_log(), video_call_log());
+    assert!(cs(&h.app).get_outgoing_open());
+    assert_eq!(cs(&h.app).get_outgoing_status(), "Calling…");
+    assert_eq!(
+        h.app.get_banner().contains("audio only"),
+        !crate::backend::call::camera::wanted()
+    );
+}
+
+#[test]
+fn alt_shift_v_calls_with_the_camera_on() {
+    let h = harness();
+    h.select(DIRECT);
+    composer(&h.app).mock_single_click(PointerEventButton::Left);
+    for k in [Key::Alt, Key::Shift] {
+        key(&h.app, k, true);
+    }
+    key(&h.app, "V", true);
+    key(&h.app, "V", false);
+    for k in [Key::Shift, Key::Alt] {
+        key(&h.app, k, false);
+    }
+    assert_eq!(h.engine.call_log(), video_call_log());
     assert!(cs(&h.app).get_outgoing_open());
 }
 

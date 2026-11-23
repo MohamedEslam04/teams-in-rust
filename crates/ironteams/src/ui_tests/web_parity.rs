@@ -167,7 +167,7 @@ fn in_this_chat_lists_find_the_pins_and_create_and_share_content() {
 }
 
 #[test]
-fn alt_shift_a_calls_and_alt_shift_v_says_video_is_not_there_yet() {
+fn alt_shift_a_calls_and_alt_shift_v_video_calls() {
     let h = Harness::new();
     let calls = h.app.global::<DirectCallStore>();
     calls.set_available(true);
@@ -184,15 +184,23 @@ fn alt_shift_a_calls_and_alt_shift_v_says_video_is_not_there_yet() {
         key(&h.app, Key::Shift, false);
         key(&h.app, Key::Alt, false);
     }
-    assert!(
-        h.app
-            .global::<WebParityStore>()
-            .get_notice()
-            .contains("Video calls aren't available"),
-        "Alt+Shift+V explains"
+    assert_eq!(
+        *sent.borrow(),
+        [format!("dial-video {DIRECT}"), format!("dial {DIRECT}")]
     );
-    assert_eq!(*sent.borrow(), [format!("dial {DIRECT}")]);
-    // The notice can be dismissed.
+    // Without calling (signed out) Alt+Shift+V does nothing, as Alt+Shift+A.
+    calls.set_available(false);
+    key(&h.app, Key::Alt, true);
+    key(&h.app, Key::Shift, true);
+    key(&h.app, "V", true);
+    key(&h.app, "V", false);
+    key(&h.app, Key::Shift, false);
+    key(&h.app, Key::Alt, false);
+    assert_eq!(sent.borrow().len(), 2);
+    // A notice can be dismissed.
+    h.app
+        .global::<WebParityStore>()
+        .set_notice("Something isn't available yet.".into());
     let notice = ElementHandle::find_by_accessible_label(&h.app, "Notice")
         .next()
         .unwrap();
