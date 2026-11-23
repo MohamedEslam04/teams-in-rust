@@ -136,6 +136,10 @@ mod state {
     /// scales them to its frames.
     const BACKGROUND_SIZE: (usize, usize) = (1280, 720);
     const THUMB_SIZE: (usize, usize) = (96, 54);
+    /// How pictures are scaled to those sizes. The call's 1920x1080 backgrounds shrink to
+    /// 1280x720 once, and the person is in front of that picture for the whole call: a sharper
+    /// filter than the bilinear `Triangle` keeps its detail.
+    const SCALING: image::imageops::FilterType = image::imageops::FilterType::Lanczos3;
 
     /// A tile of the background picker.
     #[derive(Debug, Clone, PartialEq)]
@@ -282,11 +286,9 @@ mod state {
         pub fn add_background(&mut self, path: &Path) -> anyhow::Result<()> {
             let dir = self.dir.clone().context("no config dir")?;
             let (w, h) = BACKGROUND_SIZE;
-            let img = image::open(path).context("not a picture")?.resize_to_fill(
-                w as u32,
-                h as u32,
-                image::imageops::FilterType::Triangle,
-            );
+            let img = image::open(path)
+                .context("not a picture")?
+                .resize_to_fill(w as u32, h as u32, SCALING);
             let folder = dir.join(BACKGROUNDS_DIR);
             std::fs::create_dir_all(&folder)?;
             let name = format!("{}.png", chrono::Utc::now().timestamp_millis());
@@ -482,7 +484,7 @@ mod state {
     fn scaled_picture(path: &Path, (w, h): (usize, usize)) -> Option<RgbFrame> {
         let img = image::open(path)
             .ok()?
-            .resize_to_fill(w as u32, h as u32, image::imageops::FilterType::Triangle)
+            .resize_to_fill(w as u32, h as u32, SCALING)
             .to_rgb8();
         Some(RgbFrame {
             width: img.width() as usize,
@@ -558,6 +560,28 @@ mod state {
                 ..Default::default()
             };
             assert_eq!(effects_for(&gone, None, None).background, Background::None);
+        }
+
+        #[test]
+        fn a_background_scaled_for_the_camera_keeps_its_edges_sharp() {
+            let dir = temp_dir("sharp");
+            let src = dir.join("edge.png");
+            // Black, then white from column 961 of 1920: scaled to 1280 wide the edge falls
+            // between two columns.
+            image::RgbImage::from_fn(1920, 1080, |x, _| {
+                image::Rgb([if x < 961 { 0 } else { 255 }; 3])
+            })
+            .save(&src)
+            .unwrap();
+            let img = scaled_picture(&src, BACKGROUND_SIZE).unwrap();
+            assert_eq!((img.width, img.height), BACKGROUND_SIZE);
+            let row = &img.data[100 * img.width * 3..101 * img.width * 3];
+            let between = row
+                .chunks_exact(3)
+                .filter(|p| (16..240).contains(&p[0]))
+                .count();
+            assert!(between <= 1, "{between} grey pixels across the edge");
+            let _ = std::fs::remove_dir_all(dir);
         }
 
         #[test]

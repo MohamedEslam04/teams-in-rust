@@ -127,7 +127,7 @@ pub(crate) fn spawn(
                 }
                 let line = String::from_utf8_lossy(&raw);
                 let line = line.trim_end();
-                tracing::info!("{what} (gst-launch-1.0): {line}");
+                tracing::debug!("{what} (gst-launch-1.0): {line}");
                 if is_error_line(line) {
                     // Only the first one matters, and nobody may be listening.
                     let _ = err_tx.try_send(line.to_owned());

@@ -95,3 +95,27 @@ fn openh264_starts_with_a_keyframe_and_honours_a_keyframe_request() {
     let forced = enc.encode(&frame(200)).unwrap().expect("forced frame");
     assert!(forced.keyframe);
 }
+#[test]
+fn halving_a_frame_averages_every_2x2_block_of_every_plane() {
+    use calling::video::halve;
+    let (w, h) = (8, 4);
+    let mut data = vec![0u8; I420Frame::len_for(w, h)];
+    // Luma: the left half 100, the right half 200, one bright pixel in the first block.
+    for y in 0..h {
+        for x in 0..w {
+            data[y * w + x] = if x < 4 { 100 } else { 200 };
+        }
+    }
+    data[0] = 104;
+    // U: 4x2 samples, the left half 60 and the right half 90; V all 128.
+    for (i, u) in data[w * h..w * h + 8].iter_mut().enumerate() {
+        *u = if i % 4 < 2 { 60 } else { 90 };
+    }
+    data[w * h + 8..].fill(128);
+    let small = halve(&I420Frame::new(w, h, data).unwrap());
+    assert_eq!((small.width, small.height), (4, 2));
+    let (y, u, v) = small.planes();
+    assert_eq!(y, [101, 100, 200, 200, 100, 100, 200, 200]);
+    assert_eq!(u, [60, 90]);
+    assert_eq!(v, [128, 128]);
+}
