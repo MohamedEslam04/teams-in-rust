@@ -178,9 +178,10 @@ export component SettingsRow inherits Rectangle {
         width: root.ctl-w;
         height: root.ctl-h;
         spacing: Space.s;
-        // Stacked on purpose: the control takes the row's width (choice pills); stacked for
-        // room: it keeps its size on the start side.
-        alignment: root.stacked ? LayoutAlignment.stretch : !root.stack ? LayoutAlignment.end : Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+        // Stacked on purpose: the control takes the row's width (choice pills). Otherwise it
+        // keeps its size, on the start side when it moved under the text for room (beside the
+        // text the layout is exactly as wide as the control, so the side does not matter).
+        alignment: root.stacked ? LayoutAlignment.stretch : Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
         @children
     }
 }
