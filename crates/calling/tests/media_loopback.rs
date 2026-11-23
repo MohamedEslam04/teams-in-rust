@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use calling::OpusPacket;
 use calling::media::{MediaEvents, MediaOptions, MediaSession, MediaState};
+use calling::video::VideoRole;
 use tokio::time::timeout;
 
 fn local() -> MediaOptions {
@@ -213,6 +214,53 @@ async fn a_restarting_offer_on_a_connected_call_leaves_it_usable() {
         "ironteams got {}",
         to_ironteams.len()
     );
+    ironteams.close().await.unwrap();
+    service.close().await.unwrap();
+}
+
+/// The SDP as the media servers write it: no `a=ssrc` or `a=msid` lines, each line names its
+/// SSRCs only by `a=x-ssrc-range`.
+fn without_ssrc_lines(sdp: &str) -> String {
+    sdp.split("\r\n")
+        .filter(|l| !l.starts_with("a=ssrc") && !l.starts_with("a=msid:"))
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+/// A meeting join has the camera line next to audio (more than one RTP line), and the media
+/// servers' answer names no SSRC: their audio must still reach us. Live on 6c725624 it did not;
+/// webrtc-rs routes an SSRC no `a=ssrc` declares only when there is a single RTP line.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_session_with_video_lines_hears_a_peer_that_names_its_ssrcs_by_range_only() {
+    let with_camera = || MediaOptions {
+        video: vec![VideoRole::MainVideo],
+        ..local()
+    };
+    let (ironteams, mut ironteams_events) = MediaSession::with_options(vec![], with_camera())
+        .await
+        .unwrap();
+    let (service, mut service_events) = MediaSession::with_options(vec![], with_camera())
+        .await
+        .unwrap();
+    let offer = ironteams.create_offer().await.unwrap();
+    let answer = without_ssrc_lines(&service.accept_offer(&offer).await.unwrap());
+    assert!(!answer.contains("a=ssrc:"), "{answer}");
+    assert!(answer.contains("a=x-ssrc-range:"), "{answer}");
+    ironteams.set_answer(&answer).await.unwrap();
+    wait_for(&mut ironteams_events, MediaState::Connected).await;
+    wait_for(&mut service_events, MediaState::Connected).await;
+
+    let (to_service, to_ironteams) = tokio::join!(
+        pump(&ironteams, &mut service_events, 0x00),
+        pump(&service, &mut ironteams_events, 0x80),
+    );
+    assert!(to_service.len() >= 20, "service got {}", to_service.len());
+    assert!(
+        to_ironteams.len() >= 20,
+        "ironteams got {} of the service's audio",
+        to_ironteams.len()
+    );
+    assert!(to_ironteams.iter().all(|p| p[1] & 0x80 == 0x80));
     ironteams.close().await.unwrap();
     service.close().await.unwrap();
 }
