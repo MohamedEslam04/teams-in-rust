@@ -329,8 +329,11 @@ fn lang(tag: &str) {
     })
 }
 
+/// Left, top, right, bottom.
+type Rect = (f32, f32, f32, f32);
+
 /// The keyboard focus rings on screen: (element id, rectangle).
-fn rings(app: &AppWindow) -> Vec<(&'static str, (f32, f32, f32, f32))> {
+fn rings(app: &AppWindow) -> Vec<(&'static str, Rect)> {
     settle();
     [
         "SettingsSwitchRow::focus-ring",
