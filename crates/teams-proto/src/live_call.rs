@@ -121,17 +121,70 @@ pub fn parse_conversation_live_call(conversation: &Value) -> Option<LiveCall> {
     }
 }
 
+/// What a conversation GET says about a call, with what a capture needs to learn its real shape.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConversationLive {
+    pub call: Option<LiveCall>,
+    /// Every key of the conversation, its `properties` and its `threadProperties`
+    /// (`properties.topic`), names only.
+    pub property_names: Vec<String>,
+    /// The keys that look like call state (their name contains `LiveState`, `activeMeetup` or
+    /// `ongoingCall`, any case), with their raw values: a string as it is, anything else as JSON.
+    pub candidates: Vec<(String, String)>,
+}
+
+/// Whether a property name looks like call state.
+fn looks_like_call_state(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["livestate", "activemeetup", "ongoingcall"]
+        .iter()
+        .any(|k| n.contains(k))
+}
+
+/// Reads a conversation GET: its live call, its property names and the call-like properties.
+pub fn parse_conversation_live(conversation: &Value) -> ConversationLive {
+    let mut property_names = Vec::new();
+    let mut candidates = Vec::new();
+    let mut note = |name: String, v: &Value| {
+        if looks_like_call_state(&name) {
+            let raw = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            candidates.push((name.clone(), raw));
+        }
+        property_names.push(name);
+    };
+    if let Some(top) = conversation.as_object() {
+        for (k, v) in top {
+            note(k.clone(), v);
+        }
+    }
+    for group in ["properties", "threadProperties"] {
+        if let Some(props) = conversation.get(group).and_then(Value::as_object) {
+            for (k, v) in props {
+                note(format!("{group}.{k}"), v);
+            }
+        }
+    }
+    ConversationLive {
+        call: parse_conversation_live_call(conversation),
+        property_names,
+        candidates,
+    }
+}
+
 impl Client {
-    /// The live state of a conversation's call (chat, meeting chat or channel); `None` when the
-    /// conversation has none.
-    pub async fn conversation_live_call(&self, conversation_id: &str) -> Result<Option<LiveCall>> {
+    /// The live state of a conversation's call (chat, meeting chat or channel) and the property
+    /// names and call-like properties it came with (see [`ConversationLive`]).
+    pub async fn conversation_live_call(&self, conversation_id: &str) -> Result<ConversationLive> {
         let url = format!(
             "{}/v1/users/ME/conversations/{}?view=msnp24Equivalent",
             self.chat_service().await,
             encode_conversation(conversation_id)
         );
         let v = self.json("live call", Method::GET, &url, None).await?;
-        Ok(parse_conversation_live_call(&v))
+        Ok(parse_conversation_live(&v))
     }
 }
 
@@ -212,6 +265,39 @@ mod tests {
         let c = parse_conversation_live_call(&v).unwrap();
         assert!(c.active);
         assert_eq!(c.expires_ms, Some(4_070_908_800_000));
+    }
+
+    #[test]
+    fn the_capture_lists_every_property_name_and_the_call_like_values() {
+        let mut v: Value = serde_json::from_str(CONVERSATION).unwrap();
+        v["activeMeetup"] = json!({"status": "Active"});
+        v["properties"]["ongoingCallInfo"] = json!("x");
+        let c = parse_conversation_live(&v);
+        assert!(c.call.as_ref().is_some_and(|c| c.active));
+        for name in [
+            "id",
+            "type",
+            "activeMeetup",
+            "properties.consumptionhorizon",
+            "properties.ongoingCallInfo",
+            "threadProperties.topic",
+            "threadProperties.awareness_conversationLiveState",
+        ] {
+            assert!(c.property_names.iter().any(|n| n == name), "{name}");
+        }
+        let names: Vec<&str> = c.candidates.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "activeMeetup",
+                "properties.ongoingCallInfo",
+                "threadProperties.awareness_conversationLiveState"
+            ]
+        );
+        // A string value stays as the service sent it; an object is written as JSON.
+        assert!(c.candidates[2].1.starts_with("{\"conversationUrl\""));
+        assert_eq!(c.candidates[0].1, r#"{"status":"Active"}"#);
+        assert_eq!(c.candidates[1].1, "x");
     }
 
     #[test]
