@@ -262,6 +262,30 @@ fn a_channel_scrolled_up_keeps_its_cards_still_when_the_posts_are_drawn_again() 
     assert_all_near(&trace, before, 1., &format!("the y of {seen:?}"));
 }
 
+/// A channel scrolled up keeps its place across a page of the rail and back.
+#[test]
+fn a_channel_scrolled_up_keeps_its_place_across_a_page_and_back() {
+    let mut r = rig();
+    r.channel();
+    r.ui.posts(posts(40), false, None);
+    r.ui.messages(msg_rows(40), Scroll::Bottom);
+    r.frames(30, |_| 0.);
+    for _ in 0..3 {
+        wheel(&r.app, "ChannelPosts::posts-list", 300.);
+        r.frames(4, |_| 0.);
+    }
+    r.frames(60, |_| 0.);
+    let seen = middle_subject(&r.app, "ChannelPosts::posts-list", "p", 40);
+    let before = label_y(&r.app, &seen);
+    for page in ["calendar", "activity", "onedrive"] {
+        r.app.invoke_navigate(page.into());
+        r.frames(30, |_| 0.);
+        r.app.invoke_navigate("chat".into());
+        let trace = r.frames(30, |a| label_y(a, &seen));
+        assert_all_near(&trace, before, 1., &format!("{page}: the y of {seen:?}"));
+    }
+}
+
 /// Scrolled up in a chat, the row partly above the view's top gets taller (a link card, a
 /// reaction row): the rows below it, the ones being read, do not move down.
 #[test]

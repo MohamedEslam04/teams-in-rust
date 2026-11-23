@@ -341,11 +341,21 @@ export component MessagePane inherits Rectangle {
         running: msg-list.anchoring;
         triggered => {
             msg-list.anchoring = false;
-            msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
-            msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
-            // ensure-row-visible only records the request: the scroll happens in the next layout,
-            // so the user's offset inside the row is applied a moment later (`offset-timer`).
-            msg-list.apply-off = root.anchor-off > 0px;
+            if root.top-id != "" && root.messages[root.anchor-index].id == root.top-id
+                && abs(root.top-off - root.anchor-off) < 1px {
+                // The row is at the view's top already, with the user's offset: the rows came in
+                // above the ones the list had built, and the list kept those where they were.
+                // Putting the row back would only make the view jump to the row's top and back
+                // to the user's offset a frame later.
+                msg-list.aligning = false;
+            } else {
+                msg-list.content-y = min(0px, msg-list.visible-height - msg-list.content-height);
+                msg-list.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
+                // ensure-row-visible only records the request: the scroll happens in the next
+                // layout, so the user's offset inside the row is applied a moment later
+                // (`offset-timer`).
+                msg-list.apply-off = root.anchor-off > 0px;
+            }
         }
     }
     // The anchor row is at the view's top by now: move down to where the user was inside it. The

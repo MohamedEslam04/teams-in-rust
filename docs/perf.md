@@ -128,6 +128,52 @@ Still open: leaving Chat costs one walk of the chat pane's rows; building the Ac
 most of Chat → Activity; a scroll frame is mostly the repaint of the message area (`draw_ms`), and
 every frame still walks all the chat list's row shells (a `ListView` would not).
 
+## Lists that change while they are on screen
+
+`src/ui_tests/list_stability.rs` draws the window every 16 ms frame with the software renderer
+(as `page_switch`) and records a position in every frame, not only the last: a list that ends in
+the right place after jumping on the way is what users describe as "it moves by itself". Rows have
+mixed heights (one to eighteen lines), so the list's estimate of the rows it has not laid out (the
+average of those it has) is wrong for most of them.
+
+What was wrong, found by those tests on the code before the fix (the same on `dev`: the files
+involved were not changed by the page-switch work):
+
+- **A new model on every render.** The engine draws the open conversation again for every avatar,
+  presence change, reaction or reply count (about every 120 ms while avatars load). The Posts tab,
+  the thread panel, the pop-out chat and the chat list were each given a new model every time.
+  Slint then drops every row and builds it again, and a `ListView` forgets the heights it measured
+  and where it was: a channel scrolled up lost its place entirely (the card being read was no
+  longer drawn), rows replayed their entrance animations and the row under the pointer lost its
+  hover. They are now patched (`src/ui/model_sync.rs`): the rows both versions share stay and are
+  written only when their fingerprint changed, older rows are inserted above and newer ones
+  added below, and reordered rows (a chat moving to the top) are rewritten where they are.
+- **A channel opened 250 px above its newest post** for its first 144 ms, then jumped down when
+  the engine's second scroll tick came. The cards got their real height under the view, which
+  moved the view, and the Posts tab took that move for the user scrolling away and unpinned
+  itself. It now ignores a move that comes with a new content height, as the message list does.
+- **A row above the view that grew pushed the rows being read down** (130 px in the test): the
+  list lays its rows out downwards from the first one. The message list and the Posts tab now
+  move the view with a row that starts above the view's top.
+- **Wheel notches were 60 px**, the window system's notch. Rows now take a notch before the list
+  and glide the list by the notch times the wheel speed (Settings > Chats > Scrolling, 1× to 5×,
+  2.5× by default) over about 130 ms (`WheelGlide`, `ui/tokens/motion.slint`). A touchpad's
+  pixel-precise steps are not whole notches and are left to the list as before. The Posts tab also
+  sets `Motion.scrolling` now, so cards scrolling into view do not replay their animations.
+
+| List | Cause candidates | Status |
+| ---- | ---------------- | ------ |
+| Message list (`message_pane.slint` `msg-list`) | estimates, pin, prefetch + anchor, rows growing above the view | Opening at the newest row was fine; a row growing above the view is fixed; wheel speed added |
+| Posts tab (`channel_posts.slint` `posts-list`) | new model every render, pin lost to estimates, cards growing above the view, no `Motion.scrolling` | Fixed |
+| Thread panel (`channel_posts.slint` `thread-scroll`) | new model every render | Fixed (patched; the post is written only when it changed); no frame test |
+| Pop-out chat (`chat_window.slint` `pop-list`) | new model every render | Fixed (patched, wheel speed); its pin logic was already there; no frame test |
+| Chat list (`sidebar.slint`, favourites, chats, channels) | new model on every presence, avatar and unread change | Fixed (patched); rows have a fixed height, so the place was kept before too |
+| Teams list (`sidebar.slint`) | new model on sync | Not changed: replaced only on sync and its rows have a fixed height |
+| Activity list and preview (`activity.slint`) | rows written in place already | Was fine |
+| Search results, quick views, top-bar search, palette, calls, shared items, pickers | new model per query or command | Not changed: a new query is a new list, and none of them pins or anchors |
+| Calendar, Settings, Apps, Teams page, dialogs | static content | Not covered: nothing changes them while they are read |
+| Call panels, device lists | | Out of scope here (another branch works on them) |
+
 ## Results
 
 | Measure                         | Baseline | After |

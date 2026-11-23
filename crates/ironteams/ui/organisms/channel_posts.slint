@@ -539,8 +539,16 @@ export component ChannelPosts inherits Rectangle {
                 self.pinned = true;
                 self.to-newest();
             }
+            // The card holding the view's top and how far the view's top is below the card's
+            // top, as the user scrolls; and the same when older posts landed (`a-tick`).
+            property <string> top-id;
+            property <length> top-gap;
+            property <string> anchor-id;
+            property <length> anchor-gap;
             changed a-tick => {
                 posts-glide.stop();
+                self.anchor-id = self.top-id;
+                self.anchor-gap = self.top-gap;
                 self.anchoring = true;
                 self.pinned = false;
             }
@@ -594,6 +602,20 @@ export component ChannelPosts inherits Rectangle {
                     self.seen-h = self.height;
                     self.seen-id = item.post.id;
                 }
+                property <length> top-gap: -posts-list.content-y - self.y;
+                property <bool> holds-top: self.top-gap >= 0px && self.top-gap < self.height;
+                changed top-gap => {
+                    if self.holds-top {
+                        posts-list.top-id = item.post.id;
+                        posts-list.top-gap = self.top-gap;
+                    }
+                }
+                changed holds-top => {
+                    if self.holds-top {
+                        posts-list.top-id = item.post.id;
+                        posts-list.top-gap = self.top-gap;
+                    }
+                }
                 bubble: min(720px, root.width - 100px);
                 react(id, k) => { root.react(id, k); }
                 edit(id) => { root.edit(id); }
@@ -622,8 +644,13 @@ export component ChannelPosts inherits Rectangle {
         running: posts-list.anchoring;
         triggered => {
             posts-list.anchoring = false;
-            posts-list.content-y = min(0px, posts-list.visible-height - posts-list.content-height);
-            posts-list.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+            // The posts came in above the cards the list had built, and the list kept those where
+            // they were: the card being read is where it was, nothing to put back.
+            if posts-list.anchor-id == "" || posts-list.top-id != posts-list.anchor-id
+                || abs(posts-list.top-gap - posts-list.anchor-gap) >= 1px {
+                posts-list.content-y = min(0px, posts-list.visible-height - posts-list.content-height);
+                posts-list.ensure-row-visible(ChannelStore.anchor-index, ScrollBehavior.instant);
+            }
         }
     }
     Timer {
