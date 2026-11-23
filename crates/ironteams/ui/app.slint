@@ -610,14 +610,18 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 // Under a page the list and the chat keep their size and place but are clipped to
                 // nothing. A clip that changes size hides them in one step; `visible: false` would
-                // make the renderer re-mark every row under it each time (docs/perf.md).
+                // make the renderer re-mark every row under it each time (docs/perf.md). While
+                // they show, the clip reaches far past the area on every side, so it cuts nothing
+                // (a panel sliding in from the edge, a tooltip over the top bar).
                 Rectangle {
-                    x: 0px;
-                    y: 0px;
-                    width: parent.width;
-                    height: root.page-shown ? 0px : parent.height;
+                    x: -100000px;
+                    y: -100000px;
+                    width: parent.width + 200000px;
+                    height: root.page-shown ? 0px : parent.height + 200000px;
                     clip: true;
                     HorizontalLayout {
+                        x: 100000px;
+                        y: 100000px;
                         width: area.width;
                         height: area.height;
                         // Sidebar
