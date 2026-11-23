@@ -5,11 +5,11 @@
 //! status updates); the earlier ones are left out of the chat. The messages are parsed by
 //! `teams_proto::meeting_events`; anything it cannot read stays the grey line it was.
 
-use crate::data::{color_for, initials, MeetingCardData, MeetingPersonData};
+use crate::data::{MeetingCardData, MeetingPersonData, color_for, initials};
 use std::collections::HashMap;
 use store::MessageRow;
 use teams_proto::meeting_events::{
-    parse_meeting_event, CallEvent, MeetingEvent, RecordingEvent, RecordingState,
+    CallEvent, MeetingEvent, RecordingEvent, RecordingState, parse_meeting_event,
 };
 
 /// At most this many people are drawn on a call card.
