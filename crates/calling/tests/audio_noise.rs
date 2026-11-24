@@ -184,7 +184,7 @@ fn run(kind: Kind, amp: f64, noise: f64) -> Measured {
     let mut p = AudioProcessor::new();
     let mut output = Vec::with_capacity(input.len());
     let mut spent = std::time::Duration::ZERO;
-    for frame in input.chunks_exact(FRAME_SAMPLES) {
+    for frame in input.as_chunks::<FRAME_SAMPLES>().0 {
         let t = Instant::now();
         output.extend(p.process_capture(frame).unwrap());
         spent += t.elapsed();

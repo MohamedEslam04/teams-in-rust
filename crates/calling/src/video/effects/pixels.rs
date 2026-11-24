@@ -215,9 +215,16 @@ pub fn halve_plane(src: &[u8], w: usize, h: usize, out: &mut Vec<u8>) {
     out.clear();
     for rows in src.chunks_exact(2 * w).take(h / 2) {
         let (a, b) = rows.split_at(w);
-        out.extend(a.chunks_exact(2).zip(b.chunks_exact(2)).map(|(p, q)| {
-            ((u16::from(p[0]) + u16::from(p[1]) + u16::from(q[0]) + u16::from(q[1]) + 2) / 4) as u8
-        }));
+        out.extend(
+            a.as_chunks::<2>()
+                .0
+                .iter()
+                .zip(b.as_chunks::<2>().0)
+                .map(|(p, q)| {
+                    ((u16::from(p[0]) + u16::from(p[1]) + u16::from(q[0]) + u16::from(q[1]) + 2)
+                        / 4) as u8
+                }),
+        );
     }
 }
 

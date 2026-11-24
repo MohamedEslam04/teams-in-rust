@@ -247,19 +247,19 @@ fn bench() {
             b += psnr(&luma, r, BACKDROP);
             d += detail(&luma, PERSON);
             n += 1.0;
-            if i == 60 {
-                if let Some(dir) = &out_dir {
-                    std::fs::create_dir_all(dir).unwrap();
-                    let name = v.name.replace(' ', "_");
-                    let mut data = luma.clone();
-                    let (u, vv) = (
-                        scale_plane(got.planes().1, got.width / 2, got.height / 2, W / 2, H / 2),
-                        scale_plane(got.planes().2, got.width / 2, got.height / 2, W / 2, H / 2),
-                    );
-                    data.extend(u);
-                    data.extend(vv);
-                    std::fs::write(format!("{dir}/{name}.i420"), data).unwrap();
-                }
+            if i == 60
+                && let Some(dir) = &out_dir
+            {
+                std::fs::create_dir_all(dir).unwrap();
+                let name = v.name.replace(' ', "_");
+                let mut data = luma.clone();
+                let (u, vv) = (
+                    scale_plane(got.planes().1, got.width / 2, got.height / 2, W / 2, H / 2),
+                    scale_plane(got.planes().2, got.width / 2, got.height / 2, W / 2, H / 2),
+                );
+                data.extend(u);
+                data.extend(vv);
+                std::fs::write(format!("{dir}/{name}.i420"), data).unwrap();
             }
         }
         let secs = clip.len() as f64 / 30.0;
