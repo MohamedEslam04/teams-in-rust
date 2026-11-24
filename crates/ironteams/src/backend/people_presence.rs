@@ -20,6 +20,8 @@ struct Cache {
     wanted: HashSet<String>,
     /// Wanted since the last lookup: looked up without waiting for the next round.
     fresh: HashSet<String>,
+    /// Our own MRI (`""` before the lookup loop starts), for [`refresh_mine`].
+    mine: String,
 }
 
 static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
@@ -48,6 +50,24 @@ pub fn want(mri: &str) -> String {
         WAKE.notify_one();
     }
     known
+}
+
+/// Asks for our own presence to be looked up again now, without waiting for the next round (or
+/// for a push): a call starting or ending changes it on the service, and the status shown at the
+/// top right must follow within moments.
+pub fn refresh_mine() {
+    let asked = with(|c| {
+        let mine = c.mine.clone();
+        if mine.is_empty() {
+            return false;
+        }
+        c.wanted.insert(mine.clone());
+        c.fresh.insert(mine);
+        true
+    });
+    if asked {
+        WAKE.notify_one();
+    }
 }
 
 /// The person's availability as last seen, without asking for it.
@@ -153,6 +173,7 @@ impl Engine {
     /// once a minute while the window is in sight (live only).
     pub(super) fn start_people_presence(self: &Arc<Self>) {
         let e = self.clone();
+        with(|c| c.mine = e.me.clone());
         want(&e.me);
         tokio::spawn(async move {
             loop {
@@ -241,6 +262,20 @@ mod tests {
         assert!(!set("8:orgid:pp-test-a", "Busy", ""));
         assert_eq!(want("8:orgid:pp-test-a"), "Busy");
         assert!(set("8:orgid:pp-test-a", "Available", ""));
+    }
+
+    #[test]
+    fn our_own_presence_can_be_looked_up_again_at_once() {
+        let me = "8:orgid:pp-test-me";
+        with(|c| c.mine = me.to_string());
+        // Wanted for a while and already looked up: nothing is waiting for a lookup of it. (Not
+        // `take`: other tests share the cache and their people would be drained.)
+        want(me);
+        with(|c| c.fresh.remove(me));
+        // A call ended: the next lookup (not only the full round a minute later) includes us.
+        refresh_mine();
+        assert!(with(|c| c.fresh.contains(me)));
+        with(|c| c.mine.clear());
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub const APP_ID: &str = "io.github.mohamedeslam04.ironteams";
 
 pub mod autostart;
 pub mod icon;
+pub mod idle;
 pub mod launcher;
 pub mod menu;
 pub mod screen;
