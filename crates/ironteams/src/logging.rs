@@ -97,10 +97,10 @@ impl Write for RotatingFile {
         if self.file.is_none() {
             let _ = self.reopen();
         }
-        if let Some(file) = &mut self.file {
-            if file.write_all(buf).is_ok() {
-                self.size += buf.len() as u64;
-            }
+        if let Some(file) = &mut self.file
+            && file.write_all(buf).is_ok()
+        {
+            self.size += buf.len() as u64;
         }
         Ok(buf.len())
     }

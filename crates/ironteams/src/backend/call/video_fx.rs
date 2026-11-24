@@ -577,7 +577,9 @@ mod state {
             assert_eq!((img.width, img.height), BACKGROUND_SIZE);
             let row = &img.data[100 * img.width * 3..101 * img.width * 3];
             let between = row
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .filter(|p| (16..240).contains(&p[0]))
                 .count();
             assert!(between <= 1, "{between} grey pixels across the edge");
