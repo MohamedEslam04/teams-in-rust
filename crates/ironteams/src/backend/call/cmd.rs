@@ -55,6 +55,14 @@ pub enum CallCmd {
     Admit(String),
     /// The People panel's "Admit all".
     AdmitAll,
+    /// A person row of the People panel clicked (an MRI): their profile card.
+    PersonCard(String),
+    /// The People panel opened.
+    PeopleOpen,
+    /// The People panel's search box changed: its sections show the names that contain the text.
+    PeopleFilter(String),
+    /// The People panel's "Share invite": copy the meeting's join link.
+    ShareInvite,
     /// The camera picker (an index into [`Devices::cameras`]).
     CameraDevice(usize),
     /// The Video effects panel.
@@ -108,6 +116,10 @@ impl CallCmd {
             "end-held" => CallCmd::EndHeld,
             "admit" if !arg.is_empty() => CallCmd::Admit(arg.into()),
             "admit-all" => CallCmd::AdmitAll,
+            "person-card" if !arg.is_empty() => CallCmd::PersonCard(arg.into()),
+            "people-open" => CallCmd::PeopleOpen,
+            "people-filter" => CallCmd::PeopleFilter(arg.into()),
+            "share-invite" => CallCmd::ShareInvite,
             "control-request" => CallCmd::Control(ControlAction::Request),
             "control-release" => CallCmd::Control(ControlAction::Release),
             "control-give" if !arg.is_empty() => CallCmd::Control(ControlAction::Give {

@@ -183,6 +183,11 @@ impl Engine {
             }
             CallCmd::JoinOngoing(thread) => self.join_ongoing(&thread)?,
             CallCmd::Find(q) => return Ok(self.call_find(&q)),
+            CallCmd::PeopleOpen => {
+                self.calls.command(CallCmd::PeopleOpen);
+                return Ok(self.call_people_open());
+            }
+            CallCmd::ShareInvite => self.call_share_invite(),
             #[cfg(all(feature = "calls", not(test)))]
             CallCmd::Fx(video_fx::FxCmd::AddBackground) => {
                 let e = self.clone();

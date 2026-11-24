@@ -552,6 +552,7 @@ impl CallModel {
         people.sort_by_key(|p| p.lobby);
         let in_lobby = people.iter().filter(|p| p.lobby).count();
         let can_admit = self.phase.active() && people.iter().any(|p| p.me && p.role != "attendee");
+        let (invited, chat_people) = self.absent_people(&people);
         CallData {
             phase: self.phase.name(),
             kind: self.kind.name(),
@@ -618,6 +619,10 @@ impl CallModel {
             held: self.held,
             found: self.found.clone(),
             invite_status: self.invite_status.clone(),
+            invited,
+            chat_people,
+            can_share_invite: self.phase.active() && self.join_link().is_some(),
+            people_filter: self.people_filter.clone(),
             reactions: self
                 .reactions
                 .iter()

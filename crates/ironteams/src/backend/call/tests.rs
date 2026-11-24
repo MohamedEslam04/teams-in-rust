@@ -2,6 +2,7 @@ use super::*;
 use serde_json::json;
 
 mod lifecycle;
+mod people;
 mod reactions_and_commands;
 mod roster;
 
