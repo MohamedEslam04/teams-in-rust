@@ -87,4 +87,4 @@ node -e 'const R=require("./site/js/releases.js");const p=R.pick(R.normalize(req
 - The screenshots in `docs/screenshots/` are not used: they show the old name "kelma" in the window,
   and the PNGs on `dev` have a damaged text chunk from the rename.
 
-Docs synced to commit 7cd34f85 ("Merge feat/channel-post-layout: channel posts as full-width cards with a title, headings and lists like Teams", 2026-11-24)
+Docs synced to commit d124ea63 ("Merge fix/aur-stale-workspace: the AUR build rebuilds the workspace crates over a cached target", 2026-11-24)

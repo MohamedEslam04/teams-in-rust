@@ -129,7 +129,10 @@ pub async fn run(paths: &Paths, args: &[String]) -> Result<()> {
                 Some(s) => match Client::resume(s).await {
                     Ok(c) => c,
                     // Conditional access or MFA of the guest tenant: sign in there instead.
-                    Err(teams_proto::Error::Auth(msg)) => {
+                    Err(
+                        teams_proto::Error::Auth(msg)
+                        | teams_proto::Error::PolicyBlocked { detail: msg, .. },
+                    ) => {
                         eprintln!("{tenant} needs a fresh sign-in ({msg}); starting a device code");
                         device_code(&cfg).await?
                     }

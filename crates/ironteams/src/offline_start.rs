@@ -36,6 +36,7 @@ pub fn is_transient(e: &Error) -> bool {
             msg.starts_with("temporarily_unavailable") || msg.starts_with("server_error")
         }
         Error::NotMember { .. }
+        | Error::PolicyBlocked { .. }
         | Error::Protocol(_)
         | Error::DeviceCodeExpired
         | Error::NotSignedIn => false,
@@ -45,7 +46,7 @@ pub fn is_transient(e: &Error) -> bool {
 /// The start-up decision for a failed refresh of the stored session. `has_cache` is true when the
 /// config knows who the user is and their database file exists.
 pub fn on_refresh_error(e: &Error, has_cache: bool) -> OnRefreshError {
-    if matches!(e, Error::Auth(_)) && !is_transient(e) {
+    if matches!(e, Error::Auth(_) | Error::PolicyBlocked { .. }) && !is_transient(e) {
         OnRefreshError::SignIn
     } else if is_transient(e) && has_cache {
         OnRefreshError::Offline
@@ -109,6 +110,13 @@ mod tests {
         for s in [400, 401, 403, 404] {
             assert!(!is_transient(&Error::status("authz", s, "")), "{s}");
         }
+        let blocked = teams_proto::auth::parse_token_response(
+            r#"{"error":"invalid_grant","error_description":"AADSTS53003: blocked"}"#,
+        )
+        .unwrap_err();
+        assert!(!is_transient(&blocked));
+        // A policy block on refresh still means "sign in again", as before.
+        assert_eq!(on_refresh_error(&blocked, true), OnRefreshError::SignIn);
         assert!(!is_transient(&Error::Protocol("x".into())));
         assert!(!is_transient(&Error::NotSignedIn));
         assert!(!is_transient(&Error::DeviceCodeExpired));

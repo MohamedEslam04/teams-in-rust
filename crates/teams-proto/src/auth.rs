@@ -123,14 +123,99 @@ fn geo_of(gtms: Option<&Value>) -> Option<String> {
     })
 }
 
+/// The AADSTS errors Microsoft documents as a policy of the organization refusing the sign-in
+/// (<https://learn.microsoft.com/entra/identity-platform/reference-error-codes>), with the name
+/// and a short description for the copy-and-report button. 50199 (confirm the app) and 53004
+/// (register for multi-factor) are not blocks, and 50076/50079 ask for multi-factor, not refuse.
+const POLICY_BLOCKS: [(u32, &str, &str); 7] = [
+    (
+        50131,
+        "ConditionalAccessFailed",
+        "A Conditional Access check failed (device state, suspicious activity or an access policy).",
+    ),
+    (
+        53000,
+        "DeviceNotCompliant",
+        "Conditional Access requires a compliant device.",
+    ),
+    (
+        53001,
+        "DeviceNotDomainJoined",
+        "Conditional Access requires a domain-joined device.",
+    ),
+    (
+        53002,
+        "ApplicationUsedIsNotAnApprovedApp",
+        "Conditional Access allows only approved apps.",
+    ),
+    (
+        53003,
+        "BlockedByConditionalAccess",
+        "Access has been blocked by Conditional Access policies.",
+    ),
+    (
+        530032,
+        "BlockedByConditionalAccessOnSecurityPolicy",
+        "A tenant security policy blocks this request.",
+    ),
+    (
+        530035,
+        "BlockedBySecurityDefaults",
+        "Access has been blocked by security defaults.",
+    ),
+];
+
+/// Microsoft's name for `code` when it is one of the policy blocks, else `None`.
+pub fn policy_block_name(code: u32) -> Option<&'static str> {
+    POLICY_BLOCKS.iter().find(|b| b.0 == code).map(|b| b.1)
+}
+
+/// The first AADSTS number in `text` (`AADSTS53003: ...`).
+pub fn aadsts_code(text: &str) -> Option<u32> {
+    let i = text.find("AADSTS")? + "AADSTS".len();
+    let digits: String = text[i..].chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+/// The error for a token service answer that carries `error`. The message keeps the error name and
+/// the first line of the description (the rest is trace and correlation ids). A policy block gets
+/// its own variant; the AADSTS code is logged, nothing else of the answer is.
+fn auth_failure(err: &str, v: &Value) -> Error {
+    let desc = s(v.get("error_description")).unwrap_or_default();
+    let first_line = desc.lines().next().unwrap_or_default().to_string();
+    let detail = format!("{err}: {first_line}");
+    let code = aadsts_code(&first_line).or_else(|| {
+        v.get("error_codes")?
+            .as_array()?
+            .first()?
+            .as_u64()
+            .and_then(|c| u32::try_from(c).ok())
+    });
+    let block = code.and_then(|c| POLICY_BLOCKS.iter().find(|b| b.0 == c));
+    if let Some(c) = code {
+        tracing::info!(
+            aadsts = c,
+            error = err,
+            policy_block = block.is_some(),
+            "sign-in refused"
+        );
+    }
+    match block {
+        Some(&(code, name, summary)) => Error::PolicyBlocked {
+            code,
+            name,
+            summary,
+            detail,
+        },
+        None => Error::Auth(detail),
+    }
+}
+
 /// Parses the device-code start response.
 pub fn parse_device_code(body: &str) -> Result<DeviceCode> {
     let v: Value = serde_json::from_str(body)?;
     if let Some(err) = s(v.get("error")) {
-        return Err(Error::Auth(format!(
-            "{err}: {}",
-            s(v.get("error_description")).unwrap_or_default()
-        )));
+        return Err(auth_failure(&err, &v));
     }
     Ok(DeviceCode {
         device_code: s(v.get("device_code")).ok_or_else(|| Error::Auth("no device_code".into()))?,
@@ -152,11 +237,7 @@ pub fn parse_token_response(body: &str) -> Result<PollOutcome> {
             "authorization_pending" => Ok(PollOutcome::Pending),
             "slow_down" => Ok(PollOutcome::SlowDown),
             "expired_token" | "code_expired" => Err(Error::DeviceCodeExpired),
-            _ => {
-                let desc = s(v.get("error_description")).unwrap_or_default();
-                let first_line = desc.lines().next().unwrap_or_default().to_string();
-                Err(Error::Auth(format!("{err}: {first_line}")))
-            }
+            _ => Err(auth_failure(&err, &v)),
         };
     }
     Ok(PollOutcome::Done(TokenResponse {
@@ -383,6 +464,73 @@ mod tests {
                 assert!(!format!("{t:?}").contains("AT"));
             }
             other => panic!("{other:?}"),
+        }
+    }
+
+    // Error bodies in the shape the token service documents (ids are made up). The device-code
+    // start answers 400 with this body when a policy blocks the flow; the poll answers the same
+    // way once the user finishes signing in on a blocked account.
+    const START_BLOCKED_BY_CA: &str = r#"{"error":"invalid_request","error_description":"AADSTS53003: Access has been blocked by Conditional Access policies. The access policy does not allow token issuance.\r\nTrace ID: 00000000-0000-0000-0000-000000000001\r\nCorrelation ID: 00000000-0000-0000-0000-000000000002\r\nTimestamp: 2026-11-24 10:00:00Z","error_codes":[53003],"timestamp":"2026-11-24 10:00:00Z","trace_id":"00000000-0000-0000-0000-000000000001","correlation_id":"00000000-0000-0000-0000-000000000002","error_uri":"https://login.microsoftonline.com/error?code=53003"}"#;
+    const POLL_BLOCKED_BY_SECURITY_POLICY: &str = r#"{"error":"access_denied","error_description":"AADSTS530032: The tenant admin has configured a security policy that blocks this request.\r\nTrace ID: x","error_codes":[530032]}"#;
+    // 50199 only asks the user to confirm the app: not a block. 70018 is a mistyped user code.
+    const POLL_CONFIRMATION_PROMPT: &str = r#"{"error":"interaction_required","error_description":"AADSTS50199: For security reasons, user confirmation is required for this request.\r\nTrace ID: x","error_codes":[50199]}"#;
+    const START_BAD_USER_CODE: &str = r#"{"error":"invalid_grant","error_description":"AADSTS70018: Invalid verification code due to User typing in wrong user code for device code flow.","error_codes":[70018]}"#;
+
+    #[test]
+    fn device_code_start_blocked_by_conditional_access_is_a_policy_block() {
+        let e = parse_device_code(START_BLOCKED_BY_CA).unwrap_err();
+        let (code, name) = e.policy_block().expect("a policy block");
+        assert_eq!(code, 53003);
+        assert_eq!(name, "BlockedByConditionalAccess");
+        // The text other code reads stays what it was: error name and the first line.
+        assert_eq!(
+            e.to_string(),
+            "auth: invalid_request: AADSTS53003: Access has been blocked by Conditional Access policies. The access policy does not allow token issuance."
+        );
+    }
+
+    #[test]
+    fn token_poll_blocked_by_a_security_policy_is_a_policy_block() {
+        let e = parse_token_response(POLL_BLOCKED_BY_SECURITY_POLICY).unwrap_err();
+        assert_eq!(e.policy_block().map(|(c, _)| c), Some(530032));
+    }
+
+    #[test]
+    fn other_sign_in_failures_are_not_policy_blocks() {
+        let e = parse_token_response(POLL_CONFIRMATION_PROMPT).unwrap_err();
+        assert!(e.policy_block().is_none());
+        assert!(matches!(e, Error::Auth(m) if m.starts_with("interaction_required: AADSTS50199")));
+        let e = parse_device_code(START_BAD_USER_CODE).unwrap_err();
+        assert!(e.policy_block().is_none());
+        assert!(matches!(e, Error::Auth(_)));
+        // No AADSTS number at all.
+        let e = parse_token_response(r#"{"error":"invalid_grant","error_description":"bad"}"#)
+            .unwrap_err();
+        assert!(e.policy_block().is_none());
+    }
+
+    #[test]
+    fn the_code_comes_from_the_description_or_else_error_codes() {
+        assert_eq!(aadsts_code("x: AADSTS53003: y"), Some(53003));
+        assert_eq!(aadsts_code("AADSTS: none"), None);
+        assert_eq!(aadsts_code("no code"), None);
+        // A description without the number still has it in `error_codes`.
+        let e = parse_token_response(
+            r#"{"error":"access_denied","error_description":"blocked","error_codes":[53003]}"#,
+        )
+        .unwrap_err();
+        assert_eq!(e.policy_block().map(|(c, _)| c), Some(53003));
+    }
+
+    /// The codes Microsoft documents as policy blocks (reference-error-codes). 50199 and 53004
+    /// (register for multi-factor) are not among them.
+    #[test]
+    fn the_policy_block_list() {
+        for c in [53000, 53001, 53002, 53003, 530032, 530035, 50131] {
+            assert!(policy_block_name(c).is_some(), "{c}");
+        }
+        for c in [50199, 53004, 70016, 70018, 50076, 700082] {
+            assert!(policy_block_name(c).is_none(), "{c}");
         }
     }
 
