@@ -12,7 +12,7 @@ import { VideoClipCard } from "video_clip.slint";
 import { MeetingCardView } from "meeting_card.slint";
 import { DeliveryMark } from "../molecules/delivery_mark.slint";
 import { FadeImage, Motion, PopIn } from "../tokens/motion.slint";
-import { ReaderItem } from "../tokens/types.slint";
+import { PostBlock, ReaderItem } from "../tokens/types.slint";
 
 // Right clicks the window saw (`main.rs` counts them). The words of a message are selectable
 // text, which takes the press, as do its links and buttons, so the row's own `pointer-event`
@@ -46,6 +46,131 @@ component ReaderAvatar inherits Rectangle {
         interval: 16ms;
         running: !root.shown;
         triggered => { root.shown = true; }
+    }
+}
+
+// A post's header, as in Teams: the photo, the name and the time on one line. The photo and the
+// name open the profile card, and resting on them its hover card (as `MessageRow`'s do).
+component PostHeader inherits Rectangle {
+    in property <Msg> m;
+    // The widest the name may be before it elides.
+    in property <length> max-name;
+    callback profile(string);
+    callback profile-at(string, length, length, length, length);
+    callback photo-hover(string, bool, length, length, length, length);
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        Avatar {
+            initials: root.m.initials;
+            tone: root.m.color;
+            img: root.m.avatar;
+            has-img: root.m.has-avatar;
+            presence: root.m.presence;
+            size: 32px;
+            TouchArea {
+                mouse-cursor: pointer;
+                accessible-role: button;
+                accessible-label: @tr("Open profile of {}", root.m.sender);
+                accessible-action-default => { root.profile(root.m.sender-id); }
+                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
+                property <string> hovered: "";
+                changed has-hover => {
+                    if self.has-hover { self.hovered = root.m.sender-id; }
+                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+                }
+            }
+        }
+        Rectangle {
+            width: min(post-name.preferred-width, root.max-name);
+            post-name := Text {
+                width: parent.width;
+                height: parent.height;
+                text: root.m.sender;
+                color: Theme.fg;
+                font-size: 14px * Theme.font-scale;
+                font-weight: 600;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                accessible-role: button;
+                accessible-label: @tr("Open profile of {}", root.m.sender);
+                accessible-action-default => { root.profile(root.m.sender-id); }
+                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
+                property <string> hovered: "";
+                changed has-hover => {
+                    if self.has-hover { self.hovered = root.m.sender-id; }
+                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+                }
+            }
+        }
+        Text { text: root.m.time; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+        if root.m.edited: Text { text: @tr("Edited"); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+    }
+}
+
+// A post's body block by block (`Msg.blocks`): headings stand out with room above them, and a
+// list item hangs beside its bullet or number, on the side its text starts.
+component PostBlocks inherits Rectangle {
+    in property <[PostBlock]> blocks;
+    // The narrowest a code block may be.
+    in property <length> code-min;
+    callback open-url(string);
+    VerticalLayout {
+        for b[i] in root.blocks: VerticalLayout {
+            padding-top: i == 0 ? 0px : (b.kind == "heading" ? 14px : (b.kind == "item" && root.blocks[i - 1].kind == "item" ? 4px : 8px));
+            if b.kind == "text" || b.kind == "heading": StyledText {
+                text: b.body;
+                min-width: 0px;
+                default-color: Theme.fg;
+                default-font-size: (b.kind != "heading" ? 14px : (b.level <= 1 ? 18px : (b.level == 2 ? 16px : 15px))) * Theme.font-scale;
+                link-color: Theme.accent;
+                selectable: true;
+                horizontal-alignment: b.rtl ? right : left;
+                link-clicked(url) => { root.open-url(url); }
+            }
+            if b.kind == "item": HorizontalLayout {
+                padding-left: b.rtl ? 0px : 6px + b.depth * 20px;
+                padding-right: b.rtl ? 6px + b.depth * 20px : 0px;
+                spacing: 8px;
+                if !b.rtl: Text {
+                    text: b.marker;
+                    min-width: 14px * Theme.font-scale;
+                    horizontal-stretch: 0;
+                    color: Theme.fg-muted;
+                    font-size: 14px * Theme.font-scale;
+                    horizontal-alignment: right;
+                    accessible-role: none;
+                }
+                StyledText {
+                    text: b.body;
+                    min-width: 0px;
+                    horizontal-stretch: 1;
+                    default-color: Theme.fg;
+                    default-font-size: 14px * Theme.font-scale;
+                    link-color: Theme.accent;
+                    selectable: true;
+                    horizontal-alignment: b.rtl ? right : left;
+                    link-clicked(url) => { root.open-url(url); }
+                }
+                if b.rtl: Text {
+                    text: b.marker;
+                    min-width: 14px * Theme.font-scale;
+                    horizontal-stretch: 0;
+                    color: Theme.fg-muted;
+                    font-size: 14px * Theme.font-scale;
+                    horizontal-alignment: left;
+                    accessible-role: none;
+                }
+            }
+            if b.kind == "code": CodeBlock {
+                code: b.code;
+                min-width: root.code-min;
+                copy(c) => { MediaStore.command("text-copy", c); }
+            }
+        }
     }
 }
 
@@ -233,57 +358,12 @@ export component MessageRow inherits TouchArea {
                     padding-bottom: root.post-style ? 0px : 10px;
                     spacing: root.post-style ? 8px : 6px;
 
-                    // A post's header, as in Teams: the photo, the name and the time on one line.
-                    if root.post-style: HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Avatar {
-                            initials: root.m.initials;
-                            tone: root.m.color;
-                            img: root.m.avatar;
-                            has-img: root.m.has-avatar;
-                            presence: root.m.presence;
-                            size: 32px;
-                            TouchArea {
-                                mouse-cursor: pointer;
-                                accessible-role: button;
-                                accessible-label: @tr("Open profile of {}", root.m.sender);
-                                accessible-action-default => { root.profile(root.m.sender-id); }
-                                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
-                                property <string> hovered: "";
-                                changed has-hover => {
-                                    if self.has-hover { self.hovered = root.m.sender-id; }
-                                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
-                                }
-                            }
-                        }
-                        Rectangle {
-                            width: min(post-name.preferred-width, max(80px, root.max-bubble - 200px));
-                            post-name := Text {
-                                width: parent.width;
-                                height: parent.height;
-                                text: root.m.sender;
-                                color: Theme.fg;
-                                font-size: 14px * Theme.font-scale;
-                                font-weight: 600;
-                                overflow: elide;
-                                vertical-alignment: center;
-                            }
-                            TouchArea {
-                                mouse-cursor: pointer;
-                                accessible-role: button;
-                                accessible-label: @tr("Open profile of {}", root.m.sender);
-                                accessible-action-default => { root.profile(root.m.sender-id); }
-                                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
-                                property <string> hovered: "";
-                                changed has-hover => {
-                                    if self.has-hover { self.hovered = root.m.sender-id; }
-                                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
-                                }
-                            }
-                        }
-                        Text { text: root.m.time; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
-                        if root.m.edited: Text { text: @tr("Edited"); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                    if root.post-style: PostHeader {
+                        m: root.m;
+                        max-name: max(80px, root.max-bubble - 200px);
+                        profile(id) => { root.profile(id); }
+                        profile-at(id, x, y, w, h) => { root.profile-at(id, x, y, w, h); }
+                        photo-hover(id, on, x, y, w, h) => { root.photo-hover(id, on, x, y, w, h); }
                     }
 
                     if (root.m.show-header || root.m.mine) && !root.post-style: HorizontalLayout {
@@ -396,61 +476,10 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
-                    // A post's body block by block: headings stand out with room above them, and
-                    // a list item hangs beside its bullet or number, on the side its text starts.
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.by-blocks: VerticalLayout {
-                        for b[i] in root.m.blocks: VerticalLayout {
-                            padding-top: i == 0 ? 0px : (b.kind == "heading" ? 14px : (b.kind == "item" && root.m.blocks[i - 1].kind == "item" ? 4px : 8px));
-                            if b.kind == "text" || b.kind == "heading": StyledText {
-                                text: b.body;
-                                min-width: 0px;
-                                default-color: Theme.fg;
-                                default-font-size: (b.kind != "heading" ? 14px : (b.level <= 1 ? 18px : (b.level == 2 ? 16px : 15px))) * Theme.font-scale;
-                                link-color: Theme.accent;
-                                selectable: true;
-                                horizontal-alignment: b.rtl ? right : left;
-                                link-clicked(url) => { root.open-url(url); }
-                            }
-                            if b.kind == "item": HorizontalLayout {
-                                padding-left: b.rtl ? 0px : 6px + b.depth * 20px;
-                                padding-right: b.rtl ? 6px + b.depth * 20px : 0px;
-                                spacing: 8px;
-                                if !b.rtl: Text {
-                                    text: b.marker;
-                                    min-width: 14px * Theme.font-scale;
-                                    horizontal-stretch: 0;
-                                    color: Theme.fg-muted;
-                                    font-size: 14px * Theme.font-scale;
-                                    horizontal-alignment: right;
-                                    accessible-role: none;
-                                }
-                                StyledText {
-                                    text: b.body;
-                                    min-width: 0px;
-                                    horizontal-stretch: 1;
-                                    default-color: Theme.fg;
-                                    default-font-size: 14px * Theme.font-scale;
-                                    link-color: Theme.accent;
-                                    selectable: true;
-                                    horizontal-alignment: b.rtl ? right : left;
-                                    link-clicked(url) => { root.open-url(url); }
-                                }
-                                if b.rtl: Text {
-                                    text: b.marker;
-                                    min-width: 14px * Theme.font-scale;
-                                    horizontal-stretch: 0;
-                                    color: Theme.fg-muted;
-                                    font-size: 14px * Theme.font-scale;
-                                    horizontal-alignment: left;
-                                    accessible-role: none;
-                                }
-                            }
-                            if b.kind == "code": CodeBlock {
-                                code: b.code;
-                                min-width: min(240px, root.max-bubble);
-                                copy(c) => { MediaStore.command("text-copy", c); }
-                            }
-                        }
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.by-blocks: PostBlocks {
+                        blocks: root.m.blocks;
+                        code-min: min(240px, root.max-bubble);
+                        open-url(u) => { root.open-url(u); }
                     }
 
                     // Several pictures form a grid (plan 9.5); clicking one opens the viewer.
