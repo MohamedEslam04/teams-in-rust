@@ -11,6 +11,7 @@ import { ComposerAppsButton } from "composer_apps.slint";
 import { GifPicker, GifStore } from "../molecules/gif_picker.slint";
 import { SendStore, SendButton, SendMenu, SchedulePicker, ScheduleBanner } from "composer_send.slint";
 import { SpellApi, SpellOverlay, SpellWord } from "../molecules/spelling.slint";
+import { LineEditor } from "../molecules/line_editor.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ClipStore, ClipRecorderPanel } from "video_clip.slint";
 import { LoopStore, LoopEditor } from "../molecules/loop_editor.slint";
@@ -47,7 +48,7 @@ export component Composer inherits Rectangle {
     // "Set delivery options" › Urgent: like `important`, for the next message only.
     in-out property <bool> urgent: false;
     // True while the text box has the keyboard focus (the window leaves Ctrl+Shift+7 and 8 to the composer then).
-    property <bool> input-focused: composer-input.has-focus;
+    property <bool> input-focused: composer-input.focused;
     callback input-focus(bool);
     changed input-focused => { root.input-focus(root.input-focused); }
 
@@ -136,7 +137,7 @@ export component Composer inherits Rectangle {
     }
 
     function put(e: Edited) {
-        composer-input.text = e.text;
+        composer-input.set-text(e.text);
         composer-input.set-selection-offsets(e.cursor, e.cursor);
         root.draft-edited(e.text);
         root.focus-tick += 1;
@@ -144,7 +145,7 @@ export component Composer inherits Rectangle {
 
     // Puts a formatted text back with its selection.
     function put-selection(e: FormatEdit) {
-        composer-input.text = e.text;
+        composer-input.set-text(e.text);
         composer-input.set-selection-offsets(e.anchor, e.cursor);
         root.draft-edited(e.text);
         root.focus-tick += 1;
@@ -205,7 +206,7 @@ export component Composer inherits Rectangle {
                 // Cleared first: a refused schedule puts the text (and the time) back.
                 let text = composer-input.text;
                 let at = SendStore.schedule-at;
-                composer-input.text = "";
+                composer-input.set-text("");
                 SendStore.schedule-at = "";
                 SendStore.schedule-label = "";
                 root.important = false;
@@ -216,7 +217,7 @@ export component Composer inherits Rectangle {
         }
         if composer-input.text != "" || root.pending-attachments.length > 0 {
             root.send(composer-input.text);
-            composer-input.text = "";
+            composer-input.set-text("");
             root.important = false;
             root.urgent = false;
         }
@@ -316,7 +317,7 @@ export component Composer inherits Rectangle {
                     source: root.draft;
                 }
                 Rectangle {
-                    height: root.expanded ? max(200px, min(420px, composer-input.preferred-height + 20px)) : max(44px, min(220px, composer-input.preferred-height + 20px));
+                    height: root.expanded ? max(200px, min(420px, composer-input.text-height + 20px)) : max(44px, min(220px, composer-input.text-height + 20px));
                     composer-scope := FocusScope {
                         capture-key-pressed(event) => {
                             // Not consumed: a text paste still happens. Rust adds an image if the clipboard holds one.
@@ -410,28 +411,23 @@ export component Composer inherits Rectangle {
                             words: root.spell-words;
                             stable: root.spell-stable;
                             font-size: composer-input.font-size;
-                            align: composer-input.horizontal-alignment;
+                            align: Theme.start-align;
                             replace(start, end, with) => {
                                 let e = SpellApi.replace(composer-input.text, start, end, with);
                                 if e.cursor >= 0 { root.put(e); }
                             }
                         }
-                        composer-input := TextInput {
+                        // One input per line, each aligned by its own first strong character
+                        // (ui/molecules/line_editor.slint); an empty box keeps the language's side.
+                        composer-input := LineEditor {
                             property <int> tick: root.focus-tick;
-                            changed tick => { self.focus(); }
+                            changed tick => { self.focus-text(); }
                             x: 14px;
                             y: 10px;
                             width: parent.width - 28px;
+                            height: parent.height - 10px;
                             text <=> root.draft;
-                            color: Theme.fg;
                             font-size: 14px * Theme.font-scale;
-                            single-line: false;
-                            // The text decides its side as it is typed (a TextInput aligns all its lines
-                            // alike, so it is the first strong character of the whole text); an empty
-                            // box, digits or emoji keep the language's side.
-                            property <int> direction: FormatApi.text-direction(root.draft);
-                            horizontal-alignment: self.direction > 0 ? TextHorizontalAlignment.right : self.direction < 0 ? TextHorizontalAlignment.left : Theme.start-align;
-                            wrap: word-wrap;
                             edited => {
                                 root.typing-tick();
                                 root.draft-edited(self.text);
@@ -464,7 +460,7 @@ export component Composer inherits Rectangle {
             Rectangle {
                 y: parent.height - 2px;
                 height: 2px;
-                background: composer-input.has-focus ? Theme.accent : transparent;
+                background: composer-input.focused ? Theme.accent : transparent;
             }
             // While a voice message is recorded or listened back, its bar takes the box.
             if VoiceRecStore.state != "idle": Rectangle {

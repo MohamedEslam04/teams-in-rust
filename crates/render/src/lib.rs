@@ -6,6 +6,7 @@
 
 mod compose;
 pub mod edit;
+pub mod lines;
 mod links;
 mod markdown_out;
 mod parse;
