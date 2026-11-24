@@ -6,8 +6,9 @@
 use super::*;
 use crate::CallStore;
 use crate::backend::CalCmd;
-use crate::backend::call::{CallCmd, Event, FakeDriver, Person};
+use crate::backend::call::{Absent, CallCmd, Event, FakeDriver, JoinTarget, MeetingPeople, Person};
 use i_slint_backend_testing::AccessibleRole;
+use store::UserRow;
 
 const THREAD: &str = "19:meeting_abc@thread.v2";
 
@@ -27,7 +28,10 @@ struct CallHarness {
 
 impl CallHarness {
     fn new() -> Self {
-        let h = Harness::new();
+        Self::on(Harness::new())
+    }
+
+    fn on(h: Harness) -> Self {
         let fake = FakeDriver::manual();
         h.engine.calls.set_driver(Arc::new(fake.clone()));
         crate::ui::call::wire(&h.app);
@@ -1128,6 +1132,47 @@ fn the_gallery_pages_sixteen_tiles_at_a_time_with_a_pager() {
     assert!(c.shows("Person 01") && !c.shows("Person 17"));
 }
 
+/// Sixteen people in the speaker view: the strip used to stop at eight with no way to reach the
+/// rest. Now the ones that do not fit are out of sight until the arrows scroll them in (items
+/// clipped by the strip are not in the accessibility tree).
+#[test]
+fn the_speaker_strip_scrolls_to_everyone_instead_of_stopping_at_eight() {
+    let c = CallHarness::new();
+    c.connected();
+    cs(&c.h.app).set_view_mode("speaker".into());
+    let names = crowd(&c, 16);
+    let last = &names[15];
+
+    assert!(
+        c.shows(&names[0]) && c.shows(&names[1]),
+        "the speaker and the strip's start"
+    );
+    assert!(!c.shows(last), "the last person does not fit the strip yet");
+    assert!(
+        !c.shows("Show previous people"),
+        "at the start of the strip"
+    );
+
+    for _ in 0..10 {
+        if !c.shows("Show more people") {
+            break;
+        }
+        click(&c.button("Show more people"));
+    }
+    assert!(!c.shows("Show more people"), "scrolled to the end");
+    assert!(c.shows(last), "the last person is reachable");
+    assert!(c.shows("Show previous people"), "the way back is there");
+
+    for _ in 0..10 {
+        if !c.shows("Show previous people") {
+            break;
+        }
+        click(&c.button("Show previous people"));
+    }
+    assert!(!c.shows("Show previous people"), "back at the start");
+    assert!(c.shows(&names[1]) && !c.shows(last));
+}
+
 #[test]
 fn one_page_has_no_pager_and_a_page_that_loses_its_people_gives_way() {
     let c = CallHarness::new();
@@ -1188,6 +1233,160 @@ fn the_tile_menu_offers_pin_and_shows_what_the_call_cannot_do_yet_as_disabled() 
     click(&c.button("More options for Me"));
     assert!(c.shows("Pin for me"));
     assert!(!c.shows("Mute participant") && !c.shows("Spotlight for everyone"));
+}
+
+/// What the person card shows: its person's MRI while it is open, else "".
+fn card_of(c: &CallHarness) -> String {
+    let ps = c.h.app.global::<crate::PeopleStore>();
+    if ps.get_card_open() {
+        ps.get_card().id.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// The gallery tile that holds the pill with this name.
+fn tile_of(c: &CallHarness, name: &str) -> ElementHandle {
+    let pill = c.with_role(name, AccessibleRole::Text).absolute_position();
+    tiles(c)
+        .into_iter()
+        .find(|t| {
+            let (at, size) = (t.absolute_position(), t.size());
+            pill.x >= at.x
+                && pill.x <= at.x + size.width
+                && pill.y >= at.y
+                && pill.y <= at.y + size.height
+        })
+        .unwrap_or_else(|| panic!("no tile of {name:?}"))
+}
+
+#[test]
+fn clicking_a_tile_asks_for_that_persons_card_and_shows_it_over_the_call() {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    store
+        .upsert_user(&UserRow {
+            mri: "8:orgid:bo".into(),
+            display_name: "Bo Ström".into(),
+            email: Some("bo@example.com".into()),
+            avatar: None,
+            updated_ms: 1,
+        })
+        .unwrap();
+    let c = CallHarness::on(Harness::with_store(store));
+    c.connected();
+    tile_menu_roster(&c);
+    assert_eq!(card_of(&c), "");
+
+    let bo = tile_of(&c, "Bo Ström");
+    click(&bo);
+    assert_eq!(c.sent().last().unwrap(), "person-card 8:orgid:bo");
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    let ps = c.h.app.global::<crate::PeopleStore>();
+    assert_eq!(ps.get_card().name, "Bo Ström");
+    assert_eq!(ps.get_card_email(), "bo@example.com");
+    assert!(!ps.get_card_by_hover(), "a click opens it, so it stays");
+
+    // It sits inside the window, level with the tile it belongs to.
+    let card = ElementHandle::find_by_element_type_name(&c.h.app, "ProfileCard")
+        .next()
+        .expect("the card");
+    let (at, size) = (card.absolute_position(), card.size());
+    let window =
+        c.h.app
+            .window()
+            .size()
+            .to_logical(c.h.app.window().scale_factor());
+    assert!(
+        at.x >= 0.0 && at.x + size.width <= window.width,
+        "card x {}",
+        at.x
+    );
+    assert!(
+        at.y >= 0.0 && at.y + size.height <= window.height,
+        "card y {}",
+        at.y
+    );
+    let tile = (
+        bo.absolute_position().y,
+        bo.absolute_position().y + bo.size().height,
+    );
+    assert!(
+        at.y < tile.1 && at.y + size.height > tile.0,
+        "the card at {}..{} is beside the tile at {}..{}",
+        at.y,
+        at.y + size.height,
+        tile.0,
+        tile.1
+    );
+
+    // Our own tile opens our own card (a click while a card is open only closes it).
+    key(&c.h.app, Key::Escape, true);
+    key(&c.h.app, Key::Escape, false);
+    click(&tile_of(&c, "Me (You)"));
+    assert_eq!(c.sent().last().unwrap(), "person-card 8:orgid:me");
+    assert_eq!(card_of(&c), "8:orgid:me");
+}
+
+#[test]
+fn the_person_card_closes_on_escape_and_on_a_click_outside_it() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    click(&tile_of(&c, "Bo Ström"));
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    key(&c.h.app, Key::Escape, true);
+    key(&c.h.app, Key::Escape, false);
+    assert_eq!(card_of(&c), "", "Escape closes it");
+
+    click(&tile_of(&c, "Bo Ström"));
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    // A press away from the card closes it (the layer under it takes the press): in the bottom
+    // left corner, which the card, placed next to the tile, does not reach.
+    let corner = slint::LogicalPosition::new(4., 790.);
+    let window = c.h.app.window();
+    window.dispatch_event(WindowEvent::PointerMoved { position: corner });
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position: corner,
+        button: PointerEventButton::Left,
+    });
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: corner,
+        button: PointerEventButton::Left,
+    });
+    assert_eq!(card_of(&c), "", "a click outside closes it");
+}
+
+#[test]
+fn a_bot_or_a_tile_without_an_mri_has_no_card() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    let run = c.h.runner();
+    for mri in ["28:bot", ""] {
+        run(Cmd::Call(CallCmd::PersonCard(mri.into())));
+        assert_eq!(card_of(&c), "", "{mri:?}");
+    }
+    // The same through a tile: no MRI, nothing asked.
+    c.fake.emit(Event::Roster(vec![
+        Person {
+            name: "Guest".into(),
+            ..Default::default()
+        },
+        Person {
+            mri: "8:orgid:me".into(),
+            name: "Me".into(),
+            me: true,
+            ..Default::default()
+        },
+    ]));
+    let asked = c.sent().len();
+    click(&tile_of(&c, "Guest"));
+    assert_eq!(c.sent().len(), asked, "nothing was asked");
+    assert_eq!(card_of(&c), "");
+
+    run(Cmd::Call(CallCmd::PersonCard("8:orgid:bo".into())));
+    assert_eq!(card_of(&c), "8:orgid:bo", "a person does");
 }
 
 #[test]
@@ -1526,8 +1725,12 @@ fn the_invite_box_rings_a_person_into_the_call() {
     c.direct();
     click(&c.button("People"));
     assert!(c.shows("Currently in this call (0)"));
-    c.search("Invite someone or dial a number", "bo");
-    assert_eq!(c.sent(), ["find bo"]);
+    c.search("Type a name", "bo");
+    assert_eq!(
+        c.sent(),
+        ["people-open", "find bo", "people-filter bo"],
+        "the one box finds people to invite and filters the panel"
+    );
     click(&c.row("Bo Example"));
     assert_eq!(c.fake.calls(), [format!("add {BO}")]);
     assert_eq!(c.sent().last().unwrap(), &format!("invite {BO}"));
@@ -1565,13 +1768,197 @@ fn transfer_holds_the_call_then_transfers_now_to_the_picked_person() {
 }
 
 #[test]
-fn a_meeting_has_no_hold_transfer_or_invite_box() {
+fn a_meeting_has_no_hold_or_transfer_and_shares_no_invite_without_a_link() {
     let c = CallHarness::new();
     c.connected();
     assert!(c.all("Hold").is_empty() && c.all("Transfer").is_empty());
     click(&c.button("People"));
-    assert!(c.all("Invite someone or dial a number").is_empty());
+    assert!(
+        c.all("Invite someone or dial a number").is_empty(),
+        "one box, named by what it takes"
+    );
+    c.with_role("Type a name", AccessibleRole::TextInput);
     assert!(c.shows("In this meeting (0)"));
+    assert!(c.all("Share invite").is_empty(), "no join link is known");
+    assert!(c.all("Others invited (0)").is_empty());
+}
+
+/// Joins `THREAD` by this link, so the meeting has a join link to share.
+fn connected_by_link(c: &CallHarness, link: &str) {
+    c.h.engine.calls.prejoin(
+        "Standup".into(),
+        JoinTarget::Link(link.into()),
+        THREAD.into(),
+    );
+    click(&c.button("Join now"));
+    c.fake.emit(Event::Connected);
+    assert_eq!(c.phase(), "connected");
+}
+
+#[test]
+fn share_invite_copies_the_join_link_and_says_so() {
+    let c = CallHarness::new();
+    connected_by_link(&c, "https://teams.example/j");
+    click(&c.button("People"));
+    assert!(c.all("Link copied").is_empty());
+    click(&c.button("Share invite"));
+    assert_eq!(c.sent().last().unwrap(), "share-invite");
+    assert!(c.shows("Link copied"));
+    assert!(
+        c.all("Share invite").is_empty(),
+        "the button says it for a moment"
+    );
+}
+
+#[test]
+fn a_one_on_one_call_has_no_invite_to_share() {
+    let c = CallHarness::new();
+    c.direct();
+    click(&c.button("People"));
+    assert!(c.all("Share invite").is_empty());
+}
+
+fn absent(mri: &str, name: &str, status: &str) -> Absent {
+    Absent {
+        mri: mri.into(),
+        name: name.into(),
+        status: status.into(),
+    }
+}
+
+const ADA: &str = "8:orgid:00000000-0000-0000-0000-0000000000b1";
+const DI: &str = "8:orgid:00000000-0000-0000-0000-0000000000b2";
+
+/// A meeting with us and Ada in the call, two invitees who are not (one the chat knows), and a
+/// chat member nobody invited.
+fn invited_meeting(c: &CallHarness) {
+    c.connected();
+    let p = |mri: &str, name: &str, me| Person {
+        mri: mri.into(),
+        name: name.into(),
+        me,
+        ..Default::default()
+    };
+    c.fake.emit(Event::Roster(vec![
+        p(ORGANIZER, "Me", true),
+        p(ADA, "Ada Lovelace", false),
+        p("", "Unknown Guest", false),
+    ]));
+    c.h.engine.calls.set_meeting_people(
+        THREAD,
+        MeetingPeople {
+            join_link: None,
+            invited: vec![
+                absent(ADA, "Ada Lovelace", "Accepted"),
+                absent(BO, "Bo Ström", "Declined"),
+                absent("", "cy@x.example", "No response"),
+            ],
+            chat: vec![
+                absent(ADA, "Ada Lovelace", ""),
+                absent(DI, "Di Example", ""),
+            ],
+        },
+    );
+    click(&c.button("People"));
+}
+
+#[test]
+fn the_people_panel_lists_who_was_invited_and_who_is_only_in_the_chat() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    assert!(c.shows("In this meeting (3)"));
+    assert!(c.shows("Others invited (2)"), "Ada is in the call");
+    assert!(
+        c.shows("People added to the chat (1)"),
+        "Ada is in, Bo is invited"
+    );
+    for (name, status) in [("Bo Ström", "Declined"), ("cy@x.example", "No response")] {
+        assert_eq!(
+            c.row(name).accessible_description().unwrap(),
+            status,
+            "{name}"
+        );
+    }
+    assert_eq!(c.row("Di Example").accessible_description().unwrap(), "");
+    assert!(
+        c.sent().iter().any(|s| s == "people-open"),
+        "{:?}",
+        c.sent()
+    );
+}
+
+#[test]
+fn a_person_row_opens_their_card_when_their_mri_is_known() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    for (row, mri) in [("Ada Lovelace", ADA), ("Bo Ström", BO), ("Di Example", DI)] {
+        click(&c.row(row));
+        assert_eq!(
+            c.sent().last().unwrap(),
+            &format!("person-card {mri}"),
+            "{row}"
+        );
+        assert_eq!(card_of(&c), mri, "{row}");
+        // A click while a card is open only closes it.
+        key(&c.h.app, Key::Escape, true);
+        key(&c.h.app, Key::Escape, false);
+    }
+    let asked = c.sent().len();
+    click(&c.row("Unknown Guest"));
+    click(&c.row("cy@x.example"));
+    assert_eq!(c.sent().len(), asked, "no MRI, no card");
+}
+
+#[test]
+fn a_section_folds_under_its_header_and_unfolds() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    let listed = |name: &str| {
+        c.all(name)
+            .iter()
+            .any(|e| e.accessible_role() == Some(AccessibleRole::ListItem))
+    };
+    for (header, row) in [
+        ("In this meeting (3)", "Ada Lovelace"),
+        ("Others invited (2)", "Bo Ström"),
+        ("People added to the chat (1)", "Di Example"),
+    ] {
+        assert!(listed(row), "{row} is shown to start with");
+        click(&c.with_role(header, AccessibleRole::Button));
+        assert!(!listed(row), "{header} folded");
+        assert!(c.shows(header), "the header stays");
+        click(&c.with_role(header, AccessibleRole::Button));
+        assert!(listed(row), "{header} unfolded");
+    }
+}
+
+#[test]
+fn the_search_box_filters_every_section_and_empty_shows_all() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    let listed = |name: &str| {
+        c.all(name)
+            .iter()
+            .any(|e| e.accessible_role() == Some(AccessibleRole::ListItem))
+    };
+    c.search("Type a name", "di");
+    assert_eq!(c.sent().last().unwrap(), "people-filter di");
+    assert!(listed("Di Example"));
+    for hidden in ["Ada Lovelace", "Bo Ström", "cy@x.example", "Unknown Guest"] {
+        assert!(!listed(hidden), "{hidden} does not match");
+    }
+    c.search("Type a name", "BO");
+    assert!(listed("Bo Ström") && !listed("Di Example"), "any case");
+    c.search("Type a name", "");
+    for shown in [
+        "Ada Lovelace",
+        "Bo Ström",
+        "cy@x.example",
+        "Unknown Guest",
+        "Di Example",
+    ] {
+        assert!(listed(shown), "{shown} is back");
+    }
 }
 
 const SURVEY: &str = "How was the call quality?";

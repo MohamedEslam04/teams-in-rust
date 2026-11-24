@@ -35,8 +35,9 @@ pub enum ActivityCmd {
     Reply(String),
 }
 
-/// Feed items plus the view settings. The network feed is the source of truth for read state, but
-/// local choices win until the server reports the same value (the mark-read call is unverified).
+/// Feed items plus the view settings. The network feed (its per-item flags and the feed's read
+/// position) is the source of truth for read state, but local choices win until the server reports
+/// the same value (the mark-read call is unverified).
 pub(crate) struct State {
     items: Vec<ActivityItem>,
     filter: ActivityFilter,
@@ -47,6 +48,9 @@ pub(crate) struct State {
     overrides: HashMap<String, bool>,
     /// "Mark all as read": everything at or before this time counts as read.
     all_read_until: i64,
+    /// The feed's read position on the server: everything at or before this time was read, in any
+    /// Teams client. The other clients move this instead of flagging each item.
+    server_read_until: i64,
 }
 
 impl Default for State {
@@ -59,6 +63,7 @@ impl Default for State {
             loading: false,
             overrides: HashMap::new(),
             all_read_until: 0,
+            server_read_until: 0,
         }
     }
 }
@@ -66,6 +71,7 @@ impl Default for State {
 impl State {
     /// Replaces the items with a freshly loaded feed, keeping local read choices.
     pub(crate) fn merge(&mut self, mut fetched: Vec<ActivityItem>) {
+        let read_until = self.all_read_until.max(self.server_read_until);
         for item in &mut fetched {
             if let Some(&read) = self.overrides.get(&item.id) {
                 if item.is_read == read {
@@ -73,11 +79,23 @@ impl State {
                 } else {
                     item.is_read = read;
                 }
-            } else if item.timestamp_ms <= self.all_read_until {
+            } else if item.timestamp_ms <= read_until {
                 item.is_read = true;
             }
         }
         self.items = fetched;
+    }
+
+    /// Takes the feed's read position from the server. Items at or before it count as read unless
+    /// the user marked them unread here. A position older than the known one is ignored.
+    pub(crate) fn set_server_horizon(&mut self, horizon_ms: i64) {
+        self.server_read_until = self.server_read_until.max(horizon_ms);
+        for item in &mut self.items {
+            if item.timestamp_ms <= self.server_read_until && !self.overrides.contains_key(&item.id)
+            {
+                item.is_read = true;
+            }
+        }
     }
 
     /// Items after the filter and the search box, newest first.
@@ -301,9 +319,17 @@ impl Engine {
     }
 
     /// Loads the newest feed items.
+    /// The feed's read position comes with it, so items read in another client stop counting.
     pub(super) async fn activity_refresh(self: &Arc<Self>) -> anyhow::Result<()> {
         let fetched = self.client.activity(FEED_PAGE).await?;
-        self.activity.lock().unwrap().merge(fetched);
+        let horizon = self.client.activity_read_horizon().await;
+        let mut st = self.activity.lock().unwrap();
+        match horizon {
+            Ok(ms) => st.set_server_horizon(ms),
+            Err(err) => tracing::warn!(%err, "activity read position failed"),
+        }
+        st.merge(fetched);
+        drop(st);
         self.mark(|d| d.activity = true);
         Ok(())
     }
@@ -314,7 +340,8 @@ impl Engine {
         self.mark(|d| d.activity = true);
     }
 
-    /// A trouter event arrived on `48:notifications`: reload the feed.
+    /// A trouter event arrived on `48:notifications` (a new item, or a read position moved by
+    /// another client): reload the feed.
     pub(crate) fn on_activity_event(self: &Arc<Self>) {
         let e = self.clone();
         tokio::spawn(async move {
@@ -747,6 +774,53 @@ mod tests {
         ]);
         assert_eq!(s.unread(), 1);
         assert_eq!(ids(filter_unread(&s)), ["5"]);
+    }
+
+    #[test]
+    fn items_read_in_another_client_stop_counting() {
+        // The feed rows still say unread (they were read by moving the feed's read position in
+        // Teams web), but the server's horizon is newer than both unread items.
+        let mut s = feed();
+        assert_eq!(s.unread(), 2);
+        s.set_server_horizon(45);
+        assert_eq!(
+            s.unread(),
+            0,
+            "the horizon applies to the items already loaded"
+        );
+        // A refresh brings the same unread-flagged rows back; the horizon still covers them.
+        s.merge(vec![
+            item("4", ActivityKind::Mention, "Alex", "x", 40, false),
+            item("2", ActivityKind::TagMention, "Alex", "x", 20, false),
+        ]);
+        assert_eq!(s.unread(), 0);
+        // Something newer than the horizon still counts.
+        s.merge(vec![
+            item("5", ActivityKind::Reply, "Kim", "new", 50, false),
+            item("4", ActivityKind::Mention, "Alex", "x", 40, false),
+        ]);
+        assert_eq!(ids(filter_unread(&s)), ["5"]);
+    }
+
+    #[test]
+    fn a_live_horizon_update_lowers_the_count() {
+        let mut s = feed();
+        s.set_server_horizon(25);
+        assert_eq!(ids(filter_unread(&s)), ["4"]);
+        s.set_server_horizon(40);
+        assert_eq!(s.unread(), 0);
+        // An older value (a stale answer) never un-reads anything.
+        s.set_server_horizon(10);
+        assert_eq!(s.unread(), 0);
+    }
+
+    #[test]
+    fn marking_unread_here_beats_the_server_horizon() {
+        let mut s = feed();
+        s.set_server_horizon(45);
+        assert!(s.set_read("4", false));
+        s.set_server_horizon(46);
+        assert_eq!(ids(filter_unread(&s)), ["4"]);
     }
 
     fn filter_unread(s: &State) -> Vec<ActivityItem> {

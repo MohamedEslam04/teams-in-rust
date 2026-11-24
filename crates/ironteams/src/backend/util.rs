@@ -84,6 +84,13 @@ pub(crate) fn preview_of(m: &Message, me: &str) -> String {
     }
 }
 
+/// Whether a chat-list preview line is right to left. The "You: " in front of my own last message
+/// does not count: the line follows the direction of what I wrote.
+pub(super) fn preview_is_rtl(preview: &str) -> bool {
+    let text = preview.strip_prefix("You: ").unwrap_or(preview);
+    render::base_direction(text) == render::Dir::Rtl
+}
+
 pub(super) fn chat_time(ms: i64) -> String {
     chat_time_at(
         formats::time_zone(),
@@ -590,6 +597,14 @@ mod tests {
             Some("The settings were changed.")
         );
         assert_eq!(system_text(&row("RichText/Html")), None);
+    }
+
+    #[test]
+    fn my_own_preview_follows_the_direction_of_my_text_not_of_you() {
+        assert!(preview_is_rtl("You: حاضر"));
+        assert!(preview_is_rtl("حاضر"));
+        assert!(!preview_is_rtl("You: ok حاضر"));
+        assert!(!preview_is_rtl("You: 👍"));
     }
 
     #[test]

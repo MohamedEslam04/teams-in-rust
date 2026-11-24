@@ -2,25 +2,38 @@
 // transcribe, live captions, device settings).
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Icon, IconButton, SectionHeader } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
-import { CallStore, CallPerson, CallFound } from "../stores/call_store.slint";
+import { CallStore, CallPerson, CallAbsent, CallFound } from "../stores/call_store.slint";
 import { DeviceSettings } from "../molecules/call_widgets.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
-import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Button, FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
+// A row of the People panel is a click away from the person's card (`person-card`), when their
+// MRI is known.
 component PersonRow inherits Rectangle {
     in property <CallPerson> p;
     height: 44px;
+    border-radius: 4px;
+    background: row-touch.has-hover && root.p.id != "" ? Theme.surface-hover : transparent;
     accessible-role: list-item;
+    accessible-action-default => { if root.p.id != "" { CallStore.command("person-card", root.p.id); } }
     accessible-label: CallStore.tagged-name(root.p);
     accessible-description: (root.p.lobby ? "In lobby" : root.p.muted ? "Muted" : "Unmuted")
         + (root.p.hand ? ", hand raised" : "")
         + (root.p.role != "" ? ", " + root.p.role : "");
+    // Under the layout, so the Admit button and the photo take their own clicks.
+    row-touch := TouchArea {
+        enabled: root.p.id != "";
+        mouse-cursor: pointer;
+        clicked => { CallStore.command("person-card", root.p.id); }
+    }
     HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
         spacing: 10px;
         Avatar {
             initials: root.p.initials;
@@ -28,7 +41,11 @@ component PersonRow inherits Rectangle {
             has-img: root.p.has-photo;
             size: 30px;
             y: 7px;
-            if !root.p.me && root.p.id != "": PersonHover { person: root.p.id; }
+            if !root.p.me && root.p.id != "": PersonHover {
+                person: root.p.id;
+                click-opens: false;
+                activated => { CallStore.command("person-card", root.p.id); }
+            }
         }
         VerticalLayout {
             alignment: center;
@@ -74,6 +91,56 @@ component PersonRow inherits Rectangle {
     }
 }
 
+// Someone who is not in the call: an invitee with their answer, or a member of the meeting chat.
+component AbsentRow inherits Rectangle {
+    in property <CallAbsent> a;
+    height: 44px;
+    border-radius: 4px;
+    background: row-touch.has-hover && root.a.id != "" ? Theme.surface-hover : transparent;
+    accessible-role: list-item;
+    accessible-label: root.a.name;
+    accessible-description: root.a.status;
+    accessible-action-default => { if root.a.id != "" { CallStore.command("person-card", root.a.id); } }
+    row-touch := TouchArea {
+        enabled: root.a.id != "";
+        mouse-cursor: pointer;
+        clicked => { CallStore.command("person-card", root.a.id); }
+    }
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 10px;
+        Avatar {
+            initials: root.a.initials;
+            img: root.a.photo;
+            has-img: root.a.has-photo;
+            size: 30px;
+            y: 7px;
+            if root.a.id != "": PersonHover {
+                person: root.a.id;
+                click-opens: false;
+                activated => { CallStore.command("person-card", root.a.id); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.a.name;
+                color: Theme.fg;
+                font-size: 13px * Theme.font-scale;
+                overflow: elide;
+            }
+            if root.a.status != "": Text {
+                text: root.a.status;
+                color: Theme.fg-subtle;
+                font-size: 11px * Theme.font-scale;
+                overflow: elide;
+            }
+        }
+    }
+}
+
 component PanelHeader inherits HorizontalLayout {
     in property <string> title;
     height: 32px;
@@ -99,6 +166,8 @@ component PanelHeader inherits HorizontalLayout {
 export component PeopleSearch inherits VerticalLayout {
     in property <string> placeholder;
     callback picked(CallFound);
+    // The text of the box after each edit and when a pick empties it.
+    callback edited(string);
     spacing: 4px;
     Rectangle {
         height: 34px;
@@ -116,7 +185,7 @@ export component PeopleSearch inherits VerticalLayout {
             accessible-role: text-input;
             accessible-label: root.placeholder;
             accessible-placeholder-text: root.placeholder;
-            edited => { CallStore.command("find", self.text); }
+            edited => { CallStore.command("find", self.text); root.edited(self.text); }
         }
         if input.text == "": Text {
             x: 10px;
@@ -134,7 +203,7 @@ export component PeopleSearch inherits VerticalLayout {
             accessible-role: list-item;
             accessible-label: f.name;
             accessible-description: f.subtitle;
-            accessible-action-default => { input.text = ""; root.picked(f); }
+            accessible-action-default => { input.text = ""; root.edited(""); root.picked(f); }
             HorizontalLayout {
                 padding-left: 6px;
                 spacing: 8px;
@@ -147,24 +216,40 @@ export component PeopleSearch inherits VerticalLayout {
             }
             row-touch := TouchArea {
                 mouse-cursor: pointer;
-                clicked => { input.text = ""; root.picked(f); }
+                clicked => { input.text = ""; root.edited(""); root.picked(f); }
             }
         }
     }
 }
 
+// Teams' Participants panel: one search box (it filters the sections below it and finds people
+// to invite), Share invite, and the sections: who is in the meeting (and the lobby), who else was
+// invited, and who is only in the meeting chat. Each section folds under its header.
 export component PeoplePanel inherits Rectangle {
     background: Theme.sidebar;
+    // Which sections are folded: the panel's own, gone when it closes.
+    property <bool> meeting-open: true;
+    property <bool> invited-open: true;
+    property <bool> chat-open: true;
+    // Share invite copied the link a moment ago.
+    property <bool> copied: false;
+    // `people-open` clears the filter and reads who the meeting invited and who its chat holds.
+    init => { CallStore.command("people-open", ""); }
+    Timer {
+        interval: 3s;
+        running: root.copied;
+        triggered => { root.copied = false; }
+    }
     VerticalLayout {
         padding: 12px;
         spacing: 8px;
         PanelHeader { title: "People"; }
-        // Teams' "Invite someone or dial a number" (people only: no phone numbers here).
-        if CallStore.kind == "direct": PeopleSearch {
-            placeholder: "Invite someone or dial a number";
+        PeopleSearch {
+            placeholder: "Type a name";
             picked(f) => { CallStore.command("invite", f.id); }
+            edited(text) => { CallStore.command("people-filter", text); }
         }
-        if CallStore.kind == "direct" && CallStore.invite-status != "": Text {
+        if CallStore.invite-status != "": Text {
             text: CallStore.invite-status;
             color: Theme.fg-subtle;
             font-size: 12px * Theme.font-scale;
@@ -172,39 +257,71 @@ export component PeoplePanel inherits Rectangle {
             accessible-role: text;
             accessible-label: self.text;
         }
+        // Not for a 1:1 call: it has no link to share.
+        if CallStore.can-share-invite: FlexButton {
+            variant: ButtonVariant.toolbar;
+            label: root.copied ? "Link copied" : "Share invite";
+            clicked => {
+                root.copied = true;
+                CallStore.command("share-invite", "");
+            }
+        }
         ScrollView {
+            viewport-width: self.width;
             VerticalLayout {
+                width: parent.width;
                 alignment: start;
-                spacing: 2px;
-                Text {
-                    text: (CallStore.kind == "direct" ? "Currently in this call (" : "In this meeting (") + CallStore.in-call + ")";
-                    color: Theme.fg-muted;
-                    font-size: 12px * Theme.font-scale;
-                    font-weight: 600;
-                    overflow: elide;
+                spacing: 0px;
+                SectionHeader {
+                    label: (CallStore.kind == "direct" ? "Currently in this call (" : "In this meeting (") + CallStore.in-call + ")";
+                    expanded <=> root.meeting-open;
                 }
-                for p[i] in CallStore.people: VerticalLayout {
-                    if p.lobby && i == CallStore.in-call: HorizontalLayout {
-                        height: 32px;
-                        spacing: 8px;
-                        Text {
-                            text: "Waiting in lobby (" + CallStore.in-lobby + ")";
-                            color: Theme.fg-muted;
-                            font-size: 12px * Theme.font-scale;
-                            font-weight: 600;
-                            vertical-alignment: bottom;
-                            horizontal-stretch: 1;
-                            overflow: elide;
-                        }
-                        if CallStore.can-admit: VerticalLayout {
-                            alignment: end;
-                            Button { variant: ButtonVariant.solid;
-                                label: "Admit all";
-                                clicked => { CallStore.command("admit-all", ""); }
-                            }
+                if root.meeting-open: VerticalLayout {
+                    for p in CallStore.people: VerticalLayout {
+                        if !p.lobby && p.listed: PersonRow { p: p; }
+                    }
+                }
+                if CallStore.in-lobby > 0: HorizontalLayout {
+                    height: 32px;
+                    padding-left: 10px;
+                    spacing: 8px;
+                    Text {
+                        text: "Waiting in lobby (" + CallStore.in-lobby + ")";
+                        color: Theme.fg-muted;
+                        font-size: 12px * Theme.font-scale;
+                        font-weight: 600;
+                        vertical-alignment: bottom;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                    }
+                    if CallStore.can-admit: VerticalLayout {
+                        alignment: end;
+                        Button { variant: ButtonVariant.solid;
+                            label: "Admit all";
+                            clicked => { CallStore.command("admit-all", ""); }
                         }
                     }
-                    PersonRow { p: p; }
+                }
+                for p in CallStore.people: VerticalLayout {
+                    if p.lobby && p.listed: PersonRow { p: p; }
+                }
+                if CallStore.invited.length > 0: SectionHeader {
+                    label: "Others invited (" + CallStore.invited.length + ")";
+                    expanded <=> root.invited-open;
+                }
+                if CallStore.invited.length > 0 && root.invited-open: VerticalLayout {
+                    for a in CallStore.invited: VerticalLayout {
+                        if a.listed: AbsentRow { a: a; }
+                    }
+                }
+                if CallStore.chat-people.length > 0: SectionHeader {
+                    label: "People added to the chat (" + CallStore.chat-people.length + ")";
+                    expanded <=> root.chat-open;
+                }
+                if CallStore.chat-people.length > 0 && root.chat-open: VerticalLayout {
+                    for a in CallStore.chat-people: VerticalLayout {
+                        if a.listed: AbsentRow { a: a; }
+                    }
                 }
             }
         }

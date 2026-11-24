@@ -101,17 +101,25 @@ export global PeopleStore {
     // Opens the profile card of `id` next to the rectangle (window coordinates); `hover` opens
     // it as a hover card.
     public function open-card(id: string, x: length, y: length, w: length, h: length, hover: bool) {
-        if id == "" { return; }
+        if root.place-card(id, x, y, w, h, hover) {
+            root.command("profile", id);
+        }
+    }
+    // The first half of `open-card`: where the card of `id` will open. False when it must not
+    // open now (no person, or the press that closed their card is this click), so a caller with
+    // its own command to load the card sends it only on true.
+    public function place-card(id: string, x: length, y: length, w: length, h: length, hover: bool) -> bool {
+        if id == "" { return false; }
         if !hover && id == root.card-closed-for {
             root.card-closed-for = "";
-            return;
+            return false;
         }
         root.anchor-x = x;
         root.anchor-y = y;
         root.anchor-w = w;
         root.anchor-h = h;
         root.card-by-hover = hover;
-        root.command("profile", id);
+        return true;
     }
     // The pointer came onto a person's photo: their card opens after a short rest (the window's
     // timer, so a list row that is rebuilt meanwhile does not lose it).

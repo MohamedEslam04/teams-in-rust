@@ -307,7 +307,7 @@ where
 
 impl FrameSink for Playback {
     async fn write_frame(&mut self, frame: &[i16]) -> Result<()> {
-        let frame = super::volume::scale(frame, super::volume::output_volume());
+        let frame = super::volume::scale(frame, super::volume::played_volume());
         let samples = self.conv.convert(&frame);
         self.buffer
             .lock()

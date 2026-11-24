@@ -35,6 +35,18 @@ export component ProfileCard inherits Rectangle {
     accessible-role: groupbox;
     accessible-label: "Profile card";
 
+    // Escape closes a clicked card, wherever the focus is inside it (the quick message box
+    // too). Only the card itself, so a press elsewhere is not taken by it; a hover card takes
+    // no focus.
+    FocusScope {
+    init => { if !root.hover-mode { self.focus(); } }
+    capture-key-pressed(event) => {
+        if event.text == Key.Escape && !root.hover-mode {
+            root.close();
+            return accept;
+        }
+        reject
+    }
     hover-area := TouchArea {
     content := VerticalLayout {
         HorizontalLayout {
@@ -91,6 +103,7 @@ export component ProfileCard inherits Rectangle {
                 }
             }
         }
+    }
     }
     }
     Timer {

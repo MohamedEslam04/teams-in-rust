@@ -57,8 +57,11 @@ component ChatItem inherits Rectangle {
     // The open menu's height when it opens upwards (0 when it opens downwards).
     property <length> menu-up: 0px;
     property <bool> in-section: root.data.section != "favorites" && root.data.section != "chats" && root.data.section != "meetings" && root.data.section != "channels";
-    // The menu's main view (as `ItemMenu.menu-height` counts it).
-    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 2 + (ListStore.channel-private ? 1 : 0) : 4) + (root.data.group ? 1 : 0)) * 32px + 8px;
+    // The height of the menu's main view, to tell whether it fits below the row: six rows for
+    // every item, three more for a channel (four when private), five for a chat, plus Remove from
+    // section, Leave (a group chat) and Notify when available (a 1:1 chat); 32 px rows, the
+    // padding and the border.
+    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 3 + (root.data.private ? 1 : 0) : 5) + (root.data.group ? 1 : 0) + (root.data.notify != "" ? 1 : 0)) * 32px + 10px;
     function open-menu() {
         root.menu-up = root.absolute-position.y + root.height - 8px + root.menu-height > root.limit ? root.menu-height : 0px;
         item-menu.show();
@@ -699,7 +702,7 @@ export component Sidebar inherits Rectangle {
                                         width: 190px;
                                         height: cm.menu-height;
                                         close-policy: close-on-click-outside;
-                                        cm := ChannelMenu { channel: ch.id; done => { ch-menu.close(); } }
+                                        cm := ChannelMenu { channel: ch.id; is-private: ch.private; done => { ch-menu.close(); } }
                                     }
                                 }
                             }

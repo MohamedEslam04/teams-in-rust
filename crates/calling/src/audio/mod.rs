@@ -43,7 +43,9 @@ pub use latency::{
 pub use pipeline::{spawn_capture_encoder, spawn_decoder_playback};
 pub use resample::InputConverter;
 pub use source::{FrameSink, FrameSource, Paced, ToneSource, WavSink, WavSource};
-pub use volume::{gain, output_volume, scale, set_output_volume};
+pub use volume::{
+    gain, output_off, output_volume, played_volume, scale, set_output_off, set_output_volume,
+};
 
 /// One 20 ms mono frame: [`FRAME_SAMPLES`](crate::FRAME_SAMPLES) samples at 48 kHz.
 pub type Frame = Vec<i16>;

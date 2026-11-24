@@ -491,12 +491,21 @@ pub fn wire(window: &AppWindow) {
                 s.borrow()
                     .misspelled(&text, &names, usize::try_from(cursor).ok())
             });
+            // Each line of the composer is aligned by its own direction: the underline is placed for it.
             let rows: Vec<SpellWord> = found
                 .into_iter()
                 .map(|m| SpellWord {
                     start: m.start as i32,
                     end: m.end as i32,
                     word: m.word.into(),
+                    dir: match render::lines::line_direction(
+                        &text,
+                        render::lines::locate(&text, m.start).0,
+                    ) {
+                        Some(render::Dir::Rtl) => 1,
+                        Some(render::Dir::Ltr) => -1,
+                        None => 0,
+                    },
                 })
                 .collect();
             ModelRc::new(VecModel::from(rows))

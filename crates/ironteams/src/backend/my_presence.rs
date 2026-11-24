@@ -6,6 +6,11 @@
 //! IronTeams removes its device (the user then shows as their other devices make them, usually Away);
 //! when it is unlocked again, IronTeams registers again. A call keeps its "In a call" presence
 //! ([`super::call_presence`]) whatever the screen does.
+//!
+//! The same check reports whether the user is at the keyboard: after [`IDLE_AFTER`] without input
+//! the device reports "not active", which makes the service show Away, and the first input after
+//! that reports "active" again. Only the activity flag is reported, so a status the user forced
+//! (Busy, Do not disturb, Appear away) stays in charge, and a call is never reported inactive.
 
 use super::Engine;
 use std::sync::Arc;
@@ -17,8 +22,11 @@ use teams_proto::presence::Availability;
 /// Whether the loop runs (so quitting has a device to remove).
 static STARTED: AtomicBool = AtomicBool::new(false);
 
-/// How often the screen lock is checked.
-const CHECK: Duration = Duration::from_secs(60);
+/// How often the screen lock and the user's input are checked.
+const CHECK: Duration = Duration::from_secs(30);
+
+/// How long without keyboard or mouse input before the device reports "not active" (Away).
+const IDLE_AFTER: Duration = Duration::from_secs(5 * 60);
 
 /// What to do after a check, given whether the device is registered now.
 #[derive(Debug, PartialEq, Eq)]
@@ -34,6 +42,20 @@ fn step(registered: bool, locked: bool, in_call: bool) -> Step {
         (true, true) => Step::Remove,
         _ => Step::Nothing,
     }
+}
+
+/// What to report about the user's activity, given how long the desktop says the user has been idle
+/// (`None` when it cannot say), whether a call is connected, and what was last reported (`None`
+/// since this device registered). `None` back means nothing to report: the service only hears of
+/// changes. An unknown idle time never makes the user inactive; it only reports "active" once
+/// after registering.
+fn activity_report(idle: Option<Duration>, in_call: bool, reported: Option<bool>) -> Option<bool> {
+    let active = match idle {
+        _ if in_call => true,
+        Some(idle) => idle < IDLE_AFTER,
+        None => return reported.is_none().then_some(true),
+    };
+    (reported != Some(active)).then_some(active)
 }
 
 impl Engine {
@@ -60,6 +82,8 @@ impl Engine {
 
 async fn run(client: Client) {
     let mut registered = false;
+    // What the service was last told about our activity; `None` until it is told after registering.
+    let mut reported: Option<bool> = None;
     loop {
         let locked = tray::screen::screen_locked().await.unwrap_or(false);
         match step(registered, locked, super::call_presence::in_call()) {
@@ -68,7 +92,10 @@ async fn run(client: Client) {
                     .publish_endpoint(Availability::Available, "Available")
                     .await
                 {
-                    Ok(()) => registered = true,
+                    Ok(()) => {
+                        registered = true;
+                        reported = None;
+                    }
                     Err(e) => tracing::debug!(%e, "presence: could not register this device"),
                 }
             }
@@ -77,8 +104,23 @@ async fn run(client: Client) {
                     tracing::debug!(%e, "presence: could not remove this device");
                 }
                 registered = false;
+                reported = None;
             }
             Step::Nothing => {}
+        }
+        if registered {
+            let idle = tray::idle::idle_for().await;
+            if let Some(active) = activity_report(idle, super::call_presence::in_call(), reported) {
+                match client.report_activity(active).await {
+                    Ok(()) => reported = Some(active),
+                    // The device's presence expired: register it again, then report again.
+                    Err(teams_proto::Error::Status { status: 404, .. }) => {
+                        registered = false;
+                        reported = None;
+                    }
+                    Err(e) => tracing::debug!(%e, "presence: could not report activity"),
+                }
+            }
         }
         tokio::time::sleep(CHECK).await;
     }
@@ -96,5 +138,37 @@ mod tests {
         assert_eq!(step(false, true, false), Step::Nothing);
         // A call keeps the device registered even with the screen locked.
         assert_eq!(step(true, true, true), Step::Nothing);
+    }
+
+    #[test]
+    fn five_idle_minutes_report_inactive_and_input_reports_active_again() {
+        let minutes = |m: u64| Some(Duration::from_secs(m * 60));
+        // Active after registering, once.
+        assert_eq!(activity_report(minutes(0), false, None), Some(true));
+        assert_eq!(activity_report(minutes(1), false, Some(true)), None);
+        assert_eq!(activity_report(minutes(4), false, Some(true)), None);
+        // Idle for five minutes: inactive, once.
+        assert_eq!(activity_report(minutes(5), false, Some(true)), Some(false));
+        assert_eq!(activity_report(minutes(30), false, Some(false)), None);
+        // Input again: active, once.
+        assert_eq!(activity_report(minutes(0), false, Some(false)), Some(true));
+        // Idle straight after registering reports inactive at once.
+        assert_eq!(activity_report(minutes(9), false, None), Some(false));
+    }
+
+    #[test]
+    fn a_call_is_never_inactive() {
+        let idle = Some(Duration::from_secs(3600));
+        assert_eq!(activity_report(idle, true, Some(true)), None);
+        assert_eq!(activity_report(idle, true, None), Some(true));
+        // A call that starts while inactive brings the user back to active.
+        assert_eq!(activity_report(idle, true, Some(false)), Some(true));
+    }
+
+    #[test]
+    fn an_unknown_idle_time_never_makes_the_user_inactive() {
+        assert_eq!(activity_report(None, false, None), Some(true));
+        assert_eq!(activity_report(None, false, Some(true)), None);
+        assert_eq!(activity_report(None, false, Some(false)), None);
     }
 }

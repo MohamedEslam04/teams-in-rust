@@ -21,6 +21,7 @@ export struct ChatRow {
     person: string,   // the other person in a 1:1 chat ("" otherwise), for the hover card
     private: bool,    // a private channel (a lock follows the name)
     kind: string,     // "chat" (1:1) | "notes" | "group" | "meeting" | "channel": picks the avatar
+    notify: string,   // "Notify when available" in the item menu: "" (not offered) | "off" | "on"
 }
 
 // Adaptive Card rows (plan 8.8). `kind`: text | fact | columns | image | actions | banner.
@@ -91,7 +92,7 @@ export struct MeetingCard { kind: string, title: string, detail: string, people:
 export struct ReaderItem { initials: string, color: color, name: string }
 
 // One part of a message's text when it has code blocks: a run of text (`body`) or a block (`code`).
-export struct BodyPart { body: styled-text, code: string, is-code: bool }
+export struct BodyPart { body: styled-text, code: string, is-code: bool, rtl: bool }
 
 /// One quoted message of a reply: a card above the text.
 export struct QuoteItem {

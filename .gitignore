@@ -10,5 +10,5 @@ fixtures/raw/
 packaging/flatpak/cargo-sources.json
 packaging/flatpak/build-dir/
 packaging/flatpak/.flatpak-builder/
-# Shared cargo target for agent worktrees
-.claude/agent-target/
+# Cargo target dirs for agent worktrees and profiling builds
+.claude/*-target/

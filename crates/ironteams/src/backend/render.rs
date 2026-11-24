@@ -663,7 +663,20 @@ impl Engine {
                 ConvKind::OneOnOne | ConvKind::Notes => avatar_mri.clone().unwrap_or_default(),
                 _ => String::new(),
             };
+            let notify = match (&r.kind, &avatar_mri) {
+                (ConvKind::OneOnOne, Some(m))
+                    if super::notify_available::can_watch(m, &self.me) =>
+                {
+                    if ov.is_watching(m) {
+                        "on"
+                    } else {
+                        "off"
+                    }
+                }
+                _ => "",
+            };
             let data = ChatData {
+                notify,
                 person,
                 presence,
                 mention,
@@ -682,7 +695,7 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|c| c.kind == teams_proto::teams::ChannelKind::Private),
                 rtl_title: render::base_direction(&title) == render::Dir::Rtl,
-                rtl_preview: render::base_direction(preview_text) == render::Dir::Rtl,
+                rtl_preview: super::util::preview_is_rtl(preview_text),
                 preview: preview_text.replace('\n', " ").chars().take(120).collect(),
                 time: chat_time(r.last_activity_ms),
                 unread,

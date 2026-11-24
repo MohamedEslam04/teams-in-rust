@@ -5,14 +5,20 @@ import { Theme } from "../tokens/theme.slint";
 export component RadioRow inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
+    // A choice shown but not offered (dimmed, not picked); `tip` says why.
+    in property <bool> enabled: true;
+    in property <string> tip;
     callback picked();
     height: 32px;
     border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
     accessible-role: radio-button;
     accessible-label: root.label;
     accessible-checked: root.selected;
-    accessible-action-default => { root.picked(); }
+    accessible-enabled: root.enabled;
+    accessible-description: root.tip;
+    accessible-action-default => { if root.enabled { root.picked(); } }
     HorizontalLayout {
         padding-left: 8px;
         padding-right: 8px;
@@ -46,7 +52,7 @@ export component RadioRow inherits Rectangle {
         }
     }
     touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.picked(); }
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { if root.enabled { root.picked(); } }
     }
 }

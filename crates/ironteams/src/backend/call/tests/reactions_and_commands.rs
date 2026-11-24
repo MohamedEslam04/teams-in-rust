@@ -180,3 +180,12 @@ fn clock_formats() {
     assert_eq!(clock(Duration::from_secs(599)), "09:59");
     assert_eq!(clock(Duration::from_secs(7322)), "2:02:02");
 }
+
+#[test]
+fn the_person_card_command_names_a_person_and_ignores_an_empty_one() {
+    assert_eq!(
+        CallCmd::parse("person-card", "8:orgid:ada"),
+        Some(CallCmd::PersonCard("8:orgid:ada".into()))
+    );
+    assert_eq!(CallCmd::parse("person-card", ""), None);
+}

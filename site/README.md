@@ -87,4 +87,4 @@ node -e 'const R=require("./site/js/releases.js");const p=R.pick(R.normalize(req
 - The screenshots in `docs/screenshots/` are not used: they show the old name "kelma" in the window,
   and the PNGs on `dev` have a damaged text chunk from the rename.
 
-Docs synced to commit eef582a0 ("Merge fix/image-decode-thrash: keep on-screen pictures cached, at most three decodes at a time", 2026-11-24) (v0.1.8)
+Docs synced to commit dc9c2202 ("Merge fix/http-error-causes: HTTP errors log their cause chain", 2026-11-24)

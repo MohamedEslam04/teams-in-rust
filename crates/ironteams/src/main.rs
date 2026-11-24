@@ -8,6 +8,7 @@ mod backend;
 mod catch_up;
 mod composer;
 mod composer_format;
+mod composer_lines;
 mod data;
 mod demo;
 mod desktop_cards;
@@ -371,6 +372,11 @@ fn fc_match(pattern: &str) -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// Whether `u` is a web address the sign-in page may open itself.
+fn is_web_url(u: &str) -> bool {
+    u.starts_with("https://") || u.starts_with("http://")
+}
+
 /// Builds the font chain: the UI font in each weight, then the bundled color emoji fonts. Linux
 /// only (fontconfig): Windows and macOS keep the system UI font and its color emoji fallback.
 fn configure_fonts() {
@@ -550,7 +556,22 @@ fn main() -> anyhow::Result<()> {
     cmd!(on_cancel_reply, || Cmd::CancelReply);
     cmd!(on_edit, |id| Cmd::Edit(id.into()));
     cmd!(on_delete, |id| Cmd::Delete(id.into()));
-    cmd!(on_open_url, |u| Cmd::OpenUrl(u.into()));
+    // Until sign-in is done the backend loop is busy signing in and reads no commands, so a link
+    // on the sign-in page (the device-code address) opens here instead of through it.
+    {
+        let tx = tx.clone();
+        let weak = window.as_weak();
+        window.on_open_url(move |u| {
+            let signing_in = weak
+                .upgrade()
+                .is_some_and(|w| w.get_login_state() != "ready");
+            if signing_in && is_web_url(&u) {
+                let _ = external::open(u.as_str());
+                return;
+            }
+            let _ = tx.send(Cmd::OpenUrl(u.into()));
+        });
+    }
     cmd!(on_open_thread, |id| Cmd::OpenThread(id.into()));
     cmd!(on_close_thread, || Cmd::CloseThread);
     cmd!(on_attach_image, || Cmd::AttachImage);
@@ -890,5 +911,19 @@ mod app_id_tests {
         assert!(metainfo.contains(&format!(
             "<launchable type=\"desktop-id\">{APP_ID}.desktop</launchable>"
         )));
+    }
+}
+
+#[cfg(test)]
+mod sign_in_link_tests {
+    use super::is_web_url;
+
+    #[test]
+    fn only_web_addresses_open_from_the_sign_in_page() {
+        assert!(is_web_url("https://login.microsoft.com/device"));
+        assert!(is_web_url("http://example.com"));
+        assert!(!is_web_url("kelma-file:docx:https://x"));
+        assert!(!is_web_url("tel:+20100"));
+        assert!(!is_web_url(""));
     }
 }

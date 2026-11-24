@@ -261,6 +261,13 @@ export component MessageMenuLayer inherits Rectangle {
         can-follow: !root.menu-preview && root.current-is-channel && root.thread-root == "";
         pinned: root.menu-msg.pinned;
         urls: root.menu-msg.urls;
+        images: root.menu-msg.images;
+        files: root.menu-msg.files;
+        image-action(a, u) => { root.menu-open = false; MediaStore.command("image-do", a + "\u{1f}" + root.menu-msg.id + "\u{1f}" + u); }
+        file-action(a, f) => {
+            root.menu-open = false;
+            if a == "open" { root.open-url("kelma-file:" + f.ext + ":" + f.url); } else { MediaStore.command("file", a + "\u{1f}" + f.url); }
+        }
         reader-count: root.menu-msg.reader-list.length;
         show-readers => {
             root.menu-open = false;

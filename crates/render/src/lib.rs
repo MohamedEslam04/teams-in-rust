@@ -6,6 +6,7 @@
 
 mod compose;
 pub mod edit;
+pub mod lines;
 mod links;
 mod markdown_out;
 mod parse;
@@ -103,17 +104,34 @@ pub struct RichText {
     pub blocks: Vec<Block>,
 }
 
-/// Direction of the first strong character (UAX#9 rule P2); `Ltr` when there
-/// is none.
+/// Direction of the first strong character (UAX#9 rule P2), `None` when the
+/// text has none (empty, digits, spaces, punctuation, emoji).
+pub fn text_direction(text: &str) -> Option<Dir> {
+    text.chars()
+        .find_map(|c| match unicode_bidi::bidi_class(c) {
+            BidiClass::L => Some(Dir::Ltr),
+            BidiClass::R | BidiClass::AL => Some(Dir::Rtl),
+            _ => None,
+        })
+}
+
+/// [`text_direction`], `Ltr` when the text has no strong character.
 pub fn base_direction(text: &str) -> Dir {
-    for c in text.chars() {
-        match unicode_bidi::bidi_class(c) {
-            BidiClass::L => return Dir::Ltr,
-            BidiClass::R | BidiClass::AL => return Dir::Rtl,
-            _ => {}
-        }
-    }
-    Dir::Ltr
+    text_direction(text).unwrap_or(Dir::Ltr)
+}
+
+/// The direction of every line of `text`, one entry per `'\n'`-separated line.
+/// A line without a strong character takes the direction of the line before
+/// it (`initial` for the first line), the way a reader sees an emoji-only
+/// line between two paragraphs.
+pub fn line_directions(text: &str, initial: Dir) -> Vec<Dir> {
+    let mut previous = initial;
+    text.split('\n')
+        .map(|line| {
+            previous = text_direction(line).unwrap_or(previous);
+            previous
+        })
+        .collect()
 }
 
 fn spans_text(spans: &[Span]) -> String {
@@ -181,6 +199,38 @@ mod tests {
     fn direction_no_strong_is_ltr() {
         assert_eq!(base_direction(""), Dir::Ltr);
         assert_eq!(base_direction("123 !? 👍"), Dir::Ltr);
+    }
+
+    #[test]
+    fn text_direction_follows_the_first_strong_character() {
+        assert_eq!(text_direction("حاضر"), Some(Dir::Rtl));
+        assert_eq!(text_direction("ok حاضر"), Some(Dir::Ltr));
+        assert_eq!(text_direction("123 حاضر"), Some(Dir::Rtl));
+        assert_eq!(text_direction("  @Ahmed حاضر"), Some(Dir::Ltr));
+        assert_eq!(text_direction("  @أحمد hello"), Some(Dir::Rtl));
+    }
+
+    #[test]
+    fn text_direction_is_none_without_a_strong_character() {
+        assert_eq!(text_direction(""), None);
+        assert_eq!(text_direction("  \t"), None);
+        assert_eq!(text_direction("123 !? 👍"), None);
+        assert_eq!(text_direction("👍"), None);
+    }
+
+    #[test]
+    fn each_line_has_its_own_direction() {
+        assert_eq!(
+            line_directions("Hi team\nحاضر\nok تمام", Dir::Ltr),
+            [Dir::Ltr, Dir::Rtl, Dir::Ltr]
+        );
+        // A line without a strong character follows the line before it.
+        assert_eq!(
+            line_directions("حاضر\n👍\n\nok", Dir::Ltr),
+            [Dir::Rtl, Dir::Rtl, Dir::Rtl, Dir::Ltr]
+        );
+        assert_eq!(line_directions("", Dir::Ltr), [Dir::Ltr]);
+        assert_eq!(line_directions("👍", Dir::Rtl), [Dir::Rtl]);
     }
 
     #[test]

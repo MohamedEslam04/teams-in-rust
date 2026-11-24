@@ -1,0 +1,269 @@
+// The composer's text box: one TextInput per line, so each line is aligned by its own first strong
+// character (Arabic lines right, English lines left). A TextInput has one alignment for all its
+// lines, hence one input per line. The text stays one string (`text`, lines joined by "\n") and the
+// cursor and selection are offsets into it, so the rest of the composer works as with one input;
+// src/composer_lines.rs (render::lines) maps between that string and the lines.
+//
+// The rows of `lines` are linked to the inputs (typing writes the row), so the text of an input and
+// the model never differ; setting the text from outside updates the rows in place (`LineApi.update`)
+// and keeps the focused input, so a key typed right after works. Anything that has to move the
+// cursor into another input (a joined line, a new line) is done when that input exists.
+//
+// What it does not do: a selection stays inside one line (no Shift+Up/Down, no Ctrl+A over all lines),
+// and an input's own undo only knows its own line.
+import { Theme } from "../tokens/theme.slint";
+
+// Rust side: src/composer_lines.rs. Offsets are byte offsets into the whole text.
+export global LineApi {
+    pure callback split(string) -> [string];
+    // the rows joined with "\n"
+    pure callback join([string]) -> string;
+    // Changes the rows of the model in place to the lines of the text (rows are set, added or removed)
+    callback update([string], string);
+    pure callback line-count(string) -> int;
+    // line and byte column of an offset
+    pure callback line-of(string, int) -> int;
+    pure callback column-of(string, int) -> int;
+    // text, line, column -> offset
+    pure callback offset-of(string, int, int) -> int;
+    pure callback line-length(string, int) -> int;
+    // text, start, end, insert -> text
+    pure callback splice(string, int, int, string) -> string;
+    // text, offset, -1 (up) or 1 (down) -> offset one line up or down in the same column, or -1
+    pure callback vertical(string, int, int) -> int;
+    // text, line -> 1 right to left, -1 left to right, 0 not known yet
+    pure callback direction(string, int) -> int;
+}
+
+export component LineEditor inherits Rectangle {
+    in-out property <string> text;
+    in property <length> font-size: 14px;
+    // The cursor and the other end of the selection, as offsets into `text`.
+    out property <int> cursor-position-byte-offset: root.caret;
+    out property <int> anchor-position-byte-offset: root.anchor;
+    out property <bool> focused: root.focus-line >= 0;
+    out property <length> text-height: lines-box.preferred-height;
+    // The text was edited by typing or pasting (not when it is set from outside).
+    callback edited();
+
+    // The text as this editor last knew it. `text` differs from it after a write from outside.
+    property <string> own;
+    // One row per line. A row can hold a line break for a moment (Enter, a paste): `normalize`
+    // makes it lines.
+    property <[string]> lines: [""];
+    property <int> caret;
+    property <int> anchor;
+    property <int> focus-line: -1;
+    // A request to put the cursor in a line: a new input takes it in `init`, an old one when `poke`
+    // changes or at its next key.
+    property <bool> want-active;
+    property <int> want-line;
+    property <int> want-anchor-column;
+    property <int> want-column;
+    property <int> poke;
+    property <length> row-height: probe.preferred-height;
+
+    probe := Text { text: "Ag"; font-size: root.font-size; visible: false; }
+
+    // The text was set from outside: the rows follow it.
+    function sync() {
+        if root.text != root.own {
+            let had-focus = root.focus-line >= 0;
+            root.own = root.text;
+            LineApi.update(root.lines, root.text);
+            if had-focus && root.focus-line >= LineApi.line-count(root.text) {
+                root.request(2000000000, 2000000000, true);
+            }
+        }
+    }
+
+    function request(a: int, c: int, now: bool) {
+        root.want-line = LineApi.line-of(root.own, c);
+        root.want-column = LineApi.column-of(root.own, c);
+        root.want-anchor-column = LineApi.line-of(root.own, a) == root.want-line ? LineApi.column-of(root.own, a) : root.want-column;
+        root.caret = LineApi.offset-of(root.own, root.want-line, root.want-column);
+        root.anchor = LineApi.offset-of(root.own, root.want-line, root.want-anchor-column);
+        root.want-active = true;
+        if now {
+            root.poke += 1;
+        }
+    }
+
+    // Rows that hold line breaks become lines.
+    function normalize() {
+        LineApi.update(root.lines, root.own);
+        root.request(root.anchor, root.caret, true);
+    }
+
+    // Backspace at the start of line `k`: it joins the line before.
+    function join(k: int) {
+        let at = LineApi.offset-of(root.own, k, 0) - 1;
+        root.own = LineApi.splice(root.own, at, at + 1, "");
+        root.text = root.own;
+        LineApi.update(root.lines, root.own);
+        root.request(at, at, true);
+        root.edited();
+    }
+
+    // Sets the text from outside, e.g. a completion.
+    public function set-text(t: string) {
+        root.text = t;
+        root.sync();
+    }
+
+    // Same call as a TextInput's: the selection (the cursor line takes the focus).
+    public function set-selection-offsets(a: int, c: int) {
+        root.sync();
+        root.request(a, c, true);
+    }
+
+    // Gives the keyboard focus to the line with the cursor, selection kept.
+    public function focus-text() {
+        root.sync();
+        if !root.want-active {
+            root.request(root.anchor, root.caret, true);
+        }
+    }
+
+    init => {
+        root.lines = LineApi.split(root.text);
+        root.own = root.text;
+    }
+    changed text => { root.sync(); }
+
+    norm-timer := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.normalize();
+        }
+    }
+
+    flick := Flickable {
+        content-width: self.width;
+        content-height: lines-box.height;
+
+        lines-box := VerticalLayout {
+            width: flick.width;
+            height: max(flick.height, self.preferred-height);
+            for line[i] in root.lines: ti := TextInput {
+                text <=> line;
+                color: Theme.fg;
+                font-size: root.font-size;
+                single-line: false;
+                wrap: word-wrap;
+                // The last line takes the room below the text, so a click there is a click in it.
+                vertical-stretch: i == root.lines.length - 1 ? 1 : 0;
+                horizontal-alignment: LineApi.direction(root.text, i) > 0 ? TextHorizontalAlignment.right : LineApi.direction(root.text, i) < 0 ? TextHorizontalAlignment.left : Theme.start-align;
+                property <length> caret-y;
+                property <int> wanted: root.poke;
+
+                function take() {
+                    if root.want-active && root.want-line == i {
+                        root.want-active = false;
+                        self.focus();
+                        // An input focused in its `init` starts with has-focus true, so the
+                        // handler below never hears of it: the line is recorded here.
+                        root.focus-line = i;
+                        self.set-selection-offsets(root.want-anchor-column, root.want-column);
+                    }
+                }
+                init => { self.take(); }
+                changed wanted => { self.take(); }
+                changed has-focus => {
+                    if self.has-focus {
+                        root.focus-line = i;
+                    } else if root.focus-line == i {
+                        root.focus-line = -1;
+                    }
+                }
+
+                cursor-position-changed(pos) => {
+                    self.caret-y = pos.y;
+                    // Keep the cursor in view when the lines are taller than the box.
+                    let top = self.y + pos.y;
+                    if top < -flick.content-y {
+                        flick.content-y = -top;
+                    } else if top + root.row-height > -flick.content-y + flick.height {
+                        flick.content-y = flick.height - top - root.row-height;
+                    }
+                    if self.has-focus {
+                        let start = LineApi.offset-of(root.own, i, 0);
+                        root.caret = start + self.cursor-position-byte-offset;
+                        root.anchor = start + self.anchor-position-byte-offset;
+                    }
+                }
+
+                edited => {
+                    let start = LineApi.offset-of(root.own, i, 0);
+                    let t = LineApi.join(root.lines);
+                    root.own = t;
+                    root.text = t;
+                    root.caret = start + self.cursor-position-byte-offset;
+                    root.anchor = start + self.anchor-position-byte-offset;
+                    if LineApi.line-count(t) != root.lines.length {
+                        // Enter or a paste with line breaks: lines are made of them in a moment.
+                        norm-timer.running = true;
+                        norm-timer.restart();
+                    }
+                    root.edited();
+                }
+
+                // A selection made by a key (Ctrl+A, Shift+arrows) changes no cursor position the
+                // callback above would hear of: read it when the key is released.
+                key-released(event) => {
+                    if self.has-focus {
+                        let start = LineApi.offset-of(root.own, i, 0);
+                        root.caret = start + self.cursor-position-byte-offset;
+                        root.anchor = start + self.anchor-position-byte-offset;
+                    }
+                    return reject;
+                }
+
+                key-pressed(event) => {
+                    // A write from outside the rows have not followed yet, or a cursor request for
+                    // this input: done before the key acts.
+                    root.sync();
+                    self.take();
+                    let plain = !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta && !event.modifiers.shift;
+                    let collapsed = self.cursor-position-byte-offset == self.anchor-position-byte-offset;
+                    let at-start = collapsed && self.cursor-position-byte-offset == 0;
+                    let at-end = collapsed && self.cursor-position-byte-offset == LineApi.line-length(root.own, i);
+                    let normal = LineApi.line-count(root.own) == root.lines.length;
+                    if event.text == Key.Backspace && at-start && normal && i > 0 && !event.modifiers.control {
+                        root.join(i);
+                        return accept;
+                    }
+                    if event.text == Key.Delete && at-end && normal && i < root.lines.length - 1 && !event.modifiers.control {
+                        root.join(i + 1);
+                        return accept;
+                    }
+                    if event.text == Key.LeftArrow && plain && at-start && normal && i > 0 {
+                        root.request(LineApi.offset-of(root.own, i, 0) - 1, LineApi.offset-of(root.own, i, 0) - 1, true);
+                        return accept;
+                    }
+                    if event.text == Key.RightArrow && plain && at-end && normal && i < root.lines.length - 1 {
+                        root.request(LineApi.offset-of(root.own, i + 1, 0), LineApi.offset-of(root.own, i + 1, 0), true);
+                        return accept;
+                    }
+                    if event.text == Key.UpArrow && plain && normal && i > 0 && self.caret-y < root.row-height * 0.5 {
+                        let to = LineApi.vertical(root.own, root.caret, -1);
+                        if to >= 0 {
+                            root.request(to, to, true);
+                            return accept;
+                        }
+                    }
+                    if event.text == Key.DownArrow && plain && normal && i < root.lines.length - 1 && self.caret-y > self.height - root.row-height * 1.5 {
+                        let to = LineApi.vertical(root.own, root.caret, 1);
+                        if to >= 0 {
+                            root.request(to, to, true);
+                            return accept;
+                        }
+                    }
+                    return reject;
+                }
+            }
+        }
+    }
+}

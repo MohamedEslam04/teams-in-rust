@@ -1,5 +1,7 @@
 //! Composer text -> Teams HTML.
 
+use crate::{Dir, text_direction};
+
 pub(crate) fn escape(s: &str, out: &mut String) {
     for c in s.chars() {
         match c {
@@ -13,13 +15,32 @@ pub(crate) fn escape(s: &str, out: &mut String) {
     }
 }
 
+/// The ` dir="..."` attribute of a block whose text has `dir`, empty for a
+/// block without a strong character or when no block of the message is
+/// right-to-left (an all left-to-right message is written as before).
+pub(crate) fn dir_attr(dir: Option<Dir>, mixed: bool) -> &'static str {
+    match dir {
+        Some(Dir::Rtl) => " dir=\"rtl\"",
+        Some(Dir::Ltr) if mixed => " dir=\"ltr\"",
+        _ => "",
+    }
+}
+
 /// Composer plain text -> Teams HTML: every line becomes a `<p>`, empty lines
-/// become `<p>&nbsp;</p>`, and `& < > " '` are escaped.
+/// become `<p>&nbsp;</p>`, and `& < > " '` are escaped. When a line is
+/// right-to-left every line with a strong character says its own direction
+/// (`dir="rtl"` or `dir="ltr"`), so a mixed message keeps each line's side.
 pub fn text_to_teams_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 16);
-    for line in text.split('\n') {
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        out.push_str("<p>");
+    let lines = || {
+        text.split('\n')
+            .map(|line| line.strip_suffix('\r').unwrap_or(line))
+    };
+    let mixed = lines().any(|line| text_direction(line) == Some(Dir::Rtl));
+    for line in lines() {
+        out.push_str("<p");
+        out.push_str(dir_attr(text_direction(line), mixed));
+        out.push('>');
         if line.trim().is_empty() {
             out.push_str("&nbsp;");
         } else {
@@ -103,6 +124,25 @@ mod tests {
     #[test]
     fn empty_text() {
         assert_eq!(text_to_teams_html(""), "<p>&nbsp;</p>");
+    }
+
+    #[test]
+    fn right_to_left_lines_carry_their_direction() {
+        assert_eq!(
+            text_to_teams_html("Hi team\nحاضر\nok تمام"),
+            "<p dir=\"ltr\">Hi team</p><p dir=\"rtl\">حاضر</p><p dir=\"ltr\">ok تمام</p>"
+        );
+        assert_eq!(text_to_teams_html("حاضر"), "<p dir=\"rtl\">حاضر</p>");
+        // No strong character, no direction; an escaped character is still escaped.
+        assert_eq!(
+            text_to_teams_html("123 <حاضر>\n\n👍"),
+            "<p dir=\"rtl\">123 &lt;حاضر&gt;</p><p>&nbsp;</p><p>👍</p>"
+        );
+    }
+
+    #[test]
+    fn left_to_right_messages_stay_without_direction() {
+        assert_eq!(text_to_teams_html("a\nb"), "<p>a</p><p>b</p>");
     }
 
     #[test]

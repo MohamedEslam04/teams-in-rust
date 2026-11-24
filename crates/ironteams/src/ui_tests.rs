@@ -33,6 +33,7 @@ mod chat_titles;
 mod clip_loop;
 mod composer_apps;
 mod composer_gaps;
+mod composer_lines;
 mod composer_send;
 mod desktop_cards;
 mod drive;

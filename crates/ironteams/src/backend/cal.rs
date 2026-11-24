@@ -519,6 +519,12 @@ impl CalState {
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.0.lock().unwrap()
     }
+
+    /// The cached event of the meeting whose chat is `chat` (the call window's People panel).
+    pub(super) fn meeting_event(&self, chat: &str, now: i64) -> Option<Event> {
+        let s = self.lock();
+        super::call::event_for_chat(s.nearby(now), chat, now).cloned()
+    }
 }
 
 fn overlaps(e: &Event, s: i64, end: i64) -> bool {

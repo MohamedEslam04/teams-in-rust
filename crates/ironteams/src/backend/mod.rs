@@ -57,6 +57,7 @@ pub(crate) mod meeting_cards;
 mod mentions;
 mod msg_memo;
 mod my_presence;
+mod notify_available;
 mod ongoing_call;
 mod outbox;
 pub(crate) mod outsider;
@@ -672,6 +673,9 @@ impl Engine {
                     let cfg = e.cfg.lock().unwrap().clone();
                     let _ = session::persist(&cfg, &e.client).await;
                 }
+                // The Activity badge follows what other Teams clients read, even if the push
+                // that says so never reaches us.
+                e.on_activity_event();
                 // The chat list and the Activity feed name the day of a row ("Yesterday", a
                 // weekday): they are drawn again when the day turns, not on every tick.
                 let today = local_day();

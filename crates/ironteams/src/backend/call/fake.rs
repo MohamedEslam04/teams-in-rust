@@ -149,6 +149,7 @@ impl CallHandle for FakeHandle {
             Control::Recording(on) => format!("recording {}", start_stop(*on)),
             Control::Transcription(on) => format!("transcription {}", start_stop(*on)),
             Control::Hold(h) => format!("hold {}", if *h { "on" } else { "off" }),
+            Control::Sound(off) => format!("sound {}", if *off { "off" } else { "on" }),
             Control::AddPerson { mri, .. } => format!("add {mri}"),
             Control::Transfer { mri, .. } => format!("transfer {mri}"),
             Control::Admit { mri, .. } => format!("admit {mri}"),
