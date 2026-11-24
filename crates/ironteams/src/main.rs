@@ -22,6 +22,7 @@ mod language;
 mod lists_data;
 mod logging;
 mod loop_compose;
+mod malloc_arenas;
 mod markdown;
 mod media_data;
 mod mention;
@@ -435,7 +436,9 @@ fn report_problem(args: &[String]) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    // First of all: Velopack's install, update and uninstall hooks run (and exit) here. A
+    // Before any thread exists: two malloc arenas instead of one per thread (`malloc_arenas`).
+    malloc_arenas::limit();
+    // Then Velopack's install, update and uninstall hooks run (and exit) here. A
     // downloaded update is never applied at the start; only on "Restart to update" or on quit.
     velopack::VelopackApp::build()
         .set_auto_apply_on_startup(false)
