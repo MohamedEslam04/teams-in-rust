@@ -202,6 +202,12 @@ impl Default for QuietHoursPrefs {
 }
 
 /// A switch that is on by default: a value that is not a boolean keeps it on.
+/// A setting that is not the user's to change: whatever the file holds, it is on.
+fn always_on<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    serde_json::Value::deserialize(d)?;
+    Ok(true)
+}
+
 fn lenient_on<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(v.as_bool().unwrap_or(true))
@@ -296,13 +302,14 @@ pub struct GeneralPrefs {
     /// behaved before the switch existed.
     #[serde(deserialize_with = "lenient")]
     pub keep_running_on_close: bool,
-    /// Ask GitHub once per start whether a newer release exists. Off until the user turns it on.
-    #[serde(default, deserialize_with = "lenient")]
+    /// Ask GitHub once per start whether a newer release exists (copies that cannot update
+    /// themselves show a banner). Always on: the field stays so older settings files load, but
+    /// whatever they hold reads as on and nothing in the app turns it off.
+    #[serde(deserialize_with = "always_on")]
     pub check_updates: bool,
     /// Copies that can update themselves (Velopack installs) download new versions in the
-    /// background and install them on restart or quit. On unless the user turned it off: a file
-    /// written before the field existed gets it on too.
-    #[serde(deserialize_with = "lenient_on")]
+    /// background and install them on restart or quit. Always on, like `check_updates`.
+    #[serde(deserialize_with = "always_on")]
     pub auto_update: bool,
     /// Automatic updates also take pre-releases (`v1.2.0-beta.1`). Off until the user turns it on.
     #[serde(deserialize_with = "lenient")]
@@ -352,7 +359,7 @@ impl Default for GeneralPrefs {
             auto_start: false,
             open_in_background: false,
             keep_running_on_close: true,
-            check_updates: false,
+            check_updates: true,
             auto_update: true,
             beta_updates: false,
             banner_photo: true,
@@ -396,21 +403,25 @@ mod tests {
             d.keep_running_on_close,
             "closing keeps running in the tray, as before"
         );
-        assert!(!d.check_updates, "the update check is opt-in");
-        assert!(d.auto_update, "automatic updates are on");
+        assert!(d.check_updates, "the update check is always on");
+        assert!(d.auto_update, "automatic updates are always on");
         assert!(!d.beta_updates, "betas are opt-in");
     }
 
     #[test]
-    fn automatic_updates_are_on_for_files_written_before_the_switch_existed() {
-        // A user who never saw the switch gets it on; one who turned it off keeps it off.
+    fn updates_are_on_whatever_an_older_or_edited_file_says() {
+        // The switches are gone: a file that turned them off, or holds nonsense, reads as on.
         let old = r#"{"language":"ar","check_updates":false}"#;
         let p: GeneralPrefs = serde_json::from_str(old).unwrap();
-        assert!(p.auto_update && !p.beta_updates);
-        let p: GeneralPrefs = serde_json::from_str(r#"{"auto_update":false}"#).unwrap();
-        assert!(!p.auto_update);
-        let p: GeneralPrefs = serde_json::from_str(r#"{"auto_update":"no"}"#).unwrap();
-        assert!(p.auto_update, "a bad value keeps the default");
+        assert!(p.check_updates && p.auto_update && !p.beta_updates);
+        let p: GeneralPrefs =
+            serde_json::from_str(r#"{"auto_update":false,"check_updates":false}"#).unwrap();
+        assert!(p.auto_update && p.check_updates);
+        let p: GeneralPrefs =
+            serde_json::from_str(r#"{"auto_update":"no","check_updates":0}"#).unwrap();
+        assert!(p.auto_update && p.check_updates);
+        let p: GeneralPrefs = serde_json::from_str("{}").unwrap();
+        assert!(p.auto_update && p.check_updates, "a file without them too");
         let p: GeneralPrefs = serde_json::from_str(r#"{"beta_updates":true}"#).unwrap();
         assert!(p.beta_updates && p.auto_update);
         let p: GeneralPrefs = serde_json::from_str(r#"{"beta_updates":"yes"}"#).unwrap();
@@ -418,16 +429,12 @@ mod tests {
     }
 
     #[test]
-    fn check_updates_defaults_off_and_old_files_still_load() {
+    fn old_files_without_the_update_fields_still_load_with_them_on() {
         // A file written before the field existed.
         let old = r#"{"language":"ar","auto_start":true,"keep_running_on_close":true}"#;
         let p: GeneralPrefs = serde_json::from_str(old).unwrap();
-        assert!(!p.check_updates);
-        assert!(p.auto_start && p.keep_running_on_close);
-        let p: GeneralPrefs = serde_json::from_str(r#"{"check_updates":true}"#).unwrap();
         assert!(p.check_updates);
-        let p: GeneralPrefs = serde_json::from_str(r#"{"check_updates":"yes"}"#).unwrap();
-        assert!(!p.check_updates, "a bad value means off");
+        assert!(p.auto_start && p.keep_running_on_close);
     }
 
     #[test]
@@ -685,7 +692,7 @@ mod tests {
             open_in_background: true,
             keep_running_on_close: true,
             check_updates: true,
-            auto_update: false,
+            auto_update: true,
             beta_updates: true,
             banner_photo: false,
             banner_actions: true,

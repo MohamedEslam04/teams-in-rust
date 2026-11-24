@@ -170,8 +170,7 @@ export global SettingsStore {
 
     // --- About ---
     in-out property <string> version;
-    // Opt-in update check (X3.5). `update-status` is the line under the switch.
-    in-out property <bool> check-updates: false;
+    // `update-status` is the line under "Check now".
     in-out property <bool> banner-photo: true;
     // How notifications look: "cards" (Teams cards drawn by IronTeams) or "system".
     in-out property <string> notification-style: "cards";
@@ -197,7 +196,6 @@ export global SettingsStore {
     in-out property <string> update-status;
     // Self-updates, for copies Velopack installed (`self-update`); others keep the opt-in check.
     in-out property <bool> self-update: false;
-    in-out property <bool> auto-update: true;
     in-out property <bool> beta-updates: false;
     // A downloaded update waits for "Restart to update" (or the next quit).
     in-out property <bool> update-ready: false;

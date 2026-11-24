@@ -1599,31 +1599,37 @@ fn release(version: &str) -> crate::update_check::Release {
 }
 
 #[test]
-fn update_check_is_off_by_default_and_the_switch_stores_the_pref() {
-    let home = Home::new("update-off");
+fn the_update_check_has_no_switch_and_runs_whatever_an_older_settings_file_says() {
+    let home = Home::new("update-always");
     let dir = home.paths().config_dir;
+    std::fs::create_dir_all(&dir).unwrap();
+    // A file from when the check was opt-in and this user had left it off.
+    std::fs::write(
+        dir.join("general.json"),
+        r#"{"check_updates":false,"auto_update":false}"#,
+    )
+    .unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let ui = window_tweaked(home, fake_update(&calls, Ok(release("999.0.0"))));
     let app = &ui.app;
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "the check runs at start");
+    assert_eq!(app.get_banner().as_str(), "IronTeams 999.0.0 is available");
+    assert!(Local::load(&dir).general.check_updates);
     open_page(app, "about");
-    assert!(!checked(app, "Check for updates"));
-    assert!(!store(app).get_check_updates());
-    assert!(!Local::load(&dir).general.check_updates);
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "off: no check at start");
-    assert_eq!(app.get_banner().as_str(), "");
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Check for updates")
+            .next()
+            .is_none(),
+        "no switch to turn it off"
+    );
+    // The command of the old switch does nothing.
+    store(app).invoke_command("check-updates".into(), "0".into());
+    assert!(Local::load(&dir).general.check_updates);
     assert!(
         ElementHandle::find_by_accessible_label(app, "Check now")
             .next()
-            .is_none(),
-        "no Check now while the switch is off"
+            .is_some()
     );
-
-    press(app, "Check for updates");
-    assert!(checked(app, "Check for updates"));
-    assert!(Local::load(&dir).general.check_updates);
-    press(app, "Check for updates");
-    assert!(!Local::load(&dir).general.check_updates);
-    assert_eq!(store(app).get_update_status().as_str(), "");
 }
 
 #[test]
@@ -1633,8 +1639,7 @@ fn a_newer_release_shows_the_banner_and_release_notes_opens_its_page() {
     let ui = window_tweaked(home, fake_update(&calls, Ok(release("999.0.0"))));
     let app = &ui.app;
     open_page(app, "about");
-    press(app, "Check for updates");
-    // Turning it on makes the one automatic check of this start.
+    // The one automatic check of this start.
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(app.get_banner().as_str(), "IronTeams 999.0.0 is available");
     assert_eq!(app.get_banner_action().as_str(), "Release notes");
@@ -1653,13 +1658,8 @@ fn a_newer_release_shows_the_banner_and_release_notes_opens_its_page() {
 }
 
 #[test]
-fn the_automatic_check_runs_once_at_start_when_the_pref_is_on() {
+fn the_automatic_check_runs_once_at_start() {
     let home = Home::new("update-start");
-    let dir = home.paths().config_dir;
-    std::fs::create_dir_all(&dir).unwrap();
-    let mut local = Local::load(&dir);
-    local.general.check_updates = true;
-    local.save_general().unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
     let ui = window_tweaked(
         home,
@@ -1668,12 +1668,10 @@ fn the_automatic_check_runs_once_at_start_when_the_pref_is_on() {
     let app = &ui.app;
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     open_page(app, "about");
-    assert!(checked(app, "Check for updates"));
     assert_eq!(store(app).get_update_status().as_str(), "Up to date");
     assert_eq!(app.get_banner().as_str(), "", "same version: no banner");
-    // Switching off and on again does not make a second automatic request.
-    press(app, "Check for updates");
-    press(app, "Check for updates");
+    // Opening the page again does not make a second automatic request.
+    open_page(app, "about");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
 
@@ -1684,7 +1682,6 @@ fn a_failed_check_only_says_so_on_the_about_page() {
     let ui = window_tweaked(home, fake_update(&calls, Err("offline".into())));
     let app = &ui.app;
     open_page(app, "about");
-    press(app, "Check for updates");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         store(app).get_update_status().as_str(),
@@ -2062,12 +2059,16 @@ fn self_updating(home: Home, src: &Arc<FakeSource>) -> Ui {
 }
 
 #[test]
-fn a_copy_that_cannot_update_itself_keeps_the_opt_in_check() {
+fn a_copy_that_cannot_update_itself_checks_for_a_release_and_has_no_switch() {
     let ui = window(Home::new("self-update-none"));
     let app = &ui.app;
     open_page(app, "about");
     assert!(!store(app).get_self_update());
-    assert!(!checked(app, "Check for updates"));
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Check for updates")
+            .next()
+            .is_none()
+    );
     assert!(
         ElementHandle::find_by_accessible_label(app, "Automatic updates")
             .next()
@@ -2082,7 +2083,12 @@ fn check_now_downloads_the_update_and_restart_installs_it() {
     let app = &ui.app;
     open_page(app, "about");
     assert!(store(app).get_self_update());
-    assert!(checked(app, "Automatic updates"), "on by default");
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Automatic updates")
+            .next()
+            .is_none(),
+        "updates are required: no switch"
+    );
     assert!(!checked(app, "Get beta updates"), "betas are opt-in");
     assert!(
         src.calls().is_empty(),
@@ -2135,9 +2141,9 @@ fn the_update_switches_are_stored_and_betas_ask_for_pre_releases() {
     let ui = self_updating(home, &src);
     let app = &ui.app;
     open_page(app, "about");
-    press(app, "Automatic updates");
-    assert!(!Local::load(&dir).general.auto_update);
-    assert!(!checked(app, "Automatic updates"));
+    // The old switch's command changes nothing: automatic updates cannot be turned off.
+    store(app).invoke_command("auto-update".into(), "0".into());
+    assert!(Local::load(&dir).general.auto_update);
     press(app, "Get beta updates");
     assert!(Local::load(&dir).general.beta_updates);
     press(app, "Check now");

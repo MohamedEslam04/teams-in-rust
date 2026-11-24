@@ -484,7 +484,7 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             }
             push_accounts(w, &c);
         }
-        // --- Updates (opt-in; local) ---
+        // --- Updates (always on; only the beta channel is a choice; local) ---
         "notification-style" => {
             let mut c = shared.borrow_mut();
             c.local.general.notification_style = match arg {
@@ -581,19 +581,6 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
-        "check-updates" => {
-            let mut c = shared.borrow_mut();
-            c.local.general.check_updates = bit(arg);
-            let r = c.local.save_general();
-            push_local(w, &c);
-            if c.local.general.check_updates {
-                check_updates(w, &mut c, false);
-            } else {
-                g.set_update_status(s(""));
-                g.set_update_available(false);
-            }
-            saved(w, r);
-        }
         "check-spelling" => {
             let mut c = shared.borrow_mut();
             c.local.general.check_spelling = bit(arg);
@@ -609,13 +596,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 check_updates(w, &mut c, true);
             }
         }
-        "auto-update" | "beta-updates" => {
+        "beta-updates" => {
             let mut c = shared.borrow_mut();
-            if name == "auto-update" {
-                c.local.general.auto_update = bit(arg);
-            } else {
-                c.local.general.beta_updates = bit(arg);
-            }
+            c.local.general.beta_updates = bit(arg);
             let r = c.local.save_general();
             push_local(w, &c);
             saved(w, r);
@@ -805,23 +788,14 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
-        // The top bar menu's "Check for updates": the check is opt-in, so with the switch off it
-        // only opens About, where the switch is.
+        // The top bar menu's "Check for updates": opens About and checks now.
         "check-updates-menu" => {
-            let (on, self_update) = {
-                let c = shared.borrow();
-                (c.local.general.check_updates, c.env.hooks.updates.is_some())
-            };
+            let self_update = shared.borrow().env.hooks.updates.is_some();
             g.invoke_show(s("about"));
             if self_update {
                 start_update(w, &mut shared.borrow_mut(), None);
-            } else if on {
-                check_updates(w, &mut shared.borrow_mut(), true);
             } else {
-                notice(
-                    w,
-                    "Update checks are off. Turn on \"Check for updates\" to let IronTeams ask GitHub for the latest release.",
-                );
+                check_updates(w, &mut shared.borrow_mut(), true);
             }
         }
         "refresh-license" => {

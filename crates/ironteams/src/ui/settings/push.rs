@@ -163,9 +163,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_renderer_fallback(started.fell_back());
     // What the next start will use differs from what this start asked for.
     g.set_renderer_restart(crate::renderer::wanted(gp.renderer) != started.wanted);
-    g.set_check_updates(gp.check_updates);
     g.set_self_update(c.env.hooks.updates.is_some());
-    g.set_auto_update(gp.auto_update);
     g.set_beta_updates(gp.beta_updates);
     g.set_banner_photo(gp.banner_photo);
     g.set_notification_style(s(match gp.notification_style {
