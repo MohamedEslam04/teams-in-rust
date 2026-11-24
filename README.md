@@ -287,10 +287,11 @@ panel's other backgrounds are drawn by IronTeams itself.
 ## Credits
 
 - Protocol knowledge from [purple-teams](https://github.com/EionRobb/purple-teams) by Eion Robb (GPL-3.0).
+- Protocol knowledge, and some adapted code, from [rusty-teams](https://github.com/danieldaeschle/rusty-teams) by Daniel Däschle (MIT). The MIT notice is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - Color emoji: [Twemoji](https://github.com/mozilla/twemoji-colr) (CC-BY 4.0). See `crates/ironteams/ui/fonts/README.md`.
 
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 7cd34f85 ("Merge feat/channel-post-layout: channel posts as full-width cards with a title, headings and lists like Teams", 2026-11-24)
+Docs synced to commit d124ea63 ("Merge fix/aur-stale-workspace: the AUR build rebuilds the workspace crates over a cached target", 2026-11-24)
