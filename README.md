@@ -23,7 +23,8 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 - **Chat:**
   - 1:1, group, meeting and self-notes chats, with custom sections, filters and list options
   - rich text both ways: a formatting toolbar (bold to tables, colors and code blocks) and Teams' shortcuts
-  - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox
+  - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox;
+    editing a message changes only your own text and keeps its forwarded or quoted part
   - new chats and group management, profile cards, read receipts, pinned-message banner, and
     Notify when available for the person of a 1:1 chat
   - image grid and viewer, link previews, translation, voice messages and videos
@@ -289,4 +290,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit dc9c2202 ("Merge fix/http-error-causes: HTTP errors log their cause chain", 2026-11-24)
+Docs synced to commit 0e8e2f42 ("Merge fix/edit-forward-reply-author: editing keeps forwarded and quoted blocks; reply quotes always name the author", 2026-11-24)
