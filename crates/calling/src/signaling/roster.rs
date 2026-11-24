@@ -126,6 +126,15 @@ impl RosterParticipant {
         self.endpoints.iter().filter(|e| e.in_call)
     }
 
+    /// How many of their devices are in the call or its lobby. One account on two devices (a
+    /// phone and a laptop) is one participant with two endpoints.
+    pub fn devices(&self) -> usize {
+        self.endpoints
+            .iter()
+            .filter(|e| e.in_call || e.in_lobby)
+            .count()
+    }
+
     /// The MSI of the camera they send, from their first endpoint in the call that sends one.
     pub fn video_source(&self) -> Option<u32> {
         self.in_call().find_map(|e| e.video_source)

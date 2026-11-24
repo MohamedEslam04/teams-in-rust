@@ -262,3 +262,38 @@ fn the_lobby_has_no_video_candidates() {
     assert!(roster.video_candidates(ME).is_empty());
     assert_eq!(roster.screen_sharer(ME), None);
 }
+
+#[test]
+fn one_account_on_two_devices_is_one_participant_with_two_devices() {
+    let mut roster = Roster::default();
+    roster.apply(&json!({"participants": {ME: {
+        "version": 1, "state": "active", "details": {"displayName": "Me Example"},
+        "endpoints": {
+            "laptop": {"participantId": "p-laptop", "call": {}},
+            "phone": {"participantId": "p-phone", "call": {}}
+        }
+    }}}));
+    assert_eq!(roster.participants().len(), 1, "the account is listed once");
+    assert_eq!(roster.get(ME).unwrap().devices(), 2);
+
+    // The phone leaves: its endpoint is gone from the next version.
+    roster.apply(&json!({"participants": {ME: {
+        "version": 2, "state": "active",
+        "endpoints": {"laptop": {"participantId": "p-laptop", "call": {}}}
+    }}}));
+    assert_eq!(roster.get(ME).unwrap().devices(), 1);
+}
+
+#[test]
+fn a_device_counts_while_in_the_call_or_the_lobby_not_after_it_left_both() {
+    let mut roster = Roster::default();
+    roster.apply(&json!({"participants": {ME: {
+        "version": 1, "state": "active",
+        "endpoints": {
+            "a": {"call": {}},
+            "b": {"lobby": {}},
+            "c": {}
+        }
+    }}}));
+    assert_eq!(roster.get(ME).unwrap().devices(), 2);
+}
