@@ -201,16 +201,10 @@ impl Default for QuietHoursPrefs {
     }
 }
 
-/// A switch that is on by default: a value that is not a boolean keeps it on.
 /// A setting that is not the user's to change: whatever the file holds, it is on.
 fn always_on<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     serde_json::Value::deserialize(d)?;
     Ok(true)
-}
-
-fn lenient_on<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
-    let v = serde_json::Value::deserialize(d)?;
-    Ok(v.as_bool().unwrap_or(true))
 }
 
 /// How far a mouse wheel notch scrolls the conversation lists, as a multiple of the notch: the
