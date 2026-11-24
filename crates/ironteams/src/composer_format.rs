@@ -92,11 +92,6 @@ pub fn wire(window: &AppWindow) {
     });
     api.on_preview(|text: SharedString| styled(&preview_markdown(&text)));
     api.on_has_format(|text: SharedString| edit::has_formatting(&text));
-    api.on_text_direction(|text: SharedString| match render::text_direction(&text) {
-        Some(render::Dir::Rtl) => 1,
-        Some(render::Dir::Ltr) => -1,
-        None => 0,
-    });
 }
 
 #[cfg(test)]

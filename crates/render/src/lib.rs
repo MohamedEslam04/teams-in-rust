@@ -7,6 +7,7 @@
 mod compose;
 pub mod edit;
 mod links;
+pub mod lines;
 mod markdown_out;
 mod parse;
 mod rich;

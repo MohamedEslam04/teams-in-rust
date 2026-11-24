@@ -98,6 +98,7 @@ pub fn wire(window: &AppWindow) {
     crate::mention::wire(window);
     crate::snippets::wire(window);
     crate::composer_format::wire(window);
+    crate::composer_lines::wire(window);
     crate::shortcuts::wire(window);
     crate::send_options::wire(window);
     crate::spell::wire(window);

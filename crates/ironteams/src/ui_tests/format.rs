@@ -171,21 +171,6 @@ fn format_api_covers_link_table_color_and_clear() {
 }
 
 #[test]
-fn the_composer_reads_the_direction_of_its_text_from_the_first_strong_character() {
-    let app = app_with_messages(vec![]);
-    let api = app.global::<FormatApi>();
-    assert_eq!(api.invoke_text_direction("حاضر".into()), 1);
-    assert_eq!(api.invoke_text_direction("123 حاضر".into()), 1);
-    assert_eq!(api.invoke_text_direction("ok حاضر".into()), -1);
-    assert_eq!(api.invoke_text_direction("".into()), 0);
-    assert_eq!(api.invoke_text_direction("👍 1".into()), 0);
-    // Typing into the box keeps working with the alignment bound to the text.
-    focused_composer(&app);
-    type_text(&app, "حاضر");
-    assert_eq!(app.get_draft(), "حاضر");
-}
-
-#[test]
 fn ctrl_k_opens_the_link_dialog_and_inserts_a_link_around_the_selection() {
     let app = app_with_messages(vec![]);
     typed_and_selected(&app, "docs");

@@ -491,8 +491,14 @@ pub fn wire(window: &AppWindow) {
                 s.borrow()
                     .misspelled(&text, &names, usize::try_from(cursor).ok())
             });
+            // The underlines are drawn for left-aligned lines: a word in a right-to-left line (it is
+            // right-aligned in the composer) gets none.
             let rows: Vec<SpellWord> = found
                 .into_iter()
+                .filter(|m| {
+                    let (line, _) = render::lines::locate(&text, m.start);
+                    render::lines::line_direction(&text, line) != Some(render::Dir::Rtl)
+                })
                 .map(|m| SpellWord {
                     start: m.start as i32,
                     end: m.end as i32,

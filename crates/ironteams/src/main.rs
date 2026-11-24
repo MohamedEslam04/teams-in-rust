@@ -8,6 +8,7 @@ mod backend;
 mod catch_up;
 mod composer;
 mod composer_format;
+mod composer_lines;
 mod data;
 mod demo;
 mod desktop_cards;
