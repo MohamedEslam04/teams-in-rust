@@ -117,6 +117,72 @@ fn several_pictures_form_a_grid_with_a_more_badge() {
     assert_eq!(six[0].overflow, 0);
 }
 
+/// The pictures on screen take more than the image cache's budget (a channel post with two
+/// screenshots among other pictures): each picture is decoded once and stays, instead of every
+/// decoded picture pushing out another one on screen, which a render then asks for again, which
+/// pushes out the next one, forever (the pictures flickered between the picture and the grey
+/// placeholder, and the decodes kept the CPU busy).
+#[test]
+fn pictures_on_screen_over_the_cache_budget_are_decoded_once_and_stay() {
+    let h = Harness::new();
+    let tmp = tempfile::tempdir().unwrap();
+    h.engine.test_set_cache_paths(session::Paths {
+        config_dir: tmp.path().join("config"),
+        data_dir: tmp.path().join("data"),
+        cache_dir: tmp.path().join("cache"),
+    });
+    // Room for three of the eight pictures: 100 x 100 pixels decode to 40 000 bytes each.
+    h.engine.test_image_budget(3 * 40_100);
+    let mut urls = Vec::new();
+    for m in 1..=4 {
+        let mut html = String::new();
+        for i in 1..=2 {
+            let url = format!("https://pics.invalid/m{m}-{i}.png");
+            h.engine.test_keep_img(&url, &png(100, 100));
+            html += &format!(r#"<p><img src="{url}" width="400" height="300"></p>"#);
+            urls.push(url);
+        }
+        put(&h, &format!("g{m}"), &html, json!({}));
+    }
+    let pump = |h: &Harness| {
+        h.rt.block_on(async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            h.engine.render_dirty();
+        });
+    };
+    let loaded = |h: &Harness| {
+        (1..=4)
+            .flat_map(|m| cells(&h.app, &format!("g{m}")))
+            .filter(|c| c.loaded)
+            .count()
+    };
+    h.select(CHAT);
+
+    // The kept pictures are read and decoded in the background; each one marks the messages,
+    // and the next render reads the cache again. Wait until nothing changes any more.
+    let (mut rounds, mut stable, mut last) = (0, 0, u64::MAX);
+    while rounds < 100 && stable < 5 {
+        pump(&h);
+        let decoded = h.engine.test_images_decoded();
+        stable = if decoded == last { stable + 1 } else { 0 };
+        last = decoded;
+        rounds += 1;
+    }
+    assert_eq!(
+        h.engine.test_images_decoded(),
+        urls.len() as u64,
+        "each picture is decoded once ({rounds} rounds)"
+    );
+    assert_eq!(loaded(&h), urls.len(), "every picture shows");
+    // More renders (a reaction, a presence change) ask for nothing again.
+    for _ in 0..5 {
+        h.engine.test_mark_messages();
+        pump(&h);
+    }
+    assert_eq!(h.engine.test_images_decoded(), urls.len() as u64);
+    assert_eq!(loaded(&h), urls.len());
+}
+
 #[test]
 fn the_viewer_opens_on_the_clicked_picture_and_steps_through_them() {
     let h = Harness::new();

@@ -5,7 +5,7 @@
 
 use super::Engine;
 use super::byte_lru::{ByteLru, THUMB_BUDGET, pixel_bytes, pixels_cost};
-use super::util::{AVATAR_PX, avatar_key, decode_image};
+use super::util::{AVATAR_PX, avatar_key, decode_image, decode_limited};
 use crate::data::{ImgData, LinkData, Pixels};
 use crate::media_data::ViewerData;
 use serde_json::{Value, json};
@@ -170,6 +170,11 @@ impl Default for State {
 impl State {
     pub(super) fn clear_thumbs(&mut self) {
         self.thumbs.clear();
+    }
+
+    /// The messages are drawn again: the link pictures they show stay (`ByteLru::begin_pass`).
+    pub(super) fn begin_thumb_pass(&mut self) {
+        self.thumbs.begin_pass();
     }
 
     fn put_thumb(&mut self, url: String, thumb: Thumb) {
@@ -533,11 +538,9 @@ impl Engine {
                             .unwrap_or("image/jpeg")
                             .to_string();
                         let kept = bytes.clone();
-                        let px =
-                            tokio::task::spawn_blocking(move || decode_image(&bytes, 4096, 4096))
-                                .await
-                                .ok()
-                                .flatten();
+                        let px = decode_limited(move || decode_image(&bytes, 4096, 4096))
+                            .await
+                            .flatten();
                         let fetched = FetchedImage {
                             bytes: kept,
                             content_type,
@@ -565,9 +568,8 @@ impl Engine {
             match fetched {
                 Ok(f) => {
                     let bytes = f.bytes.clone();
-                    let px = tokio::task::spawn_blocking(move || decode_image(&bytes, 4096, 4096))
+                    let px = decode_limited(move || decode_image(&bytes, 4096, 4096))
                         .await
-                        .ok()
                         .flatten();
                     e.viewer_done(seq, Some(f), px);
                 }
@@ -931,12 +933,9 @@ impl Engine {
     /// Decodes a link preview picture into the thumbnail cache and draws the messages again. A
     /// fetched picture (`keep`) that decodes is also kept on disk. False when it does not decode.
     async fn show_thumb(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
-        let decoded = tokio::task::spawn_blocking(move || {
-            decode_image(&bytes, 320, 320).map(|px| (px, bytes))
-        })
-        .await
-        .ok()
-        .flatten();
+        let decoded = decode_limited(move || decode_image(&bytes, 320, 320).map(|px| (px, bytes)))
+            .await
+            .flatten();
         let Some((px, bytes)) = decoded else {
             return false;
         };

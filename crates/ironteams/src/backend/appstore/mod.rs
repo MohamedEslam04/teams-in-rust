@@ -218,9 +218,8 @@ impl Engine {
                 let bytes = e.client.bytes(&url, &[], 4 * 1024 * 1024).await;
                 let px = match bytes {
                     Ok(b) => {
-                        tokio::task::spawn_blocking(move || super::util::decode_image(&b, 480, 320))
+                        super::util::decode_limited(move || super::util::decode_image(&b, 480, 320))
                             .await
-                            .ok()
                             .flatten()
                     }
                     Err(err) => {

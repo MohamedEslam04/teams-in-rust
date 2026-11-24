@@ -287,6 +287,13 @@ impl Engine {
         *self.upkeep.paths.lock().unwrap() = Some(paths);
     }
 
+    /// Keeps `bytes` on disk as the picture of `url`, as a finished download does.
+    #[cfg(test)]
+    pub(crate) fn test_keep_img(&self, url: &str, bytes: &[u8]) {
+        let paths = self.cache_paths().expect("test_set_cache_paths first");
+        cache::write_img(&paths.cache_dir, url, bytes).unwrap();
+    }
+
     /// Empties the pictures kept in memory.
     fn forget_pictures(&self) {
         self.avatars.lock().unwrap().clear();

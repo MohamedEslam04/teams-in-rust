@@ -254,9 +254,8 @@ impl Engine {
     async fn load_avatar(self: Arc<Self>, mri: String, stored: Option<Vec<u8>>, size: u32) {
         if let Some(bytes) = stored {
             let low_res = avatar_is_low_res(&bytes);
-            let px = tokio::task::spawn_blocking(move || decode_image(&bytes, size, size))
+            let px = decode_limited(move || decode_image(&bytes, size, size))
                 .await
-                .ok()
                 .flatten();
             if px.is_some() {
                 self.avatars
@@ -280,7 +279,10 @@ impl Engine {
     async fn fetch_avatar(self: Arc<Self>, mri: String, size: u32) {
         if let Ok(bytes) = self.client.avatar(&self.me, &mri).await
             && self.is_photo(&mri, &bytes)
-            && let Some(px) = decode_image(&bytes, size, size)
+            && let Some((px, bytes)) =
+                decode_limited(move || decode_image(&bytes, size, size).map(|px| (px, bytes)))
+                    .await
+                    .flatten()
         {
             self.avatars
                 .lock()
@@ -353,6 +355,24 @@ impl Engine {
         }
     }
 
+    /// Replaces the inline image cache with an empty one of `budget` bytes.
+    #[cfg(test)]
+    pub(crate) fn test_image_budget(&self, budget: usize) {
+        *self.images.lock().unwrap() = super::byte_lru::ByteLru::new(budget);
+    }
+
+    /// How many decoded inline pictures were stored in the cache (one per decode).
+    #[cfg(test)]
+    pub(crate) fn test_images_decoded(&self) -> u64 {
+        self.images.lock().unwrap().filled()
+    }
+
+    /// Marks the messages for the next render, as a reaction or an arrived picture does.
+    #[cfg(test)]
+    pub(crate) fn test_mark_messages(&self) {
+        self.mark(|d| d.messages = true);
+    }
+
     pub(super) fn inline_image(self: &Arc<Self>, url: &str) -> Option<Pixels> {
         let mut cache = self.images.lock().unwrap();
         if let Some(p) = cache.get(url) {
@@ -416,12 +436,10 @@ impl Engine {
     /// picture (`keep`) that decodes is also kept on disk for the next run. False when the bytes
     /// do not decode.
     async fn show_inline_image(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
-        let decoded = tokio::task::spawn_blocking(move || {
-            decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes))
-        })
-        .await
-        .ok()
-        .flatten();
+        let decoded =
+            decode_limited(move || decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes)))
+                .await
+                .flatten();
         let Some((px, bytes)) = decoded else {
             tracing::warn!(url = %teams_proto::logsafe::url(url), "image could not be decoded");
             return false;
@@ -825,6 +843,11 @@ impl Engine {
 
     fn render_messages(self: &Arc<Self>, scroll: bool) {
         let started = Instant::now();
+        // The pictures this render reads stay in the caches even over their budgets: the view
+        // holds them anyway, and evicting one on screen made the next render decode it again,
+        // whose arrival evicted another one on screen, forever.
+        self.images.lock().unwrap().begin_pass();
+        self.media.lock().unwrap().begin_thumb_pass();
         let (cur, thread, limit, pending, selected) = {
             let v = self.view.lock().unwrap();
             (
