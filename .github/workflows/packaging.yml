@@ -229,13 +229,18 @@ jobs:
           # every C build script (ring, sqlite... and all that depends on them) when it changes.
           env='export SOURCE_DATE_EPOCH=315532800 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*"'
           # Fetch and extract first (-o), put the cached cargo target where the PKGBUILD builds
-          # (src/ironteams/target), then build from that tree (-e). The fresh clone gives the
-          # sources the current time, so cargo rebuilds the workspace crates.
+          # (src/ironteams/target), then build from that tree (-e).
           su builder -c "$env && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -o --noconfirm"
           if [ -d aur-target ]; then
             mv aur-target /home/builder/aur/src/ironteams/target
             chown -R builder /home/builder/aur/src/ironteams/target
           fi
+          # makepkg -o gives the extracted sources SOURCE_DATE_EPOCH (1980) as their time, older
+          # than every cached build, so cargo took the cached workspace crates as fresh and
+          # linked a stale one (v0.1.9: "cannot find function split_quote_blocks in ::render").
+          # The workspace sources get the current time; crates.io dependencies stay cached.
+          find /home/builder/aur/src/ironteams -path /home/builder/aur/src/ironteams/target -prune \
+            -o -type f -exec touch {} +
           su builder -c "$env && makepkg -e -f --noconfirm"
       - name: Keep the cargo target for the next build
         id: keep
