@@ -1,0 +1,156 @@
+# ui (UI-thread glue)
+
+## Overview
+Modules that run on the Slint UI thread: they convert backend view data into Slint globals and models and register callbacks for each screen (activity, apps, calendar, calls, channels, drive, engage, find, lists, media, palette, people, settings, teams, top bar, voice, and others).
+
+Files:
+- `activity.rs`: UI-thread Activity view: list/preview models filled in place, badge counts pushed to window and tray.
+- `appstore.rs`: Maps backend app-screen view data (rail, store, tasks, flows, notes, lists, form, recaps) onto Slint globals and wires their command callbacks to Cmd::Apps.
+- `cal.rs`: Calendar UI module root: imports Slint calendar types, declares push/form/wire submodules and small int/strings helpers.
+- `call.rs`: Fills the CallStore global from CallData: roster, speaker/mini views, pinning, reactions model, share-driven layout switching, video frames and effects panel.
+- `call_direct.rs`: 1:1 call UI: DirectCallStore incoming toast and outgoing ringing screen, and command wiring to Cmd::DirectCall.
+- `calls_page.rs`: Fills CallsPageStore (history, voicemails, results, speed dial, dial, loading, errors) from CallsData and forwards page commands to the engine as Cmd::CallsPage.
+- `channels.rs`: Fills ChannelStore (post cards, thread panel, active flag, scroll anchor) and converts Adaptive Card rows to Slint CardRow models.
+- `clip.rs`: Fills ClipStore (recorder state, elapsed, preview picture, problem) and wires its callbacks and clip-card play to Cmd::Clip.
+- `composer_apps.rs`: Fills the ComposerApps global from PickerData and wires its command callback to Cmd::ComposerApps.
+- `drive.rs`: Maps OneDrive backend view data (rows, cards, share, picker, versions, preview, info dialogs) into DriveStore; keeps rows in a thread-local VecModel updated in place.
+- `engage.rs`: Fills EngageStore (Viva Engage feed) and StorylineStore (profile, counts, posts) from backend data.
+- `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state.
+- `gifs.rs`: Fills GifStore items and status from GifRow results.
+- `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
+- `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
+- `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
+- `motion.rs`: Sets TypingStore names and chats models for the typing indicator and list-row dots.
+- `palette.rs`: Command palette ranking (score/rank), recent-actions list, row building with list geometry, wired to PaletteApi callbacks.
+- `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
+- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; copies Theme, shows/updates messages.
+- `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models.
+- `settings.rs`: Settings UI controller root: Ctl state, thread-local CTL, submodule declarations/re-exports, MicPoll/OpenMic types, command list docs.
+- `teams.rs`: UiHandle methods converting TeamsData/DialogData into the TeamsStore global models and opening dialogs.
+- `topbar.rs`: Top bar search dropdown controller: suggestions, message hits, recents, slash commands, back/forward history, TopBarStore commands.
+- `voice.rs`: UiHandle voice_player/voice_recorder fill VoiceStore/VoiceRecStore; wire() maps their callbacks to Cmd::Voice.
+
+## Interface
+- Subdirectory `cal/`: [cal/EGM.md](./cal/EGM.md) - Calendar UI: form copy, push of engine data, wiring
+- Subdirectory `settings/`: [settings/EGM.md](./settings/EGM.md) - Settings UI: commands, hooks, install, push, updates
+- `[activity.rs:row]` pub fn row(ActivityData) -> ActivityRow
+- `[calls_page.rs:install]` pub fn(w:&AppWindow, tx:UnboundedSender<Cmd>) - sets CallsPageStore.available and routes on_command via CallsCmd::parse to Cmd::CallsPage
+- `[palette.rs:score]` pub fn score(query:&str,label:&str)->Option<i32>; tiered fuzzy match (prefix 1000, word-starts 700, substring 450, subsequence <=390)
+- `[activity.rs:UiHandle::activity]` pub fn activity(&self, Vec<ActivityData>) replaces Activity list (in place when ids unchanged)
+- `[calls_page.rs:UiHandle::calls_page]` pub fn(&self, d:CallsData) - replaces Calls page data on the UI thread
+- `[palette.rs:rank]` pub fn rank(query:&str,labels:&[&str])->Vec<usize>; best first, ties by shorter label then original order
+- `[activity.rs:UiHandle::badges]` pub fn badges(&self, activity: i32, chats: i32) sets unread counts and notifies tray
+- `[channels.rs:card_rows]` pub(super) fn(Vec<CardRowData>) -> ModelRc<CardRow> - Slint rows for an Adaptive Card
+- `[palette.rs:push_recent]` pub fn push_recent(recents:&str,id:&str)->String; comma-separated, newest first, deduped, max 5
+- `[activity.rs:UiHandle::activity_preview]` pub fn activity_preview(&self, PreviewData) replaces preview pane
+- `[channels.rs:UiHandle::posts]` pub fn(&self, posts:Vec<PostData>, newest_top:bool, anchor:Option<usize>) - set post cards, mark active, bump anchor tick
+- `[palette.rs:build]` pub fn build(query,&[PaletteAction],&[ChatRow],recents)->Vec<PaletteItem>; sets head/top/height per row
+- `[appstore.rs:UiHandle::open_view]` pub fn open_view(&self, view: String) switches main view, closes Settings if open
+- `[channels.rs:UiHandle::post_thread]` pub fn(&self, t:PostThreadData) - sets thread post and replies
+- `[palette.rs:wire]` pub fn wire(window:&AppWindow); installs PaletteApi on_results and on_push_recent
+- `[appstore.rs:UiHandle::apps_rail]` pub fn apps_rail(&self, RailData)
+- `[channels.rs:UiHandle::posts_inactive]` pub fn(&self) - ChannelStore.active=false
+- `[people.rs:UiHandle::mention_items]` pub fn(&self,Vec<PersonData>)
+- `[appstore.rs:UiHandle::apps_store]` pub fn apps_store(&self, StoreData)
+- `[clip.rs:UiHandle::clip_recorder]` pub fn(&self, v:ClipView) - fills ClipStore, validates picture buffer size
+- `[people.rs:UiHandle::new_chat]` pub fn(&self,open,to,results,hint)
+- `[appstore.rs:UiHandle::apps_tasks]` pub fn apps_tasks(&self, TasksData)
+- `[clip.rs:wire]` pub fn(&AppWindow, UnboundedSender<Cmd>) - connects open/record/stop/retake/cancel/send/play_take/play to Cmd::Clip
+- `[people.rs:UiHandle::group_header]` pub fn(&self,group:bool,count:usize); count 0 closes participants popover
+- `[appstore.rs:UiHandle::apps_flows]` pub fn apps_flows(&self, FlowsData)
+- `[composer_apps.rs:UiHandle::composer_apps]` pub fn(&self, d:PickerData) - fills ComposerApps global
+- `[people.rs:UiHandle::close_participants]` pub fn(&self)
+- `[appstore.rs:UiHandle::apps_notes]` pub fn apps_notes(&self, NotesData)
+- `[composer_apps.rs:wire]` pub fn(&AppWindow, UnboundedSender<Cmd>) - routes picker command to Cmd::ComposerApps, warns on unknown
+- `[people.rs:UiHandle::members]` pub fn(&self,members,add_results)
+- `[appstore.rs:UiHandle::apps_lists]` pub fn apps_lists(&self, ListsData)
+- `[drive.rs:row]` pub(crate) fn(RowData) -> DriveRow
+- `[people.rs:UiHandle::leave_confirm]` pub fn(&self,chat:String)
+- `[appstore.rs:UiHandle::apps_form]` pub fn apps_form(&self, FormData) shows/refreshes/closes confirm-input dialog
+- `[drive.rs:set]` pub(crate) fn(&AppWindow, DriveData) - main OneDrive list/toolbar/selection state
+- `[people.rs:UiHandle::card]` pub fn(&self,open:bool,CardData); closing also closes profile
+- `[appstore.rs:UiHandle::apps_recaps]` pub fn apps_recaps(&self, RecapsData)
+- `[drive.rs:set_share]` pub(crate) fn(&AppWindow, ShareData) - fills share dialog and opens dialog 'share'
+- `[people.rs:UiHandle::card_fill]` pub fn(&self,CardData); fill without open/close
+- `[appstore.rs:wire]` pub fn wire(&AppWindow, UnboundedSender<Cmd>) connects command callbacks of AppsStore/TasksStore/FlowsStore/NotesStore/ListsStore/RecapsStore
+- `[drive.rs:set_picker]` pub(crate) fn(&AppWindow, PickerData) - fills picker, opens dialog 'picker'
+- `[people.rs:UiHandle::org]` pub fn(&self,OrgData)
+- `[cal.rs:mod push]` private mod, glob-imported (`use push::*`)
+- `[drive.rs:set_versions]` pub(crate) fn(&AppWindow, String, Vec<VersionData>) - opens dialog 'versions'
+- `[people.rs:UiHandle::card_details]` pub fn(&self,CardData); applies only if card/profile open for same person id
+- `[cal.rs:mod form]` pub use form::* re-export
+- `[drive.rs:set_preview]` pub(crate) fn(&AppWindow, PreviewData) - opens dialog 'preview'
+- `[people.rs:UiHandle::me_id]` pub fn(&self,mri:String)
+- `[cal.rs:mod wire]` pub use wire::* re-export
+- `[drive.rs:UiHandle::{drive,drive_share,drive_picker,drive_versions,drive_preview,drive_info,drive_dialog}]` pub fns posting the above to the UI thread; drive_dialog(name:&'static str) sets/closes dialog
+- `[people.rs:UiHandle::me_presence]` pub fn(&self,availability,activity); delegates to settings::show_my_status
+- `[call.rs:wire]` pub fn wire(&AppWindow) sets is_meeting_chat and pin callbacks, camera_available, slot_videos, reactions model
+- `[engage.rs:UiHandle::engage_store]` pub fn(&self, d:EngageData) - replaces Engage feed
+- `[people.rs:UiHandle::pinned]` pub fn(&self,Vec<PinnedData>)
+- `[call.rs:UiHandle::call_state]` pub fn call_state(&self, CallData, HashMap<String, Pixels>) replaces everything the call window shows
+- `[engage.rs:UiHandle::storyline]` pub fn(&self, d:StorylineData) - fills StorylineStore, unknown counts = -1
+- `[people.rs:UiHandle::receipts_on]` pub fn(&self,bool)
+- `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
+- `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
+- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window
+
+## Invariants
+- `[activity.rs:fill]` rows updated in place via set_row_data when id sequence and length are unchanged (keeps scroll position); otherwise set_vec
+- `[calls_page.rs:install]` sets CallsPageStore.available=true so the Calls item shows on the rail; unparseable commands are dropped silently
+- `[palette.rs:RECENT_MAX,CHATS_MAX]` recents capped at 5, chat results at 8
+- `[activity.rs:ITEMS/PREVIEW]` thread_local models: UI-thread only, created lazily on first fill and bound to the window once
+- `[clip.rs:image]` picture is used only if rgb.len()==width*height*3 and width!=0, else has_picture=false
+- `[palette.rs:LIST_PAD,ROW_H,HEAD_H]` row geometry constants must match ui/pages/palette.slint
+- `[appstore.rs:set_rail]` flyout_query written only when it differs from the box's text, so a re-push does not move the cursor
+- `[drive.rs:ROWS]` thread-local row model is UI-thread only; created lazily on first fill_rows and bound to DriveStore.rows
+- `[palette.rs:pick]` chats matched only when query has >=2 chars; hidden actions never shown; chat ids deduped; empty titles skipped
+- `[appstore.rs:set_store]` app_shot reset to 0 whenever store_page changes
+- `[drive.rs:fill_rows]` rows updated in place only when row count and every id match, else set_vec (preserves scroll/hover on selection change)
+- `[palette.rs:wire]` chat lists copied only when query >=2 chars
+- `[appstore.rs:set_form]` when form not open only form_title is cleared; typed text fields (form_text1-3) overwritten only when d.fresh, up to 3 fields
+- `[drive.rs:set]` item_count excludes header rows; filter is set only when it differs (avoids clobbering typed input)
+- `[popout.rs:POPOUT]` thread_local, UI thread only; at most one pop-out window, new chat replaces the previous
+- `[appstore.rs:set_recaps]` query written only when it differs from the search box text
+- `[message_toast.rs:MAX_CARDS]` at most 3 cards; a new card removes the oldest first
+- `[popout.rs:popout_open]` switching conv clears draft and messages; scroll_tick bumped to land on newest
+- `[call.rs:set]` phase empty or prejoin resets minimized, menu, view_mode=gallery, gallery_page=0, pinned; panel cleared only when phase empty
+- `[message_toast.rs:TOASTS]` toast model set by install_local; message_toast silently returns if install_local has not run
+- `[popout.rs:copy_theme]` pop-out has its own Theme global, copied from main on each open (not live)
+- `[call.rs:set]` feedback_open decided once, on the transition into phase ended (sampled by settings ask, roll, demo suppression); false in any other phase
+- `[message_toast.rs:NEXT_ID]` AtomicI32 starting at 1 gives unique, increasing card ids (Relaxed)
+- `[people.rs:card_details]` fill only if card or profile open and get_card().id equals c.person.id
+- `[call.rs:set]` has_remote_video and has_content cleared unless phase is connected or reconnecting
+- `[engage.rs:int]` i32 conversion saturates to i32::MAX; unknown storyline counts map to -1
+- `[people.rs:pinned]` pinned_index reset to 0 when out of range
+- `[call.rs:shared]` someone else's share = !sharing && (presenter set || has_content); view switches to content on start, back to gallery on end only if mode was content
+- `[find.rs:chat_find]` closing find also clears chat_find_query; index is 1-based, 0 for none
+- `[topbar.rs:Ctl/pending]` commands arriving during a borrowed command are dropped (try_borrow_mut); FindStore command deferred via pending until borrow released
+
+## Side Effects
+- `[activity.rs:UiHandle::badges]` calls tray_wiring::unread_changed with unread_total (tray update)
+- `[message_toast.rs:install_local]` writes thread-local TOASTS global model state
+- `[popout.rs:new_window]` creates and shows a second winit ChatWindow; registers winit event hook turning right-button release into MessagePointer.right_clicks bump
+- `[appstore.rs:UiHandle::open_view]` sets window view and invokes SettingsStore close
+- `[drive.rs:ROWS]` writes thread-local ROWS model state
+- `[popout.rs:new_window]` pop-out callbacks invoke main-window MediaStore/CalStore commands (popout-send, popout-close)
+- `[appstore.rs:wire]` sends Cmd::Apps over the unbounded channel; logs tracing::warn for unknown commands
+- `[message_toast.rs:NEXT_ID]` mutates global atomic counter
+- `[popout.rs:POPOUT]` global thread-local window state
+- `[call_direct.rs:install]` sets DirectCallStore.available=true; sends Cmd::DirectCall to engine channel
+- `[calls_page.rs:install]` sends Cmd::CallsPage over the engine mpsc channel on UI callbacks
+- `[topbar.rs:save_recents]` writes recent searches to config dir via Recents::save (warns on failure)
+- `[call.rs:set]` reads call_feedback::roll() (randomness) and crate::external::suppressed(); toggles VideoFxStore open
+- `[clip.rs:wire]` sends Cmd::Clip over mpsc channel on UI callbacks
+- `[topbar.rs:ask_messages_later]` slint single-shot Timer triggering FindStore suggest-messages
+- `[call.rs:wire]` registers CallStore callbacks; with feature calls queries backend::call::camera::wanted()
+- `[composer_apps.rs:wire]` sends Cmd::ComposerApps over mpsc and logs tracing::warn on unknown command
+- `[topbar.rs:run,command]` opens URLs via invoke_open_url, changes status through SettingsStore, navigates views, shows info toasts
+- `[call.rs:call_video]` uploads frames to Slint images (Image::from_rgb8) on the UI thread, thread_local GALLERY model [feature calls]
+- `[message_toast.rs:install]` sends Cmd::QuickReply/React/Lists(Mute)/SelectChat over mpsc; invokes window navigate('chat')
+- `[topbar.rs:CTL]` global thread-local controller state
+- `[activity.rs: ITEMS, PREVIEW; call.rs: LAST, PHOTO_IMAGES, REACTIONS_MODEL, GALLERY]` thread_local global state
+- `[message_toast.rs:UiHandle::show_settings]` raises/shows the window via tray_wiring::show_and_raise and invokes SettingsStore.show
+- `[voice.rs:wire]` callbacks send Cmd::Voice over the unbounded channel to the backend
+
+## Verification
+- Run: `cargo test -p ironteams`

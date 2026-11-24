@@ -1,0 +1,144 @@
+# backend/appstore
+
+## Overview
+Backend of the Apps rail and app screens (Store, Tasks via Planner/To Do, Power Automate flows, OneNote/SharePoint notes, Meeting Recaps, web-hosted personal tabs). `cmd.rs` defines `AppsCmd`; `view.rs` holds the plain view-data structs; `fixtures.rs` supplies demo answers; `live.rs` is ignored live checks.
+
+Files:
+- `mod.rs`: Declares the appstore submodules, the Apps state struct, the AppsCmd dispatcher on Engine, link opening and icon/screenshot downloads.
+- `bar.rs`: App bar on the rail and the View more apps flyout: native/app view matching by name, rail and flyout data, pin/unpin/move with policy checks and POST to Teams, opening apps.
+- `cmd.rs`: AppsCmd enum of every command the app screens send, plus AppsCmd::parse from (name, arg) strings.
+- `fixtures.rs`: Synthetic demo-mode JSON answers (app catalog, entitlements, Store home/search, To Do, Planner, flows, OneNote, Lists, recaps, meeting chat) in the service wire shape; nothing from a real tenant.
+- `flows.rs`: Power Automate Workflows screen: Flows state, FlowsData view builder, engine load/select of flows and run history, confirm-then-run and turn on/off writes.
+- `form.rs`: The single confirm/input dialog of the app screens: Pending action enum, Form state, open/choice/link/submit/cancel handlers that dispatch to each feature's do_* action.
+- `live.rs`: #[ignore]d live read-only checks of the app screens against the real signed-in account (test-only module; counts printed only).
+- `notes.rs`: OneNote (notebooks/sections/pages, New page) and SharePoint Lists (sites/lists/columns/items, New/Edit item) state, UI data projection and Engine load/write flows.
+- `player.rs`: Plays meeting recordings in a single web-host player window after a Graph access check, with calm failure banners; records player:<url> in demo/tests.
+- `recaps.rs`: Meeting Recaps app: builds the 30-day online-meeting list from calendar events, reads a meeting chat for recordings/shared files/transcript, holds the Recaps state and drives it through Engine methods (enter, refresh, open, chat tab, part/tab switch, watch, share, notes, file).
+- `shop.rs`: The Store pages (home, search, category, app page, manage, settings): `Shop` state, `StoreData` view building, install/remove/update confirm dialogs and their sends, share/link opening, and device-permission grants persisted to app-grants.json.
+- `source.rs`: `src_*` data-source layer on Engine: live app/Graph/Planner/OneNote/Lists/Workflows/Recaps reads and writes, or fixture answers and a logged `sent` list when offline (demo/tests).
+- `tasks.rs`: Planner and To Do state (Tasks), view-data building, and Engine methods to load, navigate, add, edit, complete and delete tasks via Graph write requests.
+- `view.rs`: Plain view-data structs for the app screens (store, rail, tasks, flows, notes, lists, form, recaps) plus formatting helpers (colors, letters, dates, durations).
+- `webhost_open.rs`: Routes app personal tabs and composer task modules to the web host (https only), builds ShimConfig from the manifest and grants, and launches the host window.
+
+## Interface
+- `[mod.rs:Apps]` pub struct, #[derive(Default)]; app-part of Engine state (installed, policy, flyout, active, images, defs, shop, tasks, flows, notes, lists, recaps, form, sent, grants, opened, player)
+- `[fixtures.rs:PLANNER]` pub const &str = "com.microsoft.teamspace.tab.planner"
+- `[notes.rs:Notes]` pub struct (Default), OneNote view state held in Apps.notes; fields private
+- `[recaps.rs:Meeting]` pub(super) struct {key,title,canceled,start_ms,end_ms,organizer,thread_id,recurring,group}; start_ms 0 = no calendar event
+- `[shop.rs:Shop]` pub struct (Default) Store page state: page, nav turn counter, home, org, hits, category, title, scope, agents, details, mine, status, loading, plus `pub host: Option<String>`
+- `[tasks.rs:Tasks]` pub struct (Default); private-field state of the Planner/To Do screen
+- `[webhost_open.rs:TaskSubmit]` pub(crate) type Arc<dyn Fn(serde_json::Value) + Send + Sync>; receives the result a task module page submits
+- `[mod.rs:AppsCmd]` pub use of cmd::AppsCmd
+- `[fixtures.rs:ONENOTE/WORKFLOWS/LISTS/SHIFTS/RECAPS/POLLS/AGENT]` pub const &str demo app ids (demo-onenote, demo-workflows, demo-lists, demo-shifts, demo-recaps, demo-polls, demo-agent)
+- `[notes.rs:Notes::data]` pub fn(&self)->NotesData, projects state to UI rows/status/flags
+- `[recaps.rs:meetings_from_events]` pub(super) fn(events:&[Event], now_ms:i64, week_start_ms:i64)->Vec<Meeting>; online non-all-day events started in last 30 days up to now, newest first, deduped by key
+- `[shop.rs:category_label]` pub(super) fn(&str)->String: camelCase category key to 'Popular apps' label
+- `[tasks.rs:Tasks::data]` pub fn data(&self, now: i64) -> TasksData; builds nav rows, rows, board columns, summary, progress, status
+- `[webhost_open.rs:WebTarget]` pub(super) struct {url, title, shim: ShimConfig, granted: Vec<DevicePermission>}
+- `[mod.rs:view]` pub(crate) mod view (Card, RailData, RailItem, letter, tile_color used here)
+- `[fixtures.rs:definitions]` pub fn(ids: &[&str]) -> Value; app definitions for the demo apps the ids name
+- `[notes.rs:Lists]` pub struct (Default), Lists view state held in Apps.lists; fields private
+- `[recaps.rs:Part]` pub(super) struct {name,web_url,drive_id,item_id,at_ms,duration_ms,transcript}; one recording of the meeting
+- `[shop.rs:permission_label]` pub(super) fn(DevicePermission)->&'static str
+- `[tasks.rs:LOAD_LIMIT]` pub(super) const Duration of 30 s for Planner/To Do reads
+- `[webhost_open.rs:Who]` pub(super) struct {display_name: Option<String>, self_mri: Option<String>, tenant: String}; Default
+- `[mod.rs:Apps::image]` private fn(&mut self, url) -> Option<Pixels>; used by submodules via super; https-only, queues url in wanted
+- `[fixtures.rs:installed]` pub fn() -> Value; aggregated entitlements (app bar order, installed apps, definitions; Planner one version behind)
+- `[notes.rs:Lists::data]` pub fn(&self)->ListsData, visible columns (max 8), rows, can_edit, status
+- `[recaps.rs:parts_from_chat]` pub(super) fn(rows:&[MessageRow], window:Option<(i64,i64)>)->Vec<Part>; recordings announced in chat, oldest first, with transcript flags
+- `[shop.rs:Apps::store_data]` pub(super) fn(&mut self)->StoreData: builds the view data for the current Store page (+ host banner fields)
+- `[tasks.rs:limited]` pub(super) async fn limited<T>(what, limit, fut: Future<Result<T>>) -> anyhow::Result<T>; tokio timeout turned into an error naming `what`
+- `[webhost_open.rs:is_web_app]` pub(super) fn(&AppDefinition) -> bool; true when no native key and app_view == "app"
+- `[mod.rs:Apps::def]` private fn(&self, id) -> Option<&AppDefinition>; looks in installed then defs
+- `[fixtures.rs:app_policy]` pub fn() -> Value; sideloading off, user pinning allowed
+- `[notes.rs:Engine::notes_enter]` pub(super) async fn(&Arc<Self>)->anyhow::Result<()>, opens onenote view, loads notebooks once, opens first notebook
+- `[recaps.rs:SharedFile]` pub(super) struct {name,url,ext,by,at_ms}
+- `[shop.rs:Engine::shop_push]` pub(super) fn(self:&Arc<Self>): pushes store_data to ui.apps_store, then apps_fetch_images
+- `[tasks.rs:Engine::tasks_enter]` pub(super) async fn; opens view "planner", loads once if not loaded/loading, else just pushes
+- `[webhost_open.rs:sso_resource]` pub(super) fn(&AppDefinition) -> Option<String>; trimmed non-empty webApplicationInfo.resource
+- `[mod.rs:Engine::start_apps]` pub(super) fn(self: &Arc<Self>); spawns AppsCmd::Load once at engine start
+- `[fixtures.rs:store_home]` pub fn() -> Value; Store categories with ranked apps and ratings
+- `[notes.rs:Engine::notes_notebook]` pub(super) async fn(&Arc<Self>,id:&str), selects notebook, loads sections, opens first section
+- `[recaps.rs:files_from_chat]` pub(super) fn(rows:&[MessageRow], parts:&[Part])->Vec<SharedFile>; files from each message's reactions_json `f` list, newest first, deduped by url, recordings excluded
+- `[shop.rs:Engine::shop_enter]` pub(super) async fn()->Result: load Store home unless already loaded/loading
+- `[tasks.rs:Engine::tasks_refresh]` pub(super) async fn; reads To Do lists and Planner plans concurrently, sets nav, then tasks_nav
+- `[webhost_open.rs:plan_tab]` pub(super) fn(def, entity_id, &Who, &Grants) -> Option<WebTarget>; pure routing for a personal tab
+- `[mod.rs:Engine::apps_cmd]` pub(super) async fn(self: &Arc<Self>, AppsCmd) -> anyhow::Result<()>; dispatches every command to bar/shop/tasks/flows/notes/lists/form/recaps handlers
+- `[fixtures.rs:search]` pub fn(query: &str) -> Value; non-core apps whose name or blurb contains the lowercased query
+- `[notes.rs:Engine::notes_section]` pub(super) async fn(&Arc<Self>,id:&str), selects section, loads pages
+- `[recaps.rs:with_mcps]` pub(super) fn(parts:Vec<Part>, thread:&str, mcps:&[RecapMeeting])->Vec<Part>; adds MCPS recordings only if chat showed none; flags transcript for a single part
+- `[shop.rs:Engine::shop_home]` pub(super) async fn()->Result: opens 'store' view, loads home, org apps, popular defs
+- `[tasks.rs:Engine::tasks_nav]` pub(super) async fn(key: &str); loads the tasks of `my`, `plan:<id>` or `todo:<id>`
+- `[webhost_open.rs:plan_task]` pub(super) fn(Option<&AppDefinition>, command_id, url, title, &Who, &Grants) -> Option<WebTarget>; blank title falls back to app name
+- `[mod.rs:Engine::apps_open_link]` pub(super) fn(&self, url); https only, records in opened, opens browser unless apps_offline()
+- `[fixtures.rs:your_apps]` pub fn() -> Value; installed Store entitlements dictionary
+- `[notes.rs:Engine::notes_page]` pub(super) async fn(&Arc<Self>,id:&str), selects page, loads its text
+- `[recaps.rs:Recaps]` pub struct (Default); state of the app, held as `apps.recaps` under the apps mutex
+- `[shop.rs:Engine::shop_search]` pub(super) async fn(String)->Result: search page; empty query goes home; stale results dropped via nav
+- `[tasks.rs:Engine::tasks_mode]` pub(super) fn(mode: &str); board = (mode == "board")
+- `[webhost_open.rs:grants_from_text]` pub(super) fn(Option<&str>) -> Grants; missing/malformed text grants nothing
+- `[mod.rs:Engine::apps_fetch_images]` pub(super) fn(self: &Arc<Self>); downloads queued image urls in background tasks
+- `[fixtures.rs:org_apps]` pub fn() -> Vec<Value>; Graph teamsApp items (Contoso Intranet)
+- `[notes.rs:Engine::notes_open_web]` pub(super) fn(&Arc<Self>)->Result, opens page (else notebook) web_url via apps_open_link
+- `[recaps.rs:Recaps::data]` pub fn(&self)->RecapsData; the view snapshot (home list or detail page)
+
+## Invariants
+- `[bar.rs:NATIVE]` const ["activity","chat","teams","calendar","onedrive"]: fixed rail order; shortcut n<=5 maps here, n>5 maps to extra_ids()[n-6]
+- `[form.rs:Engine::form_submit]` pending is take()n under the lock so a second Confirm click does nothing while the request is in flight; on Err(reason) pending is restored and the dialog stays open with the reason
+- `[player.rs:play_recording]` Only https:// urls play; otherwise banner NO_RECORDING and return before anything is recorded
+- `[recaps.rs:Recaps.seq]` bumped on every recaps_show and recaps_home; async results (chat, notes, transcript) are applied only if seq still matches, so late answers for another recap are dropped
+- `[shop.rs:Shop::nav]` bumped on every page change (home/results/category/app/manage/settings); async loaders compare to their captured turn and drop stale results (shop_search, shop_app, shop_settings)
+- `[tasks.rs:Tasks::nav]` `my`, `plan:<id>` or `todo:<id>`; todo_list()/plan() parse by prefix; can_add true only for todo or plan
+- `[webhost_open.rs:target]` template must start with https:// and the expanded URL must still be https with a parseable origin, else None (placeholders cannot change scheme/host)
+- `[mod.rs:Apps::image]` only https:// URLs are fetched (download adds credentials for Microsoft hosts); entry None means loading or failed and is inserted before the download so it is requested once
+- `[form.rs:Engine::form_submit]` Ok(()) from a do_* handler closes the dialog; a failing request returns Ok after showing a banner (dialog closes), only user-fixable problems return Err
+- `[player.rs:play_recording]` player:<url> is pushed to Apps.opened before the offline/suppressed early return, so demo mode and tests record but never open
+- `[recaps.rs:WINDOW_DAYS/DAY_MS]` list covers events with start_ms in [now-30d, now], excludes all-day events and non-online ones (needs is_online_meeting or join_url)
+- `[shop.rs:shop_category]` 'agents' key is mapped to category 'all' with agents=Some(true); 'org' category reads Shop.org not home
+- `[tasks.rs:LOAD_LIMIT]` every Planner/To Do read is wrapped in `limited` (30 s) so loading never hangs
+- `[webhost_open.rs:target]` granted = manifest device_permissions filtered by Grants::allowed; the same list goes to the shim (shim refuses everything else)
+- `[mod.rs:Apps::open_seq]` bumped on every OpenApp; apps_open aborts (returns Ok) if open_seq != turn after waiting for installed apps
+- `[form.rs:Engine::form_open]` always sets spec.open = true and resets choice to None; form_choice ignores input when no dialog is pending
+- `[player.rs:play_recording]` Graph recording_access error degrades to RecordingAccess::Unknown, so the window still opens
+- `[recaps.rs:meetings_from_events]` sorted newest first with key as tie-break, then dedup_by key
+- `[shop.rs:STRIP/PAGE_SIZE]` home strips show 12 apps, category pages 60; defs fetched in chunks of 100 (shop_ensure_defs)
+- `[tasks.rs:Engine::tasks_nav]` results applied only if `a.tasks.nav == key` (here()); stale loads dropped; a newer place's own load ends `loading`
+- `[webhost_open.rs:is_web_app]` only apps with no native screen (native_key none, app_view == "app") route tabs to the host; plan_task does not apply this check
+- `[bar.rs:apps_flyout]` flyout state is mutated before loading apps so a Close sent mid-load stays closed; closing clears flyout_query
+- `[form.rs:Engine::form_submit]` text fields arrive newline-joined and are split on '\n'; field() trims and tolerates missing indexes
+- `[player.rs:plan_play]` Ready and Unknown open the page; NoAccess, Gone, Processing return a fixed line without HTTP codes or digits
+- `[recaps.rs:recaps_show:window]` recurring (not in_chat, start_ms>0) meetings keep only chat messages in [start-1h, end+12h] because occurrences share one chat
+- `[shop.rs:category_ids]` blocked store entries (is_blocked) are excluded from category/strip ids
+- `[tasks.rs:Engine::tasks_nav]` clears todo, planner, buckets and sets loading=true before loading
+- `[webhost_open.rs:plan_tab]` only personal tabs with a content_url are planned; unknown entity id gives None
+- `[bar.rs:apps_pin_change]` policy.user_pinning_allowed (default true when policy None) gates all pin changes; admin_pinned apps cannot be unpinned; Pin requires installed state
+- `[flows.rs:Engine::flows_enter]` already loaded or loading -> only re-pushes state, no reload
+
+## Side Effects
+- `[mod.rs:start_apps]` tokio::spawn background task loading the app bar at engine start
+- `[flows.rs:Engine::flows_push / flows_edit]` locks self.apps mutex and pushes FlowsData to the UI via self.ui.apps_flows
+- `[notes.rs:Engine::notes_enter]` Graph/OneNote read via src_notebooks wrapped in tasks::limited with LOAD_LIMIT; tracing logs
+- `[recaps.rs:recaps_refresh]` tokio::spawn background MCPS fetch (src_mcps_recaps) when not apps_offline; stores result in state only if non-empty
+- `[shop.rs:Engine::shop_push]` sends StoreData to the UI (ui.apps_store) and triggers apps_fetch_images
+- `[tasks.rs:Engine::tasks_push]` pushes TasksData to the UI via self.ui.apps_tasks
+- `[webhost_open.rs:Engine::apps_open_in_host]` spawns a tokio task running run_host_window; pushes to self.apps.opened
+- `[mod.rs:apps_fetch_images]` spawns one tokio task per wanted image URL; HTTP GET via e.client.bytes (4 MiB cap); spawn_blocking image decode
+- `[flows.rs:Engine::flows_enter]` self.ui.open_view("workflows") switches the visible view
+- `[notes.rs:Engine::notes_notebook]` Network reads src_sections/src_pages/src_page_text; mutate Apps (mutex) and push to UI via ui.apps_notes
+- `[recaps.rs:recaps_show]` network/store reads via src_meeting_chat and src_meeting_notes run concurrently (tokio::join!)
+- `[shop.rs:shop_home/shop_search/shop_category/shop_app/shop_manage/shop_settings]` ui.open_view('store') switches the UI view
+- `[tasks.rs:Engine::tasks_enter]` self.ui.open_view("planner")
+- `[webhost_open.rs:Engine::apps_open_task]` spawns a tokio task running run_host_window with on_submit; pushes to self.apps.opened
+- `[mod.rs:apps_open_link]` opens URL in the system browser via crate::external::open (skipped offline)
+- `[flows.rs:Engine::flows_refresh]` network via src_flow_environments/src_flows (Power Automate); tracing info/warn logs
+- `[notes.rs:Engine::lists_enter]` SharePoint network reads src_sites, src_site_lists, src_columns/src_items (tokio::join!); push via ui.apps_lists
+- `[recaps.rs:recaps_load_transcript]` reads transcript via src_transcript (SharePoint)
+- `[shop.rs:shop_ensure_defs/shop_home]` network reads via src_defs/src_home/src_org (app service)
+- `[tasks.rs:Engine::tasks_refresh]` network reads via src_todo_lists and src_plans (Graph), concurrent with tokio::join!; tracing warn/info logs
+- `[webhost_open.rs:Engine::apps_open_in_host]` reads app-grants.json via shop::read_grants_file (disk) when online
+- `[bar.rs:apps_load]` network reads of installed apps and policy via src_installed/src_policy
+- `[flows.rs:Engine::flows_select]` network via src_runs for run history
+- `[notes.rs:Engine::notes_do_new_page]` Network write src_write("new page") of OneNote page; UI banner; reloads section
+
+## Verification
+- Run: `cargo test -p ironteams`
