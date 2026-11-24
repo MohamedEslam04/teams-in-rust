@@ -239,3 +239,38 @@ fn a_message_that_quotes_three_messages_draws_three_cards() {
     // No raw markup or quote marks leak as text.
     assert!(all.iter().all(|t| !label(t).contains(['<', '>'])));
 }
+
+/// One 222-character run with no space, as a token, a long URL or a file path is.
+const UNBROKEN: &str = "blobq7f3a9c1e5d2b8046fa1c3d5e7b9a2c4e6f8013579bdf02468ace13579bdf02468ace97531eca86420fdb97531eca86420fdb2468ace13579bdf02468ace13579bdf97531eca86420fdb97531eca86420fdb13579bdf02468ace13579bdf02468acef0e1d2c3b4a59687a0b1c2";
+
+/// A bubble stays inside its row and inside the widest a bubble may be: a word longer than the
+/// bubble wraps in it (Teams breaks such a word), it does not push the bubble off the pane.
+fn assert_bubble_fits(app: &AppWindow, what: &str) {
+    let rows = rows(app);
+    let (row, bubble) = (&rows[0], bubble_of(app, &rows[0]));
+    let (row_edge, bubble_edge) = (span(row).1, span(&bubble).1);
+    assert!(
+        bubble_edge <= row_edge + 0.5,
+        "{what}: the bubble ends at {bubble_edge}, past its row at {row_edge}"
+    );
+    assert!(
+        bubble.size().width <= 721.,
+        "{what}: the bubble is {} wide",
+        bubble.size().width
+    );
+}
+
+#[test]
+fn a_word_longer_than_the_bubble_wraps_inside_it() {
+    assert_eq!(UNBROKEN.len(), 222, "the token is as long as the real one");
+    let app = app_with_messages(vec![msg("m1", UNBROKEN, false)]);
+    assert_bubble_fits(&app, "a plain message");
+
+    let mut coded = with_code("m2", "let a = 1;");
+    coded.parts = ModelRc::new(VecModel::from(vec![
+        text_part(UNBROKEN),
+        code_part("let a = 1;"),
+    ]));
+    let app = app_with_messages(vec![coded]);
+    assert_bubble_fits(&app, "a message with a code block");
+}

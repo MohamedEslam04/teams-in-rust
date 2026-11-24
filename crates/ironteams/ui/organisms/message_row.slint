@@ -253,6 +253,7 @@ export component MessageRow inherits TouchArea {
                         font-size: 15px * Theme.font-scale;
                         font-weight: 700;
                         wrap: word-wrap;
+                        min-width: 0px;
                     }
 
                     for q in root.m.quotes: quote-box := Rectangle {
@@ -290,6 +291,9 @@ export component MessageRow inherits TouchArea {
 
                     if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0: StyledText {
                         text: root.m.body;
+                        // The layout would keep the bubble as wide as the longest word (a URL, a path);
+                        // with no minimum the text wraps inside the bubble, breaking such a word.
+                        min-width: 0px;
                         default-color: Theme.fg;
                         default-font-size: 14px * Theme.font-scale;
                         link-color: Theme.accent;
@@ -304,6 +308,7 @@ export component MessageRow inherits TouchArea {
                         for p in root.m.parts: VerticalLayout {
                             if !p.is-code: StyledText {
                                 text: p.body;
+                                min-width: 0px;
                                 default-color: Theme.fg;
                                 default-font-size: 14px * Theme.font-scale;
                                 link-color: Theme.accent;
