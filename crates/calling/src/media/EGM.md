@@ -15,7 +15,7 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
   - `SdpBlob::{sdp, ngc, decode, decode_with_dictionary}`.
   - Inbound: `from_teams`, `from_teams_with`, `from_teams_with_data`.
   - Outbound: `to_teams_offer`, `to_teams_reoffer`, `to_teams_answer`, `to_teams_answer_with`, `to_teams_answer_with_data`.
-  - Helpers: `answer_direction`, `with_role_direction`, `source_stream_ids`, `video_mids`, `send_capable_video_mids`, `mid_of_role`; `pub(crate) audio_transport`.
+  - Helpers: `answer_direction`, `with_role_direction` (delegates to a private `set_direction`), `direct_answer(answer, offer, camera_on, sharing)` (per-line directions of a 1:1 answer: the camera line sends only while `camera_on`, the sharing line only while `sharing`, each within what the offer allows), `directions(sdp)` and `transport_summary(sdp)` (one-line summaries for live logs; no password or address), `source_stream_ids`, `video_mids`, `send_capable_video_mids`, `mid_of_role`; `pub(crate) audio_transport`.
 
 ## Invariants
 - Opus is registered at payload type 111, 48 kHz, 2 channels, fmtp `minptime=10;useinbandfec=1`; each packet is one 20 ms sample [mod.rs:OPUS_FMTP, FRAME, AudioSender::send].
@@ -28,15 +28,16 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
 - Queues are bounded (audio 250, data 256, video 512); a full queue drops the item [mod.rs:AUDIO_QUEUE, DATA_QUEUE, VIDEO_QUEUE].
 - A blob starting with `v=` is plain SDP, anything else must be base64; inflated output is capped at 1 MiB and must start with `v=`. Teams' preset deflate dictionary is not shipped [sdp.rs:decode, inflate, MAX_INFLATED].
 - Wire profile is `RTP/SAVP` towards Teams; inbound profiles are restored to `UDP/TLS/RTP/SAVPF`. Port-0 sections become stubs in answers [sdp.rs:MS_PROFILE, to_teams].
+- `from_teams_with_data` adds a synthetic `a=ssrc:<n> cname:<n>` to every non-declined section that has no `a=ssrc` and whose `a=x-ssrc-range` is a single `N-N` (not the placeholder `1-1`), because webrtc-rs drops the other side's audio otherwise when a video line shares the session [sdp.rs:from_teams_with_data, single_ssrc].
 - Offers carry `b=CT:4000`, `a=msid-semantic: WMS *`, one `a=label` per section and `a=x-ssrc-range` from the first `a=ssrc` [sdp.rs:SESSION_BANDWIDTH, to_teams].
 - Sections with a different ice-ufrag are folded onto the first section's transport lines [sdp.rs:BundleTransport].
 
 ## Side Effects
 - Binds UDP sockets for `udp_addrs`, uses STUN/TURN servers from `IceServer`, and registers the default interceptors [mod.rs:with_options].
-- Spawns tokio tasks per remote track and per data channel; sends RTCP PLI for video until a keyframe arrives (every 2 s) [mod.rs:Handler::on_track, forward_video].
+- Spawns tokio tasks per remote track and per data channel; `forward_video` sends an RTCP PLI at the first packet of a video track and afterwards only when the decoder wants a keyframe (`KeyframeRequest::take`), at most one per `KEYFRAME_ASK` (2 s); padding-only packets are forwarded too, and each `VideoPacket` carries the `keyframe` handle [mod.rs:Handler::on_track, forward_video, KEYFRAME_ASK].
 - Mutates peer connection descriptions and the stored negotiated SDP [mod.rs:create_offer, set_answer, accept_offer, rollback_offer].
 - `close` closes the peer connection and emits `MediaState::Closed` [mod.rs:MediaSession::close].
-- `tracing` logs at info, debug and warn levels.
+- `tracing` logs at info, debug and warn levels; `Handler` logs ICE connection state changes at info [mod.rs:Handler::on_ice_connection_state_change].
 - Randomness: SSRCs and the x-data SSRC are random [mod.rs:with_options, sdp.rs:sctp_to_teams].
 
 ## Verification

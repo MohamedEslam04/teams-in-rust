@@ -10,28 +10,36 @@ The libraries form layers. Lower crates never depend on higher ones (path depend
 
 ```mermaid
 flowchart TD
-  app[ironteams] --> proto[teams-proto]
-  cli[ironteams-cli] --> proto
+  app[ironteams]
+  cli[ironteams-cli]
+  apps["apps (imported as app_store)"]
+  proto[teams-proto]
+  app --> proto & calendar & onedrive & preview & apps & store & session & appearance & render & emoji & voice & devices & tray & webhost & diag & compat
   app -. feature calls .-> calling
-  cli --> calling
-  app --> feat[calendar / onedrive / preview / apps]
-  cli --> feat
-  app --> local[store / session / appearance / render / emoji / voice / devices / tray / webhost / diag]
-  cli --> local
-  feat --> proto
-  calling --> proto
-  calling --> devices
-  session --> proto
+  cli --> proto & calendar & onedrive & preview & apps & session & appearance & render & devices & tray & webhost & diag & calling & compat
+  calendar --> proto
+  onedrive --> proto
+  apps --> proto
+  preview --> proto
   preview --> onedrive
-  voice --> devices
-  local --> compat
+  calling --> proto
   calling --> compat
+  calling -. feature devices, audio only .-> devices
+  session --> proto
+  session --> compat
+  diag --> session
+  diag --> compat
+  voice --> devices
+  voice --> compat
+  appearance --> compat
+  webhost --> compat
 ```
 
 - **Protocol layer:** `teams-proto` owns sign-in, token minting and every Teams, Graph and Substrate request. It depends on no other workspace crate.
 - **Feature services:** `calendar`, `onedrive`, `preview`, `apps` and `calling` each wrap one service family on top of `teams-proto`.
-- **Local and platform crates:** `store` (SQLite), `session` (keyring and config), `appearance` (prefs and portal), `render` (pure HTML and Markdown), `emoji` (static table), `voice`, `devices`, `tray`, `webhost`, `diag`.
-- **`compat`:** reads `KELMA_*` env vars as a fallback and migrates old `kelma` data folders. Many crates call it.
+- **Local and platform crates:** `store` (SQLite), `session` (keyring and config; depends on `teams-proto` and `compat`), `appearance` (prefs and portal), `render` (pure HTML and Markdown), `emoji` (static table), `voice` (depends on `devices`), `devices`, `tray`, `webhost`, `diag` (depends on `session`). `store`, `render`, `emoji`, `tray`, `devices` and `teams-proto` have no workspace dependencies.
+- **`compat`:** reads `KELMA_*` env vars as a fallback and migrates old `kelma` data folders. `appearance`, `calling`, `session`, `diag`, `voice`, `webhost` and both binaries depend on it.
+- **Binaries:** `ironteams` depends on every library (`calling` only through the `calls` feature). `ironteams-cli` depends on all of them except `store`, `emoji` and `voice`; `calling` is not optional there. The `apps` package is imported as `app_store` in both.
 
 ## Subdirectories & System Boundaries
 - ironteams: [./ironteams/EGM.md](./ironteams/EGM.md) - Slint desktop app (binary). Build script, start-up, UI glue, backend engine, desktop cards, updater. `calls` feature (default) gates the `calling` dependency.
@@ -49,7 +57,7 @@ flowchart TD
 - emoji: [./emoji/EGM.md](./emoji/EGM.md) - generated static emoji table with search, shortcodes, autocomplete, skin tones.
 - voice: [./voice/EGM.md](./voice/EGM.md) - voice messages: record, AAC-in-MP4 encode (ffmpeg or native), decode, waveform peaks, playback.
 - devices: [./devices/EGM.md](./devices/EGM.md) - audio and camera enumeration, streams, level meter, loopback, device prefs.
-- tray: [./tray/EGM.md](./tray/EGM.md) - StatusNotifierItem tray (Linux only), unread badge, launcher badge, screen-lock probe, autostart.
+- tray: [./tray/EGM.md](./tray/EGM.md) - StatusNotifierItem tray (Linux only), unread badge, launcher badge, screen-lock probe, input-idle probe (`idle::idle_for`, used for presence Away; Linux and Windows), autostart.
 - webhost: [./webhost/EGM.md](./webhost/EGM.md) - Chromium `--app` window driven over CDP, with an optional TeamsJS host shim for web apps.
 - diag: [./diag/EGM.md](./diag/EGM.md) - local problem-report bundle (`.tar.gz`) with redaction. Nothing is uploaded.
 - compat: [./compat/EGM.md](./compat/EGM.md) - `KELMA_*` env fallbacks and one-time migration of old `kelma` folders to `ironteams`.
@@ -60,14 +68,17 @@ flowchart TD
 - **Sends can be retried safely.** Message sends take a caller-chosen `client_message_id`, so a retry with the same id does not duplicate the message (`teams-proto`). `store` runs an outbox (queued, sending, failed), and `sending` rows reset to `queued` when the store opens. `calendar::create_event` fills a `transactionId`.
 - **Writes are atomic and lenient.** Config and prefs files are written atomically and loaded leniently (`session`, `appearance`, `tray` autostart).
 - **The `kelma` to `ironteams` rename is handled in one place.** `IRONTEAMS_*` env vars win over `KELMA_*`. Legacy folders and keyring entries migrate once, through `compat` and `session`.
-- **Cargo features gate the heavy native parts.** `ironteams/calls` (default) gates `calling`. `calling` has `devices`, `aec`, `screen-share`, `camera` and `effects`. `ironteams-cli/mcp` is off by default. The tray, Wayland desktop cards and remote control are Linux-only.
+- **Cargo features gate the heavy native parts.** `ironteams/calls` (default) gates `calling`. `calling` has `devices` (default, pulls in `devices` with only its `audio` feature), `aec`, `screen-share`, `camera` and `effects`. `devices` has its own `audio` and `cameras` features, both on by default. `ironteams-cli/mcp` is off by default. The tray, Wayland desktop cards and remote control are Linux-only.
 
 ## Global Side Effects
-- **Network:** Microsoft services only, all reached through `teams-proto` or crates built on it: chat service, middle tier, CSA, presence, AMS, Graph, Substrate, SharePoint, Outlook REST, trouter, NGC conversation service, TURN relays. One exception: the `ironteams` updater checks GitHub releases.
-- **Disk (per-user folders):** SQLite database (`store`), `config.json` and `window-state.json` (`session`), prefs JSON files (`appearance`), media cache and backups (`ironteams`), autostart entries (`tray`), MCP allowlist and audit log (`ironteams-cli/mcp`), report bundles (`diag`).
-- **System:** keyring, D-Bus (portals, tray, notifications, screen saver), audio and camera devices, V4L2.
-- **Child processes:** `ffmpeg`, `gst-launch-1.0`, `pw-dump`, `fc-match`, Chromium.
+- **Network:** Microsoft services only, all reached through `teams-proto` or crates built on it: chat service, middle tier, CSA, presence, AMS, Graph, Substrate, SharePoint, Outlook REST, trouter, NGC conversation service, TURN relays. One exception: `ironteams` talks to GitHub releases, through the `update_check` API call and through the `velopack` self-updater (delta or full package downloads in the background, applied only on "Restart to update" or when the app quits). Only Velopack installs (Setup.exe, .pkg, AppImage) update themselves.
+- **Disk (per-user folders):** SQLite database (`store`), `config.json` and `window-state.json` (`session`), prefs JSON files (`appearance`), media cache and backups (`ironteams`), autostart entries (`tray`: XDG `.desktop` file, macOS LaunchAgent plist, Windows per-user Run registry value), MCP allowlist and audit log (`ironteams-cli/mcp`), report bundles (`diag`).
+- **System:** keyring, D-Bus (portals, tray, notifications, screen saver, GNOME idle monitor), Windows registry (autostart Run key) and `GetLastInputInfo` (idle time), audio and camera devices, V4L2.
+- **Child processes:** `ffmpeg`, `gst-launch-1.0`, `pw-dump`, `fc-match`, `pactl` (`devices`, sink and source listing), Chromium, `taskkill` (Windows, `webhost` stops the browser process tree), and `ironteams` re-spawning its own executable (desktop-card host process, restart from Settings).
 - **Live account writes:** messages, presence, calendar, OneDrive and teams. `ironteams-cli` commands do these against the real signed-in account.
 
 ## System Verification
 - Run: `cargo test --workspace` (or `cargo test -p <crate>` for one crate; package names match folder names).
+
+---
+Docs synced to commit c7516012 ("Merge fix/release-0.1.9: version 0.1.9", 2026-11-24). All contracts under `crates/` were checked against this commit; start the next drift check from `git log c7516012..HEAD`.

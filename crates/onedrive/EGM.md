@@ -1,7 +1,7 @@
 # onedrive
 
 ## Overview
-Library crate (package `onedrive`, `publish = false`) giving IronTeams access to OneDrive and SharePoint files: browsing, meeting recordings, "For you" / "Shared by you" / People insight views, file actions, sharing, and the recycle bin. It is a thin async layer over `teams_proto::Client`. Graph calls use `Audience::Graph` against `https://graph.microsoft.com/v1.0` (`[src/api.rs:graph]`, `graph_raw`); recycle-bin calls use SharePoint REST on the user's `-my.sharepoint.com` host with a SharePoint-audience token (`[src/bin.rs]`), because a token only reaches the host it was minted for. Request builders and parsers are pure; the async functions send them. `src/lib.rs` declares `pub mod api, around, bin, browse, create, insights, model, ops, package, share` and re-exports the main items at the crate root. Dependencies: `futures-util`, `reqwest` (json), `serde_json`, `teams-proto`, `tokio` (time), `url`, `zip` (deflate).
+Library crate (package `onedrive`, `publish = false`) giving IronTeams access to OneDrive and SharePoint files: browsing, meeting recordings, "For you" / "Shared by you" / People insight views, file actions, sharing, and the recycle bin. It is a thin async layer over `teams_proto::Client`. Graph calls use `Audience::Graph` against `https://graph.microsoft.com/v1.0` (`[src/api.rs:graph]`, `graph_raw`); recycle-bin calls use SharePoint REST on the user's `-my.sharepoint.com` host with a SharePoint-audience token (`[src/bin.rs]`), because a token only reaches the host it was minted for. Request builders and parsers are pure; the async functions send them. `src/lib.rs` declares `pub mod api, around, bin, browse, create, insights, model, ops, package, share` and re-exports the main items at the crate root. Dependencies: `futures-util`, `reqwest` (`json` only, `default-features = false`, so `copy_to` installs the TLS provider itself), `serde_json`, `teams-proto`, `tokio` (time), `url`, `zip` (deflate).
 
 ## Interface
 - Item addressing (`[src/api.rs]`): `GRAPH`, `ItemRef { drive_id, item_id }` (`my_root`, `new`, `own`, `url`, `child_url`), `graph`, `graph_raw`, `is_status`.
@@ -39,4 +39,4 @@ Library crate (package `onedrive`, `publish = false`) giving IronTeams access to
 ## Verification
 - Run: `cargo test -p onedrive`
 
-Docs synced to commit 480e5184 ("fix(media): avatar lookups outside the runtime read the cache only; test helper ignores pending entries", 2026-11-22)
+Docs synced to commit c7516012 ("Merge fix/release-0.1.9: version 0.1.9", 2026-11-24)

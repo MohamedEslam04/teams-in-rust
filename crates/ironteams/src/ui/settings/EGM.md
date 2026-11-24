@@ -54,6 +54,10 @@ Files:
 - `[push.rs:UiHandle::settings_status_failed]` pub fn(&self, String); restores prior status display and shows banner
 - `[misc.rs:list_devices]` pub(super) fn(&AppWindow,&Shared); enumerates devices once (thread when background)
 - `[updates.rs:check_updates]` pub(super) fn(&AppWindow, &mut Ctl, force: bool); starts an update-notice check (thread when env.background, else inline)
+- `[misc.rs:limit_slug]` pub(super) fn(Option<u32>) -> String; media cache limit in MB as the Storage page names it ("none" for no limit)
+- `[misc.rs:limit_from_slug]` pub(super) fn(&str) -> Option<Option<u32>>; Some(None) is "none", None is not a limit
+- `[misc.rs:open_storage]` pub(super) fn(&AppWindow,&Shared); clears confirm_clear_all/storage_loaded, shows the saved limit from config, sends SettingsCmd::LoadStorage
+- `[push.rs:UiHandle::settings_storage]` pub fn(&self, crate::backend::CacheSizes); the engine's answer with the Storage page sizes
 - `[misc.rs:start_mic]` pub(super) fn(&AppWindow,&mut Ctl); starts 50 ms polling timer, auto-stops after 15 s
 - `[updates.rs:update_checked]` pub(super) fn(&AppWindow, &mut Ctl, Result<Release,String>); shows status and info banner if newer
 - `[misc.rs:stop_mic]` pub(super) fn(&AppWindow,&mut Ctl); drops timer, resets mic_testing/mic_level
@@ -83,15 +87,16 @@ Files:
 - `[push.rs:push_local]` Enabling check_spelling triggers spell::ensure_loaded; time format also mirrored to Theme.h24
 - `[command.rs:"notify"|"pause"|"privacy"|"unblock"]` Teams settings writes require server data to have been read (with_server_note / privacy.is_some()); otherwise refused with a notice
 - `[push.rs:settings_status_failed]` c.status_until cleared and status_before taken (restored) on refusal
+- `[command.rs:"open"|"page"]` page `storage` calls open_storage; `check-updates-menu` (top bar) opens About and runs a forced check (or start_update when self-updating); `check-now` does the same without opening About
 - `[command.rs:"general" arm]` autostart entry is set only if saving general prefs succeeded (r.is_ok())
-- `[updates.rs:check_updates]` No check if hooks.updates is Some (self-updating), check_updates off, one already running (c.checking), or auto check already done and !force
+- `[updates.rs:check_updates]` No check if hooks.updates is Some (self-updating), one already running (c.checking), or auto check already done and !force; there is no on/off switch
 - `[command.rs:"date-format"|"time-format"|"link-previews"]` Engine Redraw is sent so already drawn rows pick up the change; globals applied only when env.apply_globals
 - `[updates.rs:check_updates]` update_auto_done set only for non-forced (automatic) checks, so at most one automatic check per start
 - `[command.rs:"pause"]` Legacy args "0"/"" mean off and "1" means tomorrow; unknown expiry returns an error notice and re-pushes server state
-- `[updates.rs:update_checked]` If check_updates switched off mid-flight the answer is discarded (status cleared)
+- `[updates.rs:update_checked]` The answer is always applied (status text, info banner when newer); a failed check only sets "Could not check for updates"
 - `[install.rs:install]` Autostart state from hooks.autostart.get overrides stored general.auto_start; CTL thread-local holds the shared Ctl for async callbacks (ctl())
 - `[updates.rs:update_checked]` Newer-ness decided by update_check::is_newer(CARGO_PKG_VERSION, rel.version)
-- `[install.rs:install]` Update check runs once per start and only if opted in (check_updates); portal watcher only when env.portal && env.background
+- `[install.rs:install]` Update check always runs once per start (non-forced `check_updates`; no opt-in setting, the `check-updates` and `auto-update` commands no longer exist); portal watcher only when env.portal && env.background
 - `[updates.rs:install_self_update]` pending update takes precedence over crash-loop-paused banner; timer only started when env.background; timer stored in c._update_timer to keep it alive
 - `[misc.rs:request_load]` Load requests throttled to once per 60 s unless forced; no-op without engine tx
 - `[updates.rs:start_update]` updater.begin(Instant) gates concurrent runs; if refused only push_update; background thread else inline (tests)
@@ -104,15 +109,19 @@ Files:
 - `[hooks.rs:SettingsEnv::system test_notification]` Spawns a thread showing a desktop card (desktop_cards client) or notify_rust notification
 - `[push.rs:watch_portal]` Spawns thread 'ironteams-portal' with its own runtime subscribing to portal D-Bus change stream
 - `[hooks.rs:SettingsEnv::system restart]` Spawns a new process of current_exe and quits the Slint event loop; signed_out and quit also quit the event loop
-- `[push.rs:apply_look]` Writes Theme and SettingsStore Slint globals (UI state)
+- `[push.rs:apply_look]` Writes Theme (including code_bg) and SettingsStore Slint globals (UI state) and sets the process-global mention colour with crate::markdown::set_mention_color, which affects rows drawn afterwards
 - `[hooks.rs:SettingsEnv::system open_url]` Opens URLs via crate::external::open; [command.rs:"view-account"] opens myaccount.microsoft.com
 - `[push.rs:apply_general]` Sets global state: appearance::formats, language, tray keep_running, link previews
 - `[hooks.rs:SettingsEnv::system pick_sound_file]` Blocking rfd native file dialog
-- `[push.rs:push_local]` Calls iana_time_zone::get_timezone, reads system language, may load spell dictionaries
+- `[push.rs:push_local]` Calls iana_time_zone::get_timezone, reads system language, may load spell dictionaries; also pushes renderer state (renderer, renderer_running, renderer_fallback, renderer_restart from crate::renderer), wheel_speed, speaker_volume, urgent and Teams-original sound choices, and mic/speaker defaults via find_microphone/find_speaker
 - `[hooks.rs:SettingsEnv::system]` Audio/camera device enumeration, test sound playback, microphone level capture (devices, sounds crates); report_problem writes a diagnostics file via diag::report_from_args (nothing uploaded)
 - `[push.rs:config]` Reads config file from disk via env.paths.load_config; tracing warn on failure
 - `[command.rs:command]` Persists local preferences to disk via c.local.save_* (appearance, general, a11y, devices, calls, sounds, files); updates config file via paths.update_config
 - `[updates.rs:check_updates]` Spawns std::thread running hooks.check_update (network) when background
+- `[command.rs:"renderer"]` saves general.renderer; takes effect at the next start (the running renderer cannot change)
+- `[command.rs:"speaker-volume"|"speaker-volume-live"]` under feature `calls` sets calling::audio::set_output_volume (0-100); only the plain name persists devices.speaker_volume
+- `[command.rs:"urgent-sound"|"urgent-sound-preview"|"teams-sounds"]` urgent-sound saves sounds.urgent and calls sounds::fetch_picked (network fetch of a Teams sound not yet on disk); teams-sounds toggles sounds.download_teams_sounds and calls sounds::fetch_teams_sounds() when switched on; `wheel-speed` saves general.wheel_speed (clamped)
+- `[command.rs:"media-cache-limit"|"clear-media-cache"|"clear-all-cache"|"delete-update-backups"]` Storage page: the limit is written to config via paths.update_config (media_cache_mb) and followed by SettingsCmd::ApplyMediaLimit; the clear/delete commands send Cmd::ClearMediaCache, Cmd::ClearAllCache or SettingsCmd::DeleteUpdateBackups, or only show "Not signed in..." when there is no engine tx
 - `[command.rs:"focus"]` Sets process-global focus state (support::quiet::set_focus) and updates tray via tray_wiring::apply_focus
 - `[updates.rs:start_update]` Spawns std::thread running updater::run_cycle/run_rollback (network download)
 - `[command.rs:"test-sound"|"sign-out"|"report-problem"]` Spawn std threads when env.background, reply via weak.upgrade_in_event_loop; sign-out deletes stored tokens from the keyring

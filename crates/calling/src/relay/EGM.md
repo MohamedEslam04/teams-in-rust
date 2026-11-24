@@ -7,14 +7,16 @@ TURN relay discovery for call media. Fetches short-lived TURN credentials from t
 - `relay/mod.rs`
   - Constants: `TOKENS_URL` (`https://teams.microsoft.com/trap/tokens`), `DEFAULT_RELAY_HOST`, `RELAY_UDP_PORT` (3478). `pub mod allocate; pub mod tls;`.
   - `RelayCredentials {realm, username, password}` (custom `Debug` omits username and password), `RelayGrant {credentials, expires_in}`.
-  - `parse_tokens(&str) -> Result<RelayGrant>`, `ice_servers(&RelayGrant, host) -> Vec<IceServer>` (udp:3478, tcp:443 and turns:443 URLs), `resolved_ice_servers(&RelayGrant, SocketAddr)`, `relay_headers`, `relay_hosts(authz region) -> Vec<String>`.
-  - Async: `fetch_grant(&Client)`, `fetch_ice_servers(&Client, host)`, `resolve_ice_servers(&Client, host, Option<&str>)` (UDP probe, follows 300 redirects), `resolve_tls_ice_servers(...) -> (Vec<IceServer>, Duration, tls::TlsShim)`.
+  - `parse_tokens(&str) -> Result<RelayGrant>`, `ice_servers(&RelayGrant, host) -> Vec<IceServer>` (udp:3478, tcp:443 and turns:443 URLs), `resolved_ice_servers(&RelayGrant, SocketAddr)` (one `turn:<addr>?transport=udp` URL, because webrtc-rs 0.21.1 speaks only UDP TURN), `relay_headers` (Authorization, `api-version`, `X-MS-Migration`, `Accept`, `User-Agent`), `relay_hosts(authz region) -> Vec<String>` (the region's `eu`, `us` or `in` geo gateway `gateway-<geo>.az.relay.teams.cloud.microsoft` when known, then the `world` gateway, then `DEFAULT_RELAY_HOST`; the region-to-geo map is a guess).
+  - Async: `fetch_grant(&Client)`, `fetch_ice_servers(&Client, host)`, `resolve_ice_servers(&Client, region: &str, relay_host: Option<&str>)` (probes each host over UDP in order, the hosts being `relay_hosts(region)` unless `relay_host` is `Some`; follows 300 redirects), `resolve_tls_ice_servers(&Client, region: &str, relay_host: Option<&str>) -> (Vec<IceServer>, Duration, tls::TlsShim)` (the same over TLS).
 - `relay/allocate.rs`: `AllocateProbe` (I/O-free TURN Allocate state machine: `new`, `start`, `on_answer`), `ProbeStep {Send, Found}`, `MAX_REDIRECTS` (3), `find_relay(SocketAddr, &RelayCredentials) -> Result<SocketAddr>`.
 - `relay/tls.rs`: `RELAY_TLS_PORT` (443), `frame_for_stream`, `StreamDeframer` (`push`, `next_frame`), `TlsRelay`, `client_config()`, `find_relay_tls(...)`, `TlsShim` (`start`, `local_addr`, `turn_url`).
 
 ## Invariants
 - An empty token list is a protocol error; only the first credential set is probed. A non-2xx response from `trap/tokens` becomes `Error::Status` with the body cut to 400 chars [mod.rs:parse_tokens, fetch_grant].
 - Allocate requests always carry REQUESTED-TRANSPORT UDP and a FINGERPRINT; authenticated ones add USERNAME, REALM, NONCE and MESSAGE-INTEGRITY. Answers are ignored unless the transaction id matches [allocate.rs:AllocateProbe::request, on_answer].
+- When no gateway allocates, `resolve_ice_servers` does not fail: it returns the plain `ice_servers` naming the first host (udp, tcp and turns URLs), so a call still connects where host candidates do; `resolve_tls_ice_servers` fails instead [mod.rs:resolve_ice_servers, resolve_tls_ice_servers].
+- `host_addrs` probes the first address of each IP family, IPv4 first, and `find_relay` binds an IPv6 socket for IPv6 servers [mod.rs:host_addrs, allocate.rs:find_relay].
 - At most 2 challenges (401/438) per server; a 300 needs ALTERNATE-SERVER and fails on a loop or after more than `MAX_REDIRECTS` hops [allocate.rs:MAX_CHALLENGES, on_answer].
 - The UDP probe sends up to 3 times (RTO 500 ms, doubling) and ignores replies from other addresses [allocate.rs:find_relay].
 - TLS verification is never turned off: rustls with the ring provider and webpki roots, no client auth; connect timeout 5 s, answer timeout 5 s [tls.rs:client_config, connect, ANSWER_TIMEOUT].

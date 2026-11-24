@@ -24,12 +24,13 @@ Teams apps for IronTeams: the app bar and installed apps, the Store catalog (hom
 - `AppDefinition::parse` needs `id`; scope, capability and permission fields are lenient with defaults [model.rs:AppDefinition::parse].
 - `store::definitions` with empty ids returns `Ok(vec![])` without a network call [store.rs:definitions].
 - `query_extension` refuses commands whose kind is not `Query`; `fetch_task` and `submit_action` do not check kind, so `submit_action` can cause a bot post [bots.rs:query_extension, submit_action].
-- `parse_place_apps` keeps only installed definitions with bots or input extensions [bots.rs:parse_place_apps].
+- `parse_place_apps` keeps definitions with bots or input extensions. The installed filter applies only when the answer carries `value.entitlements`; without it every such definition is kept [bots.rs:parse_place_apps].
+- `query_extension` always requests `skip: 0, count: 25` [bots.rs:query_extension].
 - Parsers do not panic and default missing fields; some counts use truncating `as u32` casts [store.rs:u32_of, bar.rs:Entitlement::parse].
 - Doc note: install, uninstall, update and pin request shapes were taken from web client code and are documented as not verified against a real account [install.rs header].
 
 ## Side Effects
-- Network through `teams_proto::Client`: `POST beta/users/apps/store`, `POST beta/users/apps/search`, `POST beta/users/apps/batchedDefinitions`, `GET beta/users/apps/store/entitlements`, `POST beta/users/apps/aggregatedEntitlements?appbarview=userpinned`, `GET beta/me/settings/appPolicy`, Graph `appCatalogs/teamsApps` for `org_apps`, per-place `GET` of entitlements, and chat-service `POST /v1/agents/28:<botId>/invoke` for fetch-task, submit-action and query [store.rs, bar.rs, settings.rs, bots.rs]. All app-service calls add header `x-ms-client-caller: ironteams` [api.rs].
+- Network through `teams_proto::Client`: `POST beta/users/apps/store`, `POST beta/users/apps/search`, `POST beta/users/apps/batchedDefinitions`, `GET beta/users/apps/store/entitlements`, `POST beta/users/apps/aggregatedEntitlements?appbarview=userpinned`, `GET beta/me/settings/appPolicy`, Graph `appCatalogs/teamsApps` for `org_apps`, per-place `GET` of entitlements, and chat-service `POST /v1/agents/28:<botId>/invoke` for fetch-task, submit-action and query [store.rs, bar.rs, settings.rs, bots.rs]. Calls through `api::send` and `api::read` (app service) add header `x-ms-client-caller: ironteams`; the chat-service bot calls (`fetch_task`, `submit_action`, `query_extension`) send no extra headers [api.rs, bots.rs].
 - `api::send` performs install, uninstall, update or pin only when called by the caller [api.rs:send].
 - No disk, locks, global state or logging [all files].
 

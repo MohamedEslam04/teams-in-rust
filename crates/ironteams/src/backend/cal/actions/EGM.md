@@ -56,6 +56,9 @@ Files:
 - `[helpers.rs:demo_calendars]` pub(in super::super) fn() -> Vec<CalendarInfo>
 - `[helpers.rs:pasted_link]` pub(super) fn(field: &str) -> Option<String>; adds https:// to Teams hosts, None for a meeting ID
 - `[helpers.rs:open_temp_file]` pub(super) fn(name: &str, bytes: &[u8]) -> io::Result<()>; writes under temp_dir/ironteams-attachments with safe_name, then opens
+- `[event_ops.rs:Engine::cal_open_chat]`, `cal_propose`, `cal_forward`, `cal_cancel`, `cal_delete`, `cal_export_event`, `cal_open_attachment` pub(super) async handlers for the open event (chat, propose new time or decline, forward, cancel, delete, ICS export, attachment open)
+- `[moves_and_forms.rs:Engine::cal_create_calendar]`, `cal_add_person`, `cal_settings`, `cal_move`, `cal_accept_proposal` pub(super) handlers (new calendar, add a person's calendar, settings string via parse_settings, drag move that goes to cal_move_to, accept a proposed time)
+- `[helpers.rs:demo_zones]` and other pub(super) free helpers: `demo_zones`, `visible_days`, `wall_utc`, `default_slot`, `synth_event`, `read_only`, `friendly`, `event_url`, `free_busy_events`
 
 ## Invariants
 - `[dispatch.rs:cal_form_ticket/cal_form_current]` form_seq is bumped by every form command; an async form opener must only open its form if its ticket is still current (checked after awaits in cal_edit and cal_new)
@@ -75,8 +78,8 @@ Files:
 - `[moves_and_forms.rs:cal_move_to]` extra-calendar events are refused; meetings with non-resource attendees can only be moved by the organizer and require MoveOk confirmation via pending_move
 - `[rooms_and_sharing.rs:cal.lock/store.lock]` locks taken in short scopes and not held across .await (cal_print, cal_rooms, cal_from_chat)
 - `[dispatch.rs:calendar_action:MoveOk]` pending_move is take()n, so a confirmation applies once
-- `[rooms_and_sharing.rs:is_offline]` every network action has an offline demo branch with canned data and no requests (sync_soon returns early)
-- `[helpers.rs:safe_name]` allows only alphanumerics and `. - _ space`, so attachment names cannot leave the temp folder; an all-dot or empty name becomes "attachment"
+- `[dispatch.rs:Engine::is_offline]` cal_room_lists, cal_rooms, cal_meet_now, cal_share_reload, cal_work_location, cal_from_chat and sync_soon (all in rooms_and_sharing.rs) have an offline demo branch with canned data and no requests (sync_soon returns early); cal_share_add, cal_share_role and cal_share_remove have no such guard and call add/update/remove_permission directly
+- `[helpers.rs:safe_name]` allows only alphanumerics and `. - _ space` (any other char becomes `_`), so attachment names cannot leave the temp folder; `[helpers.rs:open_temp_file]` turns an all-dot or empty result into "attachment"
 - `[dispatch.rs:cal_open_peek]` events from extra calendars (s.is_extra) always get read_only (respond/edit/cancel/delete disabled)
 - `[moves_and_forms.rs:cal_sched]` FIRST_MIN=360, SLOT=30, SLOTS=32 (06:00-22:00); at most 20 people; duration clamped 15..1440; suggestions window is 3 days with max 5 candidates and 100% attendee percentage
 

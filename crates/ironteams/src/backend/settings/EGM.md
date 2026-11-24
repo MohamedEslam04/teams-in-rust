@@ -25,7 +25,7 @@ Files:
 - `[rows.rs:a11y_rows]` pub fn a11y_rows(&AccessibilityPrefs)->Vec<ToggleRow> (7 toggles)
 - `[accounts.rs:ServerData]` pub struct (Default) of Teams-side settings: notifications, privacy, blocked, priority, tenants, me_* presence fields, apps, errors
 - `[rows.rs:set_a11y_flag]` pub fn set_a11y_flag(&mut AccessibilityPrefs,key,on)->bool; false for unknown key
-- `[accounts.rs:SettingsCmd]` pub enum: SetStatus, SetWorkLocation, SetStatusNote, ChangePhoto, RemovePhoto, SetOpenChatAt, Apply(PlannedRequest), Load, RefreshLicense, Redraw
+- `[accounts.rs:SettingsCmd]` pub enum: SetStatus, SetWorkLocation, SetStatusNote, ChangePhoto, RemovePhoto, SetOpenChatAt, Apply(PlannedRequest), Load, RefreshLicense, Redraw, LoadStorage, ApplyMediaLimit, DeleteUpdateBackups
 - `[rows.rs:NOTIFY]` pub(super) const [(Kind,group,label);19] notification types in Teams order
 - `[accounts.rs:permission_label]` pub fn(DevicePermission) -> &'static str
 - `[rows.rs:delivery_slug]` pub fn delivery_slug(Delivery)->&'static str (banner|feed|off)
@@ -47,11 +47,11 @@ Files:
 - `[rows.rs:meeting_chat_slug]` pub fn meeting_chat_slug(Option<&NotificationSettings>)->&'static str ("" if unknown)
 - `[engine.rs:Engine::refresh_license]` pub(super) async fn -> Result<()>
 - `[rows.rs:dry_run_meeting_chat]` pub fn dry_run_meeting_chat(chat_service,&NotificationSettings,MeetingChatMode)->PlannedRequest
-- `[index.rs:PAGES]` pub const [(key,title);12] settings pages
+- `[index.rs:PAGES]` pub const [(&str,&str);13] settings pages (a `storage` page sits between `files` and `permissions`)
 - `[rows.rs:dry_run_text]` pub fn dry_run_text(&PlannedRequest)->String (PlannedRequest::dry_run)
 - `[index.rs:page_title]` pub fn(&str) -> &'static str; falls back to "Settings"
 - `[rows.rs:dry_run_notify]` pub fn dry_run_notify(chat_service,&NotificationSettings,Kind,Delivery)->PlannedRequest
-- `[index.rs:INDEX]` pub(super) const &[(page,label,keywords)]
+- `[index.rs:INDEX]` pub(super) const &[(page,label,keywords)]; covers the Storage page (media cache limit, clear media cache, delete old update backups, clear all cached data) as well as the other pages
 - `[rows.rs:dry_run_pause]` pub fn dry_run_pause(chat_service,&NotificationSettings,until:Option<String>)->PlannedRequest
 - `[index.rs:Found]` pub struct {page,page_title,label}
 - `[rows.rs:dry_run_privacy]` pub fn dry_run_privacy(chat_service,PrivacyFlag,on)->PlannedRequest via us::privacy_flag_request
@@ -61,7 +61,7 @@ Files:
 - `[index.rs:DeviceRow]` pub type (id,name)
 - `[index.rs:audio_rows]` pub fn(&[AudioDevice], all, chosen) -> Vec<DeviceRow>; hides raw ALSA hw ids unless all/chosen
 - `[index.rs:camera_rows]` pub fn(&[Camera]) -> Vec<DeviceRow> (bus,name)
-- `[look.rs:Palette/DARK/LIGHT/CONTRAST_DARK/CONTRAST_LIGHT]` pub 0xrrggbb palette struct and constants
+- `[look.rs:Palette/DARK/LIGHT/CONTRAST_DARK/CONTRAST_LIGHT]` pub 0xrrggbb palette struct and constants; fields include `code_bg` (code block background)
 - `[look.rs:palette]` pub fn(ResolvedTheme, high_contrast, Option<Rgb>) -> Palette
 - `[look.rs:Look/look]` pub struct and fn(&Local, Option<&PortalSettings>) -> Look
 - `[look.rs:step_font_scale/FONT_STEP]` pub fn(f32,i32)->f32 and 0.05 step; plus pub slug fns switch_slug/switch_from_slug/date_slug/date_from_slug/time_slug/time_from_slug
@@ -100,6 +100,7 @@ Files:
 - `[engine.rs:Engine::start_notify_prefs]` tokio::spawn infinite background polling task
 - `[engine.rs:Engine::settings_cmd SetOpenChatAt]` mutates cfg under mutex and save_cfg to disk
 - `[notifications.rs:NOTIFY_SETTINGS/PRIORITY_PEOPLE and prefs.rs:LINK_PREVIEWS]` process-global statics (Mutex/AtomicBool) written via remember_* / set_link_previews
+- `[engine.rs:Engine::settings_cmd LoadStorage/ApplyMediaLimit/DeleteUpdateBackups]` LoadStorage reads cache sizes (cache_ops.rs:Engine::push_storage) and pushes ui.settings_storage; ApplyMediaLimit runs sweep_cache (deletes media files down to the configured budget) then pushes the sizes; DeleteUpdateBackups deletes the updater's backup-* folders under the data dir via cache::clear_backups, then shows a notice and the sizes
 - `[engine.rs:Engine::settings_cmd]` pushes UI updates (ui.settings_notice/server/license/status_failed), marks dirty flags, calls push_calendar/remind_push/push_scheduled/push_calls_page
 
 ## Verification

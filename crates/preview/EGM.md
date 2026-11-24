@@ -6,7 +6,7 @@ IronTeams file preview: renders PDF pages to RGBA bitmaps in pure Rust (`hayro`,
 ## Interface
 - `Error {Invalid, PasswordProtected, Encrypted, NoPage{page, count}, BadWidth{width}, Unsupported(String), Io, Graph(teams_proto::Error)}` and `Result<T>` [lib.rs].
 - Re-exports [lib.rs]: `CONVERTIBLE, can_convert, office_to_pdf, pdf_url` from `office`; `Document, MAX_SIDE, Rgba` from `pdf`.
-- `Document::open(Vec<u8>)`, `open_path(&Path)`, `page_count`, `page_size(page) -> (f32, f32)` (points), `render_page(page, width) -> Rgba` [pdf.rs].
+- `Document::open(Vec<u8>)`, `open_path(&Path)`, `page_count() -> usize`, `page_size(page) -> Result<(f32, f32)>` (points), `render_page(page, width) -> Result<Rgba>` [pdf.rs].
 - `Rgba {width, height, pixels}` with `to_png() -> Result<Vec<u8>>`; `MAX_SIDE = 8192` [pdf.rs].
 - `CONVERTIBLE` extensions list, `can_convert(name)`, `pdf_url(drive_id, item_id)`, `office_to_pdf(client, drive_id, item_id, name) -> Result<Vec<u8>>` [office.rs].
 

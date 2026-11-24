@@ -1,7 +1,7 @@
 # compat
 
 ## Overview
-Compatibility with what existed before kelma became IronTeams: `KELMA_*` environment-variable fallbacks and a one-time migration of the old per-user directories (config, data, cache). Other crates (`session`, `appearance`, `voice`, `webhost`, `diag`) call into this instead of reading env vars directly.
+Compatibility with what existed before kelma became IronTeams: `KELMA_*` environment-variable fallbacks and a one-time migration of the old per-user directories (config, data, cache). Other crates (`session`, `appearance`, `voice`, `webhost`, `diag`, `calling`, `ironteams`, `ironteams-cli`) call into this instead of reading env vars directly.
 
 ## Interface
 - `var(name: &str) -> Result<String, std::env::VarError>` [lib.rs:var].

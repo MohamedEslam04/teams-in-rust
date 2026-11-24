@@ -1,38 +1,45 @@
 # ironteams src (crate root)
 
 ## Overview
-Source root of the `ironteams` binary crate (`src/main.rs`). It owns process start-up (CLI modes, fonts, logging, sign-in, tokio runtime), the UI-thread glue between the Slint `AppWindow` and the backend `Engine` (view-data structs in `data.rs`/`*_data.rs`, models in `ui.rs`), and many small window-level features of the composer, search box, tray, shortcuts and settings persistence. Business logic lives in `backend/`, Slint model filling in `ui/`, the card host in `desktop_cards/`, shared helpers in `support/` and self-update plumbing in `updater/`.
+Source root of the `ironteams` binary crate (`src/main.rs`). It owns process start-up (CLI modes, fonts, file logging, renderer choice, sign-in with an offline start, tokio runtime), the UI-thread glue between the Slint `AppWindow` and the backend `Engine` (view-data structs in `data.rs`/`*_data.rs`, models in `ui.rs`), and many small window-level features of the composer, search box, tray, shortcuts and settings persistence. Business logic lives in `backend/`, Slint model filling in `ui/`, the card host in `desktop_cards/`, shared helpers in `support/` and self-update plumbing in `updater/`.
 
 Files:
-- `main.rs`: Binary entry: CLI modes (--report-problem, --self-check, desktop-cards host, --call-demo), font/logging/backend setup, wires all Slint callbacks to Cmd channel, runs tokio runtime with app_main (sign-in then engine dispatch loop) and tray event loop.
+- `main.rs`: Binary entry: CLI modes (--report-problem, --self-check, desktop-cards host, --call-demo), crypto provider, font/logging/renderer/backend setup, wires all Slint callbacks to Cmd channel, runs tokio runtime with app_main (sign-in, online or from the saved chats, then engine dispatch loop) and tray event loop.
 - `catch_up.rs`: Pure logic picking next/previous/first unread chat from the drawn chat list and counting unread/mentions; attaches to ShortcutApi global.
 - `composer.rs`: UI-thread EmojiApi callbacks (panel list, :shortcode suggest, insert, complete at cursor with char-boundary clamping); wire() also installs mention, snippets, composer_format, shortcuts, send_options, spell.
+- `composer_lines.rs`: `LineApi` global for the composer's line editor (`ui/molecules/line_editor.slint`): maps between the one-string draft and one input per line via `render::lines`; `wire` is called from `composer::wire`.
 - `composer_format.rs`: FormatApi global: toolbar apply/undo/redo/shortcut/preview/has_format on Markdown-style draft via render::edit, with a per-window History.
-- `data.rs`: Plain Send view-data structs (chat, message, card, people, team, activity, etc.) built by backend and converted to Slint types on UI thread, plus initials() and color_for().
+- `data.rs`: Plain Send view-data structs (chat, message with `quotes: Vec<QuoteData>`, `segments`, `post_blocks` and `receipt_side`, card, people, team, activity, ongoing call `OngoingCallData`/`OngoingPersonData`, `ChatData.notify`, etc.) built by backend and converted to Slint types on UI thread, plus initials() and color_for().
 - `demo.rs`: Demo mode (IRONTEAMS_DEMO) seed data: invented store rows, calendar events, activity feed and OneDrive listings, plus a minimal PDF generator; no network.
 - `desktop_entry.rs`: Writes a per-user XDG .desktop entry and icon at startup so xdg-desktop-portal can register the app id when no package provides one.
+- `file_hover.rs`: `of(&WindowEvent) -> Option<bool>`: whether a file is dragged over the window; main.rs sets `AppWindow.file-hover` from it (no drag events on Wayland).
 - `external.rs`: Single gate for opening URLs/files in the desktop default handler; suppressed and recorded in demo mode and tests.
 - `find_data.rs`: Send data types for Search page/quick views/Find in chat/Shared tab (HitData, PickData, SharedData) plus query-term matching and Markdown snippet highlighting helpers.
+- `key_layout.rs`: Ctrl/Cmd/Alt shortcuts by physical key on non-Latin layouts: `Shortcuts` (window event hook installed in main.rs), `us_key`, `latin`, `send`; typing without those modifiers is untouched.
 - `language.rs`: Applies the interface language: resolves it from GeneralPrefs and selects the Slint bundled translation (English = source text).
 - `lists_data.rs`: Plain view-data structs for chat list sections, channel post cards, threads, Adaptive Card rows, channel menu state and list options.
+- `logging.rs`: `init(logs_dir)`: size-rotated file log `<data_dir>/logs/ironteams.log` (5 files of up to 5 MiB), stdout when no folder is given (demo mode, unwritable folder) or when `IRONTEAMS_LOG` is set; `IRONTEAMS_LOG` replaces the default filter; panics with backtrace go to the same log.
 - `loop_compose.rs`: Composer's Loop paragraph: templates, row editing callbacks on LoopStore, and conversion to an HTML message sent via Cmd::SendLoop.
-- `markdown.rs`: Converts the render crate's rich-text model into Slint StyledText Markdown, extracts reply quote/images, upgrades rich messages (headings/tables/colors), and maps reaction keys to emoji.
+- `markdown.rs`: Converts the render crate's rich-text model into Slint StyledText Markdown, extracts reply quote cards (`QuoteCard`), text/code `Segment`s, channel-post blocks (`PostBlock`) and images into `Rendered`, upgrades rich messages (headings/tables/colors), draws mentions in the theme colour (`set_mention_color`/`mention_color`), and maps reaction keys to emoji.
 - `media_data.rs`: Plain Send data (ViewerData) for the chat image viewer.
 - `mention.rs`: UI-thread pure helpers for @mentions in the composer (find active @query, complete, one-Backspace token removal) wired into MentionApi.
 - `native_tray.rs`: Windows/macOS tray icon via Slint SystemTrayIcon (icon, unread badge, tooltip, mute/focus checkable menu), UI-thread only.
+- `offline_start.rs`: Offline start: `OFFLINE_NOTICE`, `OnRefreshError {Offline, SignIn, Fail}`, `is_transient`, `on_refresh_error(err, has_cache)`, `retry_delay(attempt)` (5 s doubling, at most 60 s).
 - `reactions.rs`: Teams reaction keys (six named + <hex>_<name>), reaction display names, reactor card rows, and emoji picker rows.
+- `renderer.rs`: Window renderer choice: `Started {wanted, running}` (`fell_back`), `wanted`, `start`, `record`, `running`, `env`; precedence `IRONTEAMS_RENDERER` > saved `general.json` renderer > CPU; a GPU start failure falls back to the software renderer.
 - `send_options.rs`: Send-button schedule picker logic: typed-time parsing, quick choices, month calendar cells, local-time resolve to ms, labels, wired into SendStore.
-- `shortcuts.rs`: Maps window-level key chords to action names and finds the last editable own message; wires ShortcutApi and catch_up.
+- `shortcuts.rs`: Maps window-level key chords to action names (including "find" for Ctrl+F and "jump-first" for Ctrl+Alt+Home) and finds the last editable own message; wires ShortcutApi and catch_up.
 - `snippets.rs`: Composer /snippet quick replies: active-query detection, ranking, placeholder expansion, name validation, completion, plus persisted snippets.json store wired to SnippetStore/SnippetApi.
 - `spell.rs`: Composer spell check: loads Hunspell dictionaries (en/ar) on a worker thread, flags misspelled words by byte range, ranks suggestions, persists user-added words, and wires SpellApi callbacks to the window.
 - `suggest.rs`: Pure matching of cached conversations by name for the top search box suggestions and for /goto, /chat, /call target resolution.
 - `support.rs`: Module root declaring the shared pub(crate) submodules error_text and quiet.
 - `topbar.rs`: Window-free top bar logic: slash command parsing/matching, dropdown rows and pick resolution, persisted recent searches, and back/forward History.
-- `tray_wiring.rs`: Starts the tray (SNI on Linux, native_tray elsewhere), maps tray events to window actions, debounces unread count, decides close-to-tray, and runs the Slint event loop.
-- `ui.rs`: UI-thread module root: converts view data (MsgData, ChatData, TeamData, ...) to Slint models and implements most UiHandle update methods (login, banner, chats, header, messages with in-place row diff, composer state).
+- `tray_wiring.rs`: Starts the tray (SNI on Linux, native_tray elsewhere), maps tray events to window actions, debounces unread count, decides close-to-tray and whether a start is hidden (`--hidden` flag, open-in-background setting and a registered tray must all hold), tells `window_watch` when the window is shown or hidden, and runs the Slint event loop.
+- `ui.rs`: UI-thread module root: converts view data (MsgData, ChatData, TeamData, ...) to Slint models and implements most UiHandle update methods (login, banner, chats, header, messages patched in place by row fingerprint, composer state); private children `model_sync`, `ongoing_call` and `pub(crate) row_fingerprint` live in `ui/`.
 - `ui_api.rs`: Defines the thread-safe UiHandle (weak AppWindow, run via upgrade_in_event_loop) and plain view-data structs the engine passes to the UI (PlayerView, RecorderView, ClipView, Picture, Toast, ScheduledData).
-- `update_check.rs`: Opt-in GitHub latest-release check: pure version parsing/comparison, release JSON parsing, and a blocking one-shot HTTP GET gated off in demo mode and tests.
-- `window_state.rs`: Restores and debounce-saves window geometry, maximized flag, last chat/channel, sidebar width, collapsed teams and Quick views via session::window_state::WindowState; pure decision helpers plus Slint timers.
+- `update_check.rs`: Always-on GitHub latest-release check for copies that cannot update themselves (Velopack installs use `updater`): pure version parsing/comparison, release JSON parsing, and a blocking one-shot HTTP GET (installs the TLS crypto provider first) refused in demo mode and tests.
+- `window_state.rs`: Restores and debounce-saves window geometry, maximized flag, last chat/channel, sidebar width (220-600), collapsed teams and Quick views via session::window_state::WindowState; pure decision helpers plus Slint timers; the save timer runs only while the window is in sight (`set_autosave`).
+- `window_watch.rs`: Tracks whether the main window is in sight and focused: `Mode {Visible, Minimized, Hidden}`, `WindowStatus {visible, focused, scale_pct}`, pure `mode`/`status`/`scale_pct`/`poll_every`, and `install`/`update`/`shown`/`hidden`/`focus_changed`; sends the status to the engine over a `tokio::sync::watch` channel and drives `window_state::set_autosave`.
 
 ## Interface
 - Subdirectory `backend/`: [backend/EGM.md](./backend/EGM.md) - App engine: Cmd dispatch, store/network sync, render loop and every feature backend
@@ -43,6 +50,17 @@ Files:
 - `[main.rs:APP_ID]` private const = tray::APP_ID (desktop-file id / Wayland app id / portal id)
 - `[demo.rs:ME]` pub const &str: demo user MRI "8:orgid:00000000-0000-0000-0000-000000000001"
 - `[find_data.rs:HitData]` pub struct (Clone): Search/quick-view row {id, kind:&'static str, section, title, subtitle, snippet(md), time, initials, color:u32, avatar:Option<Pixels>, person, rtl}
+- `[window_watch.rs:install]` pub fn() -> tokio::sync::watch::Receiver<WindowStatus>; creates the thread-local watcher; the receiver goes to `app_main`
+- `[window_watch.rs:WindowStatus]` pub struct {visible, focused: bool, scale_pct: u16}; `Mode` is pub enum {Visible, Minimized, Hidden}
+- `[window_watch.rs:scale_pct]` pub fn(f32) -> u16; whole percent, NaN or <= 0 gives `DEFAULT_SCALE_PCT`
+- `[window_watch.rs:poll_every]` pub fn(Mode) -> Option<Duration>; 400 ms while Visible or Minimized, None while Hidden
+- `[window_watch.rs:update/shown/hidden/focus_changed]` pub fns reading or setting the window state; callers are `main.rs` (install, winit focus events) and `tray_wiring.rs` (show_and_raise, hide to tray, run)
+- `[logging.rs:init]` pub fn(Option<&Path>); starts the tracing subscriber (file and/or stdout)
+- `[renderer.rs:start]` pub fn(wanted, select) -> Result<Started, E>; `wanted(saved)` applies the env override, `record`/`running` keep what runs
+- `[offline_start.rs:on_refresh_error]` pub fn(&Error, has_cache: bool) -> OnRefreshError; `retry_delay(attempt)` pub fn(u32) -> Duration
+- `[file_hover.rs:of]` pub(crate) fn(&WindowEvent) -> Option<bool>
+- `[key_layout.rs:Shortcuts]` pub(crate) struct (Default); `event(&self, win, &WindowEvent) -> EventResult` re-sends a Ctrl/Cmd/Alt chord with the US letter of the physical key on a non-Latin layout
+- `[composer_lines.rs:wire]` pub fn(&AppWindow); installs `LineApi` callbacks
 - `[native_tray.rs:start]` pub fn start(on_event: impl Fn(TrayEvent) + 'static) -> Result<(), String>; creates IronTeamsTray, stores state in thread-local TRAY
 - `[spell.rs:Speller]` pub struct (Default) holding english/arabic Dictionary, personal word set, optional words file
 - `[topbar.rs:HELP_URL]` pub const &str, target of Help menu and /help
@@ -56,13 +74,13 @@ Files:
 - `[topbar.rs:FEEDBACK_URL]` pub const &str, CARGO_PKG_REPOSITORY + "/issues"
 - `[ui.rs:install_apps/install_calendar/install_clip/install_composer_apps/install_voice]` pub re-exports of appstore::wire, cal::wire, clip::wire, composer_apps::wire, voice::wire
 - `[window_state.rs:Rect]` pub struct {x,y,w,h: i32} physical-pixel rectangle (window or monitor)
-- `[main.rs:app_main]` async fn(UiHandle, UnboundedReceiver<Cmd>, Arc<AtomicBool>): sign-in loop then engine.dispatch loop (demo mode via IRONTEAMS_DEMO)
+- `[main.rs:app_main]` async fn(UiHandle, UnboundedReceiver<Cmd>, tokio::sync::watch::Receiver<window_watch::WindowStatus>): sign-in (online, or offline from the saved chats via `SignedIn::Offline`/`start_cached`, then `reconnect` keeps dispatching commands while the session refresh is retried; a rejected session reopens the device-code sign-in through `adopt_sign_in`), then engine.dispatch loop; a spawned task applies each status change as `engine.focused`, `Engine::set_visible`, `Engine::set_display_scale` and `window_changed()`; demo mode via IRONTEAMS_DEMO
 - `[demo.rs:calendar_events]` pub fn calendar_events(week_start_ms: i64, now_ms: i64) -> serde_json::Value: Graph calendarView-shaped {value:[..]}; one 'Customer sync' starts now+3min (rounded to minute)
 - `[find_data.rs:SharedData]` pub struct (Clone): Shared tab row {kind,name,ext,shared_by,date,url,editable,sharepoint,icon,busy,highlight}
 - `[native_tray.rs:set_unread]` pub fn set_unread(count: u32); updates badge and tooltip (0 hides badge)
 - `[spell.rs:Speller::system]` pub fn system() -> Speller; loads system dictionaries and saved words (slow, parses dictionaries)
 - `[topbar.rs:MOBILE_APP_URL]` pub const &str, Microsoft Teams download page
-- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, palette, people, remind, teams, voice, cal
+- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, row_fingerprint, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, model_sync, ongoing_call, palette, people, remind, teams, voice, cal
 - `[window_state.rs:RestorePlan]` pub struct {size: Option<(i32,i32)> logical, position: Option<(i32,i32)> physical, maximized: bool}
 - `[catch_up.rs:Row]` pub struct {id:String, unread:bool, mention:bool}
 - `[demo.rs:activity]` pub fn activity(st: &Store, now: i64) -> Vec<ActivityItem>: 6 invented items (newest first) referencing message ids looked up from seeded store
@@ -78,7 +96,7 @@ Files:
 - `[native_tray.rs:shutdown]` pub fn shutdown(); drops the tray state/icon
 - `[spell.rs:Speller::suggest]` pub fn suggest(&self, word: &str) -> Vec<String>; ranked, at most 5
 - `[topbar.rs:RECENT_FILE]` pub const &str = "recent-searches.json"
-- `[ui.rs:UiHandle::banner/info]` pub transient banner (error/notice), cleared after 8 s if unchanged
+- `[ui.rs:UiHandle::banner/info]` pub transient banner (error/notice), text passed through `support::error_text::plain_banner`, cleared after 8 s if unchanged
 - `[window_state.rs:Observed]` pub struct {size, position: Option<(i32,i32)>, maximized: bool} live window snapshot
 - `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; no wrap-around
 - `[demo.rs:drive_favorites]` pub fn drive_favorites() -> HashSet<String>: initial favorite item ids
@@ -109,6 +127,9 @@ Files:
 - `[spell.rs:SPELLER]` thread_local RefCell<Speller>; only the window's (Slint) thread reads/writes it; the worker thread hands the loaded speller over via upgrade_in_event_loop
 - `[topbar.rs:RECENT_MAX]` recents truncated to 8 entries; Recents::add rejects empty text and text starting with '/'
 - `[ui.rs:MESSAGES]` thread_local Rc<VecModel<Msg>> lazily created on the UI thread; only touched inside UiHandle::run closures
+- `[window_watch.rs:apply]` sends the status on a tokio watch channel, starts/stops a repeating 400 ms slint::Timer that reads the window, and calls `window_state::set_autosave` (which saves once when the window goes out of sight)
+- `[offline_start.rs]` no I/O itself; main.rs `reconnect` sleeps and calls `Engine::refresh_session` per `retry_delay`
+- `[update_check.rs:fetch_latest]` one GET to the GitHub releases API (blocking, 10 s timeout) after installing the crypto provider; refused in demo mode and tests
 - `[window_state.rs:SHARED]` global static Mutex<Option<Shared>>; with_shared returns None if uninstalled or lock poisoned (helpers become no-ops/defaults)
 - `[main.rs:main]` --call-demo sets IRONTEAMS_DEMO and IRONTEAMS_CALL_DEMO via unsafe set_var before any thread exists
 - `[desktop_entry.rs:ensure_in]` Flatpak (/.flatpak-info exists) -> no write; missing user entry but one in any XDG_DATA_DIRS applications/ -> Outcome::Provided, no write; unchanged content -> no rewrite
@@ -118,7 +139,7 @@ Files:
 - `[topbar.rs:COMMANDS]` fixed array of 16 commands; Action::Go kind falls back to "goto" if name not found
 - `[ui.rs:UiHandle::header]` when current_id differs from the new id, messages, posts and thread_id are cleared and current_meeting_live reset before applying the new header
 - `[window_state.rs:Shared.persist]` false in demo mode: nothing restored (default state) or written, install returns no timers
-- `[main.rs:main]` ordering: velopack hook first; then fonts/logging; compat::migrate_legacy_dirs and desktop_entry::ensure before store/session open; updater::backup::on_start and guard::start before store/config open
+- `[main.rs:main]` ordering: velopack hook first, then `teams_proto::client::install_crypto_provider()` (before any HTTP client is built), then CLI modes; then fonts and file logging; compat::migrate_legacy_dirs and desktop_entry::ensure before store/session open; updater::backup::on_start and guard::start before store/config open; renderer selection (with software fallback) after the guard and before `AppWindow::new`
 - `[desktop_entry.rs:ensure_in]` icon at data_home/icons/hicolor/scalable/apps/<app_id>.svg written only if absent (never overwritten)
 - `[mention.rs:backspace]` returns cursor -1 for an ordinary Backspace; picked names are tried longest first so longer names win; token must be preceded by whitespace/start
 - `[native_tray.rs:start]` Err means no icon; caller quits on close instead of hiding to tray; State starts unread=0, muted=false, focus=false
@@ -126,9 +147,13 @@ Files:
 - `[topbar.rs:matching]` with a space after the word or text after it, only the exactly named command is listed; otherwise prefix match, case-insensitive
 - `[ui.rs:UiHandle::header]` last_chat_id is only set when id non-empty, thread_root empty and view != 'teams'; last channel only when is_channel and thread_root empty
 - `[window_state.rs:Shared::write]` writes only if state != saved and (force or should_write(>=SAVE_INTERVAL since last_write)); last_write set before save even on failure; saved updated only on Ok
-- `[main.rs:main]` demo mode (IRONTEAMS_DEMO) skips backup/crash-guard (data_dir None) and window-state restore/save
+- `[main.rs:main]` demo mode (IRONTEAMS_DEMO) skips backup/crash-guard (data_dir None), the log file (logs to stdout) and window-state restore/save
 - `[desktop_entry.rs:write_atomic]` write to <path>.tmp then rename; parent dirs created first
 - `[loop_compose.rs:to_html]` empty-string result means nothing to send; rows with all-blank cells/text are skipped; all user text goes through esc()
+- `[tray_wiring.rs:start_hidden]` the window starts hidden only when the `--hidden` flag, the open-in-background setting and a registered tray all hold; a start by hand always shows the window
+- `[window_watch.rs:apply]` the 400 ms timer is started or stopped only when the poll interval changes, never from inside its own tick; `focused` is false whenever the window is not Visible; `set_autosave(w, mode == Visible)` is called on each mode change
+- `[ui.rs:UiHandle::messages]` rows are written to MESSAGES only when their `row_fingerprint::of` print changed (prints kept in thread-local MESSAGE_PRINTS); a pending own newest message replaced by the server copy is updated in place; the second scroll tick (150 ms single shot) is armed only for `Scroll::Bottom`; `Scroll::Divider` and `Scroll::Anchor` set divider/anchor index and tick instead
+- `[offline_start.rs:retry_delay]` 5 s, doubling, capped at 60 s
 - `[native_tray.rs:ICON_SIZE]` icon rendered at 32px and scaled by the system
 - `[spell.rs:Speller::misspelled]` skips mentions overlapping picked @names, words under 2 letters, acronyms/inner-capital words (skip_case)
 - `[topbar.rs:History::HISTORY_MAX]` at most 50 places kept; oldest removed first
@@ -142,14 +167,14 @@ Files:
 - `[topbar.rs:Recents::load]` reads recent-searches.json from the given directory
 - `[ui.rs:UiHandle::transient]` starts slint::Timer::single_shot (8 s) to clear the banner
 - `[window_state.rs:Shared::write]` disk write via WindowState::save(); logs tracing::warn on error (error only, never content)
-- `[main.rs:main]` global tracing subscriber init; Slint backend selection; slint::set_xdg_app_id; calling::video::portal::set_host_app_id (calls feature)
+- `[main.rs:main]` global tracing subscriber init (`logging::init`, file `<data_dir>/logs/ironteams.log`, rotated 5 x 5 MiB, stdout in demo mode or with IRONTEAMS_LOG set); renderer start (`renderer::start`, reads `general.json` through `support::quiet::load_prefs`, honours IRONTEAMS_RENDERER); Slint backend selection; slint::set_xdg_app_id; calling::video::portal::set_host_app_id (calls feature)
 - `[desktop_entry.rs:ensure_in]` disk: writes $XDG_DATA_HOME/applications/<app_id>.desktop and icons/hicolor/scalable/apps/<app_id>.svg (via .tmp + rename, create_dir_all)
 - `[language.rs:select]` tracing::warn! on translation selection failure
 - `[native_tray.rs:set_unread]` re-renders and sets the tray icon image and tooltip (badge drawn via tray::icon::badged_icon)
 - `[spell.rs:Speller::add_word]` creates the config dir and appends the word to spelling-words.txt; logs a tracing warning on failure
 - `[topbar.rs:Recents::save]` create_dir_all, writes a temp file and renames it to recent-searches.json
-- `[ui.rs:UiHandle::messages]` starts slint::Timer::single_shot (150 ms) for second scroll tick
-- `[window_state.rs:install]` WindowState::load() reads saved state from disk
+- `[ui.rs:UiHandle::messages]` for `Scroll::Bottom` only, starts slint::Timer::single_shot (150 ms) for the second scroll tick; writes thread-local MESSAGES/MESSAGE_PRINTS (chat lists use CHAT_LISTS through `model_sync`)
+- `[window_state.rs:install]` WindowState::load() reads saved state from disk; starts the save timer (kept in thread-local SAVE_TIMER, run only while the window is in sight, one more save when it leaves) and, when a last chat is saved (and IRONTEAMS_OPEN is unset), a 300 ms restore timer that reopens the last chat/channel with Cmd::SelectChat/SelectChannel once signed in and the window is visible (gives up after 100 ticks)
 - `[main.rs:main]` disk: compat::migrate_legacy_dirs, desktop_entry::ensure (Linux), updater::backup::on_start, guard::start/healthy_in
 - `[desktop_entry.rs:ensure]` tracing::info logging of outcome/error
 - `[loop_compose.rs:wire]` sends Cmd::SendLoop(html) on an unbounded tokio channel to the backend

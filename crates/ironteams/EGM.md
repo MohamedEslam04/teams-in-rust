@@ -27,17 +27,17 @@ Layers inside the crate:
 - `src/desktop_cards`: [src/desktop_cards/EGM.md](./src/desktop_cards/EGM.md) - desktop notification card client, host and protocol.
 - `src/updater`: [src/updater/EGM.md](./src/updater/EGM.md) - self-update, backup, crash-loop guard, self-check.
 - `src/support`: [src/support/EGM.md](./src/support/EGM.md) - error text and quiet-hours helpers.
-- `ui/` (Slint templates, not a code package; documented by its human-written `ui/README.md`): `app.slint` (window state, callbacks, wiring), `tokens/` (3 files: theme, motion, shared structs), `stores/` (11 globals Rust fills, e.g. call, drive, find, settings, teams stores), `atoms/` (13), `molecules/` (23), `organisms/` (66), `pages/` (20 whole screens), `icons/` (SVG), `fonts/`.
+- `ui/` (Slint templates, not a code package; documented by its human-written `ui/README.md`): `app.slint` (window state, callbacks, wiring), `tokens/` (4 files: theme, motion, space, shared structs), `stores/` (12 globals Rust fills, e.g. call, ongoing call, drive, find, settings, teams stores), `atoms/` (16), `molecules/` (32), `organisms/` (70), `pages/` (20 whole screens), `icons/` (SVG), `fonts/`.
 - `translations/`: gettext catalogue(s) compiled in by `build.rs`.
 
 ## Global Invariants
 - UI objects live on the UI thread; backend code talks to them only through `UiHandle` (`src/ui_api.rs`) and sends work as `Cmd` values over an unbounded mpsc channel (`src/main.rs:main`, see `src/EGM.md`).
-- Startup order is fixed in `src/main.rs:main`: Velopack hook, CLI modes, fonts, tracing, legacy dir migration, desktop entry, updater backup and guard before any store, config or portal use (see `src/EGM.md`).
+- Startup order is fixed in `src/main.rs:main`: Velopack hook, `teams_proto::client::install_crypto_provider()` (before any HTTP client is built), CLI modes, fonts, logging, legacy dir migration, desktop entry, updater backup and guard before any store, config or portal use, then renderer selection (with fallback to the software renderer) before the window is built (see `src/EGM.md`).
 - The `calls` feature gates all call code paths in `main.rs` (`#[cfg(feature = "calls")]`) and the `calling` dependency.
 - The app id is reverse-DNS and must match packaging files (`src/main.rs:APP_ID`).
 
 ## Global Side Effects
-- Disk: store database, config and prefs files, media cache, backups, snippets, spelling words, window state, desktop entry and icon (see `src/EGM.md`, `src/backend/EGM.md`, `src/updater/EGM.md`).
+- Disk: store database, config and prefs files, media cache, backups, snippets, spelling words, window state, desktop entry and icon, and a size-rotated log file `<data_dir>/logs/ironteams.log` (5 files of up to 5 MiB; `[src/logging.rs:init]`; not written in demo mode). The renderer choice is read from `general.json` and a window-visibility watcher runs on the UI thread (`src/renderer.rs`, `src/window_watch.rs`) (see `src/EGM.md`, `src/backend/EGM.md`, `src/updater/EGM.md`).
 - Network: Teams, Graph, OneDrive, GitHub release check and calling traffic through the sibling crates (see `src/backend/EGM.md`).
 - Processes and IPC: spawns itself as the desktop card host, `fc-match` and `ffmpeg` subprocesses, D-Bus notification listeners (see `src/desktop_cards/EGM.md`, `src/backend/EGM.md`).
 - Desktop integration: tray icon, system notifications, clipboard, default URL/file handlers.

@@ -1,27 +1,29 @@
 # backend/call
 
 ## Overview
-Active-call backend. `CallManager` holds at most one active call and drives it via the `CallDriver` trait; `CallModel` is the network-free call state; `EventSink` reports driver events by generation; supporting modules cover camera, screen share, remote control, remote video, bots, video effects and a `FakeDriver` for tests. The live driver is in `live/` behind the `calls` feature.
+Active-call backend. `CallManager` holds at most one active call and drives it via the `CallDriver` trait; `CallModel` is the network-free call state; `EventSink` reports driver events by generation; supporting modules cover camera, screen share, remote control, remote video, bots, video effects, Teams background pictures, the meeting People panel data and a `FakeDriver` for tests. The live driver is in `live/` behind the `calls` feature.
 
 Files:
 - `bots.rs`: Per-call recorder-bot driver: invites Microsoft's recorder bot once, sends captions/recording/transcription commands, maps refusals to Events.
-- `camera.rs`: Live-call camera: device listing/choice (portal or V4L2), encoder pump to main-video line, self-view, pre-join preview, 1:1 re-offer, env kill switch.
-- `cmd.rs`: CallCmd enum and parse(name, arg) for what the call window sends via CallStore.command.
-- `driver.rs`: Driver-facing types: JoinOptions, Device(s), CallDriver and CallHandle traits, CallData view model, clock().
-- `events.rs`: Event (driver to UI), Control (UI to call), ControlAction/ControlInput remote-control types with parsing, JoinTarget, VideoSlot, Found, consent notices.
+- `camera.rs`: Live-call camera: device listing/choice (portal or V4L2; only found cameras are listed, "Default camera" only when none is found), capture/encoder quality (720p/30 fps, or the old 640x360/15 fps with `IRONTEAMS_CAMERA_QUALITY=low`), encoder pump to main-video line, self-view, preview (pre-join, and in a call while the camera is off and `video_preview` is set), 1:1 re-offer, env kill switch.
+- `cmd.rs`: CallCmd enum and parse(name, arg) for what the call window sends via CallStore.command. Besides join/mute/hand/react/hold/transfer/find/share/camera/leave/captions/control/admit/fx it has `JoinOngoing`, `JoinDevice`, `PrejoinAudio`, `ToggleSound`, `PersonCard`, `PeopleOpen`, `PeopleFilter`, `ShareInvite`, `VideoPreview`, `VideoApply` and `AudioRefresh`.
+- `driver.rs`: Driver-facing types: JoinOptions (incl. `sound_off`), Device(s), CallDriver and CallHandle traits, CallData view model (incl. `prejoin_audio`, `sound_off`, `other_device`, `mic_id`, `invited`, `chat_people`, `can_share_invite`, `people_filter`), clock().
+- `events.rs`: Event (driver to UI), Control (UI to call, incl. `Sound(bool)`), ControlAction/ControlInput remote-control types with parsing, JoinTarget, VideoSlot, Found, consent notices.
 - `fake.rs`: FakeDriver/FakeHandle: network-free CallDriver that logs controls and plays a scripted demo meeting; fake preview.
 - `fallback.rs`: Detects media-server refusal of declared video lines and remembers it per session so joins fall back to audio only.
-- `global.rs`: CallManager call-waiting/adopt entry points, global MANAGER static, and Engine call_cmd/call_find/prejoin_link/prejoin_code glue.
-- `live.rs`: Root of the live (feature calls) driver: module wiring, docs, Reoffer enum and the per-call `Call` state struct.
-- `manager.rs`: CallManager (holds at most one active call, drives the call window): construction, command dispatch, join, feedback, demo; plus Unavailable driver and NoHandle.
-- `model.rs`: CallModel state struct (network-free call state), message constants, recording_state parser, is_meeting_chat.
-- `model_state.rs`: CallModel transitions: prejoin/join/adopt, apply driver Events, end/leave/rejoin, controls, reactions, people search, device picks, and data() snapshot for the UI.
+- `global.rs`: CallManager call-waiting/adopt entry points, global MANAGER static, and Engine call_cmd/call_find/call_person_card/prejoin_link/prejoin_code glue; call_cmd handles `JoinOngoing`, `PersonCard`, `PeopleOpen` and `ShareInvite` itself.
+- `live.rs`: Root of the live (feature calls) driver: module wiring, docs, Reoffer enum, the media-restart types (`Refused`, `supersede`, `refused_reoffer`, `direct_reanswer`, `NextMedia`, `next_state`) and the per-call `Call` state struct (incl. `superseded` and `next`).
+- `manager.rs`: CallManager (holds at most one active call, drives the call window): construction, command dispatch, join, feedback, demo, meeting start time (`set_meeting_start`), `roster_of`; plus Unavailable driver and NoHandle.
+- `meeting_roster.rs`: Meeting People panel data: `MeetingPeople`/`Absent`/`Member`, `invite_status`, `meeting_people`, `event_for_chat`, `matches_query`; `CallModel` methods `set_meeting_people`, `join_link`, `set_people_filter`, `people_opened`, `absent_people`, `meeting_chat`; `CallManager::set_meeting_people/join_link`; `Engine::call_people_open` and `call_share_invite`.
+- `model.rs`: CallModel state struct (network-free call state, incl. `sound_off`, `video_preview`, `head_start`, `meeting_people`, `people_filter`), message constants, recording_state parser, `head_start`/`unix_ms` (the header timer counts from the server's meeting start), is_meeting_chat.
+- `model_state.rs`: CallModel transitions: prejoin/join/adopt, apply driver Events, end/leave/rejoin, controls, reactions, people search, device picks (`add_device`, `prejoin_audio`), speaker sound (`toggle_sound`), video preview/apply (`set_video_preview`, `apply_video`), `refresh_audio`, and data() snapshot for the UI (the ended screen's duration includes `head_start`).
 - `remote_control.rs`: Remote-control of a shared screen in a call: pure state Machine (Mode/Ctx/Step), UI-input-to-wire mapping, and RemoteControl holder with injector task, controller cursor overlay and banner state (gated by IRONTEAMS_REMOTE_CONTROL).
 - `remote_video.rs`: Remote video of a call: routes each video line (mid) to a VideoSlot via per-line decoders, plans gallery/share subscriptions from the roster and sends applyChannelParameters, derives presenter; env-driven join layout/modalities.
-- `roster.rs`: Call window data types: CallKind, Phase, Link/live_phase, Person (with bot check), photo lookup helper, Caption, reaction table and Floating reaction constants.
+- `roster.rs`: Call window data types: CallKind, Phase, Link/live_phase, Person (with bot check and `elsewhere`, set when the person has more than one device), photo lookup helper, Caption, reaction table and Floating reaction constants.
 - `share.rs`: Screen sharing in a live call: ScreenCast picker, H264 encoder pump onto the sharing line, content-sharing session handling, and telling the service (meeting UpdateMediaDescriptions or 1:1 re-offer).
-- `sink.rs`: EventSink (driver-to-model reporting by generation) and Shared (call model, held-call slot, handle, UI handle, preview, video fx) with hold/resume/promote/end logic and the 1s timer.
-- `video_fx.rs`: Video effects panel prefs (background, filter, brighten, soft focus, mirror) persisted to video-effects.json, FxCmd parsing, and under feature calls the VideoFx state driving calling::video::effects and custom background files.
+- `sink.rs`: EventSink (driver-to-model reporting by generation) and Shared (call model, held-call slot, handle, UI handle, preview, video fx) with hold/resume/promote/end logic, the 1s timer, `sync_preview`, `start_from_server` and `teams_changed`.
+- `teams_backgrounds.rs`: Teams' 70 named background pictures (`ORIGINALS`, `ID_PREFIX = "teams:"`): thumbnails fetched in the background from `teams.public.onecdn.static.microsoft` after sign-in, a full picture only when picked, cached under `<data dir>/backgrounds/teams/` and fetched again once 30 days old; `start`, `request_full`, `progress`, `tiles`, `by_id`, `dir`, `path_in`.
+- `video_fx.rs`: Video effects panel prefs (background, filter, brighten, soft focus, mirror) persisted to video-effects.json, FxCmd parsing, and under feature calls the VideoFx state driving calling::video::effects, custom background files and Teams backgrounds (`use_teams`, `teams_dir`, `teams_changed`, `FxView.teams_note`, `Choice.loading`). Picker order: None, Standard blur, Teams tiles, built-ins, user pictures. `effects_for(prefs, dir, teams_dir)` scales pictures with Lanczos3; the last `KEPT_PICTURES = 4` full Teams pictures are kept in the cache.
 
 ## Interface
 - Subdirectory `live/`: [live/EGM.md](./live/EGM.md) - Live driver (feature calls): hub, join, run loop, audio, controls, renegotiation
@@ -67,9 +69,15 @@ Files:
 - `[share.rs:Share::sharing]` pub fn(&self) -> bool; true while a capture is held
 - `[camera.rs:chosen]` pub(crate) fn(Option<&str>) -> (CameraChoice, Option<String>)
 - `[manager.rs:CallManager::find_started]` pub fn(&self) -> u64
+- `[manager.rs:CallManager::set_meeting_start]` pub fn(lookup: Fn(&str) -> Option<i64>); meeting start (unix ms by chat id) for the header timer; `[manager.rs:CallManager::roster_of]` pub fn(&self, chat_id: &str) -> Option<Vec<(String, String)>>; (MRI, name) of who is in that chat's call, None when we are not in it
+- `[meeting_roster.rs:meeting_people]` pub fn(event: Option<&Event>, members: Vec<Member>) -> MeetingPeople; with `Absent`, `Member`, `invite_status`, `event_for_chat`, `matches_query` (see Files)
+- `[teams_backgrounds.rs:ORIGINALS]` pub static [Original; 70]; with `ID_PREFIX`, `by_id`, `dir`, `path_in`, `tiles`, `progress`, `start`, `request_full` (see Files)
+- `[video_fx.rs:VideoFx::use_teams]` pub fn(&mut self, dir: PathBuf, notify: Notify); starts the Teams thumbnail download and remembers the dir
 - `[remote_control.rs:photo]` pub fn(crate::data::Pixels)->Photo; profile photo for the controller cursor
 - `[share.rs:Share::pick]` pub fn(&mut self, &UnboundedSender<ShareMsg>); opens plain ScreenCast picker (ShareKind::Any), result as ShareMsg::Picked
-- `[camera.rs:list]` pub(crate) fn(Option<&str>) -> (Vec<Device>, usize)
+- `[camera.rs:list]` pub(crate) fn(Option<&str>) -> (Vec<Device>, usize); only cameras found; delegates to `camera_rows`
+- `[camera.rs:camera_rows]` pub(crate) fn(found: Vec<Device>, chosen: Option<&str>) -> (Vec<Device>, usize); "Default camera" row only when none was found, an unknown or missing choice selects the first
+- `[camera.rs:capture_settings]` pub(crate) fn() -> CameraSettings; `CameraSettings::call()` (720p/30 fps), or `CameraSettings::default()` when `IRONTEAMS_CAMERA_QUALITY=low`
 - `[manager.rs:CallManager::found]` pub fn(&self, seq: u64, found: Vec<Found>)
 - `[remote_control.rs:RemoteControl]` pub struct {pub machine, pub asking: Option<ControlAction>, ..}; Default
 - `[share.rs:Share::start]` pub fn(&mut self, ScreenCapture, &MediaSession, &tx) -> Result<(),String>; encoder+pump on sharing sender
@@ -100,7 +108,7 @@ Files:
 - `[remote_control.rs:Machine::local]` Give requires ctx.can_give and mri != me; without can_give it yields an error Step instead
 - `[share.rs:Share::session]` content-sharing session is never merged into the call's links; asking holds correlation id until granted; grant_timed_out/session_frame only act when correlation matches/asking is Some
 - `[camera.rs:SELF_VIEW_WIDTH/SELF_VIEW_EVERY]` self-view max width 320, one picture per 2 camera frames; PREVIEW_WIDTH 640
-- `[model_state.rs:CallModel::end]` clears hand/share/camera/presenter/control/recording/captions/held/found/reactions; error cleared only if connected_at is set
+- `[model_state.rs:CallModel::end]` clears hand/share/camera/presenter/control/recording/captions/held/found/reactions, `invite_status` and `notice`; error cleared only if connected_at is set; `sound_off`, `video_preview`, `head_start` and `meeting_people` are not reset, and `head_start` is added to the duration shown on the ended screen
 - `[remote_control.rs:Machine::remote]` Request only accepted in Mode::Off with can_give and from != me; Grant/Deny only count when addressed to `to == me`; Input is injected only in Mode::Controlled
 - `[share.rs:Share::next_request_id]` request_id = max(self.request_id, JOIN_REQUEST_ID)+1, one count per call shared with camera
 - `[camera.rs:ACCEPT_WITH_VIDEO]` static AtomicBool SeqCst; set only if wanted(); take_ is swap(false), so read once
@@ -124,7 +132,7 @@ Files:
 - `[remote_control.rs:RemoteControl::set_injector]` tokio::spawn injection task; performs InputInjector::inject (portal/D-Bus) and close
 - `[share.rs:Share::pick_via, ask_input, start, start_session]` tokio::spawn tasks: portal picker/consent, encoder watcher, 5s grant timer
 - `[camera.rs:Camera::open]` tokio::spawn plus spawn_blocking; opens camera via portal/V4L2 (may prompt user); sends CameraMsg::Opened
-- `[manager.rs:CallManager::start]` starts hub (calling trouter) and writes global static MANAGER
+- `[manager.rs:CallManager::start]` starts hub (calling trouter) and writes global static MANAGER; cfg(not test): `VideoFx::use_teams` starts the Teams thumbnail download (HTTPS GETs to `teams.public.onecdn.static.microsoft`, files under `<data dir>/backgrounds/teams/`, files older than 30 days fetched again) and wires `Shared::teams_changed` to redraw the effects panel
 - `[remote_control.rs:RemoteControl::sync_overlay]` ControlOverlay::show draws a cursor window over the share; dropped to remove
 - `[share.rs:Share::start]` starts H264Encoder and pump on the media session's video sender; [Share::stop] stops ScreenCapture
 - `[camera.rs:Camera::start]` spawns H264 encoder pump and watcher task, sends CameraMsg::Ended; draws SelfView via sink.video
@@ -142,6 +150,8 @@ Files:
 - `[camera.rs:v4l2_device/saved_camera]` reads env IRONTEAMS_CAMERA_DEVICE/IRONTEAMS_CAMERA via compat::var_os; reads settings from config dir on disk; enumerates devices::cameras()
 - `[manager.rs:CallManager::command/join_now]` driver.join / handle.control(Leave) / shared.control trigger network call actions; shared.push()/tick()/publish_presence() update UI and presence
 - `[remote_video.rs:wanted_layout]` reads env IRONTEAMS_MEETING_VIDEO_LAYOUT via compat::var_os
+- `[camera.rs:capture_settings]` reads env IRONTEAMS_CAMERA_QUALITY via compat::var_os; `low` (case-insensitive) selects the old 640x360/15 fps capture and low encoder settings, anything else the 720p/30 fps default
+- `[teams_backgrounds.rs:start/request_full]` network GETs of background thumbnails and pictures; checked files are written through a temporary file and renamed under the data dir
 - `[sink.rs:Shared::tick]` spawns a 1s tokio loop pushing state while the call is active
 
 ## Verification

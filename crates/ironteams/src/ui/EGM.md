@@ -20,11 +20,14 @@ Files:
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
 - `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
+- `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs` and the chat lists in `ui.rs`.
 - `motion.rs`: Sets TypingStore names and chats models for the typing indicator and list-row dots.
 - `palette.rs`: Command palette ranking (score/rank), recent-actions list, row building with list geometry, wired to PaletteApi callbacks.
+- `ongoing_call.rs`: `UiHandle::ongoing_call` and `ongoing_call_elapsed` fill `OngoingCallStore`, the header's live-call strip.
 - `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
 - `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; copies Theme, shows/updates messages.
 - `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models.
+- `row_fingerprint.rs`: `of`, `of_chat`, `of_post`: hash of every drawn field of a `MsgData`, `ChatData` or `PostData`, used as the row print for `model_sync`.
 - `settings.rs`: Settings UI controller root: Ctl state, thread-local CTL, submodule declarations/re-exports, MicPoll/OpenMic types, command list docs.
 - `teams.rs`: UiHandle methods converting TeamsData/DialogData into the TeamsStore global models and opening dialogs.
 - `topbar.rs`: Top bar search dropdown controller: suggestions, message hits, recents, slash commands, back/forward history, TopBarStore commands.
@@ -43,10 +46,10 @@ Files:
 - `[channels.rs:card_rows]` pub(super) fn(Vec<CardRowData>) -> ModelRc<CardRow> - Slint rows for an Adaptive Card
 - `[palette.rs:push_recent]` pub fn push_recent(recents:&str,id:&str)->String; comma-separated, newest first, deduped, max 5
 - `[activity.rs:UiHandle::activity_preview]` pub fn activity_preview(&self, PreviewData) replaces preview pane
-- `[channels.rs:UiHandle::posts]` pub fn(&self, posts:Vec<PostData>, newest_top:bool, anchor:Option<usize>) - set post cards, mark active, bump anchor tick
+- `[channels.rs:UiHandle::posts]` pub fn(&self, posts:Vec<PostData>, newest_top:bool, anchor:Option<usize>) - patches the cards into the retained thread-local POSTS model (keyed by id + `row_fingerprint::of_post`), sets newest_top, marks active, bumps anchor tick when an anchor is given
 - `[palette.rs:build]` pub fn build(query,&[PaletteAction],&[ChatRow],recents)->Vec<PaletteItem>; sets head/top/height per row
 - `[appstore.rs:UiHandle::open_view]` pub fn open_view(&self, view: String) switches main view, closes Settings if open
-- `[channels.rs:UiHandle::post_thread]` pub fn(&self, t:PostThreadData) - sets thread post and replies
+- `[channels.rs:UiHandle::post_thread]` pub fn(&self, t:PostThreadData) - rewrites the thread post only when its fingerprint or id changed; replies are patched into the thread-local THREAD model
 - `[palette.rs:wire]` pub fn wire(window:&AppWindow); installs PaletteApi on_results and on_push_recent
 - `[appstore.rs:UiHandle::apps_rail]` pub fn apps_rail(&self, RailData)
 - `[channels.rs:UiHandle::posts_inactive]` pub fn(&self) - ChannelStore.active=false
@@ -84,7 +87,8 @@ Files:
 - `[cal.rs:mod wire]` pub use wire::* re-export
 - `[drive.rs:UiHandle::{drive,drive_share,drive_picker,drive_versions,drive_preview,drive_info,drive_dialog}]` pub fns posting the above to the UI thread; drive_dialog(name:&'static str) sets/closes dialog
 - `[people.rs:UiHandle::me_presence]` pub fn(&self,availability,activity); delegates to settings::show_my_status
-- `[call.rs:wire]` pub fn wire(&AppWindow) sets is_meeting_chat and pin callbacks, camera_available, slot_videos, reactions model
+- `[call.rs:wire]` pub fn wire(&AppWindow) sets is_meeting_chat and pin callbacks, camera_available, slot_videos, reactions model, and starts the 150 ms menu watch timer
+- `[call_direct.rs:UiHandle::call_incoming_shown]` pub fn(&self, bool); sets DirectCallStore.incoming_shown (the engine hides the in-window incoming toast while the call rings on the desktop card); `call_incoming` with open == false resets it to true
 - `[engage.rs:UiHandle::engage_store]` pub fn(&self, d:EngageData) - replaces Engage feed
 - `[people.rs:UiHandle::pinned]` pub fn(&self,Vec<PinnedData>)
 - `[call.rs:UiHandle::call_state]` pub fn call_state(&self, CallData, HashMap<String, Pixels>) replaces everything the call window shows
@@ -92,7 +96,7 @@ Files:
 - `[people.rs:UiHandle::receipts_on]` pub fn(&self,bool)
 - `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
 - `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
-- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window
+- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; copies the Theme (including code_bg) and SettingsStore.wheel_speed from the main window
 
 ## Invariants
 - `[activity.rs:fill]` rows updated in place via set_row_data when id sequence and length are unchanged (keeps scroll position); otherwise set_vec
@@ -112,7 +116,13 @@ Files:
 - `[popout.rs:POPOUT]` thread_local, UI thread only; at most one pop-out window, new chat replaces the previous
 - `[appstore.rs:set_recaps]` query written only when it differs from the search box text
 - `[message_toast.rs:MAX_CARDS]` at most 3 cards; a new card removes the oldest first
-- `[popout.rs:popout_open]` switching conv clears draft and messages; scroll_tick bumped to land on newest
+- `[popout.rs:popout_open]` switching conv clears draft and sets an empty messages model (so the retained ROWS model is no longer the one shown and `popout_messages` restarts it); scroll_tick bumped to land on newest
+- `[popout.rs:popout_messages]` messages are patched into the thread-local ROWS model through `model_sync::patch` (fingerprint per row) instead of a new model each time; scroll_tick bumped only for the first fill of a chat
+- `[channels.rs:posts]` the POSTS model is replaced only when `model_sync::is_shown` is false (a test or the store default is shown); the thread post is written only when its fingerprint or id changed
+- `[row_fingerprint.rs:of]` MsgData is destructured without `..`, so a new field fails to compile until the fingerprint covers it
+- `[model_sync.rs:patch]` rows both lists share stay and only those whose print changed are written; a list that is mostly reordered is written row by row; returns the number of rows written
+- `[call.rs:set]` also fills the People panel: `invited` and `chat_people` models of CallAbsent rows (`call_absent`), a per-row `listed` flag from `backend::call::matches_query` with CallData.people_filter, plus prejoin_audio, sound_off, other_device, can_share_invite and the thread-local MIC_ID; `video_fx` also sets teams_note and each background's `loading`
+- `[call.rs:watch]` every 150 ms (`start_watch`): while the camera menu is open CallStore.command("video-preview", "on"|"off") is invoked on open/close; while the devices menu is open a microphone level meter (`devices::mic_level`) is opened and CallStore.mic_level written; any other menu drops the meter and zeroes the level; a mic that failed to open is not retried until the menu closes
 - `[call.rs:set]` phase empty or prejoin resets minimized, menu, view_mode=gallery, gallery_page=0, pinned; panel cleared only when phase empty
 - `[message_toast.rs:TOASTS]` toast model set by install_local; message_toast silently returns if install_local has not run
 - `[popout.rs:copy_theme]` pop-out has its own Theme global, copied from main on each open (not live)
@@ -142,13 +152,13 @@ Files:
 - `[call.rs:set]` reads call_feedback::roll() (randomness) and crate::external::suppressed(); toggles VideoFxStore open
 - `[clip.rs:wire]` sends Cmd::Clip over mpsc channel on UI callbacks
 - `[topbar.rs:ask_messages_later]` slint single-shot Timer triggering FindStore suggest-messages
-- `[call.rs:wire]` registers CallStore callbacks; with feature calls queries backend::call::camera::wanted()
+- `[call.rs:wire]` registers CallStore callbacks; with feature calls queries backend::call::camera::wanted(); starts a repeating 150 ms slint::Timer (kept in thread-local WATCH) that invokes the video-preview command and opens the microphone for the level meter while the matching menus are open
 - `[composer_apps.rs:wire]` sends Cmd::ComposerApps over mpsc and logs tracing::warn on unknown command
 - `[topbar.rs:run,command]` opens URLs via invoke_open_url, changes status through SettingsStore, navigates views, shows info toasts
 - `[call.rs:call_video]` uploads frames to Slint images (Image::from_rgb8) on the UI thread, thread_local GALLERY model [feature calls]
 - `[message_toast.rs:install]` sends Cmd::QuickReply/React/Lists(Mute)/SelectChat over mpsc; invokes window navigate('chat')
 - `[topbar.rs:CTL]` global thread-local controller state
-- `[activity.rs: ITEMS, PREVIEW; call.rs: LAST, PHOTO_IMAGES, REACTIONS_MODEL, GALLERY]` thread_local global state
+- `[activity.rs: ITEMS, PREVIEW; call.rs: LAST, PHOTO_IMAGES, REACTIONS_MODEL, GALLERY, WATCH, MIC_ID; channels.rs: POSTS, THREAD; popout.rs: ROWS]` thread_local global state
 - `[message_toast.rs:UiHandle::show_settings]` raises/shows the window via tray_wiring::show_and_raise and invokes SettingsStore.show
 - `[voice.rs:wire]` callbacks send Cmd::Voice over the unbounded channel to the backend
 

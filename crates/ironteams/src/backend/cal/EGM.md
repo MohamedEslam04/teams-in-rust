@@ -5,16 +5,21 @@ Calendar engine: `CalCmd` parsing and dispatch, `CalState`, Graph delta sync and
 
 Files:
 - `actions.rs`: Module root for calendar CalCmd handling: imports calendar-crate calls, re-exports helpers (pub(super)) and declares submodules helpers, dispatch, event_ops, moves_and_forms, rooms_and_sharing (and tests); no logic of its own.
-- `export.rs`: Print export: builds a plain agenda text from events and writes a hand-rolled A4 multi-page PDF 1.4 (Helvetica, WinAnsi) plus the export file name; no PDF library.
+- `export.rs`: Print export: builds a plain agenda text from events and writes a hand-rolled A4 (595x842 pt, margin 50, leading 15, 92 chars per line) multi-page PDF 1.4 (Helvetica, WinAnsi) plus the export file name; no PDF library.
 - `forms.rs`: New-event form as plain strings (FormFields): blank/from_event/from_chat constructors, validation and conversion to calendar::NewEvent incl. recurrence/reminder/body, plus date/time/people parsers and Scheduler slot helpers.
-- `grid.rs`: Pure calendar view model: local-time ranges/DST-aware midnights, view parsing/stepping/labels, and day/week/workweek/month/split/mini-calendar layouts (CalData) built from cached events.
-- `model.rs`: Pure view-model builders for calendar panels (peek, detail, filters, calendar list, Scheduler grid, rooms, share roles) from the calendar crate's types, with no UI or I/O.
+- `grid.rs`: Pure calendar view model: local-time ranges/DST-aware midnights, view parsing/stepping/labels, and day/week/workweek/month/split/mini-calendar layouts (CalData) built from cached events by `build` / `build_split`.
+- `model.rs`: Pure view-model builders for calendar panels (peek, detail, filters, calendar list, Scheduler grid and suggestions, rooms, settings, share roles, panel/form push structs) from the calendar crate's types, with no UI or I/O.
 - `reminders.rs`: Pure functions deciding which calendar reminders, 'started' notices and in-app Join banner are due at a given time from cached events.
 
 ## Interface
 - Subdirectory `actions/`: [actions/EGM.md](./actions/EGM.md) - Engine handlers for calendar commands: dispatch, event operations, rooms and sharing, moves and forms
 - `[actions.rs:helpers::*]` pub(super) glob re-export of the helpers submodule for sibling cal modules
 - `[grid.rs:DAY_MS]` pub const i64 = 86_400_000
+- `[grid.rs:build]` pub fn(events: &[&Event], c: &Ctx) -> CalData; builds the day/week/workweek/month/mini layouts; `[grid.rs:build_split]` pub fn(columns: &[(String, Vec<&Event>)], c: &Ctx) -> CalData; Split view, one column per calendar
+- `[grid.rs:CalData]` pub struct, the view model handed to the UI; `[grid.rs:Ctx]` pub struct, inputs of build (date, view, filter state, prefs); `[grid.rs:Prefs]` pub struct, Calendar settings the grid honors plus work-location pins by day; `[grid.rs:DEFAULT_PREFS]` pub static Prefs, all defaults, for tests
+- `[grid.rs:look]` pub fn(&Event) -> Look; how an event is drawn (`Look`, `Kind` pub types)
+- `[grid.rs:iso_week]` pub fn(Date) -> u32; ISO 8601 week number
+- `[grid.rs:DayHead]`, `Block`, `AllDay`, `MonthItem`, `MonthCell`, `MiniCell` pub structs; the cells of a CalData
 - `[model.rs:PeekData]` pub struct (Default, PartialEq) of event-peek fields and button flags (can_respond, can_edit, can_cancel, can_delete, has_join, urls)
 - `[reminders.rs:BANNER_LEAD_MS]` pub const i64 = 5 min; Join banner lead time
 - `[actions.rs:dispatch,event_ops,moves_and_forms,rooms_and_sharing]` private submodules holding the CalCmd handlers (not in this chunk)
@@ -25,7 +30,7 @@ Files:
 - `[grid.rs:Offset]` pub type Offset<'a> = &'a dyn Fn(i64)->i64: ms local is ahead of UTC at a UTC instant
 - `[model.rs:meeting_links]` pub fn(text: &str) -> (Option<String>, Option<String>) notes (Loop) and recap (Teams) URLs found in text
 - `[reminders.rs:Key]` pub type (String, i64) = (event id, start_ms) occurrence identity
-- `[export.rs:pdf_bytes]` pub fn(lines:&[String])->Vec<u8>: A4 PDF, wraps and paginates; first line bold 15pt
+- `[export.rs:pdf_bytes]` pub fn(lines:&[String])->Vec<u8>: A4 PDF (595x842 pt, 92 chars per line), wraps and paginates; first line bold 15pt
 - `[grid.rs:local_midnight_ms]` pub fn(Date, Offset)->i64: unix ms of 00:00 local on date (DST-aware two-step)
 - `[model.rs:when_label]` pub fn(e: &Event, off: Offset) -> String, e.g. 'Wed, Nov 18 · 09:00 – 10:00' / all-day / multi-day
 - `[reminders.rs:Reminder]` pub struct {id, subject, start_ms, join_url: Option<String>, location} (Debug, Clone, Eq)
@@ -70,9 +75,19 @@ Files:
 - `[forms.rs:people_lenient]` pub fn(&str)->Vec<Person>: keeps only valid addresses, deduped; used for Scheduler lookups while typing
 - `[grid.rs:hhmm]` pub(super) fn(ms, Offset)->String: local clock string via appearance::formats::clock
 - `[model.rs:toggle_filter]` pub fn(&mut EventFilter, group: &str, key: &str); unknown group/key is a no-op
-- `[forms.rs:show_as_key]` pub fn(ShowAs)->&'static str form key
+- `[forms.rs:show_as_key]` pub fn(ShowAs)->&'static str form key; `[forms.rs:show_as_graph]` pub fn(&str)->&'static str Graph showAs value for a form key
+- `[forms.rs:from_chat]` pub fn(subject, members: &[Person], my_email, date, start_min, tz) -> FormFields; New meeting form prefilled with the chat's people and a Teams meeting
+- `[forms.rs:local_ms]` pub fn(date:&str, time:&str, off) -> Option<i64>; `[forms.rs:slot_minutes]` pub fn(&FormFields) -> u32 (event length, 30 when unusable); `[forms.rs:slot_for_pick]` pub fn(&FormFields, pick_min) -> (start, end date, end time) keeping the length
+- `[forms.rs:local_tz]` pub fn() -> String; Settings zone, else machine zone, else "UTC"
 - `[grid.rs:range_label]` pub fn(first, last, View)->String: title like 'November 16 – 20, 2026'; month view uses first+10 days
 - `[model.rs:CalRow]` pub struct {id,name,owner,color:u32,checked,header}
+- `[model.rs:calendar_rows]` pub fn(...) -> Vec<CalRow>; calendar list for the side panel; `[model.rs:calendar_color]` pub fn(&CalendarInfo) -> u32; Graph color names as RGB, `auto` and unknown names get the accent
+- `[model.rs:SchedRow]`, `[model.rs:sched_rows]`, `[model.rs:cell]`, `[model.rs:shade_work_hours]`, `[model.rs:local_work_hours]`: Scheduler grid rows (cell values 0 free, 1 tentative, 2 busy, 3 out of office, 4 working elsewhere, 5 unknown), their working-hours shading, and the mailbox hours as minutes after local midnight
+- `[model.rs:SuggestRow]`, `[model.rs:suggestions]` pub fn(&FoundTimes, Offset, limit) -> Vec<SuggestRow>; find_meeting_times candidates
+- `[model.rs:RoomRow]`, `[model.rs:room_status]`, `[model.rs:room_rows]`: room picker rows; free/busy/unknown over the form slot
+- `[model.rs:PermRow]`, `[model.rs:role_key]`, `[model.rs:role_options]`, `[model.rs:share_roles]`, `[model.rs:role_of]`: share dialog rows and permission-role key mapping
+- `[model.rs:SettingsData]`, `[model.rs:zone_matches]` pub fn(...) -> time zone search (up to `limit` matches); settings dialog data
+- `[model.rs:Panels]`, `[model.rs:FormOpen]`, `[model.rs:SchedPush]`, `[model.rs:RoomsPush]` pub structs; payloads pushed to the UI (side panels, open new-event form, Scheduler grid, room picker)
 
 ## Invariants
 - `[forms.rs:FormFields::to_new_event]` validation order: non-empty trimmed subject, start/end date, times (not for all-day), end>=start, people, recurrence, reminder; ends with NewEvent::validate whose 'protocol: '/'event: ' prefixes are stripped from errors
@@ -107,7 +122,7 @@ Files:
 - `[grid.rs:time_grid]` all-day rows assigned greedily, sorted by (col, longest span first, start_ms)
 
 ## Side Effects
-- `[forms.rs:local_tz]` reads the machine time zone via iana_time_zone::get_timezone() and Settings via appearance::formats::time_zone()
+- `[forms.rs:local_tz]` reads the Settings zone via appearance::formats::time_zone() first, then the machine zone via iana_time_zone::get_timezone(), then falls back to "UTC"
 - `[forms.rs:shown]` reads the appearance crate's global 12h/24h clock setting
 - `[forms.rs:parse_hm]` depends on crate::send_options::parse_time (locale/digit parsing)
 - `[actions.rs:module]` the handlers declared here call the calendar crate (network: Graph create/cancel/forward/respond/move/permissions/rooms); in demo mode only the local cache is changed (per module doc; implementations are in submodules outside this chunk)

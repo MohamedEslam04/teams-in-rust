@@ -46,7 +46,7 @@ Files:
 - `[data.rs:SettingData]` pub struct: key, group: &'static str, label: &'static str, on
 - `[data.rs:CommunityData]` pub struct: id, name, description, people, company
 - `[data.rs:PostData]` pub struct: id, sender, time, text, likes, reply, url
-- `[mod.rs:NAMES]` private const list of 52 accepted command names (open, refresh, filter, sort, query, expand, team-/chan-/channel-/member-/tag-/email- commands, discover, join*, communities, open-post, ...)
+- `[mod.rs:NAMES]` private const list of 53 accepted command names (open, refresh, filter, sort, query, expand, team-/chan-/channel-/member-/tag-/email- commands, discover, join*, communities, open-post, ...)
 
 ## Invariants
 - `[mod.rs:TeamsCmd::parse]` only names listed in NAMES parse; unknown names yield None; multiple args are joined by SEP
