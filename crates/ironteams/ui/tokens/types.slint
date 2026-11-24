@@ -91,7 +91,7 @@ export struct MeetingCard { kind: string, title: string, detail: string, people:
 export struct ReaderItem { initials: string, color: color, name: string }
 
 // One part of a message's text when it has code blocks: a run of text (`body`) or a block (`code`).
-export struct BodyPart { body: styled-text, code: string, is-code: bool }
+export struct BodyPart { body: styled-text, code: string, is-code: bool, rtl: bool }
 
 /// One quoted message of a reply: a card above the text.
 export struct QuoteItem {

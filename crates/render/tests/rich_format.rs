@@ -888,6 +888,41 @@ fn markdown_to_composer_html_uses_teams_tags() {
 }
 
 #[test]
+fn right_to_left_blocks_carry_their_direction() {
+    assert_eq!(
+        markdown_to_composer_html("Hi team\nحاضر\nok تمام"),
+        concat!(r#"<p dir="ltr">Hi team</p><p dir="rtl">حاضر</p><p dir="ltr">ok تمام</p>"#)
+    );
+    // Formatting does not hide the direction, and blocks without text stay plain.
+    assert_eq!(
+        markdown_to_composer_html("**حاضر**\n\n- one\n- تمام"),
+        concat!(
+            r#"<p dir="rtl"><strong>حاضر</strong></p><p>&nbsp;</p>"#,
+            r#"<ul><li dir="ltr">one</li><li dir="rtl">تمام</li></ul>"#
+        )
+    );
+    assert_eq!(
+        doc(vec![
+            RichBlock::Heading {
+                level: 2,
+                spans: vec![sp("عنوان")]
+            },
+            RichBlock::Quote(vec![sp("quote")]),
+        ])
+        .to_html(),
+        r#"<h2 dir="rtl">عنوان</h2><blockquote dir="ltr">quote</blockquote>"#
+    );
+}
+
+#[test]
+fn left_to_right_documents_have_no_direction() {
+    assert_eq!(
+        markdown_to_composer_html("one\ntwo\n- x"),
+        "<p>one</p><p>two</p><ul><li>x</li></ul>"
+    );
+}
+
+#[test]
 fn markdown_round_trips_through_html() {
     let d = markdown_to_rich("# T\n**b** and `c`\n- x\n- y\n```sh\nls\n```");
     assert_eq!(parse_rich_html(&d.to_html()), d);

@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 /// A run of a message body: text drawn as `StyledText`, or a code block drawn as a box of its own.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Segment {
-    /// Markdown for `StyledText`.
-    Text(String),
+    /// Markdown for `StyledText`, and whether its lines run right to left.
+    Text { md: String, rtl: bool },
     /// The code as written, without the trailing line break.
     Code(String),
 }
@@ -153,11 +153,22 @@ fn spans_plain(spans: &[Span]) -> String {
 struct Piece {
     md: String,
     code: Option<String>,
+    /// The text runs right to left (its first strong character is Arabic or Hebrew).
+    rtl: bool,
 }
 
 impl Piece {
     fn text(md: String) -> Self {
-        Piece { md, code: None }
+        Piece {
+            md,
+            code: None,
+            rtl: false,
+        }
+    }
+
+    fn rtl(mut self, dir: Dir) -> Self {
+        self.rtl = dir == Dir::Rtl;
+        self
     }
 
     /// A code block. `StyledText` has no blocks, so its Markdown is one inline-code run per line
@@ -172,11 +183,55 @@ impl Piece {
         Piece {
             md,
             code: (!code.trim().is_empty()).then(|| code.to_string()),
+            rtl: false,
         }
     }
 }
 
-/// Sets `r.markdown` and `r.segments` from the blocks of a body.
+/// Splits a paragraph into runs of lines that share a direction (each line has its own, from its
+/// first strong character; a line without one follows the line before it, `*dir` at the start).
+/// `*dir` is left at the direction of the last line. A paragraph whose lines agree stays whole.
+fn direction_runs(spans: &[Span], dir: &mut Dir) -> Vec<(Vec<Span>, Dir)> {
+    let dirs = render::line_directions(&spans_plain(spans), *dir);
+    *dir = dirs.last().copied().unwrap_or(*dir);
+    if dirs.windows(2).all(|w| w[0] == w[1]) {
+        return vec![(spans.to_vec(), dirs[0])];
+    }
+    let mut lines: Vec<Vec<Span>> = vec![Vec::new()];
+    for span in spans {
+        for (i, part) in span.text.split('\n').enumerate() {
+            if i > 0 {
+                lines.push(Vec::new());
+            }
+            if let Some(line) = lines.last_mut() {
+                line.push(Span {
+                    text: part.to_string(),
+                    ..span.clone()
+                });
+            }
+        }
+    }
+    let mut runs: Vec<(Vec<Span>, Dir)> = Vec::new();
+    for (line, line_dir) in lines.into_iter().zip(dirs) {
+        match runs.last_mut() {
+            Some((run, run_dir)) if *run_dir == line_dir => {
+                run.push(Span {
+                    text: "\n".into(),
+                    style: Default::default(),
+                    link: None,
+                    mention: None,
+                });
+                run.extend(line);
+            }
+            _ => runs.push((line, line_dir)),
+        }
+    }
+    runs
+}
+
+/// Sets `r.markdown`, `r.segments` and `r.rtl` from the blocks of a body. A body that has code
+/// blocks or lines of both directions is cut into segments, each text segment aligned by its own
+/// direction; any other body is one run of text aligned by `r.rtl`.
 fn set_body(r: &mut Rendered, pieces: Vec<Piece>) {
     r.markdown = pieces
         .iter()
@@ -185,27 +240,42 @@ fn set_body(r: &mut Rendered, pieces: Vec<Piece>) {
         .collect::<Vec<_>>()
         .join("\n\n");
     r.segments = Vec::new();
-    if pieces.iter().all(|p| p.code.is_none()) {
+    let mut texts = pieces
+        .iter()
+        .filter(|p| p.code.is_none() && !p.md.trim().is_empty());
+    r.rtl = texts.clone().next().is_some_and(|p| p.rtl);
+    let mixed = texts.any(|p| p.rtl != r.rtl);
+    if !mixed && pieces.iter().all(|p| p.code.is_none()) {
         return;
     }
     let mut text: Vec<&str> = Vec::new();
+    let mut text_rtl = false;
     for p in &pieces {
         match &p.code {
             Some(code) => {
-                flush_text(&mut text, &mut r.segments);
+                flush_text(&mut text, text_rtl, &mut r.segments);
                 r.segments.push(Segment::Code(code.clone()));
             }
-            None if !p.md.trim().is_empty() => text.push(&p.md),
+            None if !p.md.trim().is_empty() => {
+                if p.rtl != text_rtl {
+                    flush_text(&mut text, text_rtl, &mut r.segments);
+                }
+                text_rtl = p.rtl;
+                text.push(&p.md);
+            }
             None => {}
         }
     }
-    flush_text(&mut text, &mut r.segments);
+    flush_text(&mut text, text_rtl, &mut r.segments);
 }
 
 /// Closes the run of text blocks collected so far as one segment.
-fn flush_text(text: &mut Vec<&str>, out: &mut Vec<Segment>) {
+fn flush_text(text: &mut Vec<&str>, rtl: bool, out: &mut Vec<Segment>) {
     if !text.is_empty() {
-        out.push(Segment::Text(text.join("\n\n")));
+        out.push(Segment::Text {
+            md: text.join("\n\n"),
+            rtl,
+        });
         text.clear();
     }
 }
@@ -215,7 +285,7 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
     let mut r = Rendered::default();
     let mut md: Vec<Piece> = vec![];
     let mut plain: Vec<String> = vec![];
-    let mut first_dir: Option<Dir> = None;
+    let mut dir = Dir::Ltr;
     for b in &rt.blocks {
         match b {
             // A Teams reply quote and each message of a forward is a card wherever it stands; a
@@ -242,15 +312,14 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
                 });
             }
             Block::Quote { preview, .. } => {
-                md.push(Piece::text(format!(
-                    "> {}",
-                    escape(&preview.replace('\n', " "))
-                )));
+                dir = render::text_direction(preview).unwrap_or(dir);
+                md.push(Piece::text(format!("> {}", escape(&preview.replace('\n', " ")))).rtl(dir));
                 plain.push(preview.clone());
             }
-            Block::Paragraph { dir, spans } => {
-                first_dir.get_or_insert(*dir);
-                md.push(Piece::text(spans_md(spans)));
+            Block::Paragraph { spans, .. } => {
+                for (run, run_dir) in direction_runs(spans, &mut dir) {
+                    md.push(Piece::text(spans_md(&run)).rtl(run_dir));
+                }
                 plain.push(spans_plain(spans));
             }
             Block::List { ordered, items } => {
@@ -264,10 +333,11 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
                     lines.push(format!("{bullet} {}", spans_md(it)));
                     plain.push(spans_plain(it));
                 }
+                // A list is one run of text: it takes the direction of its first item.
                 if let Some(firstitem) = items.first() {
-                    first_dir.get_or_insert(render::base_direction(&spans_plain(firstitem)));
+                    dir = render::text_direction(&spans_plain(firstitem)).unwrap_or(dir);
                 }
-                md.push(Piece::text(lines.join("\n")));
+                md.push(Piece::text(lines.join("\n")).rtl(dir));
             }
             Block::Code { text } => {
                 md.push(Piece::code(text));
@@ -278,7 +348,6 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
     }
     set_body(&mut r, md);
     r.plain = plain.join("\n").trim().to_string();
-    r.rtl = first_dir == Some(Dir::Rtl);
     r
 }
 
@@ -391,11 +460,17 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
     let mut md: Vec<Piece> = Vec::new();
     // The reply quotes are drawn as cards: leave out as many quote blocks as there are cards.
     let mut cards = r.quotes.len();
+    let mut dir = Dir::Ltr;
     for b in &doc.blocks {
         match b {
             RichBlock::Quote(_) if cards > 0 => cards -= 1,
-            RichBlock::Paragraph(spans) => md.push(Piece::text(spans_md(spans))),
+            RichBlock::Paragraph(spans) => {
+                for (run, run_dir) in direction_runs(spans, &mut dir) {
+                    md.push(Piece::text(spans_md(&run)).rtl(run_dir));
+                }
+            }
             RichBlock::Heading { spans, .. } => {
+                dir = render::text_direction(&spans_plain(spans)).unwrap_or(dir);
                 let bold: Vec<Span> = spans
                     .iter()
                     .map(|s| {
@@ -404,23 +479,32 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
                         s
                     })
                     .collect();
-                md.push(Piece::text(spans_md(&bold)));
+                md.push(Piece::text(spans_md(&bold)).rtl(dir));
             }
-            RichBlock::Quote(spans) => md.push(Piece::text(
-                spans_md(spans)
-                    .split('\n')
-                    .map(|l| format!("> {l}"))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            )),
+            RichBlock::Quote(spans) => {
+                dir = render::text_direction(&spans_plain(spans)).unwrap_or(dir);
+                md.push(
+                    Piece::text(
+                        spans_md(spans)
+                            .split('\n')
+                            .map(|l| format!("> {l}"))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
+                    .rtl(dir),
+                );
+            }
             RichBlock::List(l) => {
                 let mut lines = Vec::new();
                 list_md(l, 0, &mut lines);
-                md.push(Piece::text(lines.join("\n")));
+                if let Some(first) = l.items.first() {
+                    dir = render::text_direction(&spans_plain(&first.spans)).unwrap_or(dir);
+                }
+                md.push(Piece::text(lines.join("\n")).rtl(dir));
             }
             RichBlock::Code { text, .. } => md.push(Piece::code(text)),
-            RichBlock::Table(t) => md.push(Piece::text(table_md(t))),
-            RichBlock::Rule => md.push(Piece::text("──────────".into())),
+            RichBlock::Table(t) => md.push(Piece::text(table_md(t)).rtl(dir)),
+            RichBlock::Rule => md.push(Piece::text("──────────".into()).rtl(dir)),
             RichBlock::Image { .. } => {}
         }
     }
@@ -593,6 +677,66 @@ mod tests {
     fn escapes_markdown_chars() {
         let x = r("<p>a*b_c [x](y) # not a heading</p>");
         assert_eq!(x.markdown, "a\\*b\\_c \\[x\\]\\(y\\) \\# not a heading");
+    }
+
+    fn text_segment(md: &str, rtl: bool) -> Segment {
+        Segment::Text { md: md.into(), rtl }
+    }
+
+    #[test]
+    fn every_paragraph_of_a_mixed_message_has_its_own_direction() {
+        let x = r("<p>Hi team</p><p>حاضر</p><p>ok تمام</p>");
+        assert_eq!(
+            x.segments,
+            vec![
+                text_segment("Hi team", false),
+                text_segment("حاضر", true),
+                text_segment("ok تمام", false),
+            ]
+        );
+        assert!(!x.rtl);
+    }
+
+    #[test]
+    fn every_line_break_of_a_mixed_paragraph_has_its_own_direction() {
+        let x = r("<p>Hi team<br>حاضر<br>ok تمام</p>");
+        assert_eq!(
+            x.segments,
+            vec![
+                text_segment("Hi team", false),
+                text_segment("حاضر", true),
+                text_segment("ok تمام", false),
+            ]
+        );
+        // Lines that agree stay one run with their line breaks.
+        let x = r("<p>one<br>two</p><p>حاضر<br>تمام</p>");
+        assert_eq!(
+            x.segments,
+            vec![
+                text_segment("one\\\ntwo", false),
+                text_segment("حاضر\\\nتمام", true)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_paragraph_without_a_strong_character_follows_the_one_before() {
+        let x = r("<p>حاضر</p><p>👍</p><p>123</p>");
+        assert!(x.segments.is_empty());
+        assert!(x.rtl);
+    }
+
+    #[test]
+    fn a_rich_message_keeps_the_direction_of_every_line() {
+        let x = rich("<h1>Title</h1><p>حاضر</p><p><u>ok</u></p>");
+        assert_eq!(
+            x.segments,
+            vec![
+                text_segment("**Title**", false),
+                text_segment("حاضر", true),
+                text_segment("<u>ok</u>", false),
+            ]
+        );
     }
 
     #[test]
@@ -824,9 +968,15 @@ mod tests {
         assert_eq!(
             x.segments,
             vec![
-                Segment::Text("before\n\nmore".into()),
+                Segment::Text {
+                    md: "before\n\nmore".into(),
+                    rtl: false
+                },
                 Segment::Code("let a = 1;\n    let b = 2;".into()),
-                Segment::Text("after".into()),
+                Segment::Text {
+                    md: "after".into(),
+                    rtl: false
+                },
             ]
         );
         // The flat markdown stays: one inline-code run per line.
@@ -861,9 +1011,15 @@ mod tests {
         assert_eq!(
             x.segments,
             vec![
-                Segment::Text("**Title**".into()),
+                Segment::Text {
+                    md: "**Title**".into(),
+                    rtl: false
+                },
                 Segment::Code("x = 1".into()),
-                Segment::Text("end".into()),
+                Segment::Text {
+                    md: "end".into(),
+                    rtl: false
+                },
             ]
         );
     }
@@ -872,7 +1028,7 @@ mod tests {
     fn each_segment_of_text_is_markdown_slint_accepts() {
         let x = r("<p>a <b>b</b></p><pre>1\n2</pre><ul><li>x</li></ul>");
         for s in &x.segments {
-            if let Segment::Text(md) = s {
+            if let Segment::Text { md, .. } = s {
                 parses(md);
             }
         }

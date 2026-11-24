@@ -658,7 +658,7 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|c| c.kind == teams_proto::teams::ChannelKind::Private),
                 rtl_title: render::base_direction(&title) == render::Dir::Rtl,
-                rtl_preview: render::base_direction(preview_text) == render::Dir::Rtl,
+                rtl_preview: super::util::preview_is_rtl(preview_text),
                 preview: preview_text.replace('\n', " ").chars().take(120).collect(),
                 time: chat_time(r.last_activity_ms),
                 unread,

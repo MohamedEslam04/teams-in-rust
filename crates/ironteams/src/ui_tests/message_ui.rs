@@ -19,6 +19,7 @@ fn text_part(text: &str) -> BodyPart {
         body: slint::StyledText::from_plain_text(text),
         code: SharedString::default(),
         is_code: false,
+        rtl: false,
     }
 }
 
@@ -27,6 +28,7 @@ fn code_part(code: &str) -> BodyPart {
         body: slint::StyledText::default(),
         code: code.into(),
         is_code: true,
+        rtl: false,
     }
 }
 
