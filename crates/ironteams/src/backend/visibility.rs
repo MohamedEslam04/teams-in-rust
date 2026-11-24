@@ -89,6 +89,12 @@ impl Engine {
     pub(super) async fn visible_tick(&self, period: Duration) {
         tick(self.visible.subscribe(), period).await;
     }
+
+    /// Waits `period` of hidden time, then returns; never returns while the window is in sight.
+    /// The mirror of [`Engine::visible_tick`], for what must keep running out of sight.
+    pub(super) async fn hidden_tick(&self, period: Duration) {
+        hidden_tick_on(self.visible.subscribe(), period).await;
+    }
 }
 
 /// Resolves once the flag holds `want` (at once when it does). The `Ref` is dropped here, so
@@ -106,6 +112,16 @@ async fn tick(mut rx: tokio::sync::watch::Receiver<bool>, period: Duration) {
         tokio::select! {
             _ = tokio::time::sleep(period) => return,
             _ = until(&mut rx, false) => {}
+        }
+    }
+}
+
+async fn hidden_tick_on(mut rx: tokio::sync::watch::Receiver<bool>, period: Duration) {
+    loop {
+        until(&mut rx, false).await;
+        tokio::select! {
+            _ = tokio::time::sleep(period) => return,
+            _ = until(&mut rx, true) => {}
         }
     }
 }
@@ -191,6 +207,33 @@ mod tests {
         let start = std::time::Instant::now();
         tick(rx, Duration::from_millis(10)).await;
         assert!(start.elapsed() >= Duration::from_millis(150));
+    }
+
+    #[tokio::test]
+    async fn the_hidden_tick_is_the_period_while_hidden() {
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        let start = std::time::Instant::now();
+        hidden_tick_on(rx, Duration::from_millis(60)).await;
+        assert!(start.elapsed() >= Duration::from_millis(60));
+    }
+
+    #[tokio::test]
+    async fn the_hidden_tick_never_counts_while_visible_and_starts_when_hidden() {
+        let (tx, rx) = tokio::sync::watch::channel(true);
+        tokio::spawn(async move {
+            // Visible for far longer than the period, then hidden.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            tx.send_replace(false);
+            // Keep the sender alive past the tick.
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+        });
+        let start = std::time::Instant::now();
+        hidden_tick_on(rx, Duration::from_millis(100)).await;
+        let took = start.elapsed();
+        assert!(
+            took >= Duration::from_millis(400),
+            "ticked while visible: {took:?}"
+        );
     }
 
     /// The seeded demo engine (offline) and its window, which stay alive together.

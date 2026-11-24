@@ -53,7 +53,7 @@ export global ListStore {
     // Pinned to the top of its team (pinned channels list).
     in property <bool> channel-pinned: false;
     // Names: new-section, rename-section, delete-section, section-toggle, collapse-all, move,
-    // remove-section, mute, unmute, copy-link, hide, option, channel-menu, channel-show,
+    // remove-section, mute, unmute, notify-available, notify-available-off, copy-link, hide, option, channel-menu, channel-show,
     // channel-hide, channel-notify, channel-link, channel-team, channel-leave.
     callback command(string, string);
 }
@@ -116,6 +116,11 @@ export component ItemMenu inherits Rectangle {
             if !root.data.channel: MenuItem { variant: MenuItemVariant.list;
                 label: root.data.muted ? @tr("Unmute") : @tr("Mute");
                 clicked => { ListStore.command(root.data.muted ? "unmute" : "mute", root.data.id); root.done(); }
+            }
+            // Teams offers it in a 1:1 chat with another person; it is kept on this computer only.
+            if root.data.notify != "": MenuItem { variant: MenuItemVariant.list;
+                label: root.data.notify == "on" ? @tr("Turn off notifications") : @tr("Notify when available");
+                clicked => { ListStore.command(root.data.notify == "on" ? "notify-available-off" : "notify-available", root.data.person); root.done(); }
             }
             // A chat's apps (no read of them is known, so the engine says so) and its Workflows.
             if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Manage apps"); clicked => { ListStore.command("manage-apps", root.data.id); root.done(); } }

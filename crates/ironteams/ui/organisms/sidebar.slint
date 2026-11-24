@@ -59,8 +59,9 @@ component ChatItem inherits Rectangle {
     property <bool> in-section: root.data.section != "favorites" && root.data.section != "chats" && root.data.section != "meetings" && root.data.section != "channels";
     // The height of the menu's main view, to tell whether it fits below the row: six rows for
     // every item, three more for a channel (four when private), five for a chat, plus Remove from
-    // section and Leave (a group chat); 32 px rows, the padding and the border.
-    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 3 + (root.data.private ? 1 : 0) : 5) + (root.data.group ? 1 : 0)) * 32px + 10px;
+    // section, Leave (a group chat) and Notify when available (a 1:1 chat); 32 px rows, the
+    // padding and the border.
+    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 3 + (root.data.private ? 1 : 0) : 5) + (root.data.group ? 1 : 0) + (root.data.notify != "" ? 1 : 0)) * 32px + 10px;
     function open-menu() {
         root.menu-up = root.absolute-position.y + root.height - 8px + root.menu-height > root.limit ? root.menu-height : 0px;
         item-menu.show();

@@ -82,7 +82,14 @@ pub fn known_activity(mri: &str) -> String {
 
 /// Records an availability and activity; true when either changed. A push that carries no
 /// activity keeps the one known while the availability is the same (the push may just not say).
+#[cfg(test)]
 pub fn set(mri: &str, availability: &str, activity: &str) -> bool {
+    record(mri, availability, activity).0
+}
+
+/// [`set`] with the availability known before as well (`None` the first time the person is
+/// seen).
+pub fn record(mri: &str, availability: &str, activity: &str) -> (bool, Option<String>) {
     with(|c| {
         let old = c.known.insert(mri.to_string(), availability.to_string());
         let same_availability = old.as_deref() == Some(availability);
@@ -99,7 +106,7 @@ pub fn set(mri: &str, availability: &str, activity: &str) -> bool {
         } else {
             c.activities.insert(mri.to_string(), activity);
         }
-        changed
+        (changed, old)
     })
 }
 
@@ -156,6 +163,41 @@ pub fn work_location_label(pin: Option<&str>) -> &'static str {
     }
 }
 
+/// What woke the lookup loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Round {
+    /// Someone new is wanted.
+    Fresh,
+    /// A minute of the window being in sight (or the window being shown).
+    All,
+    /// A minute of the window being out of sight.
+    Hidden,
+}
+
+/// Whom a round looks up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Who {
+    Nobody,
+    /// The people wanted since the last lookup.
+    New,
+    Everyone,
+    /// Only the people on the "Notify when available" list: while the window is out of sight the
+    /// lists on screen need no dots, but a watched person turning Available still has to be seen.
+    Watched,
+}
+
+fn who(round: Round, window_visible: bool) -> Who {
+    match (round, window_visible) {
+        (Round::Hidden, false) => Who::Watched,
+        // Shown again meanwhile: the round on show takes everyone.
+        (Round::Hidden, true) => Who::Nobody,
+        // The people wanted meanwhile stay wanted: the round on show takes them.
+        (_, false) => Who::Nobody,
+        (Round::All, true) => Who::Everyone,
+        (Round::Fresh, true) => Who::New,
+    }
+}
+
 /// Who to look up: everyone wanted on a full round, else only the people wanted since the last.
 fn take(all: bool) -> Vec<String> {
     with(|c| {
@@ -175,21 +217,27 @@ impl Engine {
         let e = self.clone();
         with(|c| c.mine = e.me.clone());
         want(&e.me);
+        // The people to notify when available are looked up like the ones on screen.
+        for mri in e.watched_people() {
+            want(&mri);
+        }
         tokio::spawn(async move {
             loop {
-                let all = tokio::select! {
+                let round = tokio::select! {
                     _ = WAKE.notified() => {
                         tokio::time::sleep(GATHER).await;
-                        false
+                        Round::Fresh
                     }
                     // Out of sight the round waits for the window to be shown, then runs at once.
-                    _ = e.visible_tick(REFRESH) => true,
+                    _ = e.visible_tick(REFRESH) => Round::All,
+                    _ = e.hidden_tick(REFRESH) => Round::Hidden,
                 };
-                if !e.is_visible() {
-                    // The people wanted meanwhile stay wanted: the round on show takes them.
-                    continue;
-                }
-                let people = take(all);
+                let people = match who(round, e.is_visible()) {
+                    Who::Nobody => continue,
+                    Who::New => take(false),
+                    Who::Everyone => take(true),
+                    Who::Watched => e.watched_people(),
+                };
                 if people.is_empty() {
                     continue;
                 }
@@ -217,7 +265,8 @@ impl Engine {
 
     /// Records an availability and activity; a change redraws the dots that show it.
     pub(super) fn apply_presence(self: &Arc<Self>, mri: &str, availability: &str, activity: &str) {
-        if !set(mri, availability, activity) {
+        let (changed, previous) = record(mri, availability, activity);
+        if !changed {
             return;
         }
         if mri == self.me {
@@ -229,6 +278,7 @@ impl Engine {
             d.messages = true;
             d.header = true;
         });
+        self.availability_changed(mri, previous.as_deref(), availability);
     }
 }
 
@@ -329,6 +379,27 @@ mod tests {
         assert_eq!(forced_activity("Away"), "Away");
         assert_eq!(forced_activity("Offline"), "OffWork");
         assert_eq!(forced_activity("Busy"), "");
+    }
+
+    #[test]
+    fn the_first_sight_has_no_previous_availability_and_a_change_has() {
+        let m = "8:orgid:pp-test-record";
+        assert_eq!(record(m, "Busy", ""), (true, None));
+        assert_eq!(record(m, "Busy", ""), (false, Some("Busy".to_string())));
+        assert_eq!(record(m, "Available", ""), (true, Some("Busy".to_string())));
+    }
+
+    #[test]
+    fn out_of_sight_only_the_watched_people_are_looked_up() {
+        // In sight: the rounds are as they were.
+        assert_eq!(who(Round::Fresh, true), Who::New);
+        assert_eq!(who(Round::All, true), Who::Everyone);
+        // Out of sight: the dots on screen can wait, a person to notify cannot.
+        assert_eq!(who(Round::Hidden, false), Who::Watched);
+        assert_eq!(who(Round::Fresh, false), Who::Nobody);
+        assert_eq!(who(Round::All, false), Who::Nobody);
+        // The window came back while the hidden minute ended.
+        assert_eq!(who(Round::Hidden, true), Who::Nobody);
     }
 
     #[test]

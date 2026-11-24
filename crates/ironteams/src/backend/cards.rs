@@ -235,6 +235,46 @@ impl Engine {
         true
     }
 
+    /// "<Name> is now available" as a desktop card (no buttons; a click opens the chat with
+    /// them). False when the cards are off: the caller shows its own system notification. Once it
+    /// returns true, `system` runs when the card cannot be shown.
+    pub(super) fn available_card(
+        self: &Arc<Self>,
+        mri: &str,
+        name: &str,
+        photo_bytes: Option<&[u8]>,
+        system: impl FnOnce() + Send + 'static,
+    ) -> bool {
+        if !cards_on() {
+            return false;
+        }
+        let card = Card {
+            id: client::next_id(),
+            kind: Kind::Message,
+            title: super::notify_available::notice(name).summary,
+            initials: crate::data::initials(name),
+            color: crate::data::color_for(mri),
+            avatar: if banner::general_prefs().banner_photo {
+                photo(mri, photo_bytes)
+            } else {
+                None
+            },
+            ..Card::default()
+        };
+        let rt = tokio::runtime::Handle::current();
+        let (e, mri) = (self.clone(), mri.to_owned());
+        let on_action: Handler = Box::new(move |a| match a {
+            Action::Open => {
+                let (e, mri) = (e.clone(), mri.clone());
+                rt.spawn(async move { e.open_available_chat(&mri).await });
+            }
+            Action::Settings => e.ui.show_settings("notifications"),
+            _ => {}
+        });
+        self.card_or_system(Source::Presence, card, on_action, system);
+        true
+    }
+
     /// An incoming call as a desktop card with Accept and Decline; it stays until the call stops
     /// ringing (`call_direct.rs` dismisses it). `None` when the cards are off: the caller shows
     /// its system notification. `system` is the fallback when the card cannot be shown.

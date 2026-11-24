@@ -211,10 +211,11 @@ pub(crate) fn of_chat(c: &ChatData) -> u64 {
         person,
         private,
         kind,
+        notify,
     } = c;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (
-        id, title, preview, time, initials, section, presence, person, kind,
+        id, title, preview, time, initials, section, presence, person, kind, notify,
     )
         .hash(&mut h);
     (
