@@ -29,7 +29,7 @@ use tokio::task::JoinHandle;
 pub const ROLE: VideoRole = VideoRole::MainVideo;
 /// The self-view is drawn small, in our own tile: no wider than this.
 const SELF_VIEW_WIDTH: usize = 320;
-/// One self-view picture every this many camera frames (15 fps camera, 7.5 fps self-view).
+/// One self-view picture every this many camera frames (30 fps camera, 15 fps self-view).
 const SELF_VIEW_EVERY: u32 = 2;
 
 /// Whether calls negotiate the main-video line: on unless `IRONTEAMS_CAMERA=0`.
@@ -39,6 +39,35 @@ pub fn wanted() -> bool {
 
 fn env_on(v: Option<&std::ffi::OsStr>) -> bool {
     v.is_none_or(|v| v != "0")
+}
+
+/// `IRONTEAMS_CAMERA_QUALITY=low` sends the camera as it was before 2026-11-23 (640x360 at 15 frames
+/// a second, 600 kbit/s), to compare with the default 720p at 30 frames a second.
+fn quality_low() -> bool {
+    quality_is_low(compat::var_os("IRONTEAMS_CAMERA_QUALITY").as_deref())
+}
+
+fn quality_is_low(v: Option<&std::ffi::OsStr>) -> bool {
+    v.is_some_and(|v| v.eq_ignore_ascii_case("low"))
+}
+
+/// How the camera is captured in a call: [`CameraSettings::call`], or the old size.
+pub(crate) fn capture_settings() -> CameraSettings {
+    if quality_low() {
+        CameraSettings::default()
+    } else {
+        CameraSettings::call()
+    }
+}
+
+/// The encoder that goes with [`capture_settings`].
+fn encoder() -> Result<H264Encoder, String> {
+    if quality_low() {
+        H264Encoder::new(EncoderSettings::camera_low())
+    } else {
+        H264Encoder::camera()
+    }
+    .map_err(|e| e.to_string())
 }
 
 /// "Accept with video" on the incoming-call toast: the next adopted call starts the camera.
@@ -144,7 +173,7 @@ pub fn self_view(frame: &I420Frame, max_width: usize, mirror: bool) -> RgbFrame 
     i420_to_rgb(frame, step_for(frame.width, max_width), mirror)
 }
 
-/// The pre-join preview is drawn this wide at most (the camera's 640).
+/// The pre-join preview is drawn this wide at most.
 const PREVIEW_WIDTH: usize = 640;
 pub const PREVIEW_STARTING: &str = "Starting your camera…";
 pub const PREVIEW_STOPPED: &str = "Your camera stopped.";
@@ -168,16 +197,16 @@ pub fn preview(sink: EventSink, camera: Option<String>) -> Option<Preview> {
         let (choice, fallback) = tokio::task::spawn_blocking(move || chosen(camera.as_deref()))
             .await
             .unwrap_or_default();
-        let mut capture =
-            match open_choice(&choice, fallback.as_deref(), CameraSettings::default()).await {
-                Ok(c) => c,
-                Err(e) => {
-                    let e = e.to_string();
-                    tracing::info!(%e, "no camera preview");
-                    sink.preview_status(&open_error_text(&e));
-                    return;
-                }
-            };
+        let mut capture = match open_choice(&choice, fallback.as_deref(), capture_settings()).await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let e = e.to_string();
+                tracing::info!(%e, "no camera preview");
+                sink.preview_status(&open_error_text(&e));
+                return;
+            }
+        };
         let mirror = sink.mirror();
         let mut frames = effects::process(capture.take_frames(), sink.effects());
         let mut first = true;
@@ -250,7 +279,7 @@ impl Camera {
                 tokio::task::spawn_blocking(|| chosen(saved_camera().as_deref()))
                     .await
                     .unwrap_or_default();
-            let r = open_choice(&choice, fallback.as_deref(), CameraSettings::default())
+            let r = open_choice(&choice, fallback.as_deref(), capture_settings())
                 .await
                 .map(Box::new)
                 .map_err(|e| e.to_string());
@@ -272,7 +301,7 @@ impl Camera {
         let sender = media
             .video_sender(ROLE)
             .ok_or("this call has no video line")?;
-        let encoder = H264Encoder::new(EncoderSettings::camera()).map_err(|e| e.to_string())?;
+        let encoder = encoder()?;
         let view = sink.clone();
         let mirror = sink.mirror();
         let mut n = 0u32;
@@ -398,6 +427,14 @@ mod tests {
             bus: bus.into(),
             formats: vec![],
         }
+    }
+
+    #[test]
+    fn the_camera_is_sent_in_720p_unless_the_old_quality_is_asked_for() {
+        assert!(!quality_is_low(None));
+        assert!(!quality_is_low(Some("high".as_ref())));
+        assert!(quality_is_low(Some("low".as_ref())));
+        assert!(quality_is_low(Some("LOW".as_ref())));
     }
 
     #[test]

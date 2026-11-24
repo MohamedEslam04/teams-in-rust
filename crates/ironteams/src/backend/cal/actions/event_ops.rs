@@ -172,7 +172,7 @@ impl Engine {
             match r {
                 Ok((status, _)) if (200..300).contains(&status) => {}
                 Ok((status, text)) => {
-                    tracing::warn!(status, %text, "event patch refused");
+                    tracing::warn!(status, text = %teams_proto::logsafe::text(&text), "event patch refused");
                     self.cal_note("Couldn't change the event");
                     return;
                 }

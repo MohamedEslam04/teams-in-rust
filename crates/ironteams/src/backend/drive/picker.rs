@@ -207,7 +207,7 @@ impl Engine {
                 self.attach_cloud_file(&drive_id, &f.id, &f.name).await
             }
             (other, _) => {
-                tracing::info!(purpose = other, picked = ?file.map(|f| f.name), "file picked with no handler");
+                tracing::debug!(purpose = other, picked = ?file.map(|f| f.name), "file picked with no handler");
                 Ok(())
             }
         }

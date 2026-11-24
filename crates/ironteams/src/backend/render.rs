@@ -381,28 +381,28 @@ impl Engine {
                 if is_too_large(&err) {
                     // Over the cap: asking again gets the same answer. A Giphy GIF has smaller
                     // renditions beside it, one of which may fit.
-                    tracing::warn!(%url, %err, "image too large, not retried");
+                    tracing::warn!(url = %teams_proto::logsafe::url(&url), err = %teams_proto::logsafe::text(&err.to_string()), "image too large, not retried");
                     let Some(small) = smaller_giphy_rendition(&url) else {
                         break None;
                     };
                     break match e.fetch_inline_image(&small).await {
                         Ok(bytes) => Some(bytes),
                         Err(err) => {
-                            tracing::warn!(url = %small, %err, "smaller image failed too");
+                            tracing::warn!(url = %teams_proto::logsafe::url(&small), err = %teams_proto::logsafe::text(&err.to_string()), "smaller image failed too");
                             None
                         }
                     };
                 }
                 if is_permanent(&err) {
-                    tracing::warn!(%url, %err, "image download failed, not retried");
+                    tracing::warn!(url = %teams_proto::logsafe::url(&url), err = %teams_proto::logsafe::text(&err.to_string()), "image download failed, not retried");
                     break None;
                 }
                 failures += 1;
                 let Some(wait) = retry_delay(failures) else {
-                    tracing::warn!(%url, %err, "image download failed, giving up");
+                    tracing::warn!(url = %teams_proto::logsafe::url(&url), err = %teams_proto::logsafe::text(&err.to_string()), "image download failed, giving up");
                     break None;
                 };
-                tracing::warn!(%url, %err, ?wait, "image download failed, retrying");
+                tracing::warn!(url = %teams_proto::logsafe::url(&url), err = %teams_proto::logsafe::text(&err.to_string()), ?wait, "image download failed, retrying");
                 tokio::time::sleep(wait).await;
             };
             // After a give-up the cache entry stays `None`: the message keeps its fallback.
@@ -423,7 +423,7 @@ impl Engine {
         .ok()
         .flatten();
         let Some((px, bytes)) = decoded else {
-            tracing::warn!(%url, "image could not be decoded");
+            tracing::warn!(url = %teams_proto::logsafe::url(url), "image could not be decoded");
             return false;
         };
         self.images

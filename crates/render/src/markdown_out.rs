@@ -813,6 +813,7 @@ mod tests {
                     author_mri: None,
                     author: None,
                     time_ms: None,
+                    forwarded: false,
                     preview: "hello world\nline 2".into(),
                     dir: Dir::Ltr,
                 },

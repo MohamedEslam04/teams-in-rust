@@ -33,6 +33,40 @@ pub fn brighten_lut() -> Lut {
     })
 }
 
+/// The low-light boost on a whole picture (`w` wide): the luma through [`brighten_lut`], and each
+/// chroma sample scaled by the gain its 2x2 luma got, so the colours stay as strong as the light
+/// they are lit with (a lifted luma over the same chroma looks grey and washed out). The gain is
+/// held at 1.4, where noise in a dark picture would otherwise be coloured too.
+pub fn brighten(y: &mut [u8], u: &mut [u8], v: &mut [u8], w: usize) {
+    let lut = brighten_lut();
+    let gain: Vec<i32> = (0..=255usize)
+        .map(|i| {
+            if (17..=235).contains(&i) {
+                let g = f32::from(lut[i] - 16) / (i - 16) as f32;
+                (g.clamp(1.0, 1.4) * 256.0) as i32
+            } else {
+                256
+            }
+        })
+        .collect();
+    let cw = w / 2;
+    for (c, (pu, pv)) in u.iter_mut().zip(v.iter_mut()).enumerate() {
+        let (cx, cy) = (c % cw, c / cw);
+        let at = (2 * cy) * w + 2 * cx;
+        let luma = (u32::from(y[at])
+            + u32::from(y[at + 1])
+            + u32::from(y[at + w])
+            + u32::from(y[at + w + 1])
+            + 2)
+            / 4;
+        let g = gain[luma as usize];
+        for p in [pu, pv] {
+            *p = (128 + (((i32::from(*p) - 128) * g + 128) >> 8)).clamp(0, 255) as u8;
+        }
+    }
+    apply_lut(y, &lut);
+}
+
 /// The Y, U and V tables of a colour filter; `None` for no filter.
 pub fn filter_luts(filter: Filter) -> Option<[Lut; 3]> {
     let same = table(|v| v);
@@ -145,10 +179,15 @@ pub fn smooth(prev: &mut Mask, next: &Mask) {
 
 /// `mask` scaled to `w` x `h` (bilinear) into `out`.
 pub fn upscale(mask: &Mask, w: usize, h: usize, out: &mut Vec<u8>) {
+    scale_plane(&mask.data, mask.width, mask.height, w, h, out);
+}
+
+/// The plane `src` (`sw` x `sh`) scaled to `w` x `h` (bilinear) into `out`.
+pub fn scale_plane(src: &[u8], sw: usize, sh: usize, w: usize, h: usize, out: &mut Vec<u8>) {
     out.clear();
     out.resize(w * h, 0);
-    let (mw, mh) = (mask.width.max(1), mask.height.max(1));
-    if mask.data.len() < mw * mh {
+    let (mw, mh) = (sw.max(1), sh.max(1));
+    if src.len() < mw * mh {
         return;
     }
     // The two source samples around a destination pixel's centre, and the second one's weight
@@ -162,14 +201,147 @@ pub fn upscale(mask: &Mask, w: usize, h: usize, out: &mut Vec<u8>) {
     let xs: Vec<_> = (0..w).map(|x| around(x, mw, w)).collect();
     for (y, line) in out.chunks_exact_mut(w).enumerate() {
         let (y0, y1, fy) = around(y, mh, h);
-        let (r0, r1) = (
-            &mask.data[y0 * mw..(y0 + 1) * mw],
-            &mask.data[y1 * mw..(y1 + 1) * mw],
-        );
+        let (r0, r1) = (&src[y0 * mw..(y0 + 1) * mw], &src[y1 * mw..(y1 + 1) * mw]);
         for (o, &(x0, x1, fx)) in line.iter_mut().zip(&xs) {
             let top = u32::from(r0[x0]) * (256 - fx) + u32::from(r0[x1]) * fx;
             let bottom = u32::from(r1[x0]) * (256 - fx) + u32::from(r1[x1]) * fx;
             *o = ((top * (256 - fy) + bottom * fy + 32768) >> 16) as u8;
+        }
+    }
+}
+
+/// `src` (`w` x `h`, even) at half the size, every 2x2 block averaged, into `out`.
+pub fn halve_plane(src: &[u8], w: usize, h: usize, out: &mut Vec<u8>) {
+    out.clear();
+    for rows in src.chunks_exact(2 * w).take(h / 2) {
+        let (a, b) = rows.split_at(w);
+        out.extend(
+            a.as_chunks::<2>()
+                .0
+                .iter()
+                .zip(b.as_chunks::<2>().0)
+                .map(|(p, q)| {
+                    ((u16::from(p[0]) + u16::from(p[1]) + u16::from(q[0]) + u16::from(q[1]) + 2)
+                        / 4) as u8
+                }),
+        );
+    }
+}
+
+/// Where the person is, made to follow the edges of the picture: the guided filter (He et al.)
+/// with the picture's luma as the guide. The model's mask is small and blurry once scaled up; the
+/// filter makes its edge sit on the edge it finds in the picture (a head against a wall) and
+/// leaves it soft where the picture has none (hair, a shoulder in the shade). Holds scratch
+/// buffers, so keep one for every frame.
+#[derive(Default)]
+pub struct Refiner {
+    guide: Vec<f32>,
+    mask: Vec<f32>,
+    mean_guide: Vec<f32>,
+    mean_mask: Vec<f32>,
+    mean_gg: Vec<f32>,
+    mean_gm: Vec<f32>,
+    tmp: Vec<f32>,
+    scratch: Vec<f32>,
+}
+
+/// How much variation in the guide counts as an edge (squared, guide in 0..1): smaller follows
+/// the picture closer.
+const REFINE_EPS: f32 = 0.002;
+/// After refining, the mask's contrast around 0.5: a little steeper, so no halo is left.
+const REFINE_CONTRAST: f32 = 1.3;
+
+impl Refiner {
+    /// `mask` made to follow `guide` (both `w` x `h`), within a window of radius `r`, into `out`.
+    pub fn refine(
+        &mut self,
+        mask: &[u8],
+        guide: &[u8],
+        w: usize,
+        h: usize,
+        r: usize,
+        out: &mut Vec<u8>,
+    ) {
+        let n = w * h;
+        out.clear();
+        if mask.len() < n || guide.len() < n || n == 0 {
+            out.resize(n, 0);
+            return;
+        }
+        let scale = 1.0 / 255.0;
+        self.guide.clear();
+        self.guide
+            .extend(guide[..n].iter().map(|&v| f32::from(v) * scale));
+        self.mask.clear();
+        self.mask
+            .extend(mask[..n].iter().map(|&v| f32::from(v) * scale));
+        let (g, m) = (&self.guide, &self.mask);
+        // `scratch` holds the products to be averaged, in turn.
+        self.scratch.clear();
+        self.scratch.extend(g.iter().zip(m).map(|(g, m)| g * m));
+        box_f32(g, &mut self.mean_guide, &mut self.tmp, w, h, r);
+        box_f32(m, &mut self.mean_mask, &mut self.tmp, w, h, r);
+        box_f32(&self.scratch, &mut self.mean_gm, &mut self.tmp, w, h, r);
+        self.scratch.clear();
+        self.scratch.extend(g.iter().map(|g| g * g));
+        box_f32(&self.scratch, &mut self.mean_gg, &mut self.tmp, w, h, r);
+        // a and b of q = a * guide + b, reusing the mean buffers; a in `mean_gm`, b in `mean_gg`.
+        for i in 0..n {
+            let (mg, mm) = (self.mean_guide[i], self.mean_mask[i]);
+            let var = self.mean_gg[i] - mg * mg;
+            let cov = self.mean_gm[i] - mg * mm;
+            let a = cov / (var + REFINE_EPS);
+            self.mean_gm[i] = a;
+            self.mean_gg[i] = mm - a * mg;
+        }
+        box_f32(&self.mean_gm, &mut self.scratch, &mut self.tmp, w, h, r);
+        box_f32(&self.mean_gg, &mut self.mean_mask, &mut self.tmp, w, h, r);
+        out.extend(
+            self.scratch
+                .iter()
+                .zip(&self.mean_mask)
+                .zip(&self.guide)
+                .map(|((a, b), g)| {
+                    let q = a * g + b;
+                    (((q - 0.5) * REFINE_CONTRAST + 0.5).clamp(0.0, 1.0) * 255.0 + 0.5) as u8
+                }),
+        );
+    }
+}
+
+/// A box mean of radius `r` of `src` (`w` x `h`) into `dst`, the edges repeated.
+fn box_f32(src: &[f32], dst: &mut Vec<f32>, tmp: &mut Vec<f32>, w: usize, h: usize, r: usize) {
+    dst.clear();
+    dst.resize(w * h, 0.0);
+    tmp.clear();
+    tmp.resize(w * h, 0.0);
+    let n = (2 * r + 1) as f32;
+    let ri = r as isize;
+    for (row, out) in src.chunks_exact(w).zip(tmp.chunks_exact_mut(w)) {
+        let at = |i: isize| row[i.clamp(0, w as isize - 1) as usize];
+        let mut sum: f32 = (-ri..=ri).map(at).sum();
+        for (x, o) in out.iter_mut().enumerate() {
+            *o = sum / n;
+            sum += at(x as isize + ri + 1) - at(x as isize - ri);
+        }
+    }
+    let row = |y: isize| {
+        let y = y.clamp(0, h as isize - 1) as usize;
+        &tmp[y * w..(y + 1) * w]
+    };
+    let mut sums = vec![0f32; w];
+    for y in -ri..=ri {
+        for (s, v) in sums.iter_mut().zip(row(y)) {
+            *s += v;
+        }
+    }
+    for (y, out) in dst.chunks_exact_mut(w).enumerate().take(h) {
+        for (o, s) in out.iter_mut().zip(&sums) {
+            *o = s / n;
+        }
+        let (add, sub) = (row(y as isize + ri + 1), row(y as isize - ri));
+        for ((s, a), b) in sums.iter_mut().zip(add).zip(sub) {
+            *s += a - b;
         }
     }
 }
@@ -211,7 +383,9 @@ pub fn rgb_to_yuv([r, g, b]: [u8; 3]) -> [u8; 3] {
     [y, u, v].map(|c| c.clamp(0, 255) as u8)
 }
 
-/// `img` scaled to cover `w` x `h` (what sticks out is cut off, as a wallpaper is), as I420.
+/// `img` scaled to cover `w` x `h` (what sticks out is cut off, as a wallpaper is), as I420. A
+/// picture shrunk to fit is averaged over what each pixel covers (not picked: that is jagged), one
+/// that is enlarged is interpolated, and the chroma is the average of each 2x2 block.
 pub fn cover_i420(img: &RgbFrame, w: usize, h: usize) -> I420Frame {
     let (iw, ih) = (img.width.max(1), img.height.max(1));
     let scale = f32::max(w as f32 / iw as f32, h as f32 / ih as f32);
@@ -219,30 +393,67 @@ pub fn cover_i420(img: &RgbFrame, w: usize, h: usize) -> I420Frame {
         (iw as f32 * scale - w as f32) / 2.0,
         (ih as f32 * scale - h as f32) / 2.0,
     );
-    let pick = |x: usize, y: usize| {
-        let sx = (((x as f32 + 0.5 + ox) / scale) as usize).min(iw - 1);
-        let sy = (((y as f32 + 0.5 + oy) / scale) as usize).min(ih - 1);
-        let i = (sy * iw + sx) * 3;
+    let px = |x: usize, y: usize| {
+        let i = (y.min(ih - 1) * iw + x.min(iw - 1)) * 3;
         match img.data.get(i..i + 3) {
-            Some(p) => [p[0], p[1], p[2]],
-            None => [0, 0, 0],
+            Some(p) => [f32::from(p[0]), f32::from(p[1]), f32::from(p[2])],
+            None => [0.0; 3],
         }
+    };
+    // The colour of destination pixel (x, y).
+    let sample = |x: usize, y: usize| -> [u8; 3] {
+        let (sx0, sx1) = ((x as f32 + ox) / scale, (x as f32 + 1.0 + ox) / scale);
+        let (sy0, sy1) = ((y as f32 + oy) / scale, (y as f32 + 1.0 + oy) / scale);
+        let mut sum = [0f32; 3];
+        let rgb = if sx1 - sx0 > 1.0 || sy1 - sy0 > 1.0 {
+            let (x0, x1) = (sx0 as usize, (sx1.ceil() as usize).max(sx0 as usize + 1));
+            let (y0, y1) = (sy0 as usize, (sy1.ceil() as usize).max(sy0 as usize + 1));
+            for sy in y0..y1 {
+                for sx in x0..x1 {
+                    for (s, v) in sum.iter_mut().zip(px(sx, sy)) {
+                        *s += v;
+                    }
+                }
+            }
+            let n = ((x1 - x0) * (y1 - y0)) as f32;
+            sum.map(|s| s / n)
+        } else {
+            let (cx, cy) = ((sx0 + sx1) / 2.0 - 0.5, (sy0 + sy1) / 2.0 - 0.5);
+            let (fx0, fy0) = (cx.max(0.0).floor(), cy.max(0.0).floor());
+            let (tx, ty) = ((cx.max(0.0) - fx0).min(1.0), (cy.max(0.0) - fy0).min(1.0));
+            let (x0, y0) = (fx0 as usize, fy0 as usize);
+            let (a, b, c, d) = (
+                px(x0, y0),
+                px(x0 + 1, y0),
+                px(x0, y0 + 1),
+                px(x0 + 1, y0 + 1),
+            );
+            for k in 0..3 {
+                let top = a[k] * (1.0 - tx) + b[k] * tx;
+                let bottom = c[k] * (1.0 - tx) + d[k] * tx;
+                sum[k] = top * (1.0 - ty) + bottom * ty;
+            }
+            sum
+        };
+        rgb.map(|v| (v + 0.5) as u8)
     };
     let mut data = vec![128u8; I420Frame::len_for(w, h)];
     let (luma, chroma) = data.split_at_mut(w * h);
     let (u, v) = chroma.split_at_mut(w * h / 4);
+    let mut sums = vec![[0u32; 2]; u.len()];
     for (y, line) in luma.chunks_exact_mut(w).enumerate() {
         for (x, l) in line.iter_mut().enumerate() {
-            let [py, pu, pv] = rgb_to_yuv(pick(x, y));
+            let [py, pu, pv] = rgb_to_yuv(sample(x, y));
             *l = py;
-            if x % 2 == 0 && y % 2 == 0 {
-                let c = (y / 2) * (w / 2) + x / 2;
-                if c < u.len() {
-                    u[c] = pu;
-                    v[c] = pv;
-                }
+            if let Some(s) = sums.get_mut((y / 2) * (w / 2) + x / 2) {
+                s[0] += u32::from(pu);
+                s[1] += u32::from(pv);
             }
         }
+    }
+    for ((u, v), s) in u.iter_mut().zip(v.iter_mut()).zip(&sums) {
+        *u = ((s[0] + 2) / 4) as u8;
+        *v = ((s[1] + 2) / 4) as u8;
     }
     I420Frame {
         width: w,
@@ -251,21 +462,47 @@ pub fn cover_i420(img: &RgbFrame, w: usize, h: usize) -> I420Frame {
     }
 }
 
-/// `frame` as the model's input: planar RGB in 0..1, `w` x `h`, the nearest pixel of each.
+/// `frame` as the model's input: planar RGB in 0..1, `w` x `h`, each pixel the average of the
+/// part of the frame it covers (the frame is several times larger than the model's input, and
+/// picking one pixel of every few would alias fine detail into the mask).
 pub fn model_input(frame: &I420Frame, w: usize, h: usize) -> Vec<f32> {
     let (fy, fu, fv) = frame.planes();
-    let chroma_w = frame.width / 2;
-    let source = |i: usize, dst: usize, src: usize| {
-        (((i as f32 + 0.5) * src as f32 / dst as f32) as usize).min(src - 1)
+    let (fw, fh) = (frame.width, frame.height);
+    let chroma_w = fw / 2;
+    // The source span of destination index `i` of `dst` over `src`: at least one sample.
+    let span = |i: usize, dst: usize, src: usize| {
+        let a = (i * src / dst).min(src - 1);
+        (a, ((i + 1) * src / dst).clamp(a + 1, src))
     };
-    let xs: Vec<usize> = (0..w).map(|x| source(x, w, frame.width)).collect();
+    let xs: Vec<_> = (0..w).map(|x| span(x, w, fw)).collect();
     let plane = w * h;
     let mut out = vec![0f32; 3 * plane];
     for y in 0..h {
-        let sy = source(y, h, frame.height);
-        for (x, &sx) in xs.iter().enumerate() {
-            let ci = (sy / 2) * chroma_w + sx / 2;
-            let rgb = yuv_to_rgb(fy[sy * frame.width + sx], fu[ci], fv[ci]);
+        let (y0, y1) = span(y, h, fh);
+        let (cy0, cy1) = (y0 / 2, y1.div_ceil(2).min(fh / 2));
+        for (x, &(x0, x1)) in xs.iter().enumerate() {
+            let (cx0, cx1) = (x0 / 2, x1.div_ceil(2).min(chroma_w));
+            let mut luma = 0u32;
+            for row in y0..y1 {
+                luma += fy[row * fw + x0..row * fw + x1]
+                    .iter()
+                    .map(|&v| u32::from(v))
+                    .sum::<u32>();
+            }
+            let (mut u, mut v) = (0u32, 0u32);
+            for row in cy0..cy1 {
+                for c in cx0..cx1 {
+                    u += u32::from(fu[row * chroma_w + c]);
+                    v += u32::from(fv[row * chroma_w + c]);
+                }
+            }
+            let n = ((y1 - y0) * (x1 - x0)) as u32;
+            let nc = (((cy1 - cy0) * (cx1 - cx0)) as u32).max(1);
+            let rgb = yuv_to_rgb(
+                ((luma + n / 2) / n) as u8,
+                ((u + nc / 2) / nc) as u8,
+                ((v + nc / 2) / nc) as u8,
+            );
             let i = y * w + x;
             for (c, value) in rgb.into_iter().enumerate() {
                 out[c * plane + i] = f32::from(value) / 255.0;
@@ -299,6 +536,26 @@ mod tests {
         assert!(u[160] > 160 && u[96] < 96, "further from grey");
         assert_eq!(u[128], 128, "grey stays grey");
         assert!(y[200] > 200 && y[60] < 60, "more contrast");
+    }
+
+    #[test]
+    fn the_low_light_boost_keeps_colours_as_strong_as_the_light_it_adds() {
+        // 2x2, a dim reddish picture, a neutral one and a bright reddish one.
+        let dim = |chroma: (u8, u8), luma: u8| {
+            let mut y = [luma; 4];
+            let (mut u, mut v) = ([chroma.0], [chroma.1]);
+            brighten(&mut y, &mut u, &mut v, 2);
+            (y[0], u[0], v[0])
+        };
+        let (y, u, v) = dim((108, 148), 60);
+        assert!(y > 60, "lifted: {y}");
+        assert!(u < 108 && v > 148, "more colour, not less: {u} {v}");
+        assert_eq!(dim((128, 128), 60).1, 128, "grey stays grey");
+        assert_eq!(dim((108, 148), 235), (235, 108, 148), "white is left alone");
+        assert!(
+            i32::from(v) <= 128 + 20 * 14 / 10 + 1,
+            "the gain is held: {v}"
+        );
     }
 
     #[test]
@@ -385,6 +642,46 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_scaled_down_is_averaged_not_picked_and_keeps_its_colour_detail() {
+        // A 1-pixel black and white checker covering 4x4 from 8x8: every pixel is the mid grey.
+        let checker = RgbFrame {
+            width: 8,
+            height: 8,
+            data: (0..64)
+                .flat_map(|i| {
+                    let v = if (i % 8 + i / 8) % 2 == 0 { 0 } else { 255 };
+                    [v, v, v]
+                })
+                .collect(),
+        };
+        let bg = cover_i420(&checker, 4, 4);
+        assert!(
+            bg.planes().0.iter().all(|&y| (115..140).contains(&y)),
+            "{:?}",
+            bg.planes().0
+        );
+        // Red and blue columns, as wide as the frame: the chroma is the average of both.
+        let columns = RgbFrame {
+            width: 4,
+            height: 2,
+            data: (0..8)
+                .flat_map(|i| {
+                    if i % 2 == 0 {
+                        [220, 30, 30]
+                    } else {
+                        [30, 30, 220]
+                    }
+                })
+                .collect(),
+        };
+        let bg = cover_i420(&columns, 4, 2);
+        let (u, v) = (bg.planes().1, bg.planes().2);
+        let (red, blue) = (rgb_to_yuv([220, 30, 30]), rgb_to_yuv([30, 30, 220]));
+        assert!(u[0].abs_diff(((u16::from(red[1]) + u16::from(blue[1])) / 2) as u8) <= 1);
+        assert!(v[0].abs_diff(((u16::from(red[2]) + u16::from(blue[2])) / 2) as u8) <= 1);
+    }
+
+    #[test]
     fn a_mask_scales_up_smoothly_and_keeps_solid_areas() {
         let m = Mask {
             width: 2,
@@ -412,6 +709,59 @@ mod tests {
         };
         smooth(&mut prev, &m);
         assert_eq!(prev.data, [0, 96, 255, 255]);
+    }
+
+    #[test]
+    fn the_model_sees_the_average_of_a_fine_pattern_not_one_pixel_of_it() {
+        // A 1-pixel checker of dark and bright luma, grey chroma: seen at a fifth of the size the
+        // model gets the mid grey, not whichever pixel a nearest pick lands on.
+        let (w, h) = (20, 20);
+        let mut data: Vec<u8> = (0..w * h)
+            .map(|i| if (i % w + i / w) % 2 == 0 { 16 } else { 235 })
+            .collect();
+        data.extend(vec![128u8; w * h / 2]);
+        let f = I420Frame::new(w, h, data).unwrap();
+        let input = model_input(&f, 4, 4);
+        assert!(input.iter().all(|&v| (0.4..0.6).contains(&v)), "{input:?}");
+    }
+
+    /// A mask ramping from 0 to 255 over 8 pixels around x = 32.
+    fn ramp(w: usize, h: usize) -> Vec<u8> {
+        (0..w * h)
+            .map(|i| (((i % w) as f32 - 28.0) / 8.0 * 255.0).clamp(0.0, 255.0) as u8)
+            .collect()
+    }
+
+    fn between(row: &[u8]) -> usize {
+        row.iter().filter(|&&a| (32..224).contains(&a)).count()
+    }
+
+    #[test]
+    fn a_blurry_mask_snaps_to_the_edge_in_the_picture() {
+        // The person is the bright right half; the coarse mask ramps over 8 pixels around it.
+        let (w, h) = (64, 8);
+        let guide: Vec<u8> = (0..w * h)
+            .map(|i| if i % w < 32 { 40 } else { 200 })
+            .collect();
+        let coarse = ramp(w, h);
+        assert_eq!(between(&coarse[3 * w..4 * w]), 6, "the ramp it starts as");
+        let mut refiner = Refiner::default();
+        let mut out = Vec::new();
+        refiner.refine(&coarse, &guide, w, h, 8, &mut out);
+        let row = &out[3 * w..4 * w];
+        assert!(row[24] < 32 && row[28] < 32, "background: {row:?}");
+        assert!(row[36] > 224 && row[40] > 224, "person: {row:?}");
+        assert!(between(row) <= 3, "a sharp edge: {row:?}");
+    }
+
+    #[test]
+    fn a_mask_stays_as_soft_as_it_was_where_the_picture_has_no_edge() {
+        let (w, h) = (64, 8);
+        let guide = vec![120u8; w * h];
+        let mut refiner = Refiner::default();
+        let mut out = Vec::new();
+        refiner.refine(&ramp(w, h), &guide, w, h, 8, &mut out);
+        assert!(between(&out[3 * w..4 * w]) >= 6, "still a ramp: {out:?}");
     }
 
     #[test]

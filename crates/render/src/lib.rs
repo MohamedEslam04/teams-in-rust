@@ -77,6 +77,8 @@ pub enum Block {
         author: Option<String>,
         /// When the quoted message was sent (epoch ms), from the `time` element.
         time_ms: Option<i64>,
+        /// One message of a forward (`schema.skype.com/Forward`): it carries no id or author.
+        forwarded: bool,
         /// The quoted text; a line break of the original is a `'\n'`.
         preview: String,
         dir: Dir,
@@ -199,6 +201,7 @@ mod tests {
                     author_mri: None,
                     author: None,
                     time_ms: None,
+                    forwarded: false,
                     preview: "orig".into(),
                     dir: Dir::Ltr,
                 },
