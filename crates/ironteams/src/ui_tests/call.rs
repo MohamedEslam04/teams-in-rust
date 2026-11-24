@@ -1586,9 +1586,11 @@ fn a_meeting_has_no_hold_or_transfer_and_shares_no_invite_without_a_link() {
 
 /// Joins `THREAD` by this link, so the meeting has a join link to share.
 fn connected_by_link(c: &CallHarness, link: &str) {
-    c.h.engine
-        .calls
-        .prejoin("Standup".into(), JoinTarget::Link(link.into()), THREAD.into());
+    c.h.engine.calls.prejoin(
+        "Standup".into(),
+        JoinTarget::Link(link.into()),
+        THREAD.into(),
+    );
     click(&c.button("Join now"));
     c.fake.emit(Event::Connected);
     assert_eq!(c.phase(), "connected");
@@ -1603,7 +1605,10 @@ fn share_invite_copies_the_join_link_and_says_so() {
     click(&c.button("Share invite"));
     assert_eq!(c.sent().last().unwrap(), "share-invite");
     assert!(c.shows("Link copied"));
-    assert!(c.all("Share invite").is_empty(), "the button says it for a moment");
+    assert!(
+        c.all("Share invite").is_empty(),
+        "the button says it for a moment"
+    );
 }
 
 #[test]
@@ -1649,7 +1654,10 @@ fn invited_meeting(c: &CallHarness) {
                 absent(BO, "Bo Ström", "Declined"),
                 absent("", "cy@x.example", "No response"),
             ],
-            chat: vec![absent(ADA, "Ada Lovelace", ""), absent(DI, "Di Example", "")],
+            chat: vec![
+                absent(ADA, "Ada Lovelace", ""),
+                absent(DI, "Di Example", ""),
+            ],
         },
     );
     click(&c.button("People"));
@@ -1661,9 +1669,16 @@ fn the_people_panel_lists_who_was_invited_and_who_is_only_in_the_chat() {
     invited_meeting(&c);
     assert!(c.shows("In this meeting (3)"));
     assert!(c.shows("Others invited (2)"), "Ada is in the call");
-    assert!(c.shows("People added to the chat (1)"), "Ada is in, Bo is invited");
+    assert!(
+        c.shows("People added to the chat (1)"),
+        "Ada is in, Bo is invited"
+    );
     for (name, status) in [("Bo Ström", "Declined"), ("cy@x.example", "No response")] {
-        assert_eq!(c.row(name).accessible_description().unwrap(), status, "{name}");
+        assert_eq!(
+            c.row(name).accessible_description().unwrap(),
+            status,
+            "{name}"
+        );
     }
     assert_eq!(c.row("Di Example").accessible_description().unwrap(), "");
     assert_eq!(c.sent().first().unwrap(), "people-open");
@@ -1675,7 +1690,11 @@ fn a_person_row_opens_their_card_when_their_mri_is_known() {
     invited_meeting(&c);
     for (row, mri) in [("Ada Lovelace", ADA), ("Bo Ström", BO), ("Di Example", DI)] {
         click(&c.row(row));
-        assert_eq!(c.sent().last().unwrap(), &format!("person-card {mri}"), "{row}");
+        assert_eq!(
+            c.sent().last().unwrap(),
+            &format!("person-card {mri}"),
+            "{row}"
+        );
     }
     let asked = c.sent().len();
     click(&c.row("Unknown Guest"));
@@ -1687,7 +1706,11 @@ fn a_person_row_opens_their_card_when_their_mri_is_known() {
 fn a_section_folds_under_its_header_and_unfolds() {
     let c = CallHarness::new();
     invited_meeting(&c);
-    let listed = |name: &str| c.all(name).iter().any(|e| e.accessible_role() == Some(AccessibleRole::ListItem));
+    let listed = |name: &str| {
+        c.all(name)
+            .iter()
+            .any(|e| e.accessible_role() == Some(AccessibleRole::ListItem))
+    };
     for (header, row) in [
         ("In this meeting (3)", "Ada Lovelace"),
         ("Others invited (2)", "Bo Ström"),
@@ -1706,7 +1729,11 @@ fn a_section_folds_under_its_header_and_unfolds() {
 fn the_search_box_filters_every_section_and_empty_shows_all() {
     let c = CallHarness::new();
     invited_meeting(&c);
-    let listed = |name: &str| c.all(name).iter().any(|e| e.accessible_role() == Some(AccessibleRole::ListItem));
+    let listed = |name: &str| {
+        c.all(name)
+            .iter()
+            .any(|e| e.accessible_role() == Some(AccessibleRole::ListItem))
+    };
     c.search("Type a name", "di");
     assert_eq!(c.sent().last().unwrap(), "people-filter di");
     assert!(listed("Di Example"));
@@ -1716,7 +1743,13 @@ fn the_search_box_filters_every_section_and_empty_shows_all() {
     c.search("Type a name", "BO");
     assert!(listed("Bo Ström") && !listed("Di Example"), "any case");
     c.search("Type a name", "");
-    for shown in ["Ada Lovelace", "Bo Ström", "cy@x.example", "Unknown Guest", "Di Example"] {
+    for shown in [
+        "Ada Lovelace",
+        "Bo Ström",
+        "cy@x.example",
+        "Unknown Guest",
+        "Di Example",
+    ] {
         assert!(listed(shown), "{shown} is back");
     }
 }

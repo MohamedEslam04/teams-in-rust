@@ -119,14 +119,13 @@ impl Shared {
         }
         let lookup = self.photos.lock().unwrap().clone();
         // The photos of the roster and of the People panel's invited and chat rows.
-        let shown = d
-            .people
-            .iter()
-            .map(|p| p.mri.as_str())
-            .chain(d.invited.iter().chain(&d.chat_people).map(|a| a.mri.as_str()));
-        let found = lookup
-            .map(|f| photos(shown, |m| f(m)))
-            .unwrap_or_default();
+        let shown = d.people.iter().map(|p| p.mri.as_str()).chain(
+            d.invited
+                .iter()
+                .chain(&d.chat_people)
+                .map(|a| a.mri.as_str()),
+        );
+        let found = lookup.map(|f| photos(shown, |m| f(m))).unwrap_or_default();
         self.ui.call_state(d, found);
     }
 
