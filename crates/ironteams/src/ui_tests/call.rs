@@ -1128,6 +1128,31 @@ fn the_gallery_pages_sixteen_tiles_at_a_time_with_a_pager() {
     assert!(c.shows("Person 01") && !c.shows("Person 17"));
 }
 
+/// Sixteen people in the speaker view: the strip keeps all fifteen others (it used to stop at
+/// eight, with no way to reach the rest) and scrolls with its arrows.
+#[test]
+fn the_speaker_strip_scrolls_to_everyone_instead_of_stopping_at_eight() {
+    let c = CallHarness::new();
+    c.connected();
+    cs(&c.h.app).set_view_mode("speaker".into());
+    let names = crowd(&c, 16);
+
+    for name in &names {
+        assert!(c.shows(name), "{name} is in the strip or the large tile");
+    }
+    assert!(
+        !c.shows("Show previous people"),
+        "at the start of the strip"
+    );
+    click(&c.button("Show more people"));
+    assert!(
+        c.shows("Show previous people"),
+        "scrolled: the way back is there"
+    );
+    click(&c.button("Show previous people"));
+    assert!(!c.shows("Show previous people"), "back at the start");
+}
+
 #[test]
 fn one_page_has_no_pager_and_a_page_that_loses_its_people_gives_way() {
     let c = CallHarness::new();

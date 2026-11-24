@@ -448,6 +448,28 @@ component PagerArrow inherits Rectangle {
     }
 }
 
+// A round arrow button over the speaker view's strip.
+component StripArrow inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    callback clicked();
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 8px;
+    drop-shadow-color: #00000080;
+    PagerArrow {
+        icon: root.icon;
+        label: root.label;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        clicked => { root.clicked(); }
+    }
+}
+
 // "‹ 1/2 ›" under the gallery when it has more than one page.
 component GalleryPager inherits Rectangle {
     in property <int> page;
@@ -503,10 +525,13 @@ export component Stage inherits Rectangle {
     // How many tiles the last row has, so it is centred like the others.
     property <int> last-n: count - (rows - 1) * cols;
     pure function row-w(n: int) -> length { return n * tile-w + (n - 1) * gap; }
-    // The speaker view: the others in a strip under the speaker's tile, at most eight.
-    property <int> strip-n: max(0, min(CallStore.speaker-people.length - 1, 8));
+    // The speaker view: all the others in a strip under the speaker's tile. Tiles keep their size;
+    // when they do not fit the width the strip scrolls (drag, trackpad, or its arrows).
+    property <int> strip-n: max(0, CallStore.speaker-people.length - 1);
     property <length> strip-h: min(120px, root.height / 4);
-    property <length> strip-w: min(strip-h * 16 / 9, (root.width - 32px - max(0, strip-n - 1) * gap) / max(1, strip-n));
+    property <length> strip-w: strip-h * 16 / 9;
+    property <length> strip-content: max(0px, strip-n * strip-w + (strip-n - 1) * gap);
+    property <length> strip-view-w: min(strip-content, root.width - 32px);
     background: Theme.main;
     // A tile's "…" menu: whose, where its button is in the stage, and where the menu goes: under
     // the button, above it when that does not fit.
@@ -604,16 +629,46 @@ export component Stage inherits Rectangle {
                     ? @tr("Pinned: {}", CallStore.speaker-people[0].name)
                     : "Active speaker: " + CallStore.speaker-people[0].name;
             }
-            for p[i] in CallStore.speaker-people: Rectangle {
-                x: (root.width - root.strip-n * root.strip-w - (root.strip-n - 1) * root.gap) / 2
-                    + (i - 1) * (root.strip-w + root.gap);
+            if root.strip-n > 0: Rectangle {
+                x: (root.width - root.strip-view-w) / 2;
                 y: root.height - 16px - root.strip-h;
-                width: root.strip-w;
+                width: root.strip-view-w;
                 height: root.strip-h;
-                if i > 0 && i <= root.strip-n: Tile {
-                    p: p;
-                    menu-enabled: true;
-                    more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+                strip := Flickable {
+                    viewport-width: root.strip-content;
+                    viewport-height: self.height;
+                    interactive: true;
+                    for p[i] in CallStore.speaker-people: Rectangle {
+                        x: (i - 1) * (root.strip-w + root.gap);
+                        width: root.strip-w;
+                        height: root.strip-h;
+                        if i > 0: Tile {
+                            p: p;
+                            menu-enabled: true;
+                            more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+                        }
+                    }
+                }
+                // Arrows over the strip's ends while there are people out of sight.
+                if root.strip-content > root.strip-view-w + 1px && strip.viewport-x < -1px: StripArrow {
+                    x: 4px;
+                    y: (parent.height - self.height) / 2;
+                    icon: @image-url("../icons/chevron-left.svg");
+                    label: @tr("Show previous people");
+                    clicked => {
+                        strip.viewport-x = min(0px, strip.viewport-x + root.strip-view-w * 0.75);
+                    }
+                }
+                if root.strip-content > root.strip-view-w + 1px
+                    && strip.viewport-x > root.strip-view-w - root.strip-content + 1px: StripArrow {
+                    x: parent.width - self.width - 4px;
+                    y: (parent.height - self.height) / 2;
+                    icon: @image-url("../icons/chevron-right.svg");
+                    label: @tr("Show more people");
+                    clicked => {
+                        strip.viewport-x = max(root.strip-view-w - root.strip-content,
+                            strip.viewport-x - root.strip-view-w * 0.75);
+                    }
                 }
             }
         }
