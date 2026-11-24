@@ -1,0 +1,163 @@
+# ironteams src (crate root)
+
+## Overview
+Source root of the `ironteams` binary crate (`src/main.rs`). It owns process start-up (CLI modes, fonts, logging, sign-in, tokio runtime), the UI-thread glue between the Slint `AppWindow` and the backend `Engine` (view-data structs in `data.rs`/`*_data.rs`, models in `ui.rs`), and many small window-level features of the composer, search box, tray, shortcuts and settings persistence. Business logic lives in `backend/`, Slint model filling in `ui/`, the card host in `desktop_cards/`, shared helpers in `support/` and self-update plumbing in `updater/`.
+
+Files:
+- `main.rs`: Binary entry: CLI modes (--report-problem, --self-check, desktop-cards host, --call-demo), font/logging/backend setup, wires all Slint callbacks to Cmd channel, runs tokio runtime with app_main (sign-in then engine dispatch loop) and tray event loop.
+- `catch_up.rs`: Pure logic picking next/previous/first unread chat from the drawn chat list and counting unread/mentions; attaches to ShortcutApi global.
+- `composer.rs`: UI-thread EmojiApi callbacks (panel list, :shortcode suggest, insert, complete at cursor with char-boundary clamping); wire() also installs mention, snippets, composer_format, shortcuts, send_options, spell.
+- `composer_format.rs`: FormatApi global: toolbar apply/undo/redo/shortcut/preview/has_format on Markdown-style draft via render::edit, with a per-window History.
+- `data.rs`: Plain Send view-data structs (chat, message, card, people, team, activity, etc.) built by backend and converted to Slint types on UI thread, plus initials() and color_for().
+- `demo.rs`: Demo mode (IRONTEAMS_DEMO) seed data: invented store rows, calendar events, activity feed and OneDrive listings, plus a minimal PDF generator; no network.
+- `desktop_entry.rs`: Writes a per-user XDG .desktop entry and icon at startup so xdg-desktop-portal can register the app id when no package provides one.
+- `external.rs`: Single gate for opening URLs/files in the desktop default handler; suppressed and recorded in demo mode and tests.
+- `find_data.rs`: Send data types for Search page/quick views/Find in chat/Shared tab (HitData, PickData, SharedData) plus query-term matching and Markdown snippet highlighting helpers.
+- `language.rs`: Applies the interface language: resolves it from GeneralPrefs and selects the Slint bundled translation (English = source text).
+- `lists_data.rs`: Plain view-data structs for chat list sections, channel post cards, threads, Adaptive Card rows, channel menu state and list options.
+- `loop_compose.rs`: Composer's Loop paragraph: templates, row editing callbacks on LoopStore, and conversion to an HTML message sent via Cmd::SendLoop.
+- `markdown.rs`: Converts the render crate's rich-text model into Slint StyledText Markdown, extracts reply quote/images, upgrades rich messages (headings/tables/colors), and maps reaction keys to emoji.
+- `media_data.rs`: Plain Send data (ViewerData) for the chat image viewer.
+- `mention.rs`: UI-thread pure helpers for @mentions in the composer (find active @query, complete, one-Backspace token removal) wired into MentionApi.
+- `native_tray.rs`: Windows/macOS tray icon via Slint SystemTrayIcon (icon, unread badge, tooltip, mute/focus checkable menu), UI-thread only.
+- `reactions.rs`: Teams reaction keys (six named + <hex>_<name>), reaction display names, reactor card rows, and emoji picker rows.
+- `send_options.rs`: Send-button schedule picker logic: typed-time parsing, quick choices, month calendar cells, local-time resolve to ms, labels, wired into SendStore.
+- `shortcuts.rs`: Maps window-level key chords to action names and finds the last editable own message; wires ShortcutApi and catch_up.
+- `snippets.rs`: Composer /snippet quick replies: active-query detection, ranking, placeholder expansion, name validation, completion, plus persisted snippets.json store wired to SnippetStore/SnippetApi.
+- `spell.rs`: Composer spell check: loads Hunspell dictionaries (en/ar) on a worker thread, flags misspelled words by byte range, ranks suggestions, persists user-added words, and wires SpellApi callbacks to the window.
+- `suggest.rs`: Pure matching of cached conversations by name for the top search box suggestions and for /goto, /chat, /call target resolution.
+- `support.rs`: Module root declaring the shared pub(crate) submodules error_text and quiet.
+- `topbar.rs`: Window-free top bar logic: slash command parsing/matching, dropdown rows and pick resolution, persisted recent searches, and back/forward History.
+- `tray_wiring.rs`: Starts the tray (SNI on Linux, native_tray elsewhere), maps tray events to window actions, debounces unread count, decides close-to-tray, and runs the Slint event loop.
+- `ui.rs`: UI-thread module root: converts view data (MsgData, ChatData, TeamData, ...) to Slint models and implements most UiHandle update methods (login, banner, chats, header, messages with in-place row diff, composer state).
+- `ui_api.rs`: Defines the thread-safe UiHandle (weak AppWindow, run via upgrade_in_event_loop) and plain view-data structs the engine passes to the UI (PlayerView, RecorderView, ClipView, Picture, Toast, ScheduledData).
+- `update_check.rs`: Opt-in GitHub latest-release check: pure version parsing/comparison, release JSON parsing, and a blocking one-shot HTTP GET gated off in demo mode and tests.
+- `window_state.rs`: Restores and debounce-saves window geometry, maximized flag, last chat/channel, sidebar width, collapsed teams and Quick views via session::window_state::WindowState; pure decision helpers plus Slint timers.
+
+## Interface
+- Subdirectory `backend/`: [backend/EGM.md](./backend/EGM.md) - App engine: Cmd dispatch, store/network sync, render loop and every feature backend
+- Subdirectory `desktop_cards/`: [desktop_cards/EGM.md](./desktop_cards/EGM.md) - Teams-style desktop notification cards: host process, wire protocol, Wayland layer-shell backend
+- Subdirectory `support/`: [support/EGM.md](./support/EGM.md) - Pure helpers: error text and quiet-hours banner decision
+- Subdirectory `ui/`: [ui/EGM.md](./ui/EGM.md) - UI-thread modules that push backend view data into Slint globals and models
+- Subdirectory `updater/`: [updater/EGM.md](./updater/EGM.md) - Self-update plumbing: backup, crash-loop guard, install detection, self-check
+- `[main.rs:APP_ID]` private const = tray::APP_ID (desktop-file id / Wayland app id / portal id)
+- `[demo.rs:ME]` pub const &str: demo user MRI "8:orgid:00000000-0000-0000-0000-000000000001"
+- `[find_data.rs:HitData]` pub struct (Clone): Search/quick-view row {id, kind:&'static str, section, title, subtitle, snippet(md), time, initials, color:u32, avatar:Option<Pixels>, person, rtl}
+- `[native_tray.rs:start]` pub fn start(on_event: impl Fn(TrayEvent) + 'static) -> Result<(), String>; creates IronTeamsTray, stores state in thread-local TRAY
+- `[spell.rs:Speller]` pub struct (Default) holding english/arabic Dictionary, personal word set, optional words file
+- `[topbar.rs:HELP_URL]` pub const &str, target of Help menu and /help
+- `[ui.rs:install_local]` pub fn(window:&AppWindow) wires UI-only handlers: loop_compose, palette, message_toast, reaction picker search
+- `[window_state.rs:SAVE_INTERVAL]` pub const Duration = 500ms; minimum spacing between writes
+- `[main.rs:main]` fn main() -> anyhow::Result<()>: process entry point
+- `[demo.rs:seed]` pub fn seed(st: &Store, now: i64) -> anyhow::Result<()>: fills store with 5 users, 1 team, 9 conversations (favorites notes + backend) and sample messages/threads/reactions
+- `[find_data.rs:PickData]` pub struct (Clone): suggestion for In/Person filter editors {id,title,subtitle}
+- `[native_tray.rs:running]` pub fn running() -> bool; whether start installed an icon
+- `[spell.rs:Speller::new]` pub fn new(english: Option<Dictionary>, arabic: Option<Dictionary>) -> Speller
+- `[topbar.rs:FEEDBACK_URL]` pub const &str, CARGO_PKG_REPOSITORY + "/issues"
+- `[ui.rs:install_apps/install_calendar/install_clip/install_composer_apps/install_voice]` pub re-exports of appstore::wire, cal::wire, clip::wire, composer_apps::wire, voice::wire
+- `[window_state.rs:Rect]` pub struct {x,y,w,h: i32} physical-pixel rectangle (window or monitor)
+- `[main.rs:app_main]` async fn(UiHandle, UnboundedReceiver<Cmd>, Arc<AtomicBool>): sign-in loop then engine.dispatch loop (demo mode via IRONTEAMS_DEMO)
+- `[demo.rs:calendar_events]` pub fn calendar_events(week_start_ms: i64, now_ms: i64) -> serde_json::Value: Graph calendarView-shaped {value:[..]}; one 'Customer sync' starts now+3min (rounded to minute)
+- `[find_data.rs:SharedData]` pub struct (Clone): Shared tab row {kind,name,ext,shared_by,date,url,editable,sharepoint,icon,busy,highlight}
+- `[native_tray.rs:set_unread]` pub fn set_unread(count: u32); updates badge and tooltip (0 hides badge)
+- `[spell.rs:Speller::system]` pub fn system() -> Speller; loads system dictionaries and saved words (slow, parses dictionaries)
+- `[topbar.rs:MOBILE_APP_URL]` pub const &str, Microsoft Teams download page
+- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, palette, people, remind, teams, voice, cal
+- `[window_state.rs:RestorePlan]` pub struct {size: Option<(i32,i32)> logical, position: Option<(i32,i32)> physical, maximized: bool}
+- `[catch_up.rs:Row]` pub struct {id:String, unread:bool, mention:bool}
+- `[demo.rs:activity]` pub fn activity(st: &Store, now: i64) -> Vec<ActivityItem>: 6 invented items (newest first) referencing message ids looked up from seeded store
+- `[find_data.rs:terms_of]` pub fn(query:&str)->Vec<String>: lowercased whitespace words, quotes trimmed
+- `[native_tray.rs:set_focus]` pub fn set_focus(on: bool); sets Focus mode checkmark
+- `[spell.rs:Speller::misspelled]` pub fn misspelled(&self, text: &str, names: &str, cursor: Option<usize>) -> Vec<Miss>
+- `[topbar.rs:RECENT_MAX]` pub const usize = 8
+- `[ui.rs:UiHandle::login_checking/login_code/login_error/ready]` pub login-state transitions (checking|code|error|ready) setting user code, verify url, error, my initials
+- `[window_state.rs:restore_plan]` pub fn(&WindowState) -> RestorePlan; maximized => only maximized; default state => nothing; else size+position
+- `[catch_up.rs:Step]` pub enum {First, Next, Previous}
+- `[demo.rs:drive_libraries]` pub fn drive_libraries() -> Vec<(String,String)>: (drive id, name) for Quick access
+- `[find_data.rs:matches_all]` pub fn(text:&str, terms:&[String])->bool: case-insensitive contains-all; false for empty terms
+- `[native_tray.rs:shutdown]` pub fn shutdown(); drops the tray state/icon
+- `[spell.rs:Speller::suggest]` pub fn suggest(&self, word: &str) -> Vec<String>; ranked, at most 5
+- `[topbar.rs:RECENT_FILE]` pub const &str = "recent-searches.json"
+- `[ui.rs:UiHandle::banner/info]` pub transient banner (error/notice), cleared after 8 s if unchanged
+- `[window_state.rs:Observed]` pub struct {size, position: Option<(i32,i32)>, maximized: bool} live window snapshot
+- `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; no wrap-around
+- `[demo.rs:drive_favorites]` pub fn drive_favorites() -> HashSet<String>: initial favorite item ids
+- `[find_data.rs:highlight_md]` pub fn(text,&[String] terms,max:usize)->String: Markdown snippet around first match with matches bold, newlines->spaces
+- `[native_tray.rs:IronTeamsTray]` slint-generated component (SystemTrayIcon) with callbacks open/toggle-mute/toggle-focus/quit
+- `[spell.rs:Speller::add_word]` pub fn add_word(&mut self, word: &str); adds to personal set and appends to spelling-words.txt
+- `[topbar.rs:SlashCommand]` pub struct {name, args, what: &'static str}
+- `[ui.rs:UiHandle::connected/synced/focus/raise]` pub connection flag, first-sync flag, focus tick, bring window to front (optionally focus composer)
+- `[window_state.rs:apply_observed]` pub fn(&mut WindowState, &Observed); folds maximized always, size/position only when not maximized
+- `[catch_up.rs:counts]` pub fn(rows:&[Row])->(usize unread, usize mentions), deduped by id
+- `[demo.rs:drive_new_folder]` pub fn drive_new_folder(name: &str) -> onedrive::DriveItem: folder created in demo mode (uses teams_proto::time::now_ms)
+- `[find_data.rs:marked_md]` pub fn(snippet:&str)->String: converts store::MARK_START/MARK_END marked snippet to escaped Markdown with bold matches
+- `[reactions.rs:PICKER_LIMIT]` pub const usize = 96; max picker rows
+- `[spell.rs:Miss]` pub struct { start: usize, end: usize, word: String } byte range of a misspelled word
+- `[topbar.rs:COMMANDS]` pub const [SlashCommand; 16]
+- `[ui.rs:UiHandle::typing]` pub(names,chats) typing indicators via motion::set_typing
+- `[window_state.rs:should_write]` pub fn(dirty, last_write: Option<Instant>, now, min: Duration) -> bool
+- `[catch_up.rs:attach]` pub fn(&AppWindow): installs ShortcutApi on_catch_up_target/on_catch_up_counts/on_notify
+- `[demo.rs:drive_listing]` pub fn drive_listing(key: &str, folder: &str, now: i64) -> Vec<onedrive::DriveItem>: keyed by section (home/files/shared/favorites/libraries/bin/meetings/shared-by/media/search/drive:<id>); files folder ids root|demo-projects|demo-alpha
+- `[language.rs:apply]` pub fn(prefs:&GeneralPrefs): sets appearance::language shared setting and selects Slint translation; call on UI thread after first window exists
+- `[reactions.rs:PickerItem]` pub struct {key, emoji, name: String}; Debug, Clone, PartialEq, Eq
+
+## Invariants
+- `[main.rs:configure_fonts]` must run at start of main before any other thread exists (unsafe set_var SLINT_FONT_PATH); skipped if SLINT_FONT_PATH set or not Linux
+- `[desktop_entry.rs:MARKER]` an entry containing line "X-IronTeams-Generated=true" is ours and may be rewritten; an entry without it is the user's/packager's and never touched (Outcome::UserEntry)
+- `[mention.rs:MAX_QUERY]` an @query is active only if the '@' starts a word, the query has no newline, <=30 chars and <=1 space (two words)
+- `[native_tray.rs:TRAY]` state is thread_local RefCell: tray must be used only on the UI thread that called start
+- `[spell.rs:SPELLER]` thread_local RefCell<Speller>; only the window's (Slint) thread reads/writes it; the worker thread hands the loaded speller over via upgrade_in_event_loop
+- `[topbar.rs:RECENT_MAX]` recents truncated to 8 entries; Recents::add rejects empty text and text starting with '/'
+- `[ui.rs:MESSAGES]` thread_local Rc<VecModel<Msg>> lazily created on the UI thread; only touched inside UiHandle::run closures
+- `[window_state.rs:SHARED]` global static Mutex<Option<Shared>>; with_shared returns None if uninstalled or lock poisoned (helpers become no-ops/defaults)
+- `[main.rs:main]` --call-demo sets IRONTEAMS_DEMO and IRONTEAMS_CALL_DEMO via unsafe set_var before any thread exists
+- `[desktop_entry.rs:ensure_in]` Flatpak (/.flatpak-info exists) -> no write; missing user entry but one in any XDG_DATA_DIRS applications/ -> Outcome::Provided, no write; unchanged content -> no rewrite
+- `[mention.rs:clamp]` Slint cursor is a byte offset; it is clamped to len and moved back to a char boundary before slicing
+- `[native_tray.rs:flip]` the checkmark values in State are the source of truth, not the menu's own state; flip refreshes and returns the new value, None if tray not started
+- `[spell.rs:LOADING]` thread_local Cell<bool> guards ensure_loaded so dictionaries load at most once (also never under cfg(test))
+- `[topbar.rs:COMMANDS]` fixed array of 16 commands; Action::Go kind falls back to "goto" if name not found
+- `[ui.rs:UiHandle::header]` when current_id differs from the new id, messages, posts and thread_id are cleared and current_meeting_live reset before applying the new header
+- `[window_state.rs:Shared.persist]` false in demo mode: nothing restored (default state) or written, install returns no timers
+- `[main.rs:main]` ordering: velopack hook first; then fonts/logging; compat::migrate_legacy_dirs and desktop_entry::ensure before store/session open; updater::backup::on_start and guard::start before store/config open
+- `[desktop_entry.rs:ensure_in]` icon at data_home/icons/hicolor/scalable/apps/<app_id>.svg written only if absent (never overwritten)
+- `[mention.rs:backspace]` returns cursor -1 for an ordinary Backspace; picked names are tried longest first so longer names win; token must be preceded by whitespace/start
+- `[native_tray.rs:start]` Err means no icon; caller quits on close instead of hiding to tray; State starts unread=0, muted=false, focus=false
+- `[spell.rs:Speller::misspelled]` returns empty when neither dictionary is loaded; the word ending at `cursor` (still being typed) is never flagged
+- `[topbar.rs:matching]` with a space after the word or text after it, only the exactly named command is listed; otherwise prefix match, case-insensitive
+- `[ui.rs:UiHandle::header]` last_chat_id is only set when id non-empty, thread_root empty and view != 'teams'; last channel only when is_channel and thread_root empty
+- `[window_state.rs:Shared::write]` writes only if state != saved and (force or should_write(>=SAVE_INTERVAL since last_write)); last_write set before save even on failure; saved updated only on Ok
+- `[main.rs:main]` demo mode (IRONTEAMS_DEMO) skips backup/crash-guard (data_dir None) and window-state restore/save
+- `[desktop_entry.rs:write_atomic]` write to <path>.tmp then rename; parent dirs created first
+- `[loop_compose.rs:to_html]` empty-string result means nothing to send; rows with all-blank cells/text are skipped; all user text goes through esc()
+- `[native_tray.rs:ICON_SIZE]` icon rendered at 32px and scaled by the system
+- `[spell.rs:Speller::misspelled]` skips mentions overlapping picked @names, words under 2 letters, acronyms/inner-capital words (skip_case)
+- `[topbar.rs:History::HISTORY_MAX]` at most 50 places kept; oldest removed first
+
+## Side Effects
+- `[main.rs:main]` sets process env SLINT_FONT_PATH (configure_fonts) and IRONTEAMS_DEMO/IRONTEAMS_CALL_DEMO; runs fc-match subprocess and writes emoji font files under cache_dir/fonts
+- `[desktop_entry.rs:ensure]` reads env XDG_DATA_HOME, HOME, XDG_DATA_DIRS, APPIMAGE, XDG_RUNTIME_DIR, TMPDIR (temp_dir); stats /.flatpak-info; calls std::env::current_exe
+- `[language.rs:apply]` sets global shared language setting via appearance::language::set_from and switches Slint's bundled translation (global UI state)
+- `[native_tray.rs:start]` creates a Slint SystemTrayIcon (OS notification area / menu bar) and stores it in thread-local TRAY; shutdown removes it
+- `[spell.rs:Speller::system]` reads Hunspell .aff/.dic files from system, packaged and config dirs; reads LC_ALL/LC_MESSAGES/LANG, HOME and current_exe; reads spelling-words.txt
+- `[topbar.rs:Recents::load]` reads recent-searches.json from the given directory
+- `[ui.rs:UiHandle::transient]` starts slint::Timer::single_shot (8 s) to clear the banner
+- `[window_state.rs:Shared::write]` disk write via WindowState::save(); logs tracing::warn on error (error only, never content)
+- `[main.rs:main]` global tracing subscriber init; Slint backend selection; slint::set_xdg_app_id; calling::video::portal::set_host_app_id (calls feature)
+- `[desktop_entry.rs:ensure_in]` disk: writes $XDG_DATA_HOME/applications/<app_id>.desktop and icons/hicolor/scalable/apps/<app_id>.svg (via .tmp + rename, create_dir_all)
+- `[language.rs:select]` tracing::warn! on translation selection failure
+- `[native_tray.rs:set_unread]` re-renders and sets the tray icon image and tooltip (badge drawn via tray::icon::badged_icon)
+- `[spell.rs:Speller::add_word]` creates the config dir and appends the word to spelling-words.txt; logs a tracing warning on failure
+- `[topbar.rs:Recents::save]` create_dir_all, writes a temp file and renames it to recent-searches.json
+- `[ui.rs:UiHandle::messages]` starts slint::Timer::single_shot (150 ms) for second scroll tick
+- `[window_state.rs:install]` WindowState::load() reads saved state from disk
+- `[main.rs:main]` disk: compat::migrate_legacy_dirs, desktop_entry::ensure (Linux), updater::backup::on_start, guard::start/healthy_in
+- `[desktop_entry.rs:ensure]` tracing::info logging of outcome/error
+- `[loop_compose.rs:wire]` sends Cmd::SendLoop(html) on an unbounded tokio channel to the backend
+- `[send_options.rs:wire]` reads the system local clock (Local::now) on each callback; sets SendStore quick model on refresh
+- `[spell.rs:ensure_loaded]` spawns a std::thread worker that loads dictionaries, then posts to the Slint event loop
+- `[tray_wiring.rs:start_sni]` starts the SNI tray (Tray::start, D-Bus on Linux) and spawns thread "ironteams-tray-events" forwarding events via slint::invoke_from_event_loop
+- `[ui.rs:UiHandle::raise]` crate::tray_wiring::show_and_raise brings the window to front
+- `[window_state.rs:SHARED]` process-global Mutex state mutated by install, remember_collapsed_teams, capture
+
+## Verification
+- Run: `cargo test -p ironteams`
