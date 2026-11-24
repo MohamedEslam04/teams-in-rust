@@ -1214,6 +1214,7 @@ impl Engine {
                     .collect(),
                 markdown: parsed.markdown,
                 segments: parsed.segments,
+                post_blocks: parsed.post,
                 rtl: parsed.rtl,
                 images,
                 files,

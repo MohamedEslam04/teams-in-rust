@@ -785,6 +785,207 @@ fn a_chat_has_no_post_cards_and_no_follow_entry() {
     assert!(menu_labels(&h.app).contains(&"Copy message link".to_string()));
 }
 
+// ---- the post card's layout ----------------------------------------------------------------
+
+/// The card of each post (`PostCard::card`), top to bottom.
+fn post_cards(app: &AppWindow) -> Vec<ElementHandle> {
+    let mut v: Vec<_> = ElementHandle::find_by_element_id(app, "PostCard::card").collect();
+    v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
+    v
+}
+
+fn posts_list(app: &AppWindow) -> ElementHandle {
+    ElementHandle::find_by_element_id(app, "ChannelPosts::posts-list")
+        .next()
+        .expect("the posts list")
+}
+
+/// The tech channel with one post whose body is `html`, under the subject "Release notes".
+fn one_post_harness(html: &str) -> Harness {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    let mut post = row(
+        "1000",
+        None,
+        "8:orgid:00000000-0000-0000-0000-000000000003",
+        "Sara Hassan",
+        "",
+        json!({"s": "Release notes"}),
+    );
+    post.content_html = html.into();
+    store.upsert_message(&post).unwrap();
+    let h = Harness::with_store(store);
+    h.runner()(Cmd::SelectChannel(TECH.into(), TECH_TITLE.into()));
+    h
+}
+
+/// Teams draws a post as a card across the post column, its text the card's full width: a short
+/// post is not a narrow chat bubble, and a chat message keeps its bubble.
+#[test]
+fn a_post_card_fills_the_column_and_its_text_runs_the_full_width() {
+    let h = channel_harness(0);
+    let (left, right) = span(&posts_list(&h.app));
+    let cards = post_cards(&h.app);
+    assert_eq!(cards.len(), 2);
+    let (card_left, card_right) = span(&cards[1]);
+    assert!(
+        (card_left - left - 16.).abs() < 1.,
+        "16px from the column's left edge: card {card_left}..{card_right}, column {left}..{right}"
+    );
+    // The scroll bar may take some of the right side.
+    assert!(
+        (15.5..=40.).contains(&(right - card_right)),
+        "and about 16px from its right edge: card {card_left}..{card_right}, column {left}..{right}"
+    );
+    let post_rows = rows(&h.app);
+    let post = bubble_of(&h.app, &post_rows[1]);
+    assert!(
+        (post.size().width - (cards[1].size().width - 48.)).abs() < 1.,
+        "the post fills its card less its padding: post {}, card {}",
+        post.size().width,
+        cards[1].size().width
+    );
+    let chat = app_with_messages(vec![msg("m1", "A quiet post", false)]);
+    let bubble = bubble_of(&chat, &rows(&chat)[0]);
+    assert!(
+        bubble.size().width < 200. && post.size().width > 2. * bubble.size().width,
+        "a chat bubble keeps to its words: bubble {}, post {}",
+        bubble.size().width,
+        post.size().width
+    );
+}
+
+/// On a very wide window the card stops at 1040px and sits in the middle of the column.
+#[test]
+fn a_post_card_on_a_wide_window_is_capped_and_centred() {
+    let h = channel_harness(0);
+    h.app.window().set_size(LogicalSize::new(2400., 900.));
+    let (left, right) = span(&posts_list(&h.app));
+    let card = &post_cards(&h.app)[1];
+    let (card_left, card_right) = span(card);
+    assert!(
+        card.size().width <= 1040.5 && card.size().width > 1000.,
+        "capped at 1040px: {}",
+        card.size().width
+    );
+    let (gap_left, gap_right) = (card_left - left, right - card_right);
+    assert!(
+        gap_left > 100. && (gap_left - gap_right).abs() < 24.,
+        "centred: {gap_left} left, {gap_right} right"
+    );
+}
+
+/// The subject is the post's title: a large line under the header, above the text.
+#[test]
+fn the_subject_is_a_title_under_the_posts_header() {
+    let h = channel_harness(0);
+    let title = first(&h.app, "Upgrade plan");
+    let row = &rows(&h.app)[0];
+    let bubble = bubble_of(&h.app, row);
+    assert!(
+        title.absolute_position().y >= bubble.absolute_position().y + 32.,
+        "under the 32px header: title at {}, post at {}",
+        title.absolute_position().y,
+        bubble.absolute_position().y
+    );
+    assert!(
+        title.size().height >= 19.5,
+        "a 20px title: {}",
+        title.size().height
+    );
+    assert!(
+        (title.size().width - bubble.size().width).abs() < 1.,
+        "as wide as the post"
+    );
+}
+
+/// A word longer than the card (a URL, a file name) wraps inside the card, in a paragraph and in a
+/// list item; the card never leaves the column.
+#[test]
+fn a_long_unbroken_word_in_a_post_wraps_inside_its_card() {
+    let word = super::overflow::LONG_WORD.repeat(4);
+    let h = one_post_harness(&format!("<p>{word}</p><ul><li>{word}</li></ul>"));
+    let (_, right) = span(&posts_list(&h.app));
+    let card = &post_cards(&h.app)[0];
+    let (_, card_right) = span(card);
+    assert!(
+        card_right <= right + 0.5,
+        "the card ends at {card_right}, past the column at {right}"
+    );
+    let row = &rows(&h.app)[0];
+    let post = bubble_of(&h.app, row);
+    assert!(
+        span(&post).1 <= card_right - 24. + 0.5,
+        "the post ends at {}, past its card's padding at {}",
+        span(&post).1,
+        card_right - 24.
+    );
+}
+
+/// Headings, bullets and numbers of a post are laid out block by block, each list item aligned by
+/// its own direction; a chat message keeps its one block of text.
+#[test]
+fn a_post_lays_out_its_headings_and_lists_block_by_block() {
+    let h = one_post_harness(
+        "<h2>What is new</h2><p>Faster start</p><ul><li>one</li><li>نقطة أولى</li></ul><ol><li>first</li><li>second</li></ol>",
+    );
+    let p = cs(&h.app).get_posts().row_data(0).unwrap();
+    let blocks: Vec<(String, String, bool)> = p
+        .post
+        .blocks
+        .iter()
+        .map(|b| (b.kind.to_string(), b.marker.to_string(), b.rtl))
+        .collect();
+    let b = |k: &str, m: &str, rtl| (k.to_string(), m.to_string(), rtl);
+    assert_eq!(
+        blocks,
+        vec![
+            b("heading", "", false),
+            b("text", "", false),
+            b("item", "•", false),
+            b("item", "•", true),
+            b("item", "1.", false),
+            b("item", "2.", false),
+        ]
+    );
+    assert_eq!(p.post.blocks.row_data(0).unwrap().level, 2);
+    assert_eq!(rows(&h.app).len(), 1, "the post is drawn");
+}
+
+/// A post's lone picture is as wide as the card allows (never wider than its own pixels) and
+/// keeps its shape; the chat grid caps it at 420px.
+#[test]
+fn a_picture_in_a_post_scales_to_the_card_and_keeps_its_shape() {
+    let h = channel_harness(0);
+    let posts = cs(&h.app).get_posts();
+    let mut p = posts.row_data(1).unwrap();
+    let pixels = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(800, 400);
+    p.post.images = ModelRc::new(VecModel::from(vec![crate::ImageItem {
+        url: "https://x.example/1.png".into(),
+        img: slint::Image::from_rgba8(pixels),
+        loaded: true,
+        w: 420.,
+        h: 210.,
+        ..Default::default()
+    }]));
+    p.post.grid_w = 420.;
+    p.post.grid_h = 210.;
+    posts.set_row_data(1, p);
+    let cell = first(&h.app, "Open image 1");
+    let card = &post_cards(&h.app)[1];
+    let want = (card.size().width - 48.).min(800.);
+    assert!(
+        want > 420.,
+        "the column is wider than the chat grid: {want}"
+    );
+    assert!(
+        (cell.size().width - want).abs() < 1. && (cell.size().height - want / 2.).abs() < 1.,
+        "the picture is {:?}, want {want} by {}",
+        cell.size(),
+        want / 2.
+    );
+}
+
 // ---- 8.8 adaptive cards ------------------------------------------------------------------
 
 fn release_card() -> serde_json::Value {

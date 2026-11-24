@@ -58,6 +58,11 @@ export component MessageRow inherits TouchArea {
     in property <bool> in-channel: false;
     // Inside a channel post card: everyone is drawn on the left with an avatar and a name.
     in property <bool> card-style: false;
+    // The post itself on the Posts tab, as Teams draws it: it fills its card, the photo sits in
+    // the header beside the name and the time, the subject is a title, the body runs the full
+    // width with its headings and lists laid out (`m.blocks`) and the pictures scale to the
+    // card. The card draws the reactions, under itself.
+    in property <bool> post-style: false;
     // Multi-select mode: a checkbox per row, clicking toggles it, no hover bar.
     in property <bool> select-mode: false;
     // In the chat's own list: a reply's quote jumps to the quoted message and a day line opens
@@ -87,6 +92,16 @@ export component MessageRow inherits TouchArea {
     // window coordinates: resting on it opens the hover card.
     callback photo-hover(string, bool, length, length, length, length);
     height: content.preferred-height;
+    // A post's pictures scale to its width: a lone picture up to its own size and 480px tall
+    // (once it has loaded), several up to 560px wide. A chat bubble keeps the grid's own size.
+    property <int> lone-w: root.m.images.length == 1 ? root.m.images[0].img.width : 0;
+    property <int> lone-h: root.m.images.length == 1 ? root.m.images[0].img.height : 0;
+    property <length> post-grid-w: root.lone-w > 0 && root.lone-h > 0
+        ? min(min(root.max-bubble, root.lone-w * 1px), 480px * root.lone-w / root.lone-h)
+        : min(root.max-bubble, root.m.images.length == 1 ? root.m.grid-w : 560px);
+    property <float> grid-scale: root.post-style && root.m.grid-w > 0px ? root.post-grid-w / root.m.grid-w : 1.0;
+    // A post with headings or lists draws its body block by block.
+    property <bool> by-blocks: root.post-style && root.m.blocks.length > 0;
     // A message that just arrived fades in (150 ms); the rest are placed at once.
     property <bool> arrived: !root.m.fresh || Theme.reduced-motion;
     opacity: root.arrived ? 1.0 : 0.0;
@@ -119,9 +134,9 @@ export component MessageRow inherits TouchArea {
 
     content := VerticalLayout {
         width: root.width;
-        padding-left: root.select-mode ? 44px : 20px;
-        padding-right: 20px;
-        padding-top: root.m.show-header || root.m.day != "" ? 10px : 2px;
+        padding-left: root.select-mode ? 44px : (root.post-style ? 24px : 20px);
+        padding-right: root.post-style ? 24px : 20px;
+        padding-top: root.post-style ? 0px : (root.m.show-header || root.m.day != "" ? 10px : 2px);
         spacing: 4px;
 
         if root.m.day != "": day-line := Rectangle {
@@ -170,10 +185,10 @@ export component MessageRow inherits TouchArea {
         }
 
         if !root.m.system: HorizontalLayout {
-            alignment: root.m.mine && !root.card-style ? end : start;
+            alignment: root.post-style ? stretch : (root.m.mine && !root.card-style ? end : start);
             spacing: 10px;
 
-            if !root.m.mine || root.card-style: Rectangle {
+            if (!root.m.mine || root.card-style) && !root.post-style: Rectangle {
                 width: 32px;
                 if root.m.show-header: Avatar {
                     y: 0;
@@ -203,20 +218,75 @@ export component MessageRow inherits TouchArea {
 
             bubble := Rectangle {
                 max-width: root.max-bubble;
+                // A post fills its card; a bubble is as wide as its content (`alignment` above).
+                horizontal-stretch: root.post-style ? 1 : 0;
                 border-radius: Theme.radius;
-                background: root.m.mentions-me ? #3a3a63 : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other);
+                background: root.post-style ? transparent : (root.m.mentions-me ? #3a3a63 : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other));
                 opacity: root.m.pending ? 0.6 : 1.0;
-                border-width: root.m.failed || root.m.mentions-me ? 1px : 0px;
+                border-width: root.m.failed || (root.m.mentions-me && !root.post-style) ? 1px : 0px;
                 border-color: root.m.failed ? Theme.danger : Theme.accent;
 
                 VerticalLayout {
-                    padding-left: 14px;
-                    padding-right: 14px;
-                    padding-top: 8px;
-                    padding-bottom: 10px;
-                    spacing: 6px;
+                    padding-left: root.post-style ? 0px : 14px;
+                    padding-right: root.post-style ? 0px : 14px;
+                    padding-top: root.post-style ? 0px : 8px;
+                    padding-bottom: root.post-style ? 0px : 10px;
+                    spacing: root.post-style ? 8px : 6px;
 
-                    if root.m.show-header || root.m.mine: HorizontalLayout {
+                    // A post's header, as in Teams: the photo, the name and the time on one line.
+                    if root.post-style: HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Avatar {
+                            initials: root.m.initials;
+                            tone: root.m.color;
+                            img: root.m.avatar;
+                            has-img: root.m.has-avatar;
+                            presence: root.m.presence;
+                            size: 32px;
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                accessible-role: button;
+                                accessible-label: @tr("Open profile of {}", root.m.sender);
+                                accessible-action-default => { root.profile(root.m.sender-id); }
+                                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
+                                property <string> hovered: "";
+                                changed has-hover => {
+                                    if self.has-hover { self.hovered = root.m.sender-id; }
+                                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+                                }
+                            }
+                        }
+                        Rectangle {
+                            width: min(post-name.preferred-width, max(80px, root.max-bubble - 200px));
+                            post-name := Text {
+                                width: parent.width;
+                                height: parent.height;
+                                text: root.m.sender;
+                                color: Theme.fg;
+                                font-size: 14px * Theme.font-scale;
+                                font-weight: 600;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                accessible-role: button;
+                                accessible-label: @tr("Open profile of {}", root.m.sender);
+                                accessible-action-default => { root.profile(root.m.sender-id); }
+                                clicked => { root.profile-at(root.m.sender-id, self.absolute-position.x, self.absolute-position.y, self.width, self.height); }
+                                property <string> hovered: "";
+                                changed has-hover => {
+                                    if self.has-hover { self.hovered = root.m.sender-id; }
+                                    root.photo-hover(self.hovered, self.has-hover, self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+                                }
+                            }
+                        }
+                        Text { text: root.m.time; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                        if root.m.edited: Text { text: @tr("Edited"); color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                    }
+
+                    if (root.m.show-header || root.m.mine) && !root.post-style: HorizontalLayout {
                         spacing: 8px;
                         alignment: root.m.mine && !root.card-style ? end : start;
                         if !root.m.mine || root.card-style: Rectangle {
@@ -247,13 +317,15 @@ export component MessageRow inherits TouchArea {
                         accessible-role: text;
                     }
 
+                    // A post's subject is its title, aligned by its own direction.
                     if root.m.subject != "": Text {
                         text: root.m.subject;
                         color: Theme.fg;
-                        font-size: 15px * Theme.font-scale;
+                        font-size: (root.post-style ? 20px : 15px) * Theme.font-scale;
                         font-weight: 700;
                         wrap: word-wrap;
                         min-width: 0px;
+                        horizontal-alignment: root.post-style && root.m.subject-rtl ? right : left;
                     }
 
                     for q in root.m.quotes: quote-box := Rectangle {
@@ -289,7 +361,7 @@ export component MessageRow inherits TouchArea {
                         open-url(u) => { root.open-url(u); }
                     }
 
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0: StyledText {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0 && !root.by-blocks: StyledText {
                         text: root.m.body;
                         // The layout would keep the bubble as wide as the longest word (a URL, a path);
                         // with no minimum the text wraps inside the bubble, breaking such a word.
@@ -303,7 +375,7 @@ export component MessageRow inherits TouchArea {
                     }
 
                     // A text with code blocks: its runs of text and its boxes of code, in order.
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0: VerticalLayout {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0 && !root.by-blocks: VerticalLayout {
                         spacing: 6px;
                         for p in root.m.parts: VerticalLayout {
                             if !p.is-code: StyledText {
@@ -324,15 +396,72 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
+                    // A post's body block by block: headings stand out with room above them, and
+                    // a list item hangs beside its bullet or number, on the side its text starts.
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.by-blocks: VerticalLayout {
+                        for b[i] in root.m.blocks: VerticalLayout {
+                            padding-top: i == 0 ? 0px : (b.kind == "heading" ? 14px : (b.kind == "item" && root.m.blocks[i - 1].kind == "item" ? 4px : 8px));
+                            if b.kind == "text" || b.kind == "heading": StyledText {
+                                text: b.body;
+                                min-width: 0px;
+                                default-color: Theme.fg;
+                                default-font-size: (b.kind != "heading" ? 14px : (b.level <= 1 ? 18px : (b.level == 2 ? 16px : 15px))) * Theme.font-scale;
+                                link-color: Theme.accent;
+                                selectable: true;
+                                horizontal-alignment: b.rtl ? right : left;
+                                link-clicked(url) => { root.open-url(url); }
+                            }
+                            if b.kind == "item": HorizontalLayout {
+                                padding-left: b.rtl ? 0px : 6px + b.depth * 20px;
+                                padding-right: b.rtl ? 6px + b.depth * 20px : 0px;
+                                spacing: 8px;
+                                if !b.rtl: Text {
+                                    text: b.marker;
+                                    min-width: 14px * Theme.font-scale;
+                                    horizontal-stretch: 0;
+                                    color: Theme.fg-muted;
+                                    font-size: 14px * Theme.font-scale;
+                                    horizontal-alignment: right;
+                                    accessible-role: none;
+                                }
+                                StyledText {
+                                    text: b.body;
+                                    min-width: 0px;
+                                    horizontal-stretch: 1;
+                                    default-color: Theme.fg;
+                                    default-font-size: 14px * Theme.font-scale;
+                                    link-color: Theme.accent;
+                                    selectable: true;
+                                    horizontal-alignment: b.rtl ? right : left;
+                                    link-clicked(url) => { root.open-url(url); }
+                                }
+                                if b.rtl: Text {
+                                    text: b.marker;
+                                    min-width: 14px * Theme.font-scale;
+                                    horizontal-stretch: 0;
+                                    color: Theme.fg-muted;
+                                    font-size: 14px * Theme.font-scale;
+                                    horizontal-alignment: left;
+                                    accessible-role: none;
+                                }
+                            }
+                            if b.kind == "code": CodeBlock {
+                                code: b.code;
+                                min-width: min(240px, root.max-bubble);
+                                copy(c) => { MediaStore.command("text-copy", c); }
+                            }
+                        }
+                    }
+
                     // Several pictures form a grid (plan 9.5); clicking one opens the viewer.
                     if root.m.images.length > 0: Rectangle {
-                        width: root.m.grid-w;
-                        height: root.m.grid-h;
+                        width: root.m.grid-w * root.grid-scale;
+                        height: root.m.grid-h * root.grid-scale;
                         for im[i] in root.m.images: Rectangle {
-                            x: im.x;
-                            y: im.y;
-                            width: im.w;
-                            height: im.h;
+                            x: im.x * root.grid-scale;
+                            y: im.y * root.grid-scale;
+                            width: im.w * root.grid-scale;
+                            height: im.h * root.grid-scale;
                             border-radius: 4px;
                             background: Theme.sidebar;
                             clip: true;
@@ -424,7 +553,7 @@ export component MessageRow inherits TouchArea {
                         action(a) => { MediaStore.command("file", a + "\u{1f}" + f.url); }
                     }
 
-                    if root.m.reactions.length > 0: HorizontalLayout {
+                    if root.m.reactions.length > 0 && !root.post-style: HorizontalLayout {
                         spacing: 4px;
                         alignment: start;
                         for r in root.m.reactions: ReactionChip {

@@ -94,6 +94,10 @@ export struct ReaderItem { initials: string, color: color, name: string }
 // One part of a message's text when it has code blocks: a run of text (`body`) or a block (`code`).
 export struct BodyPart { body: styled-text, code: string, is-code: bool, rtl: bool }
 
+// One block of a channel post's body (`Msg.blocks`): "text", "heading" (with its `level`, 1 to 3),
+// "item" (a list item: its `marker` and the `depth` of its list) or "code".
+export struct PostBlock { kind: string, body: styled-text, code: string, marker: string, depth: int, level: int, rtl: bool }
+
 /// One quoted message of a reply: a card above the text.
 export struct QuoteItem {
     author: string,
@@ -118,9 +122,11 @@ export struct Msg {
     deleted: bool,
     system: bool,          // member added, call ended, ...
     subject: string,
+    subject-rtl: bool,     // the subject runs right to left (a post's title is aligned by it)
     quotes: [QuoteItem],   // the messages this one quotes, one card each, in order
     body: styled-text,
     parts: [BodyPart],     // the text and code blocks in order; empty when there is no code block (then `body` is the text)
+    blocks: [PostBlock],   // a channel post's body block by block, for its headings and lists (empty: draw `body` or `parts`)
     plain: string,
     rtl: bool,
     images: [ImageItem],

@@ -230,6 +230,9 @@ pub struct MsgData {
     pub markdown: String,
     /// The text and code blocks of the body, in order; empty when it has no code block.
     pub segments: Vec<crate::markdown::Segment>,
+    /// The body block by block as a channel post lays it out; empty when it has no heading and no
+    /// list (`Rendered::post`).
+    pub post_blocks: Vec<crate::markdown::PostBlock>,
     pub plain: String,
     pub rtl: bool,
     pub images: Vec<ImgData>,

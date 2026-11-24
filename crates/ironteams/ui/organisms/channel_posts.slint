@@ -7,7 +7,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Msg } from "../tokens/types.slint";
-import { IconButton } from "../atoms/widgets.slint";
+import { AddReactionChip, IconButton, ReactionChip } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { MessageRow } from "message_row.slint";
 import { PeopleStore } from "../molecules/people.slint";
@@ -188,10 +188,11 @@ component Divider inherits HorizontalLayout {
     Rectangle { height: 1px; background: Theme.border; y: (parent.height - 1px) / 2; }
 }
 
+// A post as Teams draws it: a card as wide as the column (up to 1040px, centred beyond that)
+// with the post filling it, its reply summary and "Reply" at its foot, and the reactions under it.
 // A TouchArea so the whole card takes the wheel before the list does (`wheel`, the list's glide).
 component PostCard inherits TouchArea {
     in property <PostItem> item;
-    in property <length> bubble: 600px;
     callback wheel(PointerScrollEvent) -> EventResult;
     scroll-event(e) => { return root.wheel(e); }
     callback react(string, string);
@@ -202,28 +203,32 @@ component PostCard inherits TouchArea {
     callback profile(string);
     callback retry-send(string);
     callback discard-send(string);
+    // The room on each side of the card.
+    property <length> side: max(16px, (root.width - 1040px) / 2);
     height: lay.preferred-height;
 
     lay := VerticalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        padding-top: 6px;
+        padding-left: root.side;
+        padding-right: root.side;
+        padding-top: 8px;
         padding-bottom: 6px;
-        spacing: 4px;
+        spacing: 6px;
         if root.item.day != "": Divider { label: root.item.day; }
-        Rectangle {
+        card := Rectangle {
             border-radius: 8px;
-            background: Theme.sidebar;
+            background: Theme.card;
             border-width: 1px;
-            border-color: Theme.border;
+            // A post that mentions me is outlined in the accent colour.
+            border-color: root.item.post.mentions-me ? Theme.accent : Theme.border;
             VerticalLayout {
-                padding-top: 6px;
-                padding-bottom: root.item.reply-count > 0 ? 6px : 8px;
+                padding-top: 14px;
                 MessageRow {
                     m: root.item.post;
-                    max-bubble: root.bubble;
+                    // The card's width less the post's 24px padding on each side.
+                    max-bubble: root.width - 2 * root.side - 48px;
                     in-channel: false;
                     card-style: true;
+                    post-style: true;
                     react(k) => { root.react(root.item.post.id, k); }
                     reply => { ChannelStore.open-thread(root.item.post.id, true); }
                     edit => { root.edit(root.item.post.id); }
@@ -238,9 +243,9 @@ component PostCard inherits TouchArea {
                 }
                 // The replies stay folded: who replied and how many, which opens the thread.
                 if root.item.reply-count > 0: HorizontalLayout {
-                    // Under the post's text, past its 32px photo.
-                    padding-left: 60px;
-                    padding-right: 12px;
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 12px;
                     spacing: 6px;
                     alignment: start;
                     Rectangle {
@@ -262,26 +267,40 @@ component PostCard inherits TouchArea {
                         clicked => { ChannelStore.open-thread(root.item.post.id, false); }
                     }
                 }
+                Rectangle { height: 14px; }
+                Rectangle { height: 1px; background: Theme.border; }
+                // "↩ Reply" across the card's foot: opens the thread with the cursor in its composer.
+                reply-field := Rectangle {
+                    height: 40px;
+                    border-bottom-left-radius: 8px;
+                    border-bottom-right-radius: 8px;
+                    background: reply-touch.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: @tr("Reply");
+                    accessible-action-default => { ChannelStore.open-thread(root.item.post.id, true); }
+                    HorizontalLayout {
+                        padding-left: 24px;
+                        spacing: 8px;
+                        alignment: start;
+                        Text { text: "↩"; color: reply-touch.has-hover ? Theme.fg : Theme.fg-muted; font-size: 14px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                        Text { text: @tr("Reply"); color: reply-touch.has-hover ? Theme.fg : Theme.fg-muted; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; accessible-role: none; }
+                    }
+                    reply-touch := TouchArea { mouse-cursor: pointer; clicked => { ChannelStore.open-thread(root.item.post.id, true); } }
+                }
             }
         }
-        // "↩ Reply": opens the thread with the cursor in its composer.
-        reply-field := Rectangle {
-            height: 32px;
-            border-radius: 4px;
-            background: reply-touch.has-hover ? Theme.surface-hover : transparent;
-            border-width: 1px;
-            border-color: Theme.border;
-            accessible-role: button;
-            accessible-label: @tr("Reply");
-            accessible-action-default => { ChannelStore.open-thread(root.item.post.id, true); }
-            HorizontalLayout {
-                padding-left: 12px;
-                spacing: 8px;
-                alignment: start;
-                Text { text: "↩"; color: Theme.fg-subtle; font-size: 14px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
-                Text { text: @tr("Reply"); color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+        // The reactions sit under the card, as in Teams, with the chip that adds another.
+        if root.item.post.reactions.length > 0: HorizontalLayout {
+            padding-left: 12px;
+            spacing: 4px;
+            alignment: start;
+            for r in root.item.post.reactions: ReactionChip {
+                r: r;
+                clicked => { root.react(root.item.post.id, r.key); }
             }
-            reply-touch := TouchArea { mouse-cursor: text; clicked => { ChannelStore.open-thread(root.item.post.id, true); } }
+            if !root.item.post.pending && !root.item.post.failed && !root.item.post.deleted: AddReactionChip {
+                clicked => { root.more-reactions(root.item.post.id, self.absolute-position.x, self.absolute-position.y + self.height + 4px); }
+            }
         }
     }
 }
@@ -631,7 +650,6 @@ export component ChannelPosts inherits Rectangle {
                         posts-list.top-gap = self.top-gap;
                     }
                 }
-                bubble: min(720px, root.width - 100px);
                 react(id, k) => { root.react(id, k); }
                 edit(id) => { root.edit(id); }
                 more-reactions(id, x, y) => { root.more-reactions(id, x, y); }

@@ -1,7 +1,7 @@
 //! UI-thread side of the channel Posts tab and of Adaptive Cards: fills the `ChannelStore` global
 //! and turns card rows into Slint rows (plan 8.4, 8.8).
 
-use super::{UiHandle, img, model, model_sync, msg, rgb, row_fingerprint, styled};
+use super::{UiHandle, img, model, model_sync, msg, post_blocks, rgb, row_fingerprint, styled};
 use crate::lists_data::{CardCellData, CardRowData, PostData, PostThreadData, ReplierData};
 use crate::{AppWindow, CardButton, CardCell, CardRow, ChannelStore, Msg, PostItem, Replier};
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -79,8 +79,11 @@ fn replier(r: ReplierData) -> Replier {
 }
 
 fn post(p: PostData) -> PostItem {
+    let blocks = post_blocks(&p.post.post_blocks);
+    let mut post = msg(p.post);
+    post.blocks = blocks;
     PostItem {
-        post: msg(p.post),
+        post,
         day: p.day.into(),
         reply_count: p.reply_count,
         repliers: model(p.repliers.into_iter().map(replier).collect()),

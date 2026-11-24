@@ -284,6 +284,7 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         quotes,
         markdown,
         segments,
+        post_blocks,
         plain,
         rtl,
         images,
@@ -336,7 +337,17 @@ pub(crate) fn of(m: &MsgData) -> u64 {
         system,
     )
         .hash(h);
-    (subject, quotes, markdown, segments, plain, rtl, reply_count).hash(h);
+    (
+        subject,
+        quotes,
+        markdown,
+        segments,
+        post_blocks,
+        plain,
+        rtl,
+        reply_count,
+    )
+        .hash(h);
     (
         pending,
         saved,
@@ -413,6 +424,7 @@ pub(crate) fn sample_row(id: &str, text: &str) -> MsgData {
         quotes: vec![],
         markdown: text.into(),
         segments: vec![],
+        post_blocks: vec![],
         plain: text.into(),
         rtl: false,
         images: vec![],
