@@ -111,9 +111,9 @@ flatpak run io.github.mohamedeslam04.ironteams</code></pre></div>
             <li>Nothing is installed while you work. A banner says &ldquo;IronTeams &lt;version&gt; is ready&rdquo; with <strong>Restart to update</strong>. If you do not click it, the update is installed when you quit. If a download or the install fails, the current version keeps running and the next check tries again.</li>
             <li>Before a new version first opens its data, your message caches and settings are copied to <code>backup-&lt;old version&gt;</code> in the data folder. The last two are kept.</li>
             <li>If a new version fails to start three times in a row, automatic updates pause and a banner offers to go back to the version before.</li>
-            <li>Settings &rsaquo; About &rsaquo; Updates has <strong>Automatic updates</strong> (on), <strong>Get beta updates</strong> (off) and <strong>Check now</strong>.</li>
+            <li>Updates cannot be turned off: new versions are always downloaded and installed when you restart or quit. Settings &rsaquo; About &rsaquo; Updates has <strong>Get beta updates</strong> (off) and <strong>Check now</strong>.</li>
           </ul>
-          <p>Copies from the tarball, RPM, Flatpak, AUR or <code>cargo</code> never replace themselves. For these, Settings &rsaquo; About has an opt-in update check, off by default, that asks GitHub for the latest release once per start and never downloads anything.</p>
+          <p>Copies from the tarball, RPM, Flatpak, AUR or <code>cargo</code> never replace themselves. For these, Settings &rsaquo; About checks GitHub for the latest release once per start, shows a banner when there is one, and never downloads anything. That check cannot be turned off.</p>
           <p>The first Velopack release has to be installed by hand once, also for users of an older MSI or <code>.dmg</code>. Every release after it arrives on its own.</p>
 
           <h2 id="uninstall">Uninstall</h2>

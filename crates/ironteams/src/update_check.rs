@@ -1,7 +1,6 @@
-//! Opt-in "new version" check (plan X3.5).
+//! The "new version" check of copies that cannot update themselves (plan X3.5).
 //!
-//! Off unless the user turns on Settings > About > "Check for updates". Then IronTeams makes one
-//! `GET` to the GitHub releases API per start (and one more for each "Check now"). The request has
+//! Always on; there is no switch. IronTeams makes one `GET` to the GitHub releases API per start (and one more for each "Check now"). The request has
 //! no cookies, no token and nothing about the user: only an `Accept` header and the generic
 //! `User-Agent: ironteams`. The answer is compared with this build's version; IronTeams never downloads or
 //! installs anything (the package managers update the Flatpak, AUR and RPM installs). Copies that

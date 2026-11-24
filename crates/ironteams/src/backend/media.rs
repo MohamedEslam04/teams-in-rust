@@ -403,27 +403,33 @@ impl Engine {
     // ---- 9.5 image grid ------------------------------------------------------------
 
     /// The grid cells of a message's inline pictures (`url`, posted width, posted height), and the
-    /// grid's size. Only the pictures that get a cell are downloaded.
+    /// grid's size. Only the pictures that get a cell are downloaded, and only for a row near the
+    /// screen (`near`); a row away from it gets the same cells without pixels.
     pub(super) fn grid_images(
         self: &Arc<Self>,
         images: &[(String, Option<u32>, Option<u32>)],
+        near: bool,
     ) -> (Vec<ImgData>, f32, f32) {
         // Pictures beyond the grid's cells are not downloaded.
         let pixels: Vec<Option<Pixels>> = images
             .iter()
             .enumerate()
             .map(|(i, (url, _, _))| {
-                (i < images::GRID_MAX_CELLS)
+                (near && i < images::GRID_MAX_CELLS)
                     .then(|| self.inline_image(url))
                     .flatten()
             })
             .collect();
+        // A picture decoded before keeps its size without its pixels, so the row does not
+        // change height when it leaves the screen.
         let sizes: Vec<(u32, u32)> = images
             .iter()
             .zip(&pixels)
-            .map(|((_, w, h), p)| match p {
+            .map(|((url, w, h), p)| match p {
                 Some(p) => (p.width(), p.height()),
-                None => (w.unwrap_or(0), h.unwrap_or(0)),
+                None => self
+                    .image_dims(url)
+                    .unwrap_or((w.unwrap_or(0), h.unwrap_or(0))),
             })
             .collect();
         let grid = images::grid_layout(&sizes, images::GRID_MAX_WIDTH);

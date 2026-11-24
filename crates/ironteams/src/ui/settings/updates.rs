@@ -1,12 +1,11 @@
 use super::*;
 
-/// Starts an update check if the switch is on and none is running. The automatic one happens at
-/// most once per start (`force` is false); "Check now" forces another.
+/// Starts an update check if none is running. The automatic one happens at most once per start
+/// (`force` is false); "Check now" forces another.
 pub(super) fn check_updates(w: &AppWindow, c: &mut Ctl, force: bool) {
     // A copy that updates itself has no use for the notice.
     let self_update = c.env.hooks.updates.is_some();
-    if self_update || !c.local.general.check_updates || c.checking || (!force && c.update_auto_done)
-    {
+    if self_update || c.checking || (!force && c.update_auto_done) {
         return;
     }
     if !force {
@@ -38,11 +37,6 @@ pub(super) fn update_checked(w: &AppWindow, c: &mut Ctl, r: Result<Release, Stri
     c.checking = false;
     let g = w.global::<SettingsStore>();
     g.set_update_checking(false);
-    if !c.local.general.check_updates {
-        // Switched off while the answer was on its way.
-        g.set_update_status(s(""));
-        return;
-    }
     match r {
         Ok(rel) if update_check::is_newer(env!("CARGO_PKG_VERSION"), &rel.version) => {
             g.set_update_status(s(format!("Version {} available", rel.version)));

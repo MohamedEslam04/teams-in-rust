@@ -43,8 +43,9 @@ jobs:
   # Formatting and clippy on Linux, in parallel with the tests below.
   clippy:
     runs-on: ubuntu-latest
-    # A hung runner stops here instead of holding the queue for hours.
-    timeout-minutes: 30
+    # A hung runner stops here instead of holding the queue for hours. A cold build (new
+    # dependencies, an evicted cache) takes 30-35 minutes, so 45.
+    timeout-minutes: 45
     env:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold
@@ -75,13 +76,18 @@ jobs:
         with:
           # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
           save-if: ${{ github.ref == 'refs/heads/dev' }}
+      # The GUI crate's bin and its test build are the two largest rustc processes (~7 GB each);
+      # `--all-targets` runs them side by side and the runner was still killed with exit 143 with
+      # the swap above. Its bin goes first on its own, so the full run only adds the test target.
+      - run: cargo clippy -p ironteams --bins -- -D warnings
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p ironteams-cli --features mcp --all-targets -- -D warnings
 
   # The Linux tests. The job is named `check` so test-build.yml restores this job's cache.
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A cold build (new dependencies, an evicted cache) took 35 minutes and was cancelled at 30.
+    timeout-minutes: 45
     env:
       # mold links the large test and GUI binaries several times faster than the default linker.
       RUSTFLAGS: -C link-arg=-fuse-ld=mold

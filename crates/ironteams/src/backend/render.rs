@@ -91,6 +91,9 @@ pub(super) struct MsgMarks<'a> {
     pub receipt_side: bool,
     /// Messages that arrived live a moment ago: the row fades in.
     pub fresh: Option<&'a HashMap<String, Instant>>,
+    /// The rows (first and last index among the shown rows) whose pictures are decoded; the
+    /// others keep their pictures' size without pixels (`picture_window`). `None`: every row.
+    pub near: Option<(usize, usize)>,
 }
 
 impl Engine {
@@ -373,6 +376,29 @@ impl Engine {
         self.mark(|d| d.messages = true);
     }
 
+    /// The window's scale factor, in percent, as `window_watch` reads it. Inline pictures are
+    /// decoded for it: at 1 a picture takes a quarter of the memory it takes at 2. When it
+    /// changes (the window moved to another screen) the decoded pictures are dropped, and the
+    /// next render decodes them again from the copies on disk at the new size.
+    pub fn set_display_scale(self: &Arc<Self>, scale_pct: u16) {
+        use std::sync::atomic::Ordering;
+        if self.display_scale.swap(scale_pct, Ordering::Relaxed) == scale_pct {
+            return;
+        }
+        self.images.lock().unwrap().clear();
+        self.mark(|d| d.messages = true);
+    }
+
+    /// The size of an inline picture decoded before (at any scale: its shape is what counts).
+    pub(super) fn image_dims(&self, url: &str) -> Option<(u32, u32)> {
+        self.image_dims.lock().unwrap().get(url).copied()
+    }
+
+    fn display_scale(&self) -> u16 {
+        self.display_scale
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub(super) fn inline_image(self: &Arc<Self>, url: &str) -> Option<Pixels> {
         let mut cache = self.images.lock().unwrap();
         if let Some(p) = cache.get(url) {
@@ -436,18 +462,28 @@ impl Engine {
     /// picture (`keep`) that decodes is also kept on disk for the next run. False when the bytes
     /// do not decode.
     async fn show_inline_image(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
-        let decoded =
-            decode_limited(move || decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes)))
-                .await
-                .flatten();
+        let scale = self.display_scale();
+        let (w, h) = inline_box(scale);
+        let decoded = decode_limited(move || decode_image(&bytes, w, h).map(|px| (px, bytes)))
+            .await
+            .flatten();
         let Some((px, bytes)) = decoded else {
             tracing::warn!(url = %teams_proto::logsafe::url(url), "image could not be decoded");
             return false;
         };
-        self.images
+        self.image_dims
             .lock()
             .unwrap()
-            .insert_pixels(url.to_string(), Some(px));
+            .insert(url.to_string(), (px.width(), px.height()));
+        {
+            let mut images = self.images.lock().unwrap();
+            if self.display_scale() == scale {
+                images.insert_pixels(url.to_string(), Some(px));
+            } else {
+                // The scale changed during the decode: the next render asks again at the new size.
+                images.remove(url);
+            }
+        }
         self.mark(|d| d.messages = true);
         if keep {
             self.keep_img(url, bytes).await;
@@ -961,6 +997,10 @@ impl Engine {
         };
         let receipt_side = thread.is_none() && self.conv_kind(&conv) == Some(ConvKind::OneOnOne);
         let fresh = self.view.lock().unwrap().fresh.clone();
+        // The open chat's or channel's own list reports what it shows; a thread panel shows all.
+        let near = thread
+            .is_none()
+            .then(|| self.near_window(&conv, visible.iter().map(|r| r.id.clone()).collect()));
         let mut out = self.build_msgs(
             &rows,
             is_channel,
@@ -974,6 +1014,7 @@ impl Engine {
                 receipt: &receipt,
                 receipt_side,
                 fresh: Some(&fresh),
+                near,
             },
         );
         if is_channel && thread.is_none() {
@@ -1045,6 +1086,7 @@ impl Engine {
         let receipt = marks.receipt;
         let receipt_side = marks.receipt_side;
         let fresh = marks.fresh;
+        let near = marks.near;
         let (visible, meetings) = super::meeting_cards::visible_rows(rows);
         let mut out: Vec<MsgData> = Vec::with_capacity(rows.len());
         let mut prev: Option<&MessageRow> = None;
@@ -1053,6 +1095,8 @@ impl Engine {
         let mut built = 0usize;
         for (i, r) in visible.iter().copied().enumerate() {
             let system = system_text(r);
+            // Off screen: the row's pictures keep their size but hold no pixels.
+            let close = near.is_none_or(|(lo, hi)| (lo..=hi).contains(&i));
             let this_receipt = receipt.iter().find(|x| x.msg_id == r.id);
             let mine = r.sender_mri == self.me;
             let shown = self.translated_html(&r.id);
@@ -1074,7 +1118,7 @@ impl Engine {
             });
             let props = &text.props;
             let voices = self.voice_rows(&text.voices, mine);
-            let videos = self.clip_rows(&text.videos);
+            let videos = self.clip_rows(&text.videos, close);
             let (urls, joins, loops) = (text.urls.clone(), text.joins.clone(), text.loops.clone());
             let parsed = text.body.clone();
             let headline = props
@@ -1082,7 +1126,7 @@ impl Engine {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            let card = self.card_rows(props, &headline);
+            let card = self.card_rows(props, &headline, close);
             let new_day = prev.is_none_or(|p| !same_day(p.compose_ms, r.compose_ms));
             let show_header = new_day
                 || divider == Some(i)
@@ -1147,7 +1191,7 @@ impl Engine {
                         .collect()
                 })
                 .unwrap_or_default();
-            let (images, grid_w, grid_h) = self.grid_images(&parsed.images);
+            let (images, grid_w, grid_h) = self.grid_images(&parsed.images, close);
             let has_text = !r.deleted && system.is_none() && !parsed.plain.trim().is_empty();
             let tr = self.translate_view(
                 &r.id,

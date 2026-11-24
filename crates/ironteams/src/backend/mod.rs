@@ -67,6 +67,7 @@ mod people_card;
 mod people_live;
 pub(crate) mod people_presence;
 mod photo;
+mod picture_window;
 mod remind;
 mod render;
 pub(crate) mod ringtone;
@@ -145,6 +146,9 @@ pub enum Cmd {
     QuickReply(String, String),
     TypingTick,
     LoadOlder,
+    /// The rows at the top and bottom of the message list or the posts list (ids; the bottom is
+    /// empty when the list ends on screen): the pictures around them are decoded.
+    RowsShown(String, String),
     React(String, String),
     Reply(String),
     CancelReply,
@@ -250,6 +254,9 @@ struct View {
     limit: usize,
     reply_to: Option<MessageRow>,
     editing: Option<String>,
+    /// The reply and forward quote blocks of the message being edited, as received: they stood
+    /// before and after its own text, are not part of the composer text and go back unchanged.
+    edit_quotes: (String, String),
     /// Sent messages (client message id, optimistic row) waiting for their echo.
     pending: Vec<(String, MessageRow)>,
     typing: typing::Typing,
@@ -280,6 +287,12 @@ struct View {
     at_bottom: bool,
     /// The first message shown before an older page was added, for the list to keep in place.
     older_anchor: Option<String>,
+    /// What the list reported it shows (`Cmd::RowsShown`): conversation, top and bottom row ids.
+    shown: Option<(String, String, String)>,
+    /// The row ids of the last render of the open chat, in order, and the rows (indexes) whose
+    /// pictures it decoded (`picture_window`).
+    shown_order: Vec<String>,
+    near: Option<(usize, usize)>,
     /// The server had nothing older than the oldest message shown: scrolling near the top asks
     /// for no more pages (reset when another conversation or thread opens).
     older_done: bool,
@@ -398,6 +411,12 @@ pub struct Engine {
     avatar_placeholders: Mutex<avatar_placeholder::Placeholders>,
     /// Decoded inline message pictures by URL, kept under a byte budget.
     images: Mutex<ByteLru<String, Option<Pixels>>>,
+    /// The window's scale factor in percent: inline pictures are decoded for it
+    /// (`set_display_scale`).
+    display_scale: std::sync::atomic::AtomicU16,
+    /// The size of every inline picture decoded so far, by URL: a row whose pixels were dropped
+    /// (off screen, `picture_window`) keeps its picture's size.
+    image_dims: Mutex<HashMap<String, (u32, u32)>>,
     /// Reactor MRIs whose profile fetch was already started (tooltip names).
     name_requests: Mutex<HashSet<String>>,
     pub focused: Arc<AtomicBool>,
@@ -516,6 +535,8 @@ impl Engine {
             avatars: Mutex::new(ByteLru::new(AVATAR_BUDGET)),
             avatar_placeholders: Mutex::new(avatar_placeholders),
             images: Mutex::new(ByteLru::new(IMAGE_BUDGET)),
+            display_scale: std::sync::atomic::AtomicU16::new(util::DEFAULT_SCALE_PCT),
+            image_dims: Mutex::new(HashMap::new()),
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
             offline: AtomicBool::new(false),
@@ -799,12 +820,13 @@ impl Engine {
                 }
             }
             Cmd::LoadOlder => self.load_older().await?,
+            Cmd::RowsShown(top, bottom) => self.rows_shown(top, bottom),
             Cmd::React(id, key) => self.react(&id, &key).await?,
             Cmd::Reply(id) => {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row {
                     self.ui
-                        .reply_bar(r.sender_name.clone(), reply_preview(&r), false);
+                        .reply_bar(self.sender_display_name(&r), reply_preview(&r), false);
                     let mut v = self.view.lock().unwrap();
                     v.editing = None;
                     v.reply_to = Some(r);
@@ -816,14 +838,21 @@ impl Engine {
             Cmd::Edit(id) => {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row.filter(|r| r.sender_mri == self.me) {
-                    let text = ::render::plain_text(&::render::parse_teams_html(&r.content_html));
+                    // Only the author's own text is edited; a forwarded or quoted message is kept.
+                    let split = ::render::split_quote_blocks(&r.content_html);
+                    let text = ::render::plain_text(&::render::parse_teams_html(&split.body));
                     let text = self.restore_edit_mentions(&r, text);
-                    self.ui
-                        .reply_bar(String::new(), text.chars().take(120).collect(), true);
+                    let banner = if text.is_empty() {
+                        reply_preview(&r)
+                    } else {
+                        text.chars().take(120).collect()
+                    };
+                    self.ui.reply_bar(String::new(), banner, true);
                     self.ui.set_draft(text);
                     let mut v = self.view.lock().unwrap();
                     v.reply_to = None;
                     v.editing = Some(r.id);
+                    v.edit_quotes = (split.before, split.after);
                 }
                 self.ui.focus();
             }

@@ -23,7 +23,8 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 - **Chat:**
   - 1:1, group, meeting and self-notes chats, with custom sections, filters and list options
   - rich text both ways: a formatting toolbar (bold to tables, colors and code blocks) and Teams' shortcuts
-  - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox
+  - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox;
+    editing a message changes only your own text and keeps its forwarded or quoted part
   - new chats and group management, profile cards, read receipts, pinned-message banner, and
     Notify when available for the person of a 1:1 chat
   - image grid and viewer, link previews, translation, voice messages and videos
@@ -60,7 +61,7 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 - **Settings:** theme (light, dark, system), accent, density and text size; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
-  app permissions; accounts; accessibility; an opt-in update check.
+  app permissions; accounts; accessibility; updates (always on).
 - **Desktop:** your status follows your calls and goes Away after five idle minutes; tray icon
   with unread badge, close to tray, autostart, window state, desktop
   notifications, a local redacted problem report (`ironteams-cli diag`).
@@ -88,8 +89,9 @@ git clone https://github.com/MohamedEslam04/teams-in-rust && cd teams-in-rust
 | RPM (Fedora) | `packaging/rpm/ironteams.spec` | builds offline from vendored crates |
 
 Each folder says how to build the package. None of them is published to a repository yet, and
-updates come from your package manager. For these Settings › About has an opt-in check (off by
-default) that asks GitHub for the latest release once per start and never downloads anything.
+updates come from your package manager. For these Settings › About checks GitHub for the latest
+release once per start, shows a banner when there is one, and never downloads anything. That check
+cannot be turned off.
 
 Start **IronTeams** from your launcher. On first start it shows a code: open the link, enter the code
 and sign in with your work account.
@@ -122,7 +124,8 @@ Copies installed from `Setup.exe`, the `.pkg` or the AppImage update themselves
   `backup-<old version>` in the data folder (the last two are kept).
 - If a new version fails to start three times in a row, automatic updates pause and a banner
   offers to go back to the version before (downloaded only when you click).
-- Settings › About › Updates: **Automatic updates** (on), **Get beta updates** (off),
+- Updates cannot be turned off: a self-updating copy always downloads new versions and installs
+  them when you restart or quit. Settings › About › Updates has **Get beta updates** (off) and
   **Check now**.
 
 Copies from the tarball, RPM, Flatpak, AUR or `cargo` never replace themselves. The first
@@ -289,4 +292,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit dc9c2202 ("Merge fix/http-error-causes: HTTP errors log their cause chain", 2026-11-24)
+Docs synced to commit 5e36a9fa ("Merge feat/mandatory-auto-update: updates cannot be turned off", 2026-11-24)
