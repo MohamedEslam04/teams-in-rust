@@ -567,6 +567,25 @@ async fn fetch_ams(client: &Client, url: &str) -> Result<FetchedImage> {
     })
 }
 
+/// [`fetch_ams`] for an address and, when the connection to it fails, for its Teams-domain twin
+/// (see [`crate::ams::asyncgw_twin`]). An answer from the service, even an error, is final.
+async fn fetch_ams_routed(client: &Client, url: &str) -> Result<FetchedImage> {
+    let mut last = None;
+    for (i, attempt) in crate::ams::ams_attempts(url).iter().enumerate() {
+        match fetch_ams(client, attempt).await {
+            Ok(f) => {
+                if i > 0 {
+                    crate::ams::ams_remember(attempt);
+                }
+                return Ok(f);
+            }
+            Err(e @ Error::Http(_)) => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| Error::Protocol("no image URL".into())))
+}
+
 async fn fetch_bearer(
     client: &Client,
     aud: &Audience,
@@ -644,7 +663,7 @@ pub async fn fetch(client: &Client, image: &ImageRef) -> Result<FetchedImage> {
         ImageHost::Ams => {
             let mut last = None;
             for url in image.candidates() {
-                match fetch_ams(client, &url).await {
+                match fetch_ams_routed(client, &url).await {
                     Ok(f) => return Ok(f),
                     Err(e) => last = Some(e),
                 }
