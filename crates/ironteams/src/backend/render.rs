@@ -254,9 +254,8 @@ impl Engine {
     async fn load_avatar(self: Arc<Self>, mri: String, stored: Option<Vec<u8>>, size: u32) {
         if let Some(bytes) = stored {
             let low_res = avatar_is_low_res(&bytes);
-            let px = tokio::task::spawn_blocking(move || decode_image(&bytes, size, size))
+            let px = decode_limited(move || decode_image(&bytes, size, size))
                 .await
-                .ok()
                 .flatten();
             if px.is_some() {
                 self.avatars
@@ -280,7 +279,10 @@ impl Engine {
     async fn fetch_avatar(self: Arc<Self>, mri: String, size: u32) {
         if let Ok(bytes) = self.client.avatar(&self.me, &mri).await
             && self.is_photo(&mri, &bytes)
-            && let Some(px) = decode_image(&bytes, size, size)
+            && let Some((px, bytes)) =
+                decode_limited(move || decode_image(&bytes, size, size).map(|px| (px, bytes)))
+                    .await
+                    .flatten()
         {
             self.avatars
                 .lock()
@@ -434,12 +436,10 @@ impl Engine {
     /// picture (`keep`) that decodes is also kept on disk for the next run. False when the bytes
     /// do not decode.
     async fn show_inline_image(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
-        let decoded = tokio::task::spawn_blocking(move || {
-            decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes))
-        })
-        .await
-        .ok()
-        .flatten();
+        let decoded =
+            decode_limited(move || decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes)))
+                .await
+                .flatten();
         let Some((px, bytes)) = decoded else {
             tracing::warn!(%url, "image could not be decoded");
             return false;

@@ -267,6 +267,23 @@ pub(super) fn avatar_is_low_res(bytes: &[u8]) -> bool {
         .is_none_or(|(w, h)| w.max(h) <= 64)
 }
 
+/// Pictures decoded at the same time. Each decode holds a blocking thread and the full-size
+/// picture in memory, so a burst (a chat full of pictures, a slow disk) waits here instead of
+/// starting hundreds of threads.
+pub(super) const DECODES_AT_ONCE: usize = 3;
+
+static DECODES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(DECODES_AT_ONCE);
+
+/// Runs `decode` on the blocking pool once one of the [`DECODES_AT_ONCE`] places is free. None
+/// when the decode panicked.
+pub(super) async fn decode_limited<T: Send + 'static>(
+    decode: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    // The semaphore is never closed.
+    let _permit = DECODES.acquire().await.ok()?;
+    tokio::task::spawn_blocking(decode).await.ok()
+}
+
 pub(super) fn decode_image(bytes: &[u8], max_w: u32, max_h: u32) -> Option<Pixels> {
     let img = image::load_from_memory(bytes).ok()?;
     let img = if img.width() > max_w || img.height() > max_h {
@@ -375,6 +392,39 @@ pub(super) fn stored_title(
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn a_burst_of_decodes_runs_a_few_at_a_time() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (now, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let done = rt.block_on(async {
+            let jobs: Vec<_> = (0..40)
+                .map(|_| {
+                    let (now, peak) = (now.clone(), peak.clone());
+                    tokio::spawn(decode_limited(move || {
+                        let n = now.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak.fetch_max(n, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                        now.fetch_sub(1, Ordering::SeqCst);
+                    }))
+                })
+                .collect();
+            let mut done = 0;
+            for j in jobs {
+                done += usize::from(j.await.unwrap().is_some());
+            }
+            done
+        });
+        assert_eq!(done, 40);
+        let peak = peak.load(Ordering::SeqCst);
+        assert!((1..=DECODES_AT_ONCE).contains(&peak), "{peak} at once");
+    }
 
     fn png_of(edge: u32) -> Vec<u8> {
         let img = image::RgbaImage::from_pixel(edge, edge, image::Rgba([10, 20, 30, 255]));

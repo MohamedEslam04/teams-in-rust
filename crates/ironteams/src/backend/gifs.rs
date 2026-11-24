@@ -4,7 +4,7 @@
 
 use super::Engine;
 use super::stickers::{self, Sticker};
-use super::util::decode_image;
+use super::util::{decode_image, decode_limited};
 use crate::data::Pixels;
 use std::sync::{Arc, Mutex};
 use store::OutboxKind;
@@ -168,9 +168,8 @@ impl Engine {
                 let Ok(bytes) = e.client.bytes(&url, &[], 4 * 1024 * 1024).await else {
                     return;
                 };
-                let px = tokio::task::spawn_blocking(move || decode_image(&bytes, 320, 240))
+                let px = decode_limited(move || decode_image(&bytes, 320, 240))
                     .await
-                    .ok()
                     .flatten();
                 let current = with(|s| {
                     if s.seq != seq {
