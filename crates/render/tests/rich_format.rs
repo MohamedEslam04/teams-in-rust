@@ -891,7 +891,7 @@ fn markdown_to_composer_html_uses_teams_tags() {
 fn right_to_left_blocks_carry_their_direction() {
     assert_eq!(
         markdown_to_composer_html("Hi team\nحاضر\nok تمام"),
-        concat!(r#"<p dir="ltr">Hi team</p><p dir="rtl">حاضر</p><p dir="ltr">ok تمام</p>"#)
+        r#"<p dir="ltr">Hi team</p><p dir="rtl">حاضر</p><p dir="ltr">ok تمام</p>"#
     );
     // Formatting does not hide the direction, and blocks without text stay plain.
     assert_eq!(

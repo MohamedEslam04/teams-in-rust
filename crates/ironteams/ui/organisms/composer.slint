@@ -137,7 +137,7 @@ export component Composer inherits Rectangle {
     }
 
     function put(e: Edited) {
-        composer-input.text = e.text;
+        composer-input.set-text(e.text);
         composer-input.set-selection-offsets(e.cursor, e.cursor);
         root.draft-edited(e.text);
         root.focus-tick += 1;
@@ -145,7 +145,7 @@ export component Composer inherits Rectangle {
 
     // Puts a formatted text back with its selection.
     function put-selection(e: FormatEdit) {
-        composer-input.text = e.text;
+        composer-input.set-text(e.text);
         composer-input.set-selection-offsets(e.anchor, e.cursor);
         root.draft-edited(e.text);
         root.focus-tick += 1;
@@ -206,7 +206,7 @@ export component Composer inherits Rectangle {
                 // Cleared first: a refused schedule puts the text (and the time) back.
                 let text = composer-input.text;
                 let at = SendStore.schedule-at;
-                composer-input.text = "";
+                composer-input.set-text("");
                 SendStore.schedule-at = "";
                 SendStore.schedule-label = "";
                 root.important = false;
@@ -217,7 +217,7 @@ export component Composer inherits Rectangle {
         }
         if composer-input.text != "" || root.pending-attachments.length > 0 {
             root.send(composer-input.text);
-            composer-input.text = "";
+            composer-input.set-text("");
             root.important = false;
             root.urgent = false;
         }
@@ -411,7 +411,7 @@ export component Composer inherits Rectangle {
                             words: root.spell-words;
                             stable: root.spell-stable;
                             font-size: composer-input.font-size;
-                            align: TextHorizontalAlignment.left;
+                            align: Theme.start-align;
                             replace(start, end, with) => {
                                 let e = SpellApi.replace(composer-input.text, start, end, with);
                                 if e.cursor >= 0 { root.put(e); }

@@ -4,6 +4,11 @@
 // cursor and selection are offsets into it, so the rest of the composer works as with one input;
 // src/composer_lines.rs (render::lines) maps between that string and the lines.
 //
+// The rows of `lines` are linked to the inputs (typing writes the row), so the text of an input and
+// the model never differ; setting the text from outside updates the rows in place (`LineApi.update`)
+// and keeps the focused input, so a key typed right after works. Anything that has to move the
+// cursor into another input (a joined line, a new line) is done when that input exists.
+//
 // What it does not do: a selection stays inside one line (no Shift+Up/Down, no Ctrl+A over all lines),
 // and an input's own undo only knows its own line.
 import { Theme } from "../tokens/theme.slint";
@@ -11,16 +16,17 @@ import { Theme } from "../tokens/theme.slint";
 // Rust side: src/composer_lines.rs. Offsets are byte offsets into the whole text.
 export global LineApi {
     pure callback split(string) -> [string];
+    // the rows joined with "\n"
+    pure callback join([string]) -> string;
+    // Changes the rows of the model in place to the lines of the text (rows are set, added or removed)
+    callback update([string], string);
     pure callback line-count(string) -> int;
-    pure callback line-text(string, int) -> string;
     // line and byte column of an offset
     pure callback line-of(string, int) -> int;
     pure callback column-of(string, int) -> int;
     // text, line, column -> offset
     pure callback offset-of(string, int, int) -> int;
     pure callback line-length(string, int) -> int;
-    // text, line, new content (may hold line breaks) -> text
-    pure callback replace-line(string, int, string) -> string;
     // text, start, end, insert -> text
     pure callback splice(string, int, int, string) -> string;
     // text, offset, -1 (up) or 1 (down) -> offset one line up or down in the same column, or -1
@@ -37,18 +43,19 @@ export component LineEditor inherits Rectangle {
     out property <int> anchor-position-byte-offset: root.anchor;
     out property <bool> focused: root.focus-line >= 0;
     out property <length> text-height: lines-box.preferred-height;
-    // The text was edited by typing, pasting or a line join (not when it is set from outside).
+    // The text was edited by typing or pasting (not when it is set from outside).
     callback edited();
 
-    // The text as this editor last knew it, and the lines drawn from it. Typing changes one input
-    // and `own` only; the lines are drawn again when the text is set from outside or the line
-    // structure changes (Enter, a join, a paste with line breaks).
+    // The text as this editor last knew it. `text` differs from it after a write from outside.
     property <string> own;
+    // One row per line. A row can hold a line break for a moment (Enter, a paste): `normalize`
+    // makes it lines.
     property <[string]> lines: [""];
     property <int> caret;
     property <int> anchor;
     property <int> focus-line: -1;
-    // A request to put the cursor in a line (a new input takes it in `init`, an old one when `poke` changes).
+    // A request to put the cursor in a line: a new input takes it in `init`, an old one when `poke`
+    // changes or at its next key.
     property <bool> want-active;
     property <int> want-line;
     property <int> want-anchor-column;
@@ -58,19 +65,16 @@ export component LineEditor inherits Rectangle {
 
     probe := Text { text: "Ag"; font-size: root.font-size; visible: false; }
 
-    // Draws the lines again when `text` was set from outside. True when it did.
-    function sync() -> bool {
-        if root.text == root.own {
-            return false;
+    // The text was set from outside: the rows follow it.
+    function sync() {
+        if root.text != root.own {
+            let had-focus = root.focus-line >= 0;
+            root.own = root.text;
+            LineApi.update(root.lines, root.text);
+            if had-focus && root.focus-line >= LineApi.line-count(root.text) {
+                root.request(2000000000, 2000000000, true);
+            }
         }
-        let had-focus = root.focus-line >= 0;
-        root.own = root.text;
-        root.lines = LineApi.split(root.text);
-        root.focus-line = -1;
-        if had-focus {
-            root.request(2000000000, 2000000000, false);
-        }
-        return true;
     }
 
     function request(a: int, c: int, now: bool) {
@@ -85,26 +89,32 @@ export component LineEditor inherits Rectangle {
         }
     }
 
-    // The text after an edit that changed its line structure.
-    function restructure(t: string, a: int, c: int) {
-        root.own = t;
-        root.text = t;
-        root.lines = LineApi.split(t);
-        root.focus-line = -1;
-        root.request(a, c, false);
-        root.edited();
+    // Rows that hold line breaks become lines.
+    function normalize() {
+        LineApi.update(root.lines, root.own);
+        root.request(root.anchor, root.caret, true);
     }
 
     // Backspace at the start of line `k`: it joins the line before.
     function join(k: int) {
         let at = LineApi.offset-of(root.own, k, 0) - 1;
-        root.restructure(LineApi.splice(root.own, at, at + 1, ""), at, at);
+        root.own = LineApi.splice(root.own, at, at + 1, "");
+        root.text = root.own;
+        LineApi.update(root.lines, root.own);
+        root.request(at, at, true);
+        root.edited();
+    }
+
+    // Sets the text from outside, e.g. a completion.
+    public function set-text(t: string) {
+        root.text = t;
+        root.sync();
     }
 
     // Same call as a TextInput's: the selection (the cursor line takes the focus).
     public function set-selection-offsets(a: int, c: int) {
-        let rebuilt = root.sync();
-        root.request(a, c, !rebuilt);
+        root.sync();
+        root.request(a, c, true);
     }
 
     // Gives the keyboard focus to the line with the cursor, selection kept.
@@ -115,27 +125,36 @@ export component LineEditor inherits Rectangle {
         }
     }
 
-    init => { root.sync(); }
+    init => {
+        root.lines = LineApi.split(root.text);
+        root.own = root.text;
+    }
     changed text => { root.sync(); }
+
+    norm-timer := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.normalize();
+        }
+    }
 
     flick := Flickable {
         content-width: self.width;
-        content-height: max(self.height, lines-box.preferred-height);
-
-        // Below the lines: a click there puts the cursor at the end.
-        TouchArea {
-            width: flick.width;
-            height: flick.content-height;
-            clicked => { root.request(2000000000, 2000000000, true); }
-        }
+        content-height: lines-box.height;
 
         lines-box := VerticalLayout {
             width: flick.width;
+            height: max(flick.height, self.preferred-height);
             for line[i] in root.lines: ti := TextInput {
+                text <=> line;
                 color: Theme.fg;
                 font-size: root.font-size;
                 single-line: false;
                 wrap: word-wrap;
+                // The last line takes the room below the text, so a click there is a click in it.
+                vertical-stretch: i == root.lines.length - 1 ? 1 : 0;
                 horizontal-alignment: LineApi.direction(root.text, i) > 0 ? TextHorizontalAlignment.right : LineApi.direction(root.text, i) < 0 ? TextHorizontalAlignment.left : Theme.start-align;
                 property <length> caret-y;
                 property <int> wanted: root.poke;
@@ -147,12 +166,7 @@ export component LineEditor inherits Rectangle {
                         self.set-selection-offsets(root.want-anchor-column, root.want-column);
                     }
                 }
-                // The text comes from `own`, not from the model: a key typed before the lines were
-                // drawn again is in `own` already.
-                init => {
-                    self.text = LineApi.line-text(root.own, i);
-                    self.take();
-                }
+                init => { self.take(); }
                 changed wanted => { self.take(); }
                 changed has-focus => {
                     if self.has-focus {
@@ -179,61 +193,65 @@ export component LineEditor inherits Rectangle {
                 }
 
                 edited => {
-                    if root.text != root.own {
-                        // The text was set from outside and the lines are not drawn again yet: this
-                        // input still shows the old text.
-                        root.sync();
-                        return;
-                    }
                     let start = LineApi.offset-of(root.own, i, 0);
-                    let t = LineApi.replace-line(root.own, i, self.text);
-                    let c = start + self.cursor-position-byte-offset;
-                    let a = start + self.anchor-position-byte-offset;
+                    let t = LineApi.join(root.lines);
+                    root.own = t;
+                    root.text = t;
+                    root.caret = start + self.cursor-position-byte-offset;
+                    root.anchor = start + self.anchor-position-byte-offset;
                     if LineApi.line-count(t) != root.lines.length {
-                        // Enter or a paste with line breaks: the new lines are drawn.
-                        root.restructure(t, a, c);
-                    } else {
-                        root.own = t;
-                        root.text = t;
-                        root.caret = c;
-                        root.anchor = a;
-                        if root.want-active {
-                            // A request is waiting for new inputs: it follows what was typed.
-                            root.request(a, c, false);
-                        }
-                        root.edited();
+                        // Enter or a paste with line breaks: lines are made of them in a moment.
+                        norm-timer.running = true;
+                        norm-timer.restart();
                     }
+                    root.edited();
+                }
+
+                // A selection made by a key (Ctrl+A, Shift+arrows) changes no cursor position the
+                // callback above would hear of: read it when the key is released.
+                key-released(event) => {
+                    if self.has-focus {
+                        let start = LineApi.offset-of(root.own, i, 0);
+                        root.caret = start + self.cursor-position-byte-offset;
+                        root.anchor = start + self.anchor-position-byte-offset;
+                    }
+                    return reject;
                 }
 
                 key-pressed(event) => {
+                    // A write from outside the rows have not followed yet, or a cursor request for
+                    // this input: done before the key acts.
+                    root.sync();
+                    self.take();
                     let plain = !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta && !event.modifiers.shift;
                     let collapsed = self.cursor-position-byte-offset == self.anchor-position-byte-offset;
                     let at-start = collapsed && self.cursor-position-byte-offset == 0;
                     let at-end = collapsed && self.cursor-position-byte-offset == LineApi.line-length(root.own, i);
-                    if event.text == Key.Backspace && at-start && i > 0 && !event.modifiers.control {
+                    let normal = LineApi.line-count(root.own) == root.lines.length;
+                    if event.text == Key.Backspace && at-start && normal && i > 0 && !event.modifiers.control {
                         root.join(i);
                         return accept;
                     }
-                    if event.text == Key.Delete && at-end && i < root.lines.length - 1 && !event.modifiers.control {
+                    if event.text == Key.Delete && at-end && normal && i < root.lines.length - 1 && !event.modifiers.control {
                         root.join(i + 1);
                         return accept;
                     }
-                    if event.text == Key.LeftArrow && plain && at-start && i > 0 {
+                    if event.text == Key.LeftArrow && plain && at-start && normal && i > 0 {
                         root.request(LineApi.offset-of(root.own, i, 0) - 1, LineApi.offset-of(root.own, i, 0) - 1, true);
                         return accept;
                     }
-                    if event.text == Key.RightArrow && plain && at-end && i < root.lines.length - 1 {
+                    if event.text == Key.RightArrow && plain && at-end && normal && i < root.lines.length - 1 {
                         root.request(LineApi.offset-of(root.own, i + 1, 0), LineApi.offset-of(root.own, i + 1, 0), true);
                         return accept;
                     }
-                    if event.text == Key.UpArrow && plain && i > 0 && self.caret-y < root.row-height * 0.5 {
+                    if event.text == Key.UpArrow && plain && normal && i > 0 && self.caret-y < root.row-height * 0.5 {
                         let to = LineApi.vertical(root.own, root.caret, -1);
                         if to >= 0 {
                             root.request(to, to, true);
                             return accept;
                         }
                     }
-                    if event.text == Key.DownArrow && plain && i < root.lines.length - 1 && self.caret-y > self.height - root.row-height * 1.5 {
+                    if event.text == Key.DownArrow && plain && normal && i < root.lines.length - 1 && self.caret-y > self.height - root.row-height * 1.5 {
                         let to = LineApi.vertical(root.own, root.caret, 1);
                         if to >= 0 {
                             root.request(to, to, true);

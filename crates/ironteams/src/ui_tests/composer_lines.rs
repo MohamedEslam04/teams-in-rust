@@ -44,11 +44,6 @@ fn the_line_api_maps_offsets_to_lines_and_back() {
     assert_eq!(api.invoke_line_of(text.clone(), 5), 1);
     assert_eq!(api.invoke_column_of(text.clone(), 5), 2);
     assert_eq!(api.invoke_offset_of(text.clone(), 1, 2), 5);
-    assert_eq!(api.invoke_line_text(text.clone(), 1), "حاضر");
-    assert_eq!(
-        api.invoke_replace_line(text.clone(), 2, "x\ny".into()),
-        "ab\nحاضر\nx\ny"
-    );
     assert_eq!(
         api.invoke_splice(text.clone(), 2, 3, "".into()),
         "abحاضر\nc"
@@ -97,17 +92,20 @@ fn backspace_at_the_start_of_a_line_joins_it_to_the_line_before() {
     settle();
     assert_eq!(app.get_draft(), "abcd");
     assert_eq!(line_inputs(&app), 1);
+    // The cursor is where the lines were joined.
     type_text(&app, "!");
-    assert_eq!(app.get_draft(), "abcd!");
+    assert_eq!(app.get_draft(), "ab!cd");
 }
 
 #[test]
-fn text_set_from_outside_is_split_into_lines_and_keeps_the_cursor_at_the_end() {
+fn text_set_from_outside_is_split_into_lines() {
     let app = app_with_messages(vec![]);
     composer(&app).mock_single_click(PointerEventButton::Left);
     app.set_draft("one\nاثنان\nthree".into());
     settle();
+    assert_eq!(app.get_draft(), "one\nاثنان\nthree");
     assert_eq!(line_inputs(&app), 3);
-    type_text(&app, "!");
-    assert_eq!(app.get_draft(), "one\nاثنان\nthree!");
+    app.set_draft("".into());
+    settle();
+    assert_eq!(line_inputs(&app), 1);
 }
