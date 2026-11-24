@@ -17,20 +17,26 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 
 ## Features
 
-- **Sign-in:** sign in with a device code (works with MFA). The refresh token lives in your system
-  keyring (KWallet or GNOME Keyring), never in a file. Several accounts and guest organizations.
+- **Sign-in:** sign in with a device code (works with MFA); the code's address opens in the browser
+  while sign-in waits. The refresh token lives in your system keyring (KWallet or GNOME Keyring),
+  never in a file. Several accounts and guest organizations.
 - **Chat:**
   - 1:1, group, meeting and self-notes chats, with custom sections, filters and list options
   - rich text both ways: a formatting toolbar (bold to tables, colors and code blocks) and Teams' shortcuts
   - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox
-  - new chats and group management, profile cards, read receipts, pinned-message banner
+  - new chats and group management, profile cards, read receipts, pinned-message banner, and
+    Notify when available for the person of a 1:1 chat
   - image grid and viewer, link previews, translation, voice messages and videos
+  - a message's right-click menu also has Copy image, Open in Browser, Download and Share for its
+    pictures, and Open file, Download file, Copy file link and Share file for its files
   - bot and workflow cards (Adaptive Cards), and the composer's apps: message extension search,
     action commands (their page opens in the web host) and sending the resulting cards
-  - Arabic, English and mixed-direction text, each paragraph in its own direction
+  - Arabic, English and mixed-direction text, each line of a message in its own direction, kept in
+    the sent message so Teams shows it the same way
 - **Find:** a search page (messages, files, people, meetings), find in chat, Mentions, Followed
   threads and Saved quick views, the Shared tab and a chat details pane.
-- **Activity:** the Teams activity feed with filters, a preview pane, mark all as read and badges.
+- **Activity:** the Teams activity feed with filters, a preview pane, mark all as read and badges
+  that follow what you read in other Teams clients.
 - **Teams and channels:** posts as cards with replies, announcements, follow thread, channel files,
   plus a management page: discover and join, channels, members, tags, email address, notifications.
 - **Calendar:** day, week and month views, event peek and full view, the event form with
@@ -44,12 +50,19 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   1:1 incoming and outgoing call screens (`calls` feature, on by default; `crates/calling`).
   The microphone gets echo cancellation and noise suppression that also removes keyboard and
   mouse clicks; the camera sends 720p and lowers its quality when the machine falls behind;
-  background blur and pictures in the Video effects panel.
+  background blur and pictures in the Video effects panel. The People panel has a search box, a
+  Share invite button (copies the join link), and sections for who is in the meeting, who was
+  invited but has not joined (Declined or No response) and who is only in the meeting chat;
+  clicking a person there or a participant's tile opens their profile card, and the speaker strip
+  scrolls to show everyone. Pre-join offers Computer audio or Don't use audio; when your account is
+  also in the call on another device, a banner says so and the call's sound can be turned off or
+  back on here.
 - **Settings:** theme (light, dark, system), accent, density and text size; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; accessibility; an opt-in update check.
-- **Desktop:** tray icon with unread badge, close to tray, autostart, window state, desktop
+- **Desktop:** your status follows your calls and goes Away after five idle minutes; tray icon
+  with unread badge, close to tray, autostart, window state, desktop
   notifications, a local redacted problem report (`ironteams-cli diag`).
 - **Live:** real-time updates over Teams' push channel, automatic reconnect and catch-up.
 
@@ -170,7 +183,7 @@ sharing on Windows and macOS (`IRONTEAMS_GST_LAUNCH` points at another `gst-laun
 | Variable | Effect |
 |---|---|
 | `IRONTEAMS_RENDERER=femtovg` | GPU renderer instead of the default software renderer (uses more memory); beats the choice in Settings > General > Performance, see `docs/perf.md` |
-| `IRONTEAMS_LOG=ironteams=debug,teams_proto=info` | More detail in the log (`logs/` in the data folder; also printed to the terminal). The default is `ironteams=info,calling=info`, warnings from the rest. Tokens are never logged |
+| `IRONTEAMS_LOG=ironteams=debug,teams_proto=info` | More detail in the log (`logs/` in the data folder; also printed to the terminal). The default is `ironteams=info,calling=info`, warnings from the rest, with WebRTC's duplicate-packet warnings left out. Tokens are never logged |
 | `IRONTEAMS_DEMO=1` | Offline demo with sample data: no account, no network |
 | `IRONTEAMS_HOME=<dir>` | Keep config, cache and data under `<dir>` |
 
@@ -276,4 +289,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit eef582a0 ("Merge fix/image-decode-thrash: keep on-screen pictures cached, at most three decodes at a time", 2026-11-24)
+Docs synced to commit 705bbad5 ("Merge fix/ams-asyncgw-fallback: media downloads retry on the asyncgw host when the AMS host fails", 2026-11-24)
