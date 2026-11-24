@@ -41,6 +41,8 @@ pub enum PostKind {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct QuoteCard {
     pub author: String,
+    /// Who wrote the quoted message (MRI, `""`: not given), for a quote without a real name.
+    pub author_mri: String,
     /// The quoted text; a line break of the original is a `'\n'`.
     pub text: String,
     /// The quoted message (`""`: none), for the jump to it.
@@ -354,6 +356,7 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
             // plain blockquote only when it opens the message.
             Block::Quote {
                 message_id,
+                author_mri,
                 author,
                 time_ms,
                 forwarded,
@@ -367,6 +370,7 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
             {
                 r.quotes.push(QuoteCard {
                     author: author.clone().unwrap_or_default(),
+                    author_mri: author_mri.clone().unwrap_or_default(),
                     text: preview.clone(),
                     id: message_id.clone().unwrap_or_default(),
                     time_ms: *time_ms,
@@ -870,6 +874,7 @@ mod tests {
             x.quotes,
             vec![QuoteCard {
                 author: "Sara".into(),
+                author_mri: "8:orgid:a".into(),
                 text: "original text".into(),
                 id: "1".into(),
                 time_ms: Some(1),
