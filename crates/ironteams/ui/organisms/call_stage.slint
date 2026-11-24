@@ -649,8 +649,8 @@ export component Stage inherits Rectangle {
                 width: root.strip-view-w;
                 height: root.strip-h;
                 strip := Flickable {
-                    viewport-width: root.strip-content;
-                    viewport-height: self.height;
+                    content-width: root.strip-content;
+                    content-height: self.height;
                     interactive: true;
                     for p[i] in CallStore.speaker-people: Rectangle {
                         x: (i - 1) * (root.strip-w + root.gap);
@@ -664,24 +664,24 @@ export component Stage inherits Rectangle {
                     }
                 }
                 // Arrows over the strip's ends while there are people out of sight.
-                if root.strip-content > root.strip-view-w + 1px && strip.viewport-x < -1px: StripArrow {
+                if root.strip-content > root.strip-view-w + 1px && strip.content-x < -1px: StripArrow {
                     x: 4px;
                     y: (parent.height - self.height) / 2;
                     icon: @image-url("../icons/chevron-left.svg");
                     label: @tr("Show previous people");
                     clicked => {
-                        strip.viewport-x = min(0px, strip.viewport-x + root.strip-view-w * 0.75);
+                        strip.content-x = min(0px, strip.content-x + root.strip-view-w * 0.75);
                     }
                 }
                 if root.strip-content > root.strip-view-w + 1px
-                    && strip.viewport-x > root.strip-view-w - root.strip-content + 1px: StripArrow {
+                    && strip.content-x > root.strip-view-w - root.strip-content + 1px: StripArrow {
                     x: parent.width - self.width - 4px;
                     y: (parent.height - self.height) / 2;
                     icon: @image-url("../icons/chevron-right.svg");
                     label: @tr("Show more people");
                     clicked => {
-                        strip.viewport-x = max(root.strip-view-w - root.strip-content,
-                            strip.viewport-x - root.strip-view-w * 0.75);
+                        strip.content-x = max(root.strip-view-w - root.strip-content,
+                            strip.content-x - root.strip-view-w * 0.75);
                     }
                 }
             }

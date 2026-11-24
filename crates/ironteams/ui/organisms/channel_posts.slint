@@ -341,9 +341,9 @@ component ThreadPanel inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
         thread-scroll := ScrollView {
             vertical-stretch: 1;
-            changed viewport-height => {
+            changed content-height => {
                 if root.follow-down {
-                    self.viewport-y = min(0px, self.visible-height - self.viewport-height);
+                    self.content-y = min(0px, self.visible-height - self.content-height);
                 }
             }
             VerticalLayout {
