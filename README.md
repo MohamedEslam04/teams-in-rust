@@ -292,4 +292,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit __SHA__
+Docs synced to commit 5e36a9fa ("Merge feat/mandatory-auto-update: updates cannot be turned off", 2026-11-24)

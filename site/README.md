@@ -87,4 +87,4 @@ node -e 'const R=require("./site/js/releases.js");const p=R.pick(R.normalize(req
 - The screenshots in `docs/screenshots/` are not used: they show the old name "kelma" in the window,
   and the PNGs on `dev` have a damaged text chunk from the rename.
 
-Docs synced to commit __SHA__
+Docs synced to commit 5e36a9fa ("Merge feat/mandatory-auto-update: updates cannot be turned off", 2026-11-24)
