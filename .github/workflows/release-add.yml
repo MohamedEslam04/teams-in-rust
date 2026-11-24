@@ -1,0 +1,424 @@
+# Adds the Windows or the macOS build to a release that release.yml already published for a `v*` tag.
+# A tag push releases Linux only (release.yml); this workflow tests and builds ONE more system from
+# the tag's own commit, at the tag's version, and uploads only that system's files to the existing
+# release. It never creates a release or a version, never edits the release (title, notes,
+# pre-release flag) and never replaces or deletes an asset: the Linux files stay as published.
+#
+#   gh workflow run release-add.yml -f tag=v1.2.3 -f platform=windows
+#   gh workflow run release-add.yml -f tag=v1.2.3 -f platform=macos
+#   ... -f dry-run=true   tests and builds, keeps the files as workflow artifacts, uploads nothing
+#
+# release.yml also calls it right after publishing when the repository variable
+# RELEASE_ADD_PLATFORMS names a system ("windows", "macos" or "windows macos"): a tag then releases
+# every named system without a manual run.
+#
+#   Windows  Velopack Setup.exe, Portable.zip, full/delta .nupkg, releases.win.json (+ RELEASES),
+#            and the portable zip
+#   macOS    Velopack .pkg and Portable.zip, full/delta .nupkg and releases.osx-<arch>.json
+#            (+ RELEASES-osx-<arch>) for Apple Silicon (osx-arm64) and Intel (osx-x64)
+#
+# Nothing is uploaded unless that system's whole test suite passes on the tag's commit and every
+# packaged app passes `--self-check --packaged`. The packages go up first and the feeds last, so an
+# installed copy never sees a feed entry whose package is not there yet.
+#
+# Installed copies and a release without their system: Velopack's GitHub source reads the
+# releases.<channel>.json of the newest 10 releases and skips a release that has none, so until
+# this workflow adds a system, its installed copies keep seeing the previous version of that
+# system (no update, no error). The delta package is built against that previous version, which
+# velopack.sh downloads, so add the systems to releases in order (refused below otherwise).
+#
+# Signing uses the same secrets as release.yml (see there).
+#
+# To try changes to this file: push a branch named ci/add-release-windows or ci/add-release-macos
+# (anything after that too): a dry run for the newest v* tag. (Not ci/release-*, which starts
+# release.yml.)
+name: Release add-on
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The released tag to add a system to (for example v1.2.3).
+        required: true
+        type: string
+      platform:
+        description: The system to test, build and add.
+        required: true
+        type: choice
+        options: [windows, macos]
+      dry-run:
+        description: Test and build only; upload nothing (the files stay as workflow artifacts).
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      platform:
+        required: true
+        type: string
+      dry-run:
+        type: boolean
+        default: false
+  push:
+    branches: ['ci/add-release-windows*', 'ci/add-release-macos*']
+
+# Read-only for every job that builds (they run downloaded tools and crate build scripts); only the
+# upload job may write.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # As in release.yml.
+  APP_NAME: IronTeams
+  APP_ID: io.github.mohamedeslam04.ironteams
+  BIN: ironteams
+  VPK_VERSION: 1.2.161
+
+jobs:
+  # Which tag, commit, version and system, and whether the release can take this system's files.
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.r.outputs.tag }}
+      sha: ${{ steps.r.outputs.sha }}
+      version: ${{ steps.r.outputs.version }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
+      platform: ${{ steps.r.outputs.platform }}
+      dry: ${{ steps.r.outputs.dry }}
+      test-os: ${{ steps.r.outputs.test-os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Every tag, to find the given one (and the newest one for a dry run from a branch push).
+          fetch-depth: 0
+      - id: r
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_IN: ${{ inputs.tag }}
+          PLATFORM_IN: ${{ inputs.platform }}
+          DRY_IN: ${{ inputs.dry-run }}
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          if [[ -n "$TAG_IN" ]]; then
+            tag=$TAG_IN platform=$PLATFORM_IN dry=${DRY_IN:-false}
+          else
+            # A push to ci/add-release-<platform>*: a dry run for the newest tag.
+            tag=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            platform=$([[ "$GITHUB_REF_NAME" == ci/add-release-macos* ]] && echo macos || echo windows)
+            dry=true
+          fi
+          [[ "$platform" == windows || "$platform" == macos ]] || fail "unknown platform '$platform' (windows or macos)"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || fail "'$tag' is not a release tag like v1.2.3"
+          sha=$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}") || fail "no tag $tag in the repository"
+          version=${tag#v}
+          # The same version as the tag's release: the one the tag's commit carries.
+          crate=$(git show "$sha:crates/$BIN/Cargo.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -1)
+          [[ "$crate" == "$version" ]] || fail "$tag is at a commit whose crates/$BIN/Cargo.toml says version $crate, not $version"
+          if [[ "$version" == *-* ]]; then prerelease=true; else prerelease=false; fi
+          if [[ $platform == windows ]]; then channels=(win) test_os='["windows-latest"]'
+          else channels=(osx-arm64 osx-x64) test_os='["macos-latest","macos-15-intel"]'; fi
+          echo "$platform for $tag ($version, commit $sha, pre-release $prerelease), dry run: $dry"
+
+          # The release must exist (this workflow never creates one), be published, and not have
+          # this system yet. In a dry run a problem is only a warning.
+          problem() { if [[ $dry == true ]]; then echo "::warning::$* (dry run: going on)"; else fail "$*"; fi; }
+          if ! rel=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isDraft,assets 2>/dev/null); then
+            problem "There is no published GitHub release for $tag. Push the tag and let release.yml publish it first: this workflow only adds $platform files to an existing release."
+          elif [[ $(jq -r .isDraft <<<"$rel") == true ]]; then
+            problem "The release $tag is still a draft (release.yml has not finished publishing it)."
+          else
+            for ch in "${channels[@]}"; do
+              if jq -e --arg n "releases.$ch.json" 'any(.assets[]; .name == $n)' <<<"$rel" >/dev/null; then
+                problem "The release $tag already has $platform files (releases.$ch.json). Nothing is replaced: to build them again, delete that system's assets from the release by hand first."
+              fi
+            done
+          fi
+          # A newer release with this system's feed would be the base of the delta and break the
+          # order of the feed: add systems to releases oldest first.
+          for ch in "${channels[@]}"; do
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+              -q ".[] | select(.draft | not) | select(any(.assets[]; .name == \"releases.$ch.json\")) | .tag_name" |
+              while read -r other; do
+                o=${other#v}
+                if [[ "$o" != "$version" && $(printf '%s\n%s\n' "$version" "$o" | sort -V | tail -1) == "$o" ]]; then
+                  problem "The newer release $other already has $platform files ($ch); add $platform to releases in order, not to $tag now."
+                fi
+              done
+          done
+          {
+            echo "tag=$tag"; echo "sha=$sha"; echo "version=$version"; echo "prerelease=$prerelease"
+            echo "platform=$platform"; echo "dry=$dry"; echo "test-os=$test_os"
+          } >> "$GITHUB_OUTPUT"
+
+  # The system's full test suite on the tag's commit. The job id and env match ci.yml's
+  # `platforms` job, so Swatinem/rust-cache restores the cache dev saved for it.
+  platforms:
+    needs: resolve
+    name: check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.resolve.outputs.test-os) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - run: cargo test --workspace --no-fail-fast
+
+  icons:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick icnsutils
+      - run: bash packaging/release/icons.sh icons "packaging/$APP_ID.svg"
+      - run: bash packaging/release/dictionaries.sh dictionaries
+      - uses: actions/upload-artifact@v7
+        with:
+          name: add-shared-assets
+          path: |
+            icons/app.ico
+            icons/app.icns
+            dictionaries/
+
+  windows:
+    if: needs.resolve.outputs.platform == 'windows'
+    needs: [resolve, icons]
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      # As release.yml and cache-warm.yml (the cache key covers it).
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+          # cache-warm.yml saves it on dev.
+          save-if: false
+      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+      - uses: actions/download-artifact@v8
+        with:
+          name: add-shared-assets
+          path: assets
+      - name: Stage
+        run: |
+          mkdir -p stage/dictionaries
+          cp "target/release/$BIN.exe" stage/
+          cp assets/icons/app.ico stage/app.ico
+          cp LICENSE stage/LICENSE.txt
+          cp assets/dictionaries/* stage/dictionaries/
+      - name: Portable zip
+        shell: pwsh
+        run: Compress-Archive -Path stage\* -DestinationPath "$env:APP_NAME-$env:VERSION-windows-x86_64-portable.zip"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack Setup.exe
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          sign=()
+          if [[ -n "$WINDOWS_CERT_PFX" ]]; then
+            echo "$WINDOWS_CERT_PFX" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+            sign=(--signParams "/f \"$RUNNER_TEMP/cert.pfx\" /p \"$WINDOWS_CERT_PASSWORD\" /fd sha256 /tr http://timestamp.digicert.com /td sha256")
+          else
+            echo "::warning::No Windows signing certificate (WINDOWS_CERT_PFX): Setup.exe is unsigned and SmartScreen warns on first install."
+          fi
+          # Without --runtime vpk assumes x86 and ships the 32-bit Setup.exe stub.
+          bash packaging/release/velopack.sh win stage "$BIN.exe" assets/icons/app.ico --runtime win-x64 ${sign[@]+"${sign[@]}"}
+          rm -f "$RUNNER_TEMP/cert.pfx"
+      - name: Smoke test (the packaged app)
+        run: |
+          mkdir smoke
+          unzip -q "$(ls velopack-out/*Portable.zip | head -1)" -d smoke
+          exe=$(find smoke -path '*current*' -name "$BIN.exe" | head -1)
+          "$exe" --self-check --packaged
+      - uses: actions/upload-artifact@v7
+        with:
+          name: add-windows
+          path: |
+            *.zip
+            velopack-out/*
+
+  macos:
+    if: needs.resolve.outputs.platform == 'macos'
+    needs: [resolve, icons]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+            channel: osx-arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            channel: osx-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-macos-${{ matrix.arch }}
+          # Not warmed on dev any more (macOS is not part of a tag release, and its caches would
+          # push the Linux ones out of the 10 GB): restores one if a manual run left it.
+          save-if: false
+      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+      - uses: actions/download-artifact@v8
+        with:
+          name: add-shared-assets
+          path: assets
+      - name: App bundle
+        run: |
+          app=bundle/$APP_NAME.app/Contents
+          mkdir -p "$app/MacOS" "$app/Resources/dictionaries"
+          cp "target/release/$BIN" "$app/MacOS/"
+          sed -e "s/@VERSION@/$VERSION/g" -e "s/@APP_NAME@/$APP_NAME/g" -e "s/@APP_ID@/$APP_ID/g" \
+            -e "s/@EXECUTABLE@/$BIN/g" packaging/macos/Info.plist > "$app/Info.plist"
+          cp assets/icons/app.icns "$app/Resources/app.icns"
+          cp assets/dictionaries/* "$app/Resources/dictionaries/"
+          cp LICENSE "$app/Resources/"
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack .pkg
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_APP_IDENTITY: ${{ secrets.APPLE_APP_IDENTITY }}
+          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          sign=()
+          if [[ -n "$APPLE_CERT_P12" && -n "$APPLE_APP_IDENTITY" && -n "$APPLE_INSTALLER_IDENTITY" ]]; then
+            kc="$RUNNER_TEMP/signing.keychain-db"
+            kcpass=$(uuidgen)
+            echo "$APPLE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$kcpass" "$kc"
+            security set-keychain-settings -lut 21600 "$kc"
+            security unlock-keychain -p "$kcpass" "$kc"
+            security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+            security list-keychain -d user -s "$kc"
+            rm -f "$RUNNER_TEMP/cert.p12"
+            sign=(--signAppIdentity "$APPLE_APP_IDENTITY" --signInstallIdentity "$APPLE_INSTALLER_IDENTITY" --keychain "$kc")
+            if [[ -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_PASSWORD" ]]; then
+              xcrun notarytool store-credentials ironteams-notary --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$kc"
+              sign+=(--notaryProfile ironteams-notary)
+            else
+              echo "::warning::No notarization credentials (APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD): signed but not notarized."
+            fi
+          else
+            echo "::warning::No Apple Developer ID (APPLE_CERT_P12, APPLE_APP_IDENTITY, APPLE_INSTALLER_IDENTITY): the .pkg is unsigned and not notarized; Gatekeeper asks before the first install."
+            # Apple Silicon refuses unsigned code: an ad-hoc signature at least.
+            codesign --force --deep --sign - "bundle/$APP_NAME.app"
+          fi
+          bash packaging/release/velopack.sh ${{ matrix.channel }} "bundle/$APP_NAME.app" "$BIN" assets/icons/app.icns \
+            --runtime ${{ matrix.channel }} ${sign[@]+"${sign[@]}"}
+      - name: Smoke test (the packaged app)
+        run: |
+          mkdir smoke
+          ditto -x -k "$(ls velopack-out/*Portable.zip | head -1)" smoke
+          app=$(find smoke -maxdepth 2 -name '*.app' | head -1)
+          "$app/Contents/MacOS/$BIN" --self-check --packaged
+      - uses: actions/upload-artifact@v7
+        with:
+          name: add-macos-${{ matrix.arch }}
+          path: velopack-out/*
+
+  upload:
+    # Only after this system's tests, builds and smoke tests all passed, and never in a dry run.
+    if: >-
+      !cancelled() && !failure() && needs.resolve.outputs.dry != 'true'
+      && needs.platforms.result == 'success'
+      && (needs.windows.result == 'success' || needs.macos.result == 'success')
+    needs: [resolve, platforms, windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # One upload to a release at a time (a Windows and a macOS run for the same tag).
+    concurrency:
+      group: release-add-upload-${{ needs.resolve.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: add-${{ needs.resolve.outputs.platform }}*
+          path: out
+      - name: Add to the release
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          mapfile -t files < <(find out -type f \( -name '*.zip' -o -name '*.nupkg' -o -name '*.exe' \
+            -o -name '*.pkg' -o -name 'releases.*.json' -o -name 'RELEASES*' \) | sort)
+          (( ${#files[@]} )) || fail "nothing to upload"
+          printf '%s\n' "${files[@]}"
+          dups=$(printf '%s\n' "${files[@]}" | xargs -n1 basename | sort | uniq -d)
+          [[ -z "$dups" ]] || fail "assets with the same name: $dups"
+          # Checked again right before uploading: the release exists, is published, and has none of
+          # these names (nothing on it is replaced; gh release upload without --clobber).
+          rel=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft,assets) \
+            || fail "There is no published GitHub release for $TAG; this workflow never creates one."
+          [[ $(jq -r .isDraft <<<"$rel") == false ]] || fail "The release $TAG is a draft."
+          for f in "${files[@]}"; do
+            n=$(basename "$f")
+            if jq -e --arg n "$n" 'any(.assets[]; .name == $n)' <<<"$rel" >/dev/null; then
+              fail "The release $TAG already has an asset named $n; nothing was uploaded."
+            fi
+          done
+          # Packages and installers first, the feeds last.
+          pkgs=() feeds=()
+          for f in "${files[@]}"; do
+            case "$(basename "$f")" in releases.*.json | RELEASES*) feeds+=("$f") ;; *) pkgs+=("$f") ;; esac
+          done
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "${pkgs[@]}"
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" "${feeds[@]}"
+          echo "Added to $TAG:"; printf '  %s\n' "${files[@]##*/}"

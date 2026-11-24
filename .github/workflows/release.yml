@@ -1,24 +1,24 @@
-# Installable builds for every system, attached to a GitHub release for a `v*` tag (a manual run
-# or a ci/release-* branch only uploads them as workflow artifacts):
-#   Windows  Velopack Setup.exe (per-user install that updates itself) and a portable zip
-#   macOS    Velopack .pkg with <name>.app, Apple Silicon (arm64) and Intel (x86_64)
+# The Linux release for a `v*` tag: the builds below are attached to a new GitHub release (a manual
+# run or a ci/release-* branch only uploads them as workflow artifacts):
 #   Linux    Velopack AppImage (updates itself) and tar.gz, plus the RPM and Flatpak of
-#            packaging.yml (their package managers update those)
-# Velopack also writes the full and delta .nupkg packages and the releases.<channel>.json feed of
-# each channel (win, osx-arm64, osx-x64, linux); installed copies read them from the published
-# release and download only what changed.
+#            packaging.yml (their package managers update those; the AUR package is only checked)
+# Velopack also writes the full and delta .nupkg packages and the releases.linux.json feed;
+# installed copies read the feeds from the published releases and download only what changed.
 #
-# A tag push builds Linux only. Windows and macOS are added to the same release by a manual run on
-# the tag (windows=true, macos=true), which re-uploads the Linux files of that version unchanged in
-# name.
+# Windows and macOS take much longer to build, so a tag releases Linux only. Each is added to that
+# same release afterwards by release-add.yml, which tests and builds only that system from the
+# tag's commit and uploads only its files (Linux is not rebuilt or uploaded again):
+#   gh workflow run release-add.yml -f tag=vX.Y.Z -f platform=windows   (or platform=macos)
+# For every tag to include them, set the repository variable RELEASE_ADD_PLATFORMS to "windows",
+# "macos" or "windows macos": the add-ons then run right after the Linux release is published.
 #
-# Nothing is published unless the whole CI gate (fmt and clippy on Linux, every test on Linux,
-# Windows, and both macOS runners when macOS is built) passes and every packaged app passes `--self-check --packaged`. A tag with a
+# Nothing is published unless the CI gate (fmt, clippy and every test on Linux) passes, every
+# package builds, and the packaged AppImage passes `--self-check --packaged`. A tag with a
 # pre-release suffix (v1.2.0-beta.1) is published as a GitHub pre-release: only copies with
 # "Get beta updates" on take it.
 #
-# Signing is optional: with the secrets below it signs (and notarizes on macOS), without them it
-# warns and ships unsigned.
+# Signing (Windows and macOS, in release-add.yml) is optional: with the secrets below it signs (and
+# notarizes on macOS), without them it warns and ships unsigned.
 #   Windows  WINDOWS_CERT_PFX (base64 .pfx), WINDOWS_CERT_PASSWORD
 #   macOS    APPLE_CERT_P12 (base64 .p12 with both Developer ID certificates), APPLE_CERT_PASSWORD,
 #            APPLE_APP_IDENTITY, APPLE_INSTALLER_IDENTITY, APPLE_ID, APPLE_TEAM_ID,
@@ -26,6 +26,9 @@
 # Icons are rendered from packaging/<APP_ID>.svg; the Windows and macOS packages also ship the
 # English and Arabic Hunspell dictionaries (packaging/release/). The product name, app id and
 # binary come from the env block below.
+#
+# Build time: the dependencies come from caches that cache-warm.yml saves on dev (a tag can only
+# restore caches of the default branch), so a release compiles the workspace crates only.
 name: Release
 
 on:
@@ -40,20 +43,6 @@ on:
         description: >-
           Skip the CI gate. Only for re-running a release whose Rust code already passed the full
           gate on every system (for example after a packaging-only fix).
-        type: boolean
-        default: false
-      windows:
-        description: >-
-          Also test and build Windows. A tag push builds Linux only; run this by hand on the tag
-          (gh workflow run release.yml --ref vX.Y.Z -f windows=true) to add the Windows files to
-          that same release.
-        type: boolean
-        default: false
-      macos:
-        description: >-
-          Also test and build macOS (arm64 and Intel). A tag push builds Linux only; run this by
-          hand on the tag (gh workflow run release.yml --ref vX.Y.Z -f macos=true) to add the macOS
-          files to that same release.
         type: boolean
         default: false
 
@@ -93,14 +82,11 @@ jobs:
           # v1.2.0-beta.1 and the like: a GitHub pre-release, for beta updates only.
           if [[ "$v" == *-* ]]; then echo "prerelease=true"; else echo "prerelease=false"; fi >> "$GITHUB_OUTPUT"
 
-  # fmt and clippy on Linux, the full test suite on Linux, Windows and both macOS runners.
+  # fmt, clippy and the full test suite on Linux (release-add.yml runs the Windows and macOS tests
+  # before it adds those systems).
   gate:
     if: ${{ !inputs.skip-gate }}
     uses: ./.github/workflows/ci.yml
-    with:
-      all-platforms: true
-      skip-windows: ${{ inputs.windows != true }}
-      skip-macos: ${{ inputs.macos != true }}
 
   icons:
     runs-on: ubuntu-latest
@@ -182,173 +168,6 @@ jobs:
             *.tar.gz
             velopack-out/*
 
-  windows:
-    # Windows takes longer than Linux: a tag release goes out with Linux only.
-    if: ${{ inputs.windows == true }}
-    needs: [meta, icons]
-    runs-on: windows-latest
-    timeout-minutes: 120
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
-      GH_TOKEN: ${{ github.token }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-windows
-          # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
-          save-if: false
-      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
-      - uses: actions/download-artifact@v8
-        with:
-          name: shared-assets
-          path: assets
-      - name: Stage
-        run: |
-          mkdir -p stage/dictionaries
-          cp "target/release/$BIN.exe" stage/
-          cp assets/icons/app.ico stage/app.ico
-          cp LICENSE stage/LICENSE.txt
-          cp assets/dictionaries/* stage/dictionaries/
-      - name: Portable zip
-        shell: pwsh
-        run: Compress-Archive -Path stage\* -DestinationPath "$env:APP_NAME-$env:VERSION-windows-x86_64-portable.zip"
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '8.0.x'
-      - name: Velopack Setup.exe
-        env:
-          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-        run: |
-          dotnet tool install -g vpk --version "$VPK_VERSION"
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          sign=()
-          if [[ -n "$WINDOWS_CERT_PFX" ]]; then
-            echo "$WINDOWS_CERT_PFX" | base64 -d > "$RUNNER_TEMP/cert.pfx"
-            sign=(--signParams "/f \"$RUNNER_TEMP/cert.pfx\" /p \"$WINDOWS_CERT_PASSWORD\" /fd sha256 /tr http://timestamp.digicert.com /td sha256")
-          else
-            echo "::warning::No Windows signing certificate (WINDOWS_CERT_PFX): Setup.exe is unsigned and SmartScreen warns on first install."
-          fi
-          # Without --runtime vpk assumes x86 and ships the 32-bit Setup.exe stub.
-          bash packaging/release/velopack.sh win stage "$BIN.exe" assets/icons/app.ico --runtime win-x64 ${sign[@]+"${sign[@]}"}
-          rm -f "$RUNNER_TEMP/cert.pfx"
-      - name: Smoke test (the packaged app)
-        run: |
-          mkdir smoke
-          unzip -q "$(ls velopack-out/*Portable.zip | head -1)" -d smoke
-          exe=$(find smoke -path '*current*' -name "$BIN.exe" | head -1)
-          "$exe" --self-check --packaged
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-windows
-          path: |
-            *.zip
-            velopack-out/*
-
-  macos:
-    # The macOS builds take far longer than the others: a tag release goes out without them.
-    if: ${{ inputs.macos == true }}
-    needs: [meta, icons]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            arch: arm64
-            channel: osx-arm64
-          - runner: macos-15-intel
-            arch: x86_64
-            channel: osx-x64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    env:
-      VERSION: ${{ needs.meta.outputs.version }}
-      PRERELEASE: ${{ needs.meta.outputs.prerelease }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-macos-${{ matrix.arch }}
-          # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
-          save-if: false
-      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
-      - uses: actions/download-artifact@v8
-        with:
-          name: shared-assets
-          path: assets
-      - name: App bundle
-        run: |
-          app=bundle/$APP_NAME.app/Contents
-          mkdir -p "$app/MacOS" "$app/Resources/dictionaries"
-          cp "target/release/$BIN" "$app/MacOS/"
-          sed -e "s/@VERSION@/$VERSION/g" -e "s/@APP_NAME@/$APP_NAME/g" -e "s/@APP_ID@/$APP_ID/g" \
-            -e "s/@EXECUTABLE@/$BIN/g" packaging/macos/Info.plist > "$app/Info.plist"
-          cp assets/icons/app.icns "$app/Resources/app.icns"
-          cp assets/dictionaries/* "$app/Resources/dictionaries/"
-          cp LICENSE "$app/Resources/"
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '8.0.x'
-      - name: Velopack .pkg
-        env:
-          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-          APPLE_APP_IDENTITY: ${{ secrets.APPLE_APP_IDENTITY }}
-          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: |
-          dotnet tool install -g vpk --version "$VPK_VERSION"
-          export PATH="$PATH:$HOME/.dotnet/tools"
-          sign=()
-          if [[ -n "$APPLE_CERT_P12" && -n "$APPLE_APP_IDENTITY" && -n "$APPLE_INSTALLER_IDENTITY" ]]; then
-            kc="$RUNNER_TEMP/signing.keychain-db"
-            kcpass=$(uuidgen)
-            echo "$APPLE_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-            security create-keychain -p "$kcpass" "$kc"
-            security set-keychain-settings -lut 21600 "$kc"
-            security unlock-keychain -p "$kcpass" "$kc"
-            security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
-            security list-keychain -d user -s "$kc"
-            rm -f "$RUNNER_TEMP/cert.p12"
-            sign=(--signAppIdentity "$APPLE_APP_IDENTITY" --signInstallIdentity "$APPLE_INSTALLER_IDENTITY" --keychain "$kc")
-            if [[ -n "$APPLE_ID" && -n "$APPLE_TEAM_ID" && -n "$APPLE_APP_PASSWORD" ]]; then
-              xcrun notarytool store-credentials ironteams-notary --apple-id "$APPLE_ID" \
-                --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --keychain "$kc"
-              sign+=(--notaryProfile ironteams-notary)
-            else
-              echo "::warning::No notarization credentials (APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD): signed but not notarized."
-            fi
-          else
-            echo "::warning::No Apple Developer ID (APPLE_CERT_P12, APPLE_APP_IDENTITY, APPLE_INSTALLER_IDENTITY): the .pkg is unsigned and not notarized; Gatekeeper asks before the first install."
-            # Apple Silicon refuses unsigned code: an ad-hoc signature at least.
-            codesign --force --deep --sign - "bundle/$APP_NAME.app"
-          fi
-          bash packaging/release/velopack.sh ${{ matrix.channel }} "bundle/$APP_NAME.app" "$BIN" assets/icons/app.icns \
-            --runtime ${{ matrix.channel }} ${sign[@]+"${sign[@]}"}
-      - name: Smoke test (the packaged app)
-        run: |
-          mkdir smoke
-          ditto -x -k "$(ls velopack-out/*Portable.zip | head -1)" smoke
-          app=$(find smoke -maxdepth 2 -name '*.app' | head -1)
-          "$app/Contents/MacOS/$BIN" --self-check --packaged
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-macos-${{ matrix.arch }}
-          path: velopack-out/*
-
   # The RPM and the Flatpak (and the AUR package check) as packaging.yml builds them.
   packages:
     uses: ./.github/workflows/packaging.yml
@@ -359,7 +178,7 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/v') && !cancelled() && !failure()
       && (needs.gate.result == 'success' || (inputs.skip-gate && needs.gate.result == 'skipped'))
-    needs: [meta, gate, linux, windows, macos, packages]
+    needs: [meta, gate, linux, packages]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -390,3 +209,27 @@ jobs:
                  --title "$APP_NAME $GITHUB_REF_NAME" --notes "Builds for Linux; Windows and macOS builds may be added to this release later. Installed copies update themselves."
           gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber "${files[@]}"
           gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft=false "${pre[@]}"
+
+  # Windows and macOS right after the Linux release, when the repository variable
+  # RELEASE_ADD_PLATFORMS names them (see the top of this file). Each adds only its own files.
+  add-windows:
+    if: needs.publish.result == 'success' && contains(vars.RELEASE_ADD_PLATFORMS, 'windows')
+    needs: publish
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-add.yml
+    with:
+      tag: ${{ github.ref_name }}
+      platform: windows
+    secrets: inherit
+
+  add-macos:
+    if: needs.publish.result == 'success' && contains(vars.RELEASE_ADD_PLATFORMS, 'macos')
+    needs: publish
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-add.yml
+    with:
+      tag: ${{ github.ref_name }}
+      platform: macos
+    secrets: inherit

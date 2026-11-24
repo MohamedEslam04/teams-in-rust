@@ -1,7 +1,17 @@
-# Keeps the build caches of the default branch warm, so a release (tags can only restore caches
-# saved on the default branch) and the Windows/macOS gate do not compile everything from scratch.
-# Nothing here is published. The release builds use the same cache keys (`shared-key`) and the same
-# cargo settings as release.yml; keep the two in step.
+# Keeps the build caches of the default branch warm, so a release tag (tags can only restore caches
+# saved on the default branch) compiles only the workspace crates, not every dependency. Nothing
+# here is published. The jobs build exactly what the release builds, with the same cache keys
+# (`shared-key`, the package jobs' own keys) and the same cargo settings: keep them in step with
+# release.yml, release-add.yml and packaging.yml.
+#
+# Runs after a push to dev that changes the third-party dependencies (Cargo.lock without the
+# workspace versions that a release bump changes), the toolchain or the build recipes, so the next
+# tag finds them; and nightly, which picks up a new stable compiler and keeps the caches recently
+# used, so GitHub's 10 GB limit evicts something else first.
+#
+# Caches (about 8 GB): ci.yml's clippy, check and Windows test caches, the Linux and Windows release
+# builds, and the RPM, Flatpak and AUR cargo targets. macOS is not warmed: it is not part of a tag
+# release (release-add.yml), and its four caches would push the others out of the 10 GB.
 name: Cache warm-up
 
 on:
@@ -9,6 +19,19 @@ on:
     # Every night (UTC); a run with nothing new only restores and checks the caches.
     - cron: '30 2 * * *'
   workflow_dispatch:
+  push:
+    branches: [dev]
+    paths:
+      - Cargo.lock
+      - rust-toolchain*
+      - packaging/rpm/**
+      - packaging/flatpak/**
+      - packaging/aur/**
+      - scripts/ci/**
+      - .github/workflows/cache-warm.yml
+      - .github/workflows/ci.yml
+      - .github/workflows/release.yml
+      - .github/workflows/packaging.yml
 
 concurrency:
   group: cache-warm
@@ -23,20 +46,63 @@ env:
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
 
 jobs:
-  # The Windows and macOS test gate: run on the default branch, it saves their caches.
+  # A push that only bumps the workspace versions (chore(release)) changes Cargo.lock but none of
+  # the caches: skip it instead of building everything again next to the release it starts.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      warm: ${{ steps.c.outputs.warm }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: c
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          warm=true
+          if [[ "$GITHUB_EVENT_NAME" == push ]] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only "$BEFORE" HEAD)
+            echo "$changed"
+            if ! grep -qv '^Cargo.lock$' <<<"$changed"; then
+              git show "$BEFORE:Cargo.lock" > /tmp/before.lock
+              if [[ $(bash scripts/ci/deps-hash.sh /tmp/before.lock) == $(bash scripts/ci/deps-hash.sh) ]]; then
+                echo "Only workspace versions changed in Cargo.lock: the caches are current."
+                warm=false
+              fi
+            fi
+          fi
+          echo "warm=$warm" >> "$GITHUB_OUTPUT"
+
+  # Linux clippy and tests and the Windows tests: run on the default branch, ci.yml saves their
+  # caches (release-add.yml restores the Windows one).
   gate:
+    needs: changes
+    if: needs.changes.outputs.warm == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       all-platforms: true
+      skip-macos: true
 
-  # The RPM build's cargo cache (and the Flatpak's) is saved from here; the release restores it.
+  # The RPM, Flatpak and AUR cargo targets are saved from here; the release restores them.
   packages:
+    needs: changes
+    if: needs.changes.outputs.warm == 'true'
     uses: ./.github/workflows/packaging.yml
 
   linux:
+    needs: changes
+    if: needs.changes.outputs.warm == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
+      - name: More swap
+        # As release.yml: the ironteams crate needs more than the runner's ~16 GB.
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: System libraries
@@ -44,9 +110,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-linux
+          # The dependencies are what the release needs; a failure in the ironteams crate itself
+          # (for example the runner running out of memory) must not leave the tag without them.
+          cache-on-failure: true
       - run: cargo build --release --locked -p ironteams --bin ironteams
 
   windows:
+    needs: changes
+    if: needs.changes.outputs.warm == 'true'
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -59,35 +130,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-windows
+          cache-on-failure: true
       - run: cargo build --release --locked -p ironteams --bin ironteams
-
-  macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-macos-${{ matrix.arch }}
-      - run: cargo build --release --locked -p ironteams --bin ironteams
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
 
   # GitHub keeps 10 GB of caches per repository and drops the least recently used beyond that, which
-  # would send a release back to a cold build. Every run here restores every cache in use, so a cache
-  # nobody restored for 3 days is a stale copy (an old Cargo.lock or compiler): delete it, then warn
-  # well before the limit is reached.
+  # would send a release back to a cold build. Two kinds of cache are deleted:
+  # - an older generation: the same cache (key without its trailing hashes and compiler version)
+  #   saved again for newer dependencies or a newer compiler; only the newest copy is restored;
+  # - a cache nobody restored for 3 days (every run here restores every cache in use).
+  # Caches used in the last 6 hours stay, so a run that is restoring one right now keeps it.
   cache-usage:
-    needs: [gate, packages, linux, windows, macos]
+    needs: [gate, packages, linux, windows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -97,11 +150,25 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - run: |
-          cutoff=$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
-            -q ".actions_caches[] | select(.last_accessed_at < \"$cutoff\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" && echo "deleted stale cache $id"; done
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+          now=$(date -u +%s)
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            -q '.actions_caches[] | [.id, .key, .ref, .created_at, .last_accessed_at] | @tsv' > caches.tsv
+          # family = the key without trailing "-<hex hash>" and "-<x.y.z>" parts.
+          while IFS=$'\t' read -r id key ref created accessed; do
+            fam=$(sed -E ':a; s/-([0-9a-f]{8,}|[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)$//; ta' <<<"$key")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$fam|$ref" "$created" "$id" "$key" "$accessed" "$ref"
+          done < caches.tsv | sort -t$'\t' -k1,1 -k2,2r > families.tsv
+          prev=
+          while IFS=$'\t' read -r fam created id key accessed ref; do
+            age=$(( now - $(date -u -d "$accessed" +%s) ))
+            if [[ "$fam" == "$prev" && $age -gt 21600 ]]; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" >/dev/null && echo "deleted older generation $key ($ref)"
+            elif (( age > 3 * 86400 )); then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" >/dev/null && echo "deleted stale $key ($ref)"
+            fi
+            prev=$fam
+          done < families.tsv
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
             -q '.actions_caches[] | "\(.size_in_bytes / 1048576 | floor) MB  \(.ref)  \(.key)"' | sort -rn
           used=$(gh api "repos/$GITHUB_REPOSITORY/actions/cache/usage" -q .active_caches_size_in_bytes)
           gb=$(awk "BEGIN { printf \"%.1f\", $used / 1073741824 }")

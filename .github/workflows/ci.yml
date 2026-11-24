@@ -111,8 +111,9 @@ jobs:
   # Linux: a second full compile of the GUI crate for clippy doubled these jobs (about 40 min on
   # macos-latest), and a compile error still fails the test build. UI tests run on Slint's
   # testing backend, so no display is needed. These runs are slow, so feature branches and pull
-  # requests get the Linux gate only; the nightly cache-warm, the release gate and a manual run
-  # (`gh workflow run CI --ref dev`) check every system.
+  # requests get the Linux gate only; cache-warm.yml checks Windows on dev, a manual run
+  # (`gh workflow run CI --ref dev`) every system, and release-add.yml (a job with this id and env,
+  # so it restores this cache) the system it adds to a release.
   platforms:
     if: >-
       github.event_name == 'workflow_dispatch'

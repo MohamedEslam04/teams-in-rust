@@ -9,7 +9,14 @@ on:
   workflow_call:
   push:
     branches: ['ci/packaging-*']
-    paths: ['packaging/**', 'Cargo.lock', '.github/workflows/packaging.yml']
+    paths: ['packaging/**', 'Cargo.lock', 'scripts/ci/**', '.github/workflows/packaging.yml']
+
+env:
+  # Part of the cargo target cache keys below (with the compiler and the third-party crates). Bump
+  # it when a change to the build flags (spec, Flatpak manifest, PKGBUILD, the env here) makes the
+  # cached dependencies useless: cargo would rebuild them on every run, and dev would never save
+  # the new ones under the unchanged key.
+  PKG_CACHE_REV: r1
 
 jobs:
   rpm:
@@ -31,42 +38,55 @@ jobs:
           mkswap /mnt/swapfile >/dev/null && swapon /mnt/swapfile
           cat /proc/swaps
       - name: Tools
-        run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz zstd 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
+        run: dnf -y install rpm-build git cargo rust gcc gcc-c++ cmake pkgconf-pkg-config desktop-file-utils tar xz zstd gawk 'pkgconfig(alsa)' 'pkgconfig(fontconfig)' 'pkgconfig(xkbcommon)' 'pkgconfig(dbus-1)' libappstream-glib
       - uses: actions/checkout@v7
-      - name: Rust version
-        id: rust
-        run: echo "version=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Cache key
+        id: key
+        run: |
+          echo "rust=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          echo "deps=$(bash scripts/ci/deps-hash.sh)" >> "$GITHUB_OUTPUT"
       # The cargo target dir lives outside rpmbuild's BUILD dir, so it can be cached. Only dev saves
-      # it (cache-warm.yml runs this nightly); a release tag restores dev's copy. The key has no
-      # commit: the spec rebuilds the workspace crates every time, so only the dependencies (set by
-      # Cargo.lock and the compiler) are worth keeping, and one copy stays within the 10 GB limit.
+      # it (cache-warm.yml, after a dependency change and nightly); a release tag restores dev's
+      # copy. The key is the compiler and the third-party crates of Cargo.lock only: the spec
+      # rebuilds the workspace crates every time, and a version bump must not miss the cache.
       - uses: actions/cache/restore@v6
         id: rpm-cache
         with:
           path: rpm-target
-          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
+          key: rpm-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-${{ steps.key.outputs.deps }}
           restore-keys: |
-            rpm-target-${{ steps.rust.outputs.version }}-
+            rpm-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-
       - name: Build the RPM
         env:
-          # As release.yml: compiles the large ironteams crate in parallel, with less memory.
+          # As release.yml: compiles the large ironteams crate in parallel, with less memory. The
+          # spec drops the distribution's -Ccodegen-units=1 when this is set.
           CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
           CARGO_TARGET_DIR: ${{ github.workspace }}/rpm-target
         run: |
           git config --global --add safe.directory "$PWD"
-          top=$PWD/rpmtop; v=0.1.7
+          top=$PWD/rpmtop; v=$(sed -n 's/^Version: *//p' packaging/rpm/ironteams.spec)
           mkdir -p "$top"/{SOURCES,BUILD,RPMS,SRPMS,BUILDROOT}
           git archive --prefix=ironteams-$v/ -o "$top/SOURCES/ironteams-$v.tar.gz" HEAD
           # Versioned dirs: a vendored crate named `xml` (velopack's) would otherwise sit at vendor/xml,
           # where atspi-common's build-time D-Bus checks look for their XML files.
           cargo vendor --locked --versioned-dirs vendor-dir/vendor
-          tar -C vendor-dir -c vendor | xz -T0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
-          rpmbuild -bb --define "_topdir $top" packaging/rpm/ironteams.spec
+          # cargo vendor writes the files with the current time, newer than the cached build: the
+          # build scripts that watch their own files (ring, sqlite...) would run again and their
+          # dependents rebuild. An old fixed time keeps them current.
+          find vendor-dir/vendor -exec touch -h -d @315532800 {} +
+          # Only an input of this build (never shipped): fast compression.
+          tar -C vendor-dir -c vendor | xz -T0 -0 > "$top/SOURCES/ironteams-$v-vendor.tar.xz"
+          # The build reads the crates from vendor-dir/vendor, a path that stays the same from one
+          # version to the next, so the cached dependencies match (see the spec's %prep).
+          rpmbuild -bb --define "_topdir $top" --define "ironteams_vendor_dir $PWD/vendor-dir/vendor" packaging/rpm/ironteams.spec
+      - name: Prune the cargo target
+        if: always() && github.ref == 'refs/heads/dev' && steps.rpm-cache.outputs.cache-hit != 'true'
+        run: bash scripts/ci/prune-target.sh rpm-target/release
       - uses: actions/cache/save@v6
         if: always() && github.ref == 'refs/heads/dev' && steps.rpm-cache.outputs.cache-hit != 'true'
         with:
           path: rpm-target
-          key: rpm-target-${{ steps.rust.outputs.version }}-${{ hashFiles('Cargo.lock') }}
+          key: rpm-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-${{ steps.key.outputs.deps }}
       - uses: actions/upload-artifact@v7
         with:
           name: ironteams-rpm
@@ -103,6 +123,7 @@ jobs:
           grep -q /mnt/swapfile /proc/swaps
       - uses: actions/checkout@v7
       - name: Generate cargo-sources.json
+        id: gen
         run: |
           # The image sets PYTHONPATH to /app/lib/python3.13/site-packages, so pip believes aiohttp is
           # installed already and skips it, then `python3 -I` ignores that path and fails.
@@ -111,15 +132,57 @@ jobs:
           /tmp/gen/bin/pip -q install 'aiohttp>=3.9.5,<4' 'PyYAML>=6.0.2,<7' 'tomlkit>=0.13.3,<1'
           curl -fsSL -o /tmp/gen/flatpak-cargo-generator.py https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/9d86d336a39b9af38b86f114b6ce5820fe260f91/cargo/flatpak-cargo-generator.py
           /tmp/gen/bin/python3 -I /tmp/gen/flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+          # The manifest compiles with one job for small build machines; this runner has the swap
+          # above, and the dependencies compiled one at a time made a cold build take ~25 minutes.
+          sed -i '/CARGO_BUILD_JOBS/d' packaging/flatpak/io.github.mohamedeslam04.ironteams.yml
+          echo "deps=$(bash scripts/ci/deps-hash.sh)" >> "$GITHUB_OUTPUT"
+      # The cargo target of the last dev build. It sits in the source tree as flatpak-target/, which
+      # the manifest moves to target/ inside the build (see build-commands there). The key ends in
+      # the compiler version, only known after the build, so restoring goes by prefix.
+      - uses: actions/cache/restore@v6
+        id: target-cache
+        with:
+          path: flatpak-target
+          key: flatpak-target-${{ env.PKG_CACHE_REV }}-${{ steps.gen.outputs.deps }}
+          restore-keys: |
+            flatpak-target-${{ env.PKG_CACHE_REV }}-${{ steps.gen.outputs.deps }}-
+            flatpak-target-${{ env.PKG_CACHE_REV }}-
+      # Also without a cache: the manifest builds the CI way (see there) whenever this dir exists,
+      # so the first build, the one dev saves, matches the later ones.
+      - run: mkdir -p flatpak-target
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: ironteams.flatpak
           manifest-path: packaging/flatpak/io.github.mohamedeslam04.ironteams.yml
-          cache-key: flatpak-${{ hashFiles('Cargo.lock') }}
+          # flatpak-builder's own cache (.flatpak-builder) would not help: the app module's source is
+          # the whole tree, so it rebuilds on every commit. The cargo target is cached instead,
+          # from the build dir kept here.
+          cache: false
+          keep-build-dirs: true
+      - name: Keep the cargo target for the next build
+        id: save
+        if: always() && github.ref == 'refs/heads/dev'
+        run: |
+          # flatpak-builder names the kept build dir ironteams-<n>.
+          t=$(ls -dt .flatpak-builder/build/ironteams*/target 2>/dev/null | head -1)
+          [ -d "$t/release" ] || { echo "no cargo target in .flatpak-builder/build"; ls .flatpak-builder/build || true; exit 0; }
+          rust=$(grep -o 'rustc [0-9][0-9.]*' "$t/.rustc_info.json" | head -1 | cut -d' ' -f2)
+          key=flatpak-target-${{ env.PKG_CACHE_REV }}-${{ steps.gen.outputs.deps }}-${rust:-unknown}
+          if [ "$key" = "${{ steps.target-cache.outputs.cache-matched-key }}" ]; then
+            echo "$key is current"; exit 0
+          fi
+          rm -rf flatpak-target && mv "$t" flatpak-target
+          bash scripts/ci/prune-target.sh flatpak-target/release
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/save@v6
+        if: always() && steps.save.outputs.key != ''
+        with:
+          path: flatpak-target
+          key: ${{ steps.save.outputs.key }}
 
   aur:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     container:
       image: archlinux:base-devel
       options: --privileged -v /mnt:/mnt
@@ -137,6 +200,19 @@ jobs:
       - name: Tools
         run: pacman -Syu --noconfirm --needed git rust cmake alsa-lib fontconfig libxkbcommon libxkbcommon-x11 dbus wayland libx11 libxcursor libxi libxrender libglvnd namcap
       - uses: actions/checkout@v7
+      - name: Cache key
+        id: key
+        run: |
+          echo "rust=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          echo "deps=$(bash scripts/ci/deps-hash.sh)" >> "$GITHUB_OUTPUT"
+      # The cargo target of makepkg's build, as for the RPM: only dev saves it, a tag restores it.
+      - uses: actions/cache/restore@v6
+        id: target-cache
+        with:
+          path: aur-target
+          key: aur-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-${{ steps.key.outputs.deps }}
+          restore-keys: |
+            aur-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-
       - name: Build the package (makepkg refuses to run as root)
         run: |
           useradd -m builder
@@ -148,7 +224,32 @@ jobs:
           # The runner has ~16 GB: even with the swap above, thin LTO with one codegen unit is slow
           # and close to the limit. This check only needs the package to build, so it links
           # without LTO (the shipped release profile is unchanged).
-          su builder -c 'export CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*" && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -f --noconfirm'
+          # A fixed SOURCE_DATE_EPOCH: makepkg sets the current time otherwise, and the cc crate reruns
+          # every C build script (ring, sqlite... and all that depends on them) when it changes.
+          env='export SOURCE_DATE_EPOCH=315532800 CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16; cd ~/aur && git config --global --add safe.directory "*"'
+          # Fetch and extract first (-o), put the cached cargo target where the PKGBUILD builds
+          # (src/ironteams/target), then build from that tree (-e). The fresh clone gives the
+          # sources the current time, so cargo rebuilds the workspace crates.
+          su builder -c "$env && makepkg --printsrcinfo > /tmp/srcinfo && makepkg -o --noconfirm"
+          if [ -d aur-target ]; then
+            mv aur-target /home/builder/aur/src/ironteams/target
+            chown -R builder /home/builder/aur/src/ironteams/target
+          fi
+          su builder -c "$env && makepkg -e -f --noconfirm"
+      - name: Keep the cargo target for the next build
+        id: keep
+        if: always() && github.ref == 'refs/heads/dev' && steps.target-cache.outputs.cache-hit != 'true'
+        run: |
+          t=/home/builder/aur/src/ironteams/target
+          [ -d "$t/release" ] || { echo "no cargo target"; exit 0; }
+          rm -rf aur-target && mv "$t" aur-target
+          bash scripts/ci/prune-target.sh aur-target/release
+          echo "save=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/save@v6
+        if: always() && steps.keep.outputs.save == 'true'
+        with:
+          path: aur-target
+          key: aur-target-${{ env.PKG_CACHE_REV }}-${{ steps.key.outputs.rust }}-${{ steps.key.outputs.deps }}
       - name: .SRCINFO is current
         run: diff <(sed 's|file:///home/builder/ironteams.git|https://github.com/MohamedEslam04/teams-in-rust.git|' /tmp/srcinfo) packaging/aur/.SRCINFO
         shell: bash
