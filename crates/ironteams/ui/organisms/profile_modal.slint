@@ -155,8 +155,8 @@ export component ProfileModal inherits Rectangle {
                 // Overview: what the hover card shows.
                 if PeopleStore.profile-tab == 0: ScrollView {
                     vertical-stretch: 1;
-                    viewport-width: self.visible-width;
-                    viewport-height: overview-body.height;
+                    content-width: self.visible-width;
+                    content-height: overview-body.height;
                     overview-body := ProfileBody {
                         width: min(parent.width - 12px, 560px);
                         pad: 24px;

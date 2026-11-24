@@ -267,7 +267,7 @@ export component PeoplePanel inherits Rectangle {
             }
         }
         ScrollView {
-            viewport-width: self.width;
+            content-width: self.width;
             VerticalLayout {
                 width: parent.width;
                 alignment: start;
@@ -343,7 +343,7 @@ export component MorePanel inherits Rectangle {
         ScrollView {
             // As wide as the panel, not as wide as the widest row's natural width (that one is
             // centred in a viewport of its own size and pushes the content out of the window).
-            viewport-width: self.width;
+            content-width: self.width;
             VerticalLayout {
                 width: parent.width;
                 spacing: 12px;

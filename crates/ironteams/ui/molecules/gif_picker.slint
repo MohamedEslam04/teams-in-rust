@@ -88,7 +88,7 @@ export component GifPicker inherits Rectangle {
         if GifStore.status != "": Text { text: GifStore.status; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; }
         ScrollView {
             vertical-stretch: 1;
-            viewport-height: ceil(GifStore.items.length / 3) * (root.cell + 6px);
+            content-height: ceil(GifStore.items.length / 3) * (root.cell + 6px);
             for g[i] in GifStore.items: Rectangle {
                 x: mod(i, 3) * (root.cell + 6px);
                 y: floor(i / 3) * (root.cell + 6px);
