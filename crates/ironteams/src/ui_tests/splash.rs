@@ -29,3 +29,26 @@ fn the_splash_shows_at_start_and_hides_after_sign_in() {
     frames(600);
     assert!(!app.get_splash_shown(), "gone once the main UI is up");
 }
+
+#[test]
+fn a_policy_block_offers_the_copy_button_and_other_errors_do_not() {
+    let app = new_window();
+    app.window().set_size(LogicalSize::new(1200., 800.));
+    app.show().unwrap();
+    app.set_login_error("Your organization blocks this sign-in method.".into());
+    app.set_login_report(
+        "IronTeams sign-in blocked: AADSTS53003 (BlockedByConditionalAccess).".into(),
+    );
+    app.set_login_state("error".into());
+    frames(600);
+    assert!(app.get_splash_shown());
+    assert!(
+        app.get_login_report()
+            .starts_with("IronTeams sign-in blocked")
+    );
+    let copied = std::rc::Rc::new(std::cell::Cell::new(0));
+    let c = copied.clone();
+    app.on_copy_login_report(move || c.set(c.get() + 1));
+    app.invoke_copy_login_report();
+    assert_eq!(copied.get(), 1);
+}

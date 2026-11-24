@@ -24,6 +24,17 @@ pub enum Error {
     NotMember { context: &'static str },
     #[error("auth: {0}")]
     Auth(String),
+    /// Sign-in refused by the organization's policy (Conditional Access, an authentication-flow
+    /// restriction, security defaults): see [`crate::auth::policy_block_name`]. `detail` is the
+    /// text an [`Error::Auth`] would carry (error name and the first line of the description), so
+    /// anything that reads the message sees no difference. No tenant or user id is kept.
+    #[error("auth: {detail}")]
+    PolicyBlocked {
+        code: u32,
+        name: &'static str,
+        summary: &'static str,
+        detail: String,
+    },
     #[error("protocol: {0}")]
     Protocol(String),
     #[error("device code expired before sign-in finished")]
@@ -48,6 +59,17 @@ fn http_chain(e: &reqwest::Error) -> String {
         cause = c.source();
     }
     text
+}
+
+impl Error {
+    /// The AADSTS code and Microsoft's name for it when a policy of the organization refused the
+    /// sign-in, as opposed to a mistyped code, an expired session or an unreachable service.
+    pub fn policy_block(&self) -> Option<(u32, &'static str)> {
+        match self {
+            Error::PolicyBlocked { code, name, .. } => Some((*code, name)),
+            _ => None,
+        }
+    }
 }
 
 impl From<reqwest::Error> for Error {

@@ -467,9 +467,12 @@ impl UiHandle {
         });
     }
 
-    pub fn login_error(&self, err: String) {
+    /// The sign-in error screen. `report` is what its "Copy error details" button copies; empty
+    /// hides the button.
+    pub fn login_error(&self, err: String, report: String) {
         self.run(move |w| {
             w.set_login_error(err.into());
+            w.set_login_report(report.into());
             w.set_login_state("error".into());
         });
     }

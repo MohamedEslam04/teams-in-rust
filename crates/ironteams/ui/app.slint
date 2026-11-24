@@ -136,6 +136,8 @@ export component AppWindow inherits Window {
     in property <string> user-code;
     in property <string> verify-url;
     in property <string> login-error;
+    // The copyable details of a sign-in blocked by policy; empty for other failures.
+    in property <string> login-report;
     // The sign-in splash is still on screen (it fades out over the main UI).
     out property <bool> splash-shown: splash.shown;
     in property <string> me-initials;
@@ -359,6 +361,7 @@ export component AppWindow inherits Window {
     // --- callbacks to Rust ---
     callback retry-login();
     callback copy-code();
+    callback copy-login-report();
     callback select-chat(string);
     callback select-channel(string, string);
     callback toggle-team(int);
@@ -564,7 +567,9 @@ export component AppWindow inherits Window {
         user-code: root.user-code;
         verify-url: root.verify-url;
         error: root.login-error;
+        report: root.login-report;
         copy-code => { root.copy-code(); }
+        copy-report => { root.copy-login-report(); }
         open-url(u) => { root.open-url(u); }
         retry => { root.retry-login(); }
     }

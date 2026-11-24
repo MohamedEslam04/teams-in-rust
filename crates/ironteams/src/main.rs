@@ -32,6 +32,7 @@ mod reactions;
 mod renderer;
 mod send_options;
 mod shortcuts;
+mod sign_in_failure;
 mod snippets;
 mod spell;
 mod suggest;
@@ -79,7 +80,7 @@ async fn app_main(
             Ok(SignedIn::Offline(e)) => break (e, true),
             Err(err) => {
                 tracing::error!(%err, "sign-in failed");
-                ui.login_error(format!("Sign-in failed: {err}"));
+                show_sign_in_failure(&ui, &err);
                 if !wait_for_retry(&mut cmds).await {
                     return;
                 }
@@ -231,7 +232,7 @@ async fn reconnect(
                 }
                 Err(err) => {
                     tracing::error!(%err, "sign-in failed");
-                    ui.login_error(format!("Sign-in failed: {err}"));
+                    show_sign_in_failure(ui, &err);
                     if !wait_for_retry(cmds).await {
                         return false;
                     }
@@ -314,6 +315,13 @@ fn saved_engine(
     let store = store::Store::open(&paths.db_path_for(&cfg))?;
     ui.ready(data::initials(&my_name));
     Ok(Engine::new(client, store, cfg, ui.clone(), me, my_name))
+}
+
+/// Puts a failed sign-in on the error screen: a policy block with its copyable report, anything
+/// else as the generic "Sign-in failed".
+fn show_sign_in_failure(ui: &UiHandle, err: &anyhow::Error) {
+    let shown = sign_in_failure::describe(err);
+    ui.login_error(shown.message, shown.report);
 }
 
 async fn device_code(ui: &UiHandle, cfg: &session::Config) -> anyhow::Result<Client> {
@@ -776,6 +784,16 @@ fn main() -> anyhow::Result<()> {
                 && let Ok(mut cb) = arboard::Clipboard::new()
             {
                 let _ = cb.set_text(w.get_user_code().to_string());
+            }
+        });
+    }
+    {
+        let weak = window.as_weak();
+        window.on_copy_login_report(move || {
+            if let Some(w) = weak.upgrade()
+                && let Ok(mut cb) = arboard::Clipboard::new()
+            {
+                let _ = cb.set_text(w.get_login_report().to_string());
             }
         });
     }

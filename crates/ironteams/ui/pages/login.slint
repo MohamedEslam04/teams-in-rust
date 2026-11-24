@@ -100,7 +100,10 @@ export component LoginView inherits Rectangle {
     in property <string> user-code;
     in property <string> verify-url;
     in property <string> error;
+    // Details of a sign-in blocked by policy, copied by its button; empty hides the button.
+    in property <string> report;
     callback copy-code();
+    callback copy-report();
     callback open-url(string);
     callback retry();
     background: Theme.main;
@@ -158,6 +161,14 @@ export component LoginView inherits Rectangle {
                     background: Theme.accent-strong;
                     Text { text: "Try again"; color: #ffffff; }
                     TouchArea { mouse-cursor: pointer; clicked => { root.retry(); } }
+                }
+                if root.report != "": Rectangle {
+                    width: 160px;
+                    height: 36px;
+                    border-radius: 6px;
+                    background: rt.has-hover ? Theme.accent : Theme.surface;
+                    Text { text: "Copy error details"; color: Theme.fg; }
+                    rt := TouchArea { mouse-cursor: pointer; clicked => { root.copy-report(); } }
                 }
             }
         }
