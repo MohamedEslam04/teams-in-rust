@@ -104,6 +104,8 @@ export global CallStore {
     in property <string> control-name;
     // The pre-join microphone switch.
     in property <bool> prejoin-mic: true;
+    // The pre-join audio choice is Computer audio (else Don't use audio).
+    in property <bool> prejoin-audio: true;
     // Shown only when the call state says the meeting is recorded.
     in property <bool> recording;
     // The meeting is being transcribed.
@@ -138,6 +140,10 @@ export global CallStore {
     in-out property <string> mini-layout: "speaker";
     in property <int> in-call;
     in property <int> in-lobby;
+    // The call plays no sound on this device ("Add this device", or "Turn off sound").
+    in property <bool> sound-off;
+    // Our account is in this call on another device too (DeviceBar).
+    in property <bool> other-device;
     // We may let people in from the lobby (Admit, Admit all).
     in property <bool> can-admit;
     in property <[string]> mics;
@@ -180,8 +186,8 @@ export global CallStore {
     in-out property <length> mini-dx;
     in-out property <length> mini-dy;
     // (name, argument): feedback (good | issues, then one `category=issue` line per box ticked),
-    // join-chat, join-now, cancel, prejoin-mic, mic, speaker, mute, hand, react (like | heart |
-    // laugh | surprised | applause),
+    // join-chat, join-now, join-device (pre-join "Add this device"), sound (on/off toggle), cancel,
+    // prejoin-mic, mic, speaker, mute, hand, react (like | heart | laugh | surprised | applause),
     // hold, transfer-open, find (query), invite (MRI), transfer (MRI), share, camera,
     // prejoin-camera, leave, close, rejoin, dismiss-error, captions (on|off), recording
     // (start|stop), transcription (start|stop), dismiss-notice, resume, end-held,

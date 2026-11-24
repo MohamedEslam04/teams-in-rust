@@ -97,6 +97,7 @@ impl Call {
                 self.step_bots(sink).await;
             }
             Control::Hold(on) => self.hold(on, audio, sink).await,
+            Control::Sound(off) => calling::audio::set_output_off(off),
             Control::AddPerson { mri, name } => {
                 if let Err(e) = self
                     .ngc

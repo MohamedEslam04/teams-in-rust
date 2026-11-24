@@ -293,6 +293,13 @@ impl CallManager {
                     drop(m);
                     return self.join_now();
                 }
+                CallCmd::JoinDevice => {
+                    if !m.add_device() {
+                        return;
+                    }
+                    drop(m);
+                    return self.join_now();
+                }
                 CallCmd::JoinChat(_) | CallCmd::JoinOngoing(_) => None,
                 CallCmd::Cancel => {
                     m.cancel();
@@ -302,9 +309,14 @@ impl CallManager {
                     m.mic_on = on;
                     None
                 }
+                CallCmd::PrejoinAudio(computer) => {
+                    m.prejoin_audio(computer);
+                    None
+                }
                 CallCmd::Mic(i) => m.pick_device(true, i),
                 CallCmd::Speaker(i) => m.pick_device(false, i),
                 CallCmd::ToggleMute => m.toggle_mute().map(Control::Mute),
+                CallCmd::ToggleSound => m.toggle_sound().map(Control::Sound),
                 CallCmd::ToggleHand => m.toggle_hand().map(|up| {
                     if up {
                         Control::RaiseHand

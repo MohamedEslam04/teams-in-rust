@@ -34,6 +34,39 @@ impl CallModel {
         }
     }
 
+    /// Pre-join "Add this device": join with the mic and the sound off, for when we are in the
+    /// call on another device already (the phone stays the one heard). The caller then joins as
+    /// [`Self::joining`] does. False unless on the pre-join screen.
+    pub fn add_device(&mut self) -> bool {
+        self.phase == Phase::PreJoin && {
+            self.mic_on = false;
+            self.sound_off = true;
+            true
+        }
+    }
+
+    /// The pre-join audio choice: Computer audio (`true`) or Don't use audio, which joins with
+    /// the mic and the sound off. Computer audio again turns the sound back on; the mic stays as
+    /// it is, for its switch to decide. Only on the pre-join screen.
+    pub fn prejoin_audio(&mut self, computer: bool) {
+        if self.phase != Phase::PreJoin {
+            return;
+        }
+        self.sound_off = !computer;
+        if !computer {
+            self.mic_on = false;
+        }
+    }
+
+    /// The call window's sound toggle ("Turn on sound" / "Turn off sound"). Returns whether the
+    /// sound is now off, while a call runs.
+    pub fn toggle_sound(&mut self) -> Option<bool> {
+        self.phase.active().then(|| {
+            self.sound_off = !self.sound_off;
+            self.sound_off
+        })
+    }
+
     /// Pre-join "Join now": what to join and how. `None` unless on the pre-join screen.
     pub fn joining(&mut self) -> Option<(JoinTarget, JoinOptions)> {
         if self.phase != Phase::PreJoin {
@@ -50,6 +83,7 @@ impl CallModel {
         JoinOptions {
             name: self.my_name.clone(),
             mic_on: self.mic_on,
+            sound_off: self.sound_off,
             #[cfg(any(test, feature = "calls"))]
             mic: self.mic_id(),
             #[cfg(any(test, feature = "calls"))]
@@ -552,6 +586,7 @@ impl CallModel {
         people.sort_by_key(|p| p.lobby);
         let in_lobby = people.iter().filter(|p| p.lobby).count();
         let can_admit = self.phase.active() && people.iter().any(|p| p.me && p.role != "attendee");
+        let other_device = self.phase.active() && people.iter().any(|p| p.me && p.elsewhere);
         CallData {
             phase: self.phase.name(),
             kind: self.kind.name(),
@@ -574,6 +609,7 @@ impl CallModel {
             control_mode: self.control_mode.clone(),
             control_name: self.control_name.clone(),
             prejoin_mic: self.mic_on,
+            prejoin_audio: !self.sound_off,
             prejoin_camera: self.prejoin_camera,
             recording: self.recording,
             transcribing: self.transcribing,
@@ -594,6 +630,8 @@ impl CallModel {
             } else {
                 String::new()
             },
+            sound_off: self.sound_off,
+            other_device,
             in_call: people.len() - in_lobby,
             in_lobby,
             can_admit,

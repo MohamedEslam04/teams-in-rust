@@ -88,6 +88,8 @@ pub enum Control {
     Transcription(bool),
     /// Put the call on hold (`true`) or resume it.
     Hold(bool),
+    /// Play no sound (`true`) or play it again ([`CallModel::sound_off`]).
+    Sound(bool),
     /// Ring a person into the call (an MRI and their name).
     AddPerson {
         mri: String,
