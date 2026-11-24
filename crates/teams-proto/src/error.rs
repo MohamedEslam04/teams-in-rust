@@ -5,7 +5,7 @@
 pub enum Error {
     /// A request that got no answer. Built through `From`, which drops the URL: it can name a
     /// conversation and is no use in a banner (the log line of the request has it).
-    #[error("http: {0}")]
+    #[error("http: {}", http_chain(.0))]
     Http(reqwest::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
@@ -30,6 +30,24 @@ pub enum Error {
     DeviceCodeExpired,
     #[error("not signed in")]
     NotSignedIn,
+}
+
+/// The error and the causes under it, as "error sending request: client error (Connect): tcp
+/// connect error: Connection refused". reqwest's own text stops at its first line, which hides
+/// why a request failed (name lookup, certificate, refused or reset connection). The URL is
+/// dropped before this runs, and the causes name no path or query.
+fn http_chain(e: &reqwest::Error) -> String {
+    let mut text = e.to_string();
+    let mut cause = std::error::Error::source(e);
+    while let Some(c) = cause {
+        let line = c.to_string();
+        if !text.ends_with(&line) {
+            text.push_str(": ");
+            text.push_str(&line);
+        }
+        cause = c.source();
+    }
+    text
 }
 
 impl From<reqwest::Error> for Error {
@@ -166,6 +184,24 @@ mod tests {
             .await
             .unwrap_err();
         assert!(Error::Http(err).is_transient());
+    }
+
+    #[tokio::test]
+    async fn a_failed_request_says_why_it_failed() {
+        let err = reqwest::Client::new()
+            .get("http://127.0.0.1:1/")
+            .send()
+            .await
+            .unwrap_err();
+        let shown = Error::from(err).to_string();
+        assert!(
+            shown.starts_with("http: error sending request: "),
+            "{shown}"
+        );
+        assert!(
+            shown.to_lowercase().contains("refused") || shown.contains("connect"),
+            "the cause is shown: {shown}"
+        );
     }
 
     #[tokio::test]
