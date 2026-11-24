@@ -28,6 +28,11 @@ export component MessagePane inherits Rectangle {
     callback jump-to-message(string);
     callback jump-to-newest;
     callback load-older;
+    // The rows at the list's top and bottom edges (the bottom empty when the list ends on
+    // screen): the engine decodes the pictures of the rows around them only.
+    callback rows-shown(string, string);
+    // The row that holds the view's bottom edge (`rows-shown`).
+    in-out property <string> bottom-id;
     in property <bool> loading-latest;
     in property <bool> loading-older;
     // Messages a jump (to the first message, to a date) has read so far (0: none).
@@ -113,6 +118,17 @@ export component MessagePane inherits Rectangle {
         changed has-hover => { msg-pointer.check(); }
     msg-list := ListView {
         visible: !root.posts-mode;
+        // The rows at the top and bottom edges go to the engine (`rows-shown`). Pinned to the
+        // newest message the list ends on screen: no bottom row.
+        property <string> shown-top: root.top-id;
+        property <string> shown-bottom: self.pinned ? "" : root.bottom-id;
+        function report-rows() {
+            if !root.posts-mode && self.shown-top != "" {
+                root.rows-shown(self.shown-top, self.shown-bottom);
+            }
+        }
+        changed shown-top => { self.report-rows(); }
+        changed shown-bottom => { self.report-rows(); }
         property <int> tick: root.scroll-tick;
         property <int> d-tick: root.divider-tick;
         property <int> a-tick: root.anchor-tick;
@@ -239,6 +255,15 @@ export component MessagePane inherits Rectangle {
                         root.top-cy = msg-list.content-y;
                     }
                 }
+                // The row that holds the view's bottom edge, for `rows-shown`.
+                property <length> bottom-gap: -msg-list.content-y + msg-list.visible-height - self.y;
+                property <bool> holds-bottom: self.bottom-gap > 0px && self.bottom-gap <= self.height;
+                property <string> bottom-mark: self.holds-bottom ? m.id : "";
+                changed bottom-mark => {
+                    if self.holds-bottom {
+                        root.bottom-id = m.id;
+                    }
+                }
                 can-jump: root.thread-root == "" && !root.select-mode;
                 jump-to-message(id) => { root.jump-to-message(id); }
                 pick-date => { PeopleStore.jump-date-open = true; }
@@ -303,6 +328,7 @@ export component MessagePane inherits Rectangle {
         loading-older: root.loading-older;
         channel: root.current-title;
         load-older => { root.load-older(); }
+        rows-shown(top, bottom) => { root.rows-shown(top, bottom); }
         react(id, k) => { root.react(id, k); }
         edit(id) => { root.edit(id); }
         more-reactions(id, x, y) => {

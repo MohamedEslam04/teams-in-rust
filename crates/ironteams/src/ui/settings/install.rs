@@ -100,7 +100,7 @@ pub fn install(
     window
         .global::<SettingsStore>()
         .set_version(s(env!("CARGO_PKG_VERSION")));
-    // Opt-in: only when the switch is on, and then once per start.
+    // Always: once per start.
     check_updates(window, &mut shared.borrow_mut(), false);
     install_self_update(window, &mut shared.borrow_mut());
     let banner_shared = shared.clone();

@@ -369,6 +369,8 @@ export component AppWindow inherits Window {
     callback typing-tick();
     callback draft-edited(string);
     callback load-older();
+    // The rows at the message or posts list's top and bottom edges (`Cmd::RowsShown`).
+    callback rows-shown(string, string);
     callback react(string, string);
     callback reply(string);
     callback cancel-reply();
@@ -795,6 +797,7 @@ export component AppWindow inherits Window {
                                     jump-to-message(a0) => { PeopleStore.command("quote-jump", a0); }
                                     jump-to-newest => { root.jump-to-newest(); }
                                     load-older => { root.load-older(); }
+                                    rows-shown(a0, a1) => { root.rows-shown(a0, a1); }
                                     loading-latest: root.loading-latest;
                                     loading-older: root.loading-older;
                                     loading-progress: root.loading-progress;

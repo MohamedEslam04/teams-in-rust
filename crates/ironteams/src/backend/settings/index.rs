@@ -192,13 +192,8 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("about", "Report a problem", "bug logs diagnostics"),
     (
         "about",
-        "Check for updates",
-        "update upgrade new version release",
-    ),
-    (
-        "about",
-        "Automatic updates",
-        "update upgrade new version release download install",
+        "Updates",
+        "update upgrade new version release download install check",
     ),
     (
         "about",

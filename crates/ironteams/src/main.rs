@@ -94,6 +94,7 @@ async fn app_main(
             let status = *window.borrow_and_update();
             e.focused.store(status.focused, Ordering::Relaxed);
             e.set_visible(status.visible);
+            e.set_display_scale(status.scale_pct);
             e.window_changed();
             if window.changed().await.is_err() {
                 break;
@@ -550,6 +551,10 @@ fn main() -> anyhow::Result<()> {
     cmd!(on_search, |q| Cmd::Search(q.into()));
     cmd!(on_typing_tick, || Cmd::TypingTick);
     cmd!(on_load_older, || Cmd::LoadOlder);
+    cmd!(on_rows_shown, |top, bottom| Cmd::RowsShown(
+        top.into(),
+        bottom.into()
+    ));
     cmd!(on_react, |id, key| Cmd::React(id.into(), key.into()));
     cmd!(on_reply, |id| Cmd::Reply(id.into()));
     cmd!(on_cancel_reply, || Cmd::CancelReply);

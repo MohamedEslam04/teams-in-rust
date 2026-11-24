@@ -112,7 +112,7 @@ impl Engine {
         match reply {
             Some(r) => self
                 .ui
-                .reply_bar(r.sender_name.clone(), reply_preview(&r), false),
+                .reply_bar(self.sender_display_name(&r), reply_preview(&r), false),
             None => self.ui.reply_bar(String::new(), String::new(), false),
         }
     }

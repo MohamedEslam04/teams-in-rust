@@ -1043,15 +1043,11 @@ export component AboutPage inherits SettingsSections {
             SettingsNote { text: @tr("An unofficial native Microsoft Teams client written in Rust."); }
         }
     }
-    // A copy Velopack installed updates itself; any other copy only offers the opt-in check.
+    // A copy Velopack installed updates itself; any other copy checks for a newer release and says
+    // so. Neither can be turned off.
     if SettingsStore.self-update: SettingsSection {
         title: @tr("Updates");
-        description: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it.");
-        SettingsSwitchRow {
-            label: @tr("Automatic updates");
-            checked: SettingsStore.auto-update;
-            toggled(on) => { SettingsStore.command("auto-update", on ? "1" : "0"); }
-        }
+        description: @tr("IronTeams downloads new versions from its GitHub releases in the background, only the parts that changed, and installs them when you restart or quit it. Updates are required and cannot be turned off.");
         SettingsSwitchRow {
             label: @tr("Get beta updates");
             checked: SettingsStore.beta-updates;
@@ -1071,20 +1067,12 @@ export component AboutPage inherits SettingsSections {
     }
     if !SettingsStore.self-update: SettingsSection {
         title: @tr("Updates");
-        description: @tr("Off by default. When on, IronTeams asks api.github.com for the latest release when it starts. The request has no cookies, no account and nothing about you. IronTeams never downloads or installs anything.");
-        SettingsSwitchRow {
-            label: @tr("Check for updates");
-            checked: SettingsStore.check-updates;
-            toggled(on) => { SettingsStore.command("check-updates", on ? "1" : "0"); }
-        }
-        if SettingsStore.check-updates: SettingsButtonRow {
+        description: @tr("IronTeams asks api.github.com for the latest release when it starts and cannot turn this off. The request has no cookies, no account and nothing about you. This copy cannot replace itself: update it the way you installed it (package manager, Flatpak, a new download).");
+        SettingsButtonRow {
             description: SettingsStore.update-status;
             button-label: @tr("Check now");
             button-enabled: !SettingsStore.update-checking;
             clicked => { SettingsStore.command("check-now", ""); }
-        }
-        if !SettingsStore.check-updates && SettingsStore.update-status != "": SettingsBlock {
-            SettingsNote { text: SettingsStore.update-status; }
         }
         if SettingsStore.update-available: SettingsButtonRow {
             button-label: @tr("View release notes");
