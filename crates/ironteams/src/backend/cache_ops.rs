@@ -298,6 +298,7 @@ impl Engine {
     fn forget_pictures(&self) {
         self.avatars.lock().unwrap().clear();
         self.images.lock().unwrap().clear();
+        self.image_dims.lock().unwrap().clear();
         self.media.lock().unwrap().clear_thumbs();
     }
 

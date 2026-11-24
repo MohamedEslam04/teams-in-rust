@@ -401,8 +401,13 @@ impl Engine {
     }
 
     /// The clip cards of a row: the thumbnail from the media cache (our own clips), else the
-    /// clip's AMS thumbnail view, fetched like an inline image.
-    pub(super) fn clip_rows(self: &Arc<Self>, clips: &[VideoClip]) -> Vec<VideoClipData> {
+    /// clip's AMS thumbnail view, fetched like an inline image (only for a row near the screen,
+    /// `near`; the card's size does not depend on it).
+    pub(super) fn clip_rows(
+        self: &Arc<Self>,
+        clips: &[VideoClip],
+        near: bool,
+    ) -> Vec<VideoClipData> {
         clips
             .iter()
             .filter_map(|c| {
@@ -424,7 +429,7 @@ impl Engine {
                 let thumb = cached.or_else(|| {
                     let online = !self.offline.load(std::sync::atomic::Ordering::Relaxed);
                     clip::thumbnail_url(&c.url)
-                        .filter(|_| online && !key.starts_with("local-"))
+                        .filter(|_| near && online && !key.starts_with("local-"))
                         .and_then(|u| self.inline_image(&u))
                 });
                 Some(VideoClipData {

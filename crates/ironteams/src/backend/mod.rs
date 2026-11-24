@@ -67,6 +67,7 @@ mod people_card;
 mod people_live;
 pub(crate) mod people_presence;
 mod photo;
+mod picture_window;
 mod remind;
 mod render;
 pub(crate) mod ringtone;
@@ -145,6 +146,9 @@ pub enum Cmd {
     QuickReply(String, String),
     TypingTick,
     LoadOlder,
+    /// The rows at the top and bottom of the message list or the posts list (ids; the bottom is
+    /// empty when the list ends on screen): the pictures around them are decoded.
+    RowsShown(String, String),
     React(String, String),
     Reply(String),
     CancelReply,
@@ -283,6 +287,12 @@ struct View {
     at_bottom: bool,
     /// The first message shown before an older page was added, for the list to keep in place.
     older_anchor: Option<String>,
+    /// What the list reported it shows (`Cmd::RowsShown`): conversation, top and bottom row ids.
+    shown: Option<(String, String, String)>,
+    /// The row ids of the last render of the open chat, in order, and the rows (indexes) whose
+    /// pictures it decoded (`picture_window`).
+    shown_order: Vec<String>,
+    near: Option<(usize, usize)>,
     /// The server had nothing older than the oldest message shown: scrolling near the top asks
     /// for no more pages (reset when another conversation or thread opens).
     older_done: bool,
@@ -404,6 +414,9 @@ pub struct Engine {
     /// The window's scale factor in percent: inline pictures are decoded for it
     /// (`set_display_scale`).
     display_scale: std::sync::atomic::AtomicU16,
+    /// The size of every inline picture decoded so far, by URL: a row whose pixels were dropped
+    /// (off screen, `picture_window`) keeps its picture's size.
+    image_dims: Mutex<HashMap<String, (u32, u32)>>,
     /// Reactor MRIs whose profile fetch was already started (tooltip names).
     name_requests: Mutex<HashSet<String>>,
     pub focused: Arc<AtomicBool>,
@@ -523,6 +536,7 @@ impl Engine {
             avatar_placeholders: Mutex::new(avatar_placeholders),
             images: Mutex::new(ByteLru::new(IMAGE_BUDGET)),
             display_scale: std::sync::atomic::AtomicU16::new(util::DEFAULT_SCALE_PCT),
+            image_dims: Mutex::new(HashMap::new()),
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
             offline: AtomicBool::new(false),
@@ -806,6 +820,7 @@ impl Engine {
                 }
             }
             Cmd::LoadOlder => self.load_older().await?,
+            Cmd::RowsShown(top, bottom) => self.rows_shown(top, bottom),
             Cmd::React(id, key) => self.react(&id, &key).await?,
             Cmd::Reply(id) => {
                 let row = self.store.lock().unwrap().message(&id)?;
