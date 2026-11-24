@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use store::MessageRow;
-use teams_proto::images::{self, FetchedImage, ImageRef};
+use teams_proto::images::{self, FetchedImage, ImageHost, ImageRef};
 use teams_proto::model::FileRef;
 use teams_proto::translate::{self, MessageRef, Scope, Settings, Status, Trigger};
 use teams_proto::urlpreview::{self, LinkPreview};
@@ -44,6 +44,13 @@ pub enum MediaCmd {
     ImageClose,
     ImageSave,
     ImageCopy,
+    /// The message menu's entries for one picture of a message, without opening the viewer:
+    /// `copy`, `download` or `browser`.
+    ImageAction {
+        action: String,
+        msg: String,
+        url: String,
+    },
     Translate(String),
     ShowOriginal(String),
     /// The file card's "…" menu: `download`, `copy`, `share` or `web`, and the file's address.
@@ -85,6 +92,14 @@ impl MediaCmd {
             "image-close" => MediaCmd::ImageClose,
             "image-save" => MediaCmd::ImageSave,
             "image-copy" => MediaCmd::ImageCopy,
+            "image-do" => {
+                let mut parts = arg.splitn(3, '\u{1f}');
+                MediaCmd::ImageAction {
+                    action: parts.next()?.to_string(),
+                    msg: parts.next()?.to_string(),
+                    url: parts.next()?.to_string(),
+                }
+            }
             "translate" => MediaCmd::Translate(arg.to_string()),
             "original" => MediaCmd::ShowOriginal(arg.to_string()),
             "file" => {
@@ -205,6 +220,21 @@ pub(super) struct TranslateView {
 
 /// Position of `url` in the gallery: an exact match, else the picture of the same AMS object,
 /// else the first.
+/// Puts a picture on the clipboard (decoded off the UI thread).
+async fn copy_image_bytes(bytes: Vec<u8>) -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let rgba = image::load_from_memory(&bytes)?.to_rgba8();
+        arboard::Clipboard::new()?.set_image(arboard::ImageData {
+            width: rgba.width() as usize,
+            height: rgba.height() as usize,
+            bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+        })?;
+        Ok(())
+    })
+    .await??;
+    Ok(())
+}
+
 fn position_of(gallery: &[ImageRef], url: &str) -> usize {
     gallery
         .iter()
@@ -347,6 +377,9 @@ impl Engine {
                 }
             }
             MediaCmd::ImageCopy => self.viewer_copy().await?,
+            MediaCmd::ImageAction { action, msg, url } => {
+                self.image_action(&action, &msg, &url).await?
+            }
             MediaCmd::Translate(id) => self.translate_msg(id).await,
             MediaCmd::ShowOriginal(id) => self.translate_hide(&id),
             MediaCmd::FileCard { action, url } => self.file_card_action(&action, &url).await?,
@@ -644,17 +677,62 @@ impl Engine {
             self.ui.banner("The picture is still loading.".into());
             return Ok(());
         };
-        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            let rgba = image::load_from_memory(&image.bytes)?.to_rgba8();
-            arboard::Clipboard::new()?.set_image(arboard::ImageData {
-                width: rgba.width() as usize,
-                height: rgba.height() as usize,
-                bytes: std::borrow::Cow::Owned(rgba.into_raw()),
-            })?;
-            Ok(())
-        })
-        .await??;
+        copy_image_bytes(image.bytes).await?;
         self.ui.banner("Image copied.".into());
+        Ok(())
+    }
+
+    /// The message menu's entries for one picture of a message: `copy` it, `download` it into
+    /// the downloads folder, or open it in `browser`. A picture on a public or SharePoint
+    /// address opens at that address; one in Teams' own store (AMS) needs the app's credential,
+    /// so a copy is saved to a temporary folder and opened with the system's viewer.
+    async fn image_action(
+        self: &Arc<Self>,
+        action: &str,
+        msg: &str,
+        url: &str,
+    ) -> anyhow::Result<()> {
+        let Some(row) = self.store.lock().unwrap().message(msg).ok().flatten() else {
+            return Ok(());
+        };
+        let gallery = images::message_images(&row.content_html, &files_of(&row));
+        let Some(image) = gallery.get(position_of(&gallery, url)).cloned() else {
+            return Ok(());
+        };
+        if action == "browser" && !matches!(image.host, ImageHost::Ams) {
+            let _ = crate::external::open(&image.url);
+            return Ok(());
+        }
+        if self.offline.load(Ordering::Relaxed) {
+            self.ui.banner("This needs a connection.".into());
+            return Ok(());
+        }
+        let fetched = images::fetch(&self.client, &image).await?;
+        match action {
+            "copy" => {
+                copy_image_bytes(fetched.bytes).await?;
+                self.ui.banner("Image copied.".into());
+            }
+            "download" | "browser" => {
+                let dir = if action == "download" {
+                    diag::default_output_dir()
+                } else {
+                    std::env::temp_dir().join("ironteams-images")
+                };
+                let name = image.suggested_name();
+                let path = tokio::task::spawn_blocking(move || {
+                    std::fs::create_dir_all(&dir)?;
+                    images::save_image(&dir, &name, &fetched.content_type, &fetched.bytes)
+                })
+                .await??;
+                if action == "download" {
+                    self.ui.banner(format!("Saved to {}", path.display()));
+                } else {
+                    let _ = crate::external::open(&path);
+                }
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -982,6 +1060,16 @@ mod tests {
             })
         );
         assert_eq!(MediaCmd::parse("image", "no-separator"), None);
+        // The url may hold the separator characters of the other fields; only the first two split.
+        assert_eq!(
+            MediaCmd::parse("image-do", "copy\u{1f}12\u{1f}https://a/b.png?x=1|2"),
+            Some(MediaCmd::ImageAction {
+                action: "copy".into(),
+                msg: "12".into(),
+                url: "https://a/b.png?x=1|2".into()
+            })
+        );
+        assert_eq!(MediaCmd::parse("image-do", "copy\u{1f}12"), None);
         assert_eq!(
             MediaCmd::parse("photo", "8:orgid:abc"),
             Some(MediaCmd::OpenPhoto("8:orgid:abc".into()))
