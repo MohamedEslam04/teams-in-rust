@@ -73,7 +73,11 @@ mod tests {
         set_output_off(true);
         assert!(output_off());
         assert_eq!(played_volume(), 0);
-        assert!(scale(&[1234, -4321], played_volume()).iter().all(|&s| s == 0));
+        assert!(
+            scale(&[1234, -4321], played_volume())
+                .iter()
+                .all(|&s| s == 0)
+        );
         set_output_off(false);
         assert!(!output_off());
         assert_eq!(played_volume(), output_volume());

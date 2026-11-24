@@ -131,7 +131,10 @@ fn the_commands_parse() {
 #[test]
 fn dont_use_audio_joins_with_the_mic_and_the_sound_off() {
     let mut m = ready();
-    assert!(m.data(Instant::now()).prejoin_audio, "Computer audio is the default");
+    assert!(
+        m.data(Instant::now()).prejoin_audio,
+        "Computer audio is the default"
+    );
     m.prejoin_audio(false);
     let d = m.data(Instant::now());
     assert!(!d.prejoin_audio && !d.prejoin_mic);
@@ -146,7 +149,10 @@ fn computer_audio_again_brings_the_sound_back_and_leaves_the_mic_off() {
     m.prejoin_audio(true);
     let d = m.data(Instant::now());
     assert!(d.prejoin_audio);
-    assert!(!d.prejoin_mic, "the mic stays as Don't use audio left it; its switch is back");
+    assert!(
+        !d.prejoin_mic,
+        "the mic stays as Don't use audio left it; its switch is back"
+    );
     let (_, opts) = m.joining().unwrap();
     assert!(!opts.sound_off);
 }

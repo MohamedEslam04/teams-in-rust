@@ -317,8 +317,10 @@ fn our_account_on_a_second_device_marks_us_elsewhere() {
     assert!(!p.iter().find(|p| !p.me).unwrap().elsewhere);
 
     // The phone left: only the laptop is in the call.
-    r.apply(&json!({"participants": {"8:orgid:me": {"version": 2, "state": "active",
-        "endpoints": {"laptop": {"call": {}}}}}}));
+    r.apply(
+        &json!({"participants": {"8:orgid:me": {"version": 2, "state": "active",
+        "endpoints": {"laptop": {"call": {}}}}}}),
+    );
     assert!(!shown(&r).iter().find(|p| p.me).unwrap().elsewhere);
 }
 
