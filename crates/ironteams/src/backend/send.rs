@@ -54,12 +54,13 @@ impl Engine {
             p.entries.clear();
             prepared
         };
-        let (target, reply, editing) = {
+        let (target, reply, editing, quotes) = {
             let mut v = self.view.lock().unwrap();
             (
                 self.current_target_locked(&v),
                 v.reply_to.take(),
                 v.editing.take(),
+                std::mem::take(&mut v.edit_quotes),
             )
         };
         self.ui.reply_bar(String::new(), String::new(), false);
@@ -71,10 +72,12 @@ impl Engine {
             // The composer shows the draft that was there before the edit again.
             let draft = self.view.lock().unwrap().draft_text.clone();
             self.ui.set_draft(draft);
+            // The forwarded or quoted message of the original goes back exactly as it was.
             let html = mentions::finish(
                 &render::markdown_to_composer_html(&prepared.text),
                 &prepared,
             );
+            let html = format!("{}{html}{}", quotes.0, quotes.1);
             if prepared.mentions.is_empty() {
                 self.client
                     .edit_message(&target, &id, &html, &self.my_name)
@@ -291,5 +294,87 @@ impl Engine {
         };
         self.add_attachment(file.file_name(), file.read().await)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use store::{ConvKind, ConversationRow, MessageRow};
+
+    pub(super) const FORWARD: &str = r#"<blockquote itemscope="" itemtype="http://schema.skype.com/Forward" itemid="1731234567890"><strong itemprop="mri" itemid="8:orgid:aaa">Sara</strong><span itemprop="time" itemid="1731234567890"></span><p itemprop="preview">https://linear.app/x/issue/ABC-1 &amp; more</p></blockquote>"#;
+
+    /// An engine on an in-memory store with a 1:1 chat open and a client that reaches no server;
+    /// the window is returned too, because the engine only holds a weak handle to it.
+    pub(super) fn engine(kind: ConvKind, id: &str) -> (Arc<Engine>, crate::AppWindow) {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let store = store::Store::open_in_memory().unwrap();
+        store
+            .upsert_conversation(&ConversationRow {
+                id: id.into(),
+                kind,
+                title: "Sara Example".into(),
+                team_id: None,
+                team_name: None,
+                last_activity_ms: 1,
+                last_preview: String::new(),
+                unread: false,
+                favorite: false,
+                read_horizon_ms: 0,
+            })
+            .unwrap();
+        let client = teams_proto::Client::offline("test").unwrap();
+        let e = Engine::new(
+            client,
+            store,
+            session::Config::default(),
+            ui,
+            "8:me".into(),
+            "Me".into(),
+        );
+        e.view.lock().unwrap().current = Some(id.into());
+        (e, window)
+    }
+
+    pub(super) fn row(id: &str, conv: &str, from: &str, name: &str, html: &str) -> MessageRow {
+        MessageRow {
+            id: id.into(),
+            conversation_id: conv.into(),
+            parent_id: None,
+            sender_mri: from.into(),
+            sender_name: name.into(),
+            compose_ms: 1_731_234_567_890,
+            edited_ms: None,
+            deleted: false,
+            message_type: "RichText/Html".into(),
+            content_html: html.into(),
+            client_message_id: None,
+            reactions_json: "{}".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn editing_a_message_with_a_forward_puts_only_the_own_text_in_the_composer() {
+        let conv = "48:notes";
+        let (e, window) = engine(ConvKind::Notes, conv);
+        let html = format!("{FORWARD}<p>my own comment</p>");
+        e.store
+            .lock()
+            .unwrap()
+            .upsert_message(&row("m1", conv, "8:me", "Me", &html))
+            .unwrap();
+        e.clone()
+            .handle(crate::backend::Cmd::Edit("m1".into()))
+            .await;
+        assert_eq!(window.get_draft(), "my own comment");
+        let v = e.view.lock().unwrap();
+        assert_eq!(v.editing.as_deref(), Some("m1"));
+        assert_eq!(
+            v.edit_quotes,
+            (FORWARD.to_string(), String::new()),
+            "the forward is kept as it was, to be sent back with the edit"
+        );
     }
 }
