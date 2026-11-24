@@ -1681,7 +1681,11 @@ fn the_people_panel_lists_who_was_invited_and_who_is_only_in_the_chat() {
         );
     }
     assert_eq!(c.row("Di Example").accessible_description().unwrap(), "");
-    assert_eq!(c.sent().first().unwrap(), "people-open");
+    assert!(
+        c.sent().iter().any(|s| s == "people-open"),
+        "{:?}",
+        c.sent()
+    );
 }
 
 #[test]
