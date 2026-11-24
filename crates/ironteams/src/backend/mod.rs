@@ -807,7 +807,7 @@ impl Engine {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row {
                     self.ui
-                        .reply_bar(r.sender_name.clone(), reply_preview(&r), false);
+                        .reply_bar(self.sender_display_name(&r), reply_preview(&r), false);
                     let mut v = self.view.lock().unwrap();
                     v.editing = None;
                     v.reply_to = Some(r);
