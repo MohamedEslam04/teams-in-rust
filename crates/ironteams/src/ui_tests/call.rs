@@ -1898,6 +1898,10 @@ fn a_person_row_opens_their_card_when_their_mri_is_known() {
             &format!("person-card {mri}"),
             "{row}"
         );
+        assert_eq!(card_of(&c), mri, "{row}");
+        // A click while a card is open only closes it.
+        key(&c.h.app, Key::Escape, true);
+        key(&c.h.app, Key::Escape, false);
     }
     let asked = c.sent().len();
     click(&c.row("Unknown Guest"));
