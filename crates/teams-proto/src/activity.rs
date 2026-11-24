@@ -191,6 +191,22 @@ pub fn all_read_horizon(now_ms: i64) -> String {
     format!("0;{now_ms};0")
 }
 
+/// Where the feed has been read up to, from the `48:notifications` conversation. The other Teams
+/// clients move this read position instead of flagging each item, so items at or before it count
+/// as read. The property is `<last read id>;<read time ms>;<client message id>`; the read time is
+/// used, and the id (an arrival time) when the read time is missing. 0 when nothing was read.
+pub fn feed_read_horizon_ms(conversation: &Value) -> i64 {
+    conversation
+        .pointer("/properties/consumptionhorizon")
+        .and_then(Value::as_str)
+        .map(|h| {
+            let mut parts = h.split(';').map(|p| p.parse::<i64>().unwrap_or(0));
+            let last_read_id = parts.next().unwrap_or(0);
+            parts.next().filter(|t| *t > 0).unwrap_or(last_read_id)
+        })
+        .unwrap_or(0)
+}
+
 impl Client {
     async fn system_conv_url(&self, conversation: &str) -> String {
         format!(
@@ -217,6 +233,15 @@ impl Client {
     pub async fn activity(&self, page_size: u32) -> Result<Vec<ActivityItem>> {
         let v = self.system_feed("activity", FEED, page_size).await?;
         Ok(parse_activity(&v))
+    }
+
+    /// Reads how far the feed has been read, on any Teams client (see [`feed_read_horizon_ms`]).
+    pub async fn activity_read_horizon(&self) -> Result<i64> {
+        let url = format!("{}?view=msnp24Equivalent", self.system_conv_url(FEED).await);
+        let v = self
+            .json("activity_read_horizon", Method::GET, &url, None)
+            .await?;
+        Ok(feed_read_horizon_ms(&v))
     }
 
     /// Reads the `48:mentions` system conversation, parsed as activity rows where it has them.
@@ -483,6 +508,30 @@ mod tests {
         assert_eq!(ids(ActivityFilter::Unread), ["1", "3", "5"]);
         assert_eq!(ids(ActivityFilter::Mentions), ["1", "2", "4"]);
         assert_eq!(ids(ActivityFilter::TagMentions), ["2"]);
+    }
+
+    #[test]
+    fn feed_horizon_is_the_read_time_of_the_conversation() {
+        let conv =
+            |h: Value| json!({"id": "48:notifications", "properties": {"consumptionhorizon": h}});
+        // Another client read the feed: `<last read id>;<read time>;<client message id>`.
+        assert_eq!(
+            feed_read_horizon_ms(&conv(json!("1795000000500;1795000009000;123"))),
+            1_795_000_009_000
+        );
+        // Our own "mark all read" form.
+        assert_eq!(
+            feed_read_horizon_ms(&conv(json!(all_read_horizon(1795)))),
+            1795
+        );
+        // A read time that is missing falls back to the last read id, which is an arrival time.
+        assert_eq!(
+            feed_read_horizon_ms(&conv(json!("1795000000500;;"))),
+            1_795_000_000_500
+        );
+        // Never read, or no property at all: nothing counts as read.
+        assert_eq!(feed_read_horizon_ms(&conv(json!(""))), 0);
+        assert_eq!(feed_read_horizon_ms(&json!({"id": "48:notifications"})), 0);
     }
 
     #[test]
