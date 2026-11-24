@@ -4,6 +4,7 @@ use crate::client::Client;
 use crate::error::{Error, Result};
 use reqwest::Method;
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicBool, Ordering};
 use url::Url;
 
 /// Host of the media service URLs messages point at (`…/v1/objects/<id>/views/<view>`).
@@ -16,6 +17,11 @@ const AMS_UPLOAD: &str = "https://as-prod.asyncgw.teams.microsoft.com/v1/objects
 pub const AUDIO_OBJECT_TYPE: &str = "sharing/audio";
 /// Content slot an audio object's bytes are written to (its view is `audio`).
 const AUDIO_CONTENT: &str = "audio";
+
+/// Set once an `asm.skype.com` address could not be reached while its Teams-domain twin answered,
+/// so later downloads go to the twin first instead of waiting for the first address to fail
+/// again. Per process: it is a property of the network the app runs on.
+static PREFER_ASYNCGW: AtomicBool = AtomicBool::new(false);
 
 /// Largest image we download.
 pub const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
@@ -47,7 +53,71 @@ pub fn image_html(object_id: &str, width: u32, height: u32) -> String {
     )
 }
 
+/// The Teams-domain twin of an AMS address: `https://us-api.asm.skype.com/v1/objects/<id>/...` is
+/// also served at `https://us-prod.asyncgw.teams.microsoft.com/v1/objects/<id>/...`, the host the
+/// uploads already use. Some networks cannot reach the old Skype domain (a blocked name, a
+/// filtered address) while the Teams one works. `None` for an address that is not a regional
+/// `<region>-api.asm.skype.com` one.
+pub fn asyncgw_twin(url: &str) -> Option<String> {
+    let mut u = Url::parse(url).ok()?;
+    let region = u.host_str()?.strip_suffix("-api.asm.skype.com")?.to_owned();
+    if region.is_empty() || region.contains('.') {
+        return None;
+    }
+    u.set_host(Some(&format!("{region}-prod.asyncgw.teams.microsoft.com")))
+        .ok()?;
+    Some(u.into())
+}
+
+/// The addresses to try for one AMS download, in order: the address itself, then its twin; the
+/// twin first when `prefer_twin`.
+pub fn ams_attempts_with(url: &str, prefer_twin: bool) -> Vec<String> {
+    match asyncgw_twin(url) {
+        Some(twin) if prefer_twin => vec![twin, url.to_owned()],
+        Some(twin) => vec![url.to_owned(), twin],
+        None => vec![url.to_owned()],
+    }
+}
+
+/// [`ams_attempts_with`] with what this process learned about the network.
+pub fn ams_attempts(url: &str) -> Vec<String> {
+    ams_attempts_with(url, PREFER_ASYNCGW.load(Ordering::Relaxed))
+}
+
+/// A download that had to leave its first address succeeded at `used`: remember which domain
+/// works from here.
+pub fn ams_remember(used: &str) {
+    PREFER_ASYNCGW.store(
+        used.contains(".asyncgw.teams.microsoft.com"),
+        Ordering::Relaxed,
+    );
+}
+
 impl Client {
+    /// Gets the bytes of an AMS address, falling back to its twin when the connection fails (not
+    /// when the service answers with an error: the object is the same on both).
+    async fn ams_bytes(
+        &self,
+        url: &str,
+        extra: &[(&str, String)],
+        max_bytes: usize,
+    ) -> Result<Vec<u8>> {
+        let mut last = None;
+        for (i, attempt) in ams_attempts(url).iter().enumerate() {
+            match self.bytes(attempt, extra, max_bytes).await {
+                Ok(bytes) => {
+                    if i > 0 {
+                        ams_remember(attempt);
+                    }
+                    return Ok(bytes);
+                }
+                Err(e @ Error::Http(_)) => last = Some(e),
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last.unwrap_or_else(|| Error::Protocol("no AMS address".into())))
+    }
+
     /// Downloads an AMS image. Refuses non-AMS hosts so the token never leaves Microsoft.
     pub async fn download_image(&self, url: &str) -> Result<Vec<u8>> {
         if !is_ams_url(url) {
@@ -56,7 +126,7 @@ impl Client {
             ));
         }
         let skype = self.tokens().await.skype.unwrap_or_default();
-        self.bytes(
+        self.ams_bytes(
             url,
             &[
                 ("Cookie", format!("skypetoken_asm={skype}")),
@@ -75,7 +145,7 @@ impl Client {
             ));
         }
         let skype = self.tokens().await.skype.unwrap_or_default();
-        self.bytes(
+        self.ams_bytes(
             url,
             &[("Cookie", format!("skypetoken_asm={skype}"))],
             max_bytes,
@@ -174,6 +244,46 @@ mod tests {
         assert!(!is_ams_url("http://eu-api.asm.skype.com/v1/objects/0-x"));
         assert!(!is_ams_url("https://evil.com/api.asm.skype.com"));
         assert!(!is_ams_url("https://asm.skype.com.evil.com/x"));
+    }
+
+    #[test]
+    fn an_ams_address_has_a_twin_on_the_teams_domain() {
+        assert_eq!(
+            asyncgw_twin("https://us-api.asm.skype.com/v1/objects/0-eus-d1-a/views/imgo?x=1"),
+            Some(
+                "https://us-prod.asyncgw.teams.microsoft.com/v1/objects/0-eus-d1-a/views/imgo?x=1"
+                    .into()
+            )
+        );
+        assert_eq!(
+            asyncgw_twin("https://as-api.asm.skype.com/v1/objects/0-x/views/imgo"),
+            Some("https://as-prod.asyncgw.teams.microsoft.com/v1/objects/0-x/views/imgo".into())
+        );
+        // Already on the Teams domain, no region, or not AMS at all: no twin.
+        assert_eq!(
+            asyncgw_twin("https://us-prod.asyncgw.teams.microsoft.com/v1/objects/0-x"),
+            None
+        );
+        assert_eq!(
+            asyncgw_twin("https://api.asm.skype.com/v1/objects/0-x"),
+            None
+        );
+        assert_eq!(asyncgw_twin("https://evil.com/v1/objects/0-x"), None);
+        assert_eq!(
+            asyncgw_twin("https://x.evil-api.asm.skype.com.evil.com/v1/objects/0-x"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_attempts_try_the_address_then_its_twin_and_the_twin_first_once_it_is_known_to_work() {
+        let url = "https://us-api.asm.skype.com/v1/objects/0-x/views/imgo";
+        let twin = "https://us-prod.asyncgw.teams.microsoft.com/v1/objects/0-x/views/imgo";
+        assert_eq!(ams_attempts_with(url, false), [url, twin]);
+        assert_eq!(ams_attempts_with(url, true), [twin, url]);
+        // Without a twin there is one attempt either way.
+        let own = "https://api.asm.skype.com/v1/objects/0-x/views/imgo";
+        assert_eq!(ams_attempts_with(own, true), [own]);
     }
 
     #[test]
