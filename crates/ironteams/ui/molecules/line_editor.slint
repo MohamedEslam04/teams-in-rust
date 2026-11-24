@@ -163,6 +163,9 @@ export component LineEditor inherits Rectangle {
                     if root.want-active && root.want-line == i {
                         root.want-active = false;
                         self.focus();
+                        // An input focused in its `init` starts with has-focus true, so the
+                        // handler below never hears of it: the line is recorded here.
+                        root.focus-line = i;
                         self.set-selection-offsets(root.want-anchor-column, root.want-column);
                     }
                 }
