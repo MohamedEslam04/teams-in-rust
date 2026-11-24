@@ -12,7 +12,8 @@ export component DeviceBar inherits Rectangle {
         ? (CallStore.sound-off ? "You're also in this call on another device. Sound is off here." : "You're also in this call on another device.")
         : "Sound is off on this device.";
     height: 40px;
-    background: Theme.dark ? #2b2f4a : #e8ebfa;
+    // A light wash of the accent, so the bar reads as information in both themes.
+    background: Theme.accent.transparentize(0.82);
     accessible-role: groupbox;
     accessible-label: root.message;
     HorizontalLayout {
