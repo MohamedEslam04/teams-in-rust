@@ -28,25 +28,15 @@ export component ProfileCardLayer inherits Rectangle {
     callback open-url(string);
     // Above the call window too (its roster photos open cards), and above the search
     // dropdown (z 65) for a hover card opened from one of its rows.
-    // A clicked card closes on a click anywhere else, and on Escape wherever the focus is inside
-    // it; a hover card when the pointer leaves it and its photo (so the photo under it keeps
-    // its hover).
-    FocusScope {
-        init => { if !PeopleStore.card-by-hover { self.focus(); } }
-        capture-key-pressed(event) => {
-            if event.text == Key.Escape && !PeopleStore.card-by-hover {
+    // A clicked card closes on a click anywhere else; a hover card when the pointer leaves
+    // it and its photo (so the photo under it keeps its hover).
+    if !PeopleStore.card-by-hover: TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down {
                 PeopleStore.card-open = false;
-                return accept;
-            }
-            reject
-        }
-        if !PeopleStore.card-by-hover: TouchArea {
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down {
-                    PeopleStore.card-open = false;
-                }
             }
         }
+    }
     profile-card := ProfileCard {
         // Next to the photo it belongs to: on its right (on its left when that does not
         // fit), top-aligned with it or, near the bottom, bottom-aligned (flipped above),
@@ -88,7 +78,6 @@ export component ProfileCardLayer inherits Rectangle {
             MediaStore.command("photo", id);
         }
         close => { PeopleStore.card-open = false; }
-    }
     }
 }
 
