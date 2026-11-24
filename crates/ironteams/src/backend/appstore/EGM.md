@@ -29,6 +29,15 @@ Files:
 - `[tasks.rs:Tasks]` pub struct (Default); private-field state of the Planner/To Do screen
 - `[webhost_open.rs:TaskSubmit]` pub(crate) type Arc<dyn Fn(serde_json::Value) + Send + Sync>; receives the result a task module page submits
 - `[mod.rs:AppsCmd]` pub use of cmd::AppsCmd
+- `[cmd.rs:AppsCmd::parse]` pub fn(name: &str, arg: &str) -> Option<AppsCmd>; None for an unknown command name
+- `[flows.rs:Flows]` pub struct (Default); Power Automate screen state held in Apps.flows; fields private
+- `[flows.rs:Flows::data]` pub fn(&self) -> FlowsData; view projection of the flows state
+- `[form.rs:Form]` pub struct (Default); state of the confirm/input dialog held in Apps.form; fields private (the pending action enum `Pending` is pub(super))
+- `[player.rs:PlayTarget]` pub(super) struct {url, title, drive_id: Option<String>, item_id: Option<String>}; one recording to play
+- `[mod.rs:Engine::apps_opened / apps_sent]` pub(crate), #[cfg(test)] only; links opened and changes sent (or that would have been sent offline), oldest first
+- `[webhost_open.rs:Engine::apps_open_task]` pub(crate) fn(self: &Arc<Self>, def: Option<&AppDefinition>, command_id, url, title, on_submit) -> bool; opens a composer task module in the web host (see Side Effects)
+- `[webhost_open.rs:Engine::apps_task_submit]` pub(crate), #[cfg(test)] only; the submit callback a task module page would call
+- `[webhost_open.rs:Engine::apps_definition]` pub(crate) fn(&self, app_id: &str) -> Option<AppDefinition>; installed or Store app definition if the app pages loaded it
 - `[fixtures.rs:ONENOTE/WORKFLOWS/LISTS/SHIFTS/RECAPS/POLLS/AGENT]` pub const &str demo app ids (demo-onenote, demo-workflows, demo-lists, demo-shifts, demo-recaps, demo-polls, demo-agent)
 - `[notes.rs:Notes::data]` pub fn(&self)->NotesData, projects state to UI rows/status/flags
 - `[recaps.rs:meetings_from_events]` pub(super) fn(events:&[Event], now_ms:i64, week_start_ms:i64)->Vec<Meeting>; online non-all-day events started in last 30 days up to now, newest first, deduped by key
@@ -122,7 +131,7 @@ Files:
 - `[shop.rs:Engine::shop_push]` sends StoreData to the UI (ui.apps_store) and triggers apps_fetch_images
 - `[tasks.rs:Engine::tasks_push]` pushes TasksData to the UI via self.ui.apps_tasks
 - `[webhost_open.rs:Engine::apps_open_in_host]` spawns a tokio task running run_host_window; pushes to self.apps.opened
-- `[mod.rs:apps_fetch_images]` spawns one tokio task per wanted image URL; HTTP GET via e.client.bytes (4 MiB cap); spawn_blocking image decode
+- `[mod.rs:apps_fetch_images]` spawns one tokio task per wanted image URL; HTTP GET via e.client.bytes (4 MiB cap); decode via super::util::decode_limited, which waits for one of DECODES_AT_ONCE places of a global semaphore and then runs spawn_blocking; a panicked decode gives None (shown as a failed image)
 - `[flows.rs:Engine::flows_enter]` self.ui.open_view("workflows") switches the visible view
 - `[notes.rs:Engine::notes_notebook]` Network reads src_sections/src_pages/src_page_text; mutate Apps (mutex) and push to UI via ui.apps_notes
 - `[recaps.rs:recaps_show]` network/store reads via src_meeting_chat and src_meeting_notes run concurrently (tokio::join!)

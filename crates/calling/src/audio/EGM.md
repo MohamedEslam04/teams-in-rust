@@ -1,7 +1,7 @@
 # audio
 
 ## Overview
-Microphone and speaker I/O plus the Opus codec for calls. The contract is 48 kHz mono `i16` PCM in 20 ms frames (`Frame = Vec<i16>`, 960 samples). Device access (`cpal`) is behind the `devices` feature and echo cancellation, noise suppression and AGC (`sonora`) behind the `aec` feature; the codec, WAV and tone endpoints build without either.
+Microphone and speaker I/O plus the Opus codec for calls. The contract is 48 kHz mono `i16` PCM in 20 ms frames (`Frame = Vec<i16>`, 960 samples). Device access (`cpal`, with device enumeration and choice delegated to the sibling `devices` crate) is behind the `devices` feature and echo cancellation, noise suppression (`sonora`, then RNNoise from `nnnoiseless`) and AGC behind the `aec` feature; a process-wide speaker volume applies to every played frame; the codec, WAV and tone endpoints build without either.
 
 ## Interface
 - `mod.rs`: `Frame`; re-exports from private submodules. Feature-gated re-exports: `aec` (`AudioProcessor`, `EchoCancelled`, `EchoReference`, `ProcessingOptions`, `echo_cancelled`) and `devices` (`Capture`, `DeviceInfo`, `Playback`, `list_input_devices`, `list_output_devices`).
@@ -11,8 +11,9 @@ Microphone and speaker I/O plus the Opus codec for calls. The contract is 48 kHz
 - `resample.rs`: `InputConverter::{new, push, flush}` (device format to 48 kHz mono frames); `OutputConverter` is crate-private.
 - `jitter.rs`: `JitterBuffer::{new, push, pop_into, buffered, underruns, dropped_samples}`.
 - `latency.rs`: `DEFAULT_STREAM_DELAY_MS` (40), `device_latency()`, `DeviceLatency` setters and getters, `DelaySample`, `DelayEstimator::{new, delay_ms, observe}`.
-- `device.rs` (`devices`): `Capture::start(Option<&str>)`, `Playback::{start, start_with_tap, underruns}`, `DeviceInfo {id, name, is_default}`, `list_input_devices`, `list_output_devices`.
-- `aec.rs` (`aec`): `AudioProcessor::{new, with_options, set_stream_delay_ms, stream_delay_ms, process_render, process_capture}`, `ProcessingOptions {echo_cancellation, noise_suppression}`, `echo_cancelled(source, processor) -> (EchoCancelled<S>, EchoReference)`, `EchoReference::push`.
+- `volume.rs`: `set_output_volume(percent)`, `output_volume`, `set_output_off`, `output_off`, `played_volume` (0 while off, else the volume), `gain(percent)` (the squared factor), `scale(frame, percent)` (borrowed at 100). Re-exported from `mod.rs`; always compiled.
+- `device.rs` (`devices`): `Capture::start(Option<&str>)`, `Playback::{start, start_with_tap, underruns}`, `DeviceInfo {id, name, is_default}` (built from `devices` entries), `list_input_devices`, `list_output_devices`. Listing and `pick_device` call `devices::audio_inputs`, `audio_outputs` and `pick_audio_device`; the rule for matching a wanted id or name lives in the `devices` crate, and on Linux it picks the sound server's source or sink rather than a raw ALSA card.
+- `aec.rs` (`aec`): `AudioProcessor::{new, with_options, set_stream_delay_ms, stream_delay_ms, process_render, process_capture}`, `ProcessingOptions {echo_cancellation, noise_suppression}` (noise suppression also runs RNNoise on every 10 ms capture chunk after the `sonora` chain), `echo_cancelled(source, processor) -> (EchoCancelled<S>, EchoReference)`, `EchoReference::push`.
 
 ## Invariants
 - PCM is 48 kHz mono in `FRAME_SAMPLES` (960) frames [../types.rs:SAMPLE_RATE, FRAME_SAMPLES].
@@ -23,13 +24,15 @@ Microphone and speaker I/O plus the Opus codec for calls. The contract is 48 kHz
 - The echo reference queue holds at most 50 frames and `push` never blocks (frames are dropped when full) [aec.rs:REFERENCE_DEPTH, EchoReference::push].
 - Delay estimates are clamped to 10..=400 ms, device latencies above 400 ms are ignored, and a change needs more than 10 ms of difference [latency.rs:MIN_DELAY_MS, MAX_DELAY_MS, MAX_DEVICE_LATENCY_MS, HYSTERESIS_MS].
 - Capture is bounded to 50 frames; playout starts after 3 frames and drops the oldest audio above 10; an underrun pads with silence and primes again. The playback tap runs on the audio thread and must not block [device.rs:CAPTURE_DEPTH, PLAYOUT_PREFILL_FRAMES, PLAYOUT_MAX_FRAMES, jitter.rs:JitterBuffer].
+- Output volume is 0..=100 percent (larger values are 100) and is applied squared; `Playback::write_frame` scales every frame by `played_volume()` before conversion, and the system volume is untouched [volume.rs:gain, set_output_volume, device.rs:Playback::write_frame].
 - Unclocked sources should be wrapped in `Paced`; `spawn_capture_encoder` needs a tokio runtime [pipeline.rs:spawn_capture_encoder].
 - `WavSource` reads the whole file up front and accepts integer WAVs of 1..=32 bits or float [source.rs:WavSource::open].
 
 ## Side Effects
-- Opens `cpal` default-host input and output streams and starts them; callbacks run on audio threads [device.rs:Capture::start, Playback].
+- Opens `cpal` input and output streams on the device chosen through the `devices` crate and starts them; callbacks run on audio threads [device.rs:Capture::start, Playback, pick_device].
 - Spawns tokio tasks for capture encoding and decode playback [pipeline.rs].
 - A process-wide static of relaxed atomics holds the device latencies; `device.rs` writes it, `aec.rs` reads it, and dropping `Capture` or `Playback` resets it [latency.rs:DEVICE_LATENCY, device.rs:Drop].
+- Two more process-wide atomics hold the output volume (default 100) and the output-off flag; they are never reset by dropping a stream [volume.rs:OUTPUT_PERCENT, OUTPUT_OFF].
 - Reads and writes WAV files on disk [source.rs:WavSource::open, WavSink::create].
 - `tracing` logs: device name, rate and format at info, the AEC delay at info, warnings on stream errors and dropped frames.
 - No environment variables are read.

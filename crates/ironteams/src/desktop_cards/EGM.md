@@ -25,9 +25,9 @@ Files:
 - `[protocol.rs:Action]` pub enum (tag="type", snake_case): Reply{text}, React{key}, Open, Join, Snooze{minutes}, Dismiss, Accept, Decline, Settings, Mute, Closed
 - `[client.rs:next_id]` pub fn() -> u32: new card number (global AtomicU32 starting at 1)
 - `[protocol.rs:Backend]` pub enum (kebab-case, Copy): LayerShell | X11 | Native
-- `[client.rs:show]` pub fn(card: Card, on_action: Handler) -> bool: shows/replaces a card, starts host on first use and may block up to START_TIMEOUT (call via spawn_blocking); false means use system notification; always false under cfg!(test)
+- `[client.rs:show]` pub fn(card: Card, on_action: Handler) -> bool: shows/replaces a card, starts host on first use and may block up to START_TIMEOUT (call via spawn_blocking); returns true without drawing when the id was withdrawn by `dismiss` while the host was still starting; false means use system notification; always false under cfg!(test)
 - `[protocol.rs:FromHost]` pub enum (snake_case): Ready{backend} | Unavailable{reason} | Action{id,action}; host -> app stdout
-- `[client.rs:dismiss]` pub fn(id: u32): removes a card (sends ToHost::Dismiss) only if phase Ready and a handler exists
+- `[client.rs:dismiss]` pub fn(id: u32): a known handler is always removed and ToHost::Dismiss is written only when phase is Ready; an unknown id (card not shown yet) is remembered in Inner.withdrawn (at most WITHDRAWN_KEPT = 16, oldest dropped first) so a later `show` does not draw it
 - `[protocol.rs:line]` pub fn line<T: Serialize>(&T) -> String; one JSON line without newline, empty string on serialize error
 - `[geometry.rs:Rect]` pub struct {x:i32,y:i32,w:u32,h:u32} physical pixels
 - `[protocol.rs:parse]` pub fn parse<'a, T: Deserialize<'a>>(&'a str) -> Option<T>; trims, None on unknown/invalid
@@ -66,6 +66,7 @@ Files:
 - `[client.rs:show]` Handler runs on the host reader thread; Closed action removes the handler, other actions only clone it; a handler is registered before ToHost::Show is written and removed on write failure
 - `[protocol.rs:Card]` #[serde(default)]: only id/title required in practice; missing fields default
 - `[client.rs:show]` waits on the Condvar only while phase==Starting up to START_TIMEOUT, then kills the child and sets Failed; under cfg!(test) returns false without spawning
+- `[client.rs:show]` after the start wait and before the `Phase::Ready` check, an id found in `withdrawn` is removed from it and `show` returns true with no handler registered and nothing written
 - `[protocol.rs]` wire format: one JSON object per line, no ids of chat/event/call cross the pipe; host knows cards only by the number
 - `[client.rs:read]` when host stdout ends, handlers cleared, stdin dropped, child reaped, phase -> Stopped unless Failed
 - `[protocol.rs:ToHost::Quit]` serializes as the bare string "quit"; Backend serializes kebab-case ("layer-shell")
@@ -85,7 +86,7 @@ Files:
 - `[layer.rs:draw]` pixels converted to wl_shm ARGB8888 premultiplied little-endian as [B,G,R,A]; input region excludes shadow pad; layer margin = MARGIN - pad; keyboard interactivity OnDemand, layer Overlay, namespace "ironteams-notifications"
 
 ## Side Effects
-- `[client.rs:start]` spawns child process std::env::current_exe() --toast-host with piped stdin/stdout and inherited stderr, plus a reader thread
+- `[client.rs:start]` spawns child process std::env::current_exe() --toast-host with piped stdin, stdout and stderr, plus a reader thread for stdout and a second thread (`forward_log`) that copies each host stderr line into the app's own log as `tracing::warn!("card host: ...")`
 - `[select.rs:set]` reads process environment variables (WAYLAND_DISPLAY, WAYLAND_SOCKET, DISPLAY)
 - `[client.rs:show]` writes JSON lines to child stdin; kills the child on start timeout; blocks the calling thread on a Condvar up to 5s
 - `[select.rs:forced]` reads env IRONTEAMS_CARD_HOST via compat::var

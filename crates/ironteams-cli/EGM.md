@@ -40,7 +40,7 @@ Top-level commands handled in `[src/main.rs:main]`:
 - `[src/call.rs:dial]` refuses emergency numbers (`calling::emergency::is_emergency_number`) before placing a call.
 - `[src/find.rs]`, `[src/team.rs:shape]`, `[src/drive.rs:shape]`, `[src/store.rs:shape]` print counts, keys and enum-like values only; other strings are shown as lengths or redacted.
 - `[src/accounts.rs:run]` `add` saves the config only after sign-in succeeds; `remove` forgets keyring tokens before editing the config.
-- `[src/main.rs:main]` startup order: tracing init (stderr), `compat::migrate_legacy_dirs()`, `Paths::new()`, then dispatch.
+- `[src/main.rs:main]` startup order: `teams_proto::client::install_crypto_provider()` (installs the ring TLS provider, since `reqwest` has `default-features = false`), tracing init (stderr), `compat::migrate_legacy_dirs()`, `Paths::new()`, then dispatch.
 
 ## Side Effects
 - Network: Teams chat service, CSA, middle tier, Graph, Outlook, SharePoint/OneDrive, trouter websocket, calling services, Power Automate, translation and URL-preview services (all through `teams_proto::Client` and the workspace crates).
@@ -52,4 +52,4 @@ Top-level commands handled in `[src/main.rs:main]`:
 ## Verification
 - Run: `cargo test -p ironteams-cli`
 
-Docs synced to commit 480e5184 ("fix(media): avatar lookups outside the runtime read the cache only; test helper ignores pending entries", 2026-11-22)
+Docs synced to commit c7516012 ("Merge fix/release-0.1.9: version 0.1.9", 2026-11-24)

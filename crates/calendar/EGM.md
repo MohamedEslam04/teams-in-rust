@@ -1,11 +1,11 @@
 # calendar
 
 ## Overview
-Library crate (package `calendar`, `publish = false`) that reads and writes the user's Outlook calendar over Microsoft Graph, with a few Outlook REST and presence-service calls. It holds the event model and JSON parsers, a delta-sync event cache, free/busy and room lookup, event create/update/RSVP/cancel/forward, calendar sharing permissions, mailbox settings, time-zone math, and pure view helpers (week ranges, column layout, filtering, ICS export). All network I/O goes through `teams_proto::Client` (`Audience::Graph` / `Audience::Outlook`); parsers and builders are pure. `src/lib.rs` declares every module privately (`mod ...`) and exposes the API only through `pub use` re-exports.
+Library crate (package `calendar`, `publish = false`) that reads and writes the user's Outlook calendar over Microsoft Graph, with a few Outlook REST and presence-service calls. It holds the event model and JSON parsers, a delta-sync event cache, free/busy and room lookup, event create/update/RSVP/cancel/forward, calendar sharing permissions, mailbox settings, time-zone math, and pure view helpers (week ranges, column layout, filtering, ICS export). All network I/O goes through `teams_proto::Client` (`Audience::Graph` / `Audience::Outlook`); parsers and builders are pure. `src/lib.rs` declares every module privately (`mod ...`) and exposes the API only through `pub use` re-exports. Dependencies: `serde` (derive), `serde_json`, `reqwest` (`default-features = false`), `chrono`, `chrono-tz`, `base64`, `teams-proto`. The event model and `EventCache` serialize, so a caller can save the cache between runs.
 
 ## Interface
 All items below are re-exported from `[src/lib.rs]` unless noted.
-- Read model and sync (`[src/api.rs]`, `[src/event.rs]`): `Calendar::{view, event, delta}`, `view_url`, `delta_url`, `EventCache` (`apply`, `missing_masters`, `forget_master_request`, `in_range`, `len`, `is_empty`, field `delta_link`), `Event`, `Attendee`, `AttendeeKind`, `Response`, `ShowAs`, `SeriesType`, `EventChange`, `DeltaPage`, `parse_events`, `parse_delta_page`, `next_link`, `delta_link`.
+- Read model and sync (`[src/api.rs]`, `[src/event.rs]`): `Calendar::{view, event, delta}`, `view_url`, `delta_url`, `delta_link_expired(&Error) -> bool`, `EventCache` (`Clone`, `Serialize`, `Deserialize`; `apply`, `apply_full(start_ms, end_ms, changes)`, `missing_masters`, `forget_master_request`, `in_range`, `within(start_ms, end_ms) -> EventCache`, `len`, `is_empty`, field `delta_link`), `Event`, `Attendee`, `AttendeeKind`, `Response`, `ShowAs`, `SeriesType` (all `Serialize` + `Deserialize`), `EventChange`, `DeltaPage`, `parse_events`, `parse_delta_page`, `next_link`, `delta_link`.
 - Detail (`[src/detail.rs]`): `event_detail`, `instances`, `download_attachment`, `EventDetail`, `Attachment`, `AttachmentKind`, `DialIn`, `ResponseCounts`, `parse_event_detail`, `parse_attachments`, `response_counts`.
 - Calendars (`[src/calendars.rs]`): `calendars`, `calendar_groups`, `calendars_in_group`, `create_calendar`, `delete_calendar`, `calendar_view`, `person_view` (returns `PersonView::{Events, FreeBusyOnly}`), `CalendarInfo`, `CalendarGroup`, `CALENDAR_COLORS`, `is_access_denied`, `parse_calendars`, `parse_calendar_groups`, `create_calendar_body`.
 - Graph request value (`[src/graph.rs]`): `GraphRequest { method, path, body }` with `send`; builders such as `add_permission_request` and `accept_proposal_request` return it without sending (dry-run description).
@@ -21,8 +21,8 @@ All items below are re-exported from `[src/lib.rs]` unless noted.
 ## Invariants
 - `[src/api.rs:PREFER]` and `[src/graph.rs:send_raw]` send `Prefer: outlook.timezone="UTC", IdType="ImmutableId"` on reads and writes, so times are UTC and ids stay stable across folder moves.
 - `[src/api.rs:MAX_PAGES]` view/delta paging stops with a protocol error after 100 pages; `[src/schedule.rs:MAX_PAGES]` room paging after 50 pages.
-- `[src/api.rs:Calendar::delta]` every page must carry `nextLink` or `deltaLink`; a stale delta link makes Graph answer 410 and the caller must restart with `None`.
-- `[src/api.rs:EventCache]` series masters are stored separately and never returned by `in_range`; bare occurrences are filled from the cached master; `missing_masters` returns each id at most once until `forget_master_request`.
+- `[src/api.rs:Calendar::delta]` every page must carry `nextLink` or `deltaLink`; a stale delta link makes Graph answer 410 (or another 4xx whose body names `syncstatenotfound` or `syncstateinvalid`; `[src/api.rs:delta_link_expired]` is true for both) and the caller must restart with `None`.
+- `[src/api.rs:EventCache]` series masters are stored separately and never returned by `in_range`; bare occurrences are filled from the cached master; `missing_masters` returns each id at most once until `forget_master_request`. The `asked` set is `#[serde(skip)]`, so a reloaded cache asks again. `apply_full` (a delta started without a link lists the whole window) drops window events it does not list; `within` copies the window's events, all masters and the delta link, for saving.
 - `[src/event.rs:parse_event]` returns `None` without a non-empty `id`; unparseable start/end fall back to 0 / start.
 - `[src/new_event.rs:NewEvent::validate]` rejects start/end shorter than 19 chars, end before start (string compare, same zone/format assumed), all-day end <= start, attendee emails without `@`, and invalid recurrence (interval 0, empty weekly days, bad day/month, `After(0)`).
 - `[src/new_event.rs:NewEvent::body]` a recurring series is sent with the Windows time-zone name; the room is appended as a `resource` attendee; `update_body` never sends `transactionId`.
@@ -49,4 +49,4 @@ All items below are re-exported from `[src/lib.rs]` unless noted.
 ## Verification
 - Run: `cargo test -p calendar`
 
-Docs synced to commit 480e5184 ("fix(media): avatar lookups outside the runtime read the cache only; test helper ignores pending entries", 2026-11-22)
+Docs synced to commit c7516012 ("Merge fix/release-0.1.9: version 0.1.9", 2026-11-24)

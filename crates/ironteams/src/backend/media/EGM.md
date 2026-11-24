@@ -9,6 +9,7 @@ Files:
 ## Interface
 - `[extras.rs:outlook_draft]` pub(super) fn(sender,place,when,subject,html:&str)->(String,String): HTML-escapes sender/place/when, falls back to "Message from {sender}" for blank subject, prefixes body with a byline paragraph
 - `[extras.rs:Engine::popout_open]` pub(super) async fn(self:&Arc<Self>, conv:&str)->anyhow::Result<()>: opens chat in own window; channels refused with banner; fetches first page if no local messages and online
+- `[extras.rs:Engine::popout_is_open]` pub(in crate::backend) fn(&self)->bool: true when media.popout is Some
 - `[extras.rs:Engine::render_popout]` pub(in crate::backend) fn(self:&Arc<Self>): pushes newest <=200 stored messages plus queued outbox rows to the pop-out window
 - `[extras.rs:Engine::popout_send]` pub(super) async fn(self:&Arc<Self>, conv:&str, text:&str)->anyhow::Result<()>: trims text, converts markdown to composer HTML, enqueues Text outbox item, flushes outbox
 - `[extras.rs:Engine::share_to_outlook]` pub(super) async fn(self:&Arc<Self>, id:&str)->anyhow::Result<()>: creates an Outlook mail draft from a message and opens the web link; nothing is sent
@@ -28,7 +29,7 @@ Files:
 - `[extras.rs:Engine::*]` store and media are std Mutexes locked briefly via lock().unwrap(); locks are not held across .await (dropped before client calls)
 
 ## Side Effects
-- `[extras.rs:Engine::popout_open]` sets media.popout state; calls ui.popout_open and ui.banner; network client.messages page fetch; store_messages writes to the store; marks dirty messages flag
+- `[extras.rs:Engine::popout_open]` sets media.popout state; calls ui.popout_open and ui.banner; network client.messages page fetch; store_newest_page writes to the store (records a history gap when a full page lands above a hole, calls store_messages, then keeps the newest message time in kv key `newest_page:<conv>`; sync.rs); marks dirty messages flag
 - `[extras.rs:Engine::render_popout]` pushes message models to the UI via ui.popout_messages; reads store
 - `[extras.rs:Engine::popout_send]` enqueues an outbox item (store write) and triggers flush_outbox (network send)
 - `[extras.rs:Engine::share_to_outlook]` network call client.create_mail_draft; opens a URL in the system browser via crate::external::open; ui.info/ui.banner notifications

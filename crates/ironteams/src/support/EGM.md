@@ -38,14 +38,14 @@ Files:
 - `[quiet.rs:FOCUS]` Static Mutex<Option<Option<i64>>>: outer None = not initialised (tests, CLI) so saved pref decides; inner None = Focus off; lock poisoning recovered via into_inner
 - `[quiet.rs:init_focus]` Saved focus_until_ms already in the past is dropped at start
 - `[quiet.rs:focus_override]` Exists so Local::save_general never undoes a tray Focus change; None when app state uninitialised
-- `[error_text.rs:plain_banner]` Only rewrites when text contains ': HTTP ' followed by exactly 3 digits; otherwise returns text unchanged; the raw text is logged at warn
+- `[error_text.rs:plain_banner]` Only rewrites when text contains ': HTTP ' followed by exactly 3 digits; otherwise returns text unchanged; the original text is logged at warn through `teams_proto::logsafe::text` (sanitised)
 
 ## Side Effects
 - `[quiet.rs:FOCUS]` process-global static Mutex holding Focus mode end time, written by init_focus/set_focus
 - `[quiet.rs:persist_focus]` disk: reads then rewrites general prefs file (appearance::general::FILE_NAME) in session::Paths config_dir; read-modify-write of whole prefs
 - `[quiet.rs:persist_focus]` logs tracing::warn on save failure; silently returns if Paths::new fails
 - `[quiet.rs:load_prefs]` disk read of the general prefs file via session::Paths config_dir
-- `[error_text.rs:plain_banner]` tracing::warn logging of the raw error text when a raw HTTP status is cut out
+- `[error_text.rs:plain_banner]` tracing::warn logging of the sanitised error text (`teams_proto::logsafe::text`) when a raw HTTP status is cut out
 
 ## Verification
 - Run: `cargo test -p ironteams`

@@ -4,23 +4,23 @@
 The non-UI engine of IronTeams. `mod.rs` defines the `Cmd` enum, the `Engine`/`View`/`Dirty` state and start-up; most other files add `impl Engine` blocks per feature (sync, send/outbox, live trouter loop, render loop, lists, channels, calendar, calls, search, people, drive, settings, apps). Pure helpers and plain view-data builders are kept separate from async handlers so they can be tested without a network. Each command family parses its own `*Cmd` from a name and argument string coming from the UI.
 
 Files:
-- `mod.rs`: App engine root: declares backend submodules/re-exports, defines Cmd enum, View/Dirty/Engine state, startup loops (render, live, token refresh, sync) and command dispatch/handling.
-- `actions.rs`: Message menu actions on Engine: copy link, save/unsave, pin, mark unread, multi-select, forward dialog/send, reactor tooltip names.
-- `activity.rs`: Activity (notification feed) view: feed State with read-state overrides, filter/search, row/preview rendering, and Engine commands for refresh, select, mark-read, go-to, and reply.
+- `mod.rs`: App engine root: declares backend submodules/re-exports, defines Cmd enum, View/Dirty/Engine state, startup (`start` = `start_local` + `start_online`; `start_cached`, `go_online`, `start_offline`) and command dispatch/handling.
+- `actions.rs`: Message menu actions on Engine: copy link, save/unsave, pin, mark unread, multi-select, forward dialog/send, reactor tooltip names. A successful forward shows `ui.info("Forwarded")`, a partial one a banner.
+- `activity.rs`: Activity (notification feed) view: feed State with read-state overrides, filter/search, row/preview rendering, and Engine commands for refresh, select, mark-read, go-to, and reply. The feed state also keeps the server's read position (`server_read_until`, `State::set_server_horizon`); `render_badges` counts unread without rendering, and the feed reloads on any `48:notifications` push.
 - `attach.rs`: Composer attachments per chat: clipboard-image paste, dropped files, chip thumbnails, and moving chips into the outbox on send.
 - `avatar_placeholder.rs`: Detects the service's generic 'no photo' avatar by seeing identical bytes for two different people; persists learned placeholder hashes as a comma-separated string.
-- `banner.rs`: Routes notifications (in-app/card/system/held), composes message banners and cards, shows toast or desktop notification via notify-rust with Open/Reply/Like actions, and sends quick replies.
+- `banner.rs`: Routes notifications (in-app/card/system/held), composes message banners and cards, shows toast or desktop notification via notify-rust with Open/Reply/Like actions, and sends quick replies. `RingBanner`/`ring_banner` pick the in-window toast or the desktop banner for an incoming call.
 - `banner_reply.rs`: Linux-only D-Bus (zbus) listener for NotificationReplied/NotificationClosed of one notification; forwards replies to Engine::quick_reply.
-- `byte_lru.rs`: Byte-budgeted LRU map for decoded pictures plus the AVATAR/IMAGE/THUMB budget constants and pixel cost helpers.
-- `cache.rs`: Blocking disk-cache helpers: media/ dir sizing, budget eviction oldest-first, temp-folder cleaning, clearing, and sha256-keyed image file read/write/remove.
-- `cache_ops.rs`: Engine side of the disk cache: media-cache sweeps against the configured budget, weekly store upkeep, on-disk picture keep/read/forget, and the ClearMediaCache / ClearAllCache commands.
-- `cal.rs`: Calendar engine: CalCmd parsing/dispatch, in-memory view state (CalState), 2-min Graph delta sync, 15s reminder/Join-banner tick, desktop reminder notifications, snooze/dismiss; submodules actions, export, forms, grid, model, reminders.
+- `byte_lru.rs`: Byte-budgeted LRU map for decoded pictures plus the AVATAR/IMAGE/THUMB budget constants and pixel cost helpers. `begin_pass` exempts what the last two renders read from eviction, so the cache can exceed its budget while those rows are shown.
+- `cache.rs`: Blocking disk-cache helpers: media/ dir sizing, budget eviction oldest-first, temp-folder cleaning, clearing, and sha256-keyed image file read/write/remove. `clear_backups` deletes the updater's `backup-*` folders in the data dir.
+- `cache_ops.rs`: Engine side of the disk cache: media-cache sweeps against the configured budget, weekly store upkeep, on-disk picture keep/read/forget, and the ClearMediaCache / ClearAllCache commands. Also `push_storage`, `storage_done`, `delete_update_backups` and the `clear_*_cache_cmd` wrappers; clearing also empties `image_dims`.
+- `cal.rs`: Calendar engine: CalCmd parsing/dispatch, in-memory view state (CalState), Graph delta sync (every 2 min while the window is shown, 10 min while hidden), saved event cache (`calendar.events.v1`), 15s reminder/Join-banner tick, desktop reminder notifications, snooze/dismiss; submodules actions, export, forms, grid, model, reminders.
 - `call.rs`: Module root of the active-call backend: doc-comments the CallManager/CallDriver/EventSink architecture, declares submodules and glob re-exports them; contains no logic of its own.
-- `call_direct.rs`: 1:1 call flows before connect: incoming toast/ringing and accept/decline, outgoing dial/ringing screen, state machines, desktop notifications, and generated ringtones; hands connected calls to the call manager.
+- `call_direct.rs`: 1:1 call flows before connect: incoming toast/ringing and accept/decline, outgoing dial/ringing screen, state machines, desktop notifications, and generated ringtones; hands connected calls to the call manager. Also `DialWith` (Audio/Video/Share), `dial_offer`, `CallCmd::DialVideo` ("dial-video"), and `sync_ring_banner`/`ring_on_desktop`/`ring_system` choosing the window toast or the desktop banner while a call rings. `IncomingCall` also has `global`/`system` (which banner rings now) and `system_call_notification` builds the desktop notification.
 - `call_feedback.rs`: Post-call quality survey: Ask setting, sampling, survey-argument parsing, JSON line building, and appending to call-feedback.jsonl.
-- `call_presence.rs`: Publishes Busy/InACall (InAConferenceCall for meetings) or Available presence on call state change, deduplicated, plus call connect/end cue.
+- `call_presence.rs`: Publishes Busy/InACall (InAConferenceCall for meetings) or Available presence on call state change, deduplicated, plus call connect/end cue. `update` also calls `people_presence::refresh_mine` at once and again after `SETTLE` (3 s).
 - `calls_page.rs`: Calls page: history/voicemail/speed-dial/search rows, CallsCmd parsing and Engine handlers (load, filter, call, hide, voicemail play/read/delete/call back, copy).
-- `cards.rs`: Builds Teams-style desktop cards for messages, reminders, incoming and missed calls, routes card vs system notification, and handles card button actions.
+- `cards.rs`: Builds Teams-style desktop cards for messages, reminders, incoming and missed calls, routes card vs system notification, and handles card button actions. `available_card` shows a "is now available" card.
 - `channel_tabs.rs`: Channel header tabs beyond Posts/Files: list, add website/app tab (channel and chat), rename, remove, list installed apps for the Add-a-tab dialog; U+001F-joined argument parsing.
 - `channels.rs`: Posts tab engine: ChannelCmd parsing/dispatch, post card and thread-panel rendering, Adaptive Card row mapping, thread prefetch, older-history paging, replies, follow, announcements, cloud-file attach.
 - `clip_capture.rs`: Real camera + mic behind the video clip recorder: raw I420 frames piped to system ffmpeg (H.264 MP4), mic via voice::Recorder, mux AAC on stop; no-camera stub without `calls` feature.
@@ -33,37 +33,41 @@ Files:
 - `find.rs`: Module hub for Search/Find-in-chat/Mentions/Followed: declares submodules and shared paging/scan constants; no logic.
 - `gifs.rs`: Composer GIF/sticker picker: search with sequence guard, async preview downloads, pick enqueues the GIF HTML to the open chat/thread.
 - `in_order.rs`: Ordered command lanes: calls lane (sync ordered part + Rest) and per-store lanes that poll each command to its first await, plus start_now for chat switches.
-- `lists.rs`: Chat list sections, chat item menu (mute/hide/remove history), list options and channel menu; local state persisted in the store KV, mirrored with Teams settings.
-- `live.rs`: Trouter live loop: connection state, outbox flush/resync, incoming message/typing/presence events, and desktop notification routing.
+- `lists.rs`: Chat list sections, chat item menu (mute/hide/remove history), list options and channel menu; local state persisted in the store KV, mirrored with Teams settings. Also the local "Notify when available" list (`ListsCmd::NotifyWhenAvailable`, `Local.watched`, `is_watching`, `watched_people`); `lists_refresh` also stores channel titles.
+- `live.rs`: Trouter live loop: connection state, outbox flush/resync, incoming message/typing/presence events, and desktop notification routing. Any `48:notifications` push reloads the Activity feed (`on_activity_event`).
 - `loop_paragraph.rs`: Engine::send_loop: sends a composer Loop paragraph as a formatted text outbox message (no live Loop write path) and flushes the outbox.
-- `media.rs`: Chat media for Engine: MediaCmd parsing/dispatch, inline image grid, image/photo viewer with async download, Translate state/cache, link preview cards with serialized thumbnail fetch and disk cache.
-- `meeting_cards.rs`: Pure functions that collapse Teams meeting-event messages into one call card, latest recording card and one transcript row per call (Plan), plus summary lines, live detection and duration formatting.
+- `media.rs`: Chat media for Engine: MediaCmd parsing/dispatch, inline image grid, image/photo viewer with async download, Translate state/cache, link preview cards with serialized thumbnail fetch and disk cache. Also image actions (`MediaCmd::ImageAction`, `image_action` saving to the downloads dir or `temp_dir/ironteams-images`, `copy_image_bytes` to the clipboard) and `MediaCmd::CopyText`.
+- `meeting_cards.rs`: Pure functions that collapse Teams meeting-event messages into one call card, latest recording card and one transcript row per call (Plan), plus summary lines, live detection and duration formatting. `live_call_start_ms` finds a live call's start in a chat's rows.
 - `mentions.rs`: Finds picked @Name tokens in a draft, swaps them for placeholders/HTML spans, builds properties.mentions, and reads stored mentions of incoming messages.
 - `msg_memo.rs`: Bounded FIFO memo (2000 rows) of the pure per-row parse (props JSON, voice/video split, HTML parse, linkify, markdown body) keyed by message id and content-hash version.
-- `my_presence.rs`: Background loop registering this device's presence endpoint at sign-in and removing it while the screen is locked (unless in a call); removes it on quit.
+- `my_presence.rs`: Background loop registering this device's presence endpoint at sign-in and removing it while the screen is locked (unless in a call); removes it on quit. Every 30 s it also reports keyboard/mouse activity (`activity_report`, `IDLE_AFTER` 5 min, never during a call) so idle input shows Away.
+- `ongoing_call.rs`: The live-call strip of a chat or channel header: a call from the chat's `callStarted` messages without a later `callEnded` (`call_from_rows`), merged with the conversation's live state read every `POLL_EVERY` (30 s) while the chat is open and the window shown (`merge`, `strip`, `join_route`); `Engine::ongoing_rows`, `start_ongoing_calls` (1 s tick), `live_call_start`. Each live-state read is logged on target `CAPTURE`.
 - `outbox.rs`: Outbox send path: store-first enqueue, ordered flush with offline/rejected outcomes, per-kind delivery to the server, optimistic pending rows, retry/discard, payload cleanup.
+- `notify_available.rs`: "Notify when available": `is_available`, `should_notify` (a known non-Available status to Available), `can_watch` (another person with an `8:` MRI), `notice`; Engine side `availability_changed`, `raises_notice`, `open_available_chat`. The list is local (saved with `lists::Local`), never sent to Teams; the notice goes through `quiet::should_banner` and `banner::route`.
 - `outsider.rs`: Classifies people as External/Guest from MRI prefix, guest flag/#EXT# UPN and tenant comparison; tags chat titles.
 - `people.rs`: Module root for people/conversation features (mentions, new chat, group mgmt, profile card, pins, receipts): imports, constants, submodule declarations.
 - `people_card.rs`: Profile card extras (free-at, work hours, time zone from getSchedule; manager/reports from Graph) and organization chart state, navigation history and presence fetch.
 - `people_live.rs`: Test-only #[ignore]d live checks of mentions, group chat, pins, receipts and profile cards against the real account.
-- `people_presence.rs`: Global presence cache with batched lookup loop (new people soon, all every 60s), trouter push application, and status/location wording helpers.
+- `people_presence.rs`: Global presence cache with batched lookup loop (new people soon; everyone every 60 s only while the window is shown, else only the "Notify when available" people), trouter push application, and status/location wording helpers.
 - `photo.rs`: Own profile photo: read at start, change via file picker + Graph upload, remove; keeps PNG thumbnail in avatar cache and store and updates the UI.
+- `picture_window.rs`: Which rows of the open chat or channel hold decoded pictures: the rows on screen plus `NEAR = 8` on each side; others keep their picture size (`image_dims`) without pixels. `window_for`, `needs_move`, `Engine::rows_shown` (fed by `Cmd::RowsShown`); `FIRST = 2*NEAR+16` newest rows before the list reports.
 - `remind.rs`: Message reminders and chat snoozes kept per account as JSON in the store kv table, with pure due/label helpers, a 15 s tick and desktop notifications with Open/Snooze actions.
-- `render.rs`: Engine render loop: debounced rebuild of chat list, teams, header, messages and activity view data from the store, plus avatar and inline-image caches/loading and the message-row builder (build_msgs).
-- `ringtone.rs`: RingtoneChoice enum (default/chime/soft/pulse/custom) for call and message sounds with slug mapping and serde lowercase names.
+- `render.rs`: Engine render loop (paused while the main window is hidden, see `visibility.rs`): debounced rebuild of chat list, teams, header, messages and activity view data from the store, plus avatar and inline-image caches/loading and the message-row builder (build_msgs). `set_display_scale` drops decoded inline pictures when the window scale changes; `image_dims` keeps each decoded picture's size by URL.
+- `ringtone.rs`: RingtoneChoice enum (Teams = slug "default", Original(any downloaded Teams sound), IronTeams, Chime, Soft, Pulse, Custom) for call, message and urgent sounds; serialized as its slug string by hand-written Serialize/Deserialize (an unknown slug is an error); `original(slot)` gives the Teams sound for a slot.
 - `scheduled.rs`: Schedule-message send option: ScheduledCmd parse/dispatch, waiting-message bubbles, list reload, schedule/edit/delete on the account's drafts.
-- `send.rs`: Engine outgoing actions: send/edit text (mentions, reply quote, cards, importance) via outbox, reactions, media playback download, attachment queueing and file pickers.
+- `send.rs`: Engine outgoing actions: send/edit text (mentions, reply quote, cards, importance) via outbox, reactions, media playback download, attachment queueing and file pickers. Reply/forward quote blocks of an edited message are kept in `View.edit_quotes` and re-attached on send; `sender_display_name` falls back to the stored user or 1:1 chat title.
 - `settings.rs`: Module root of Settings data: declares/re-exports prefs, look, rows, index, notifications, accounts, engine submodules and defines settings file-name constants.
 - `shared.rs`: Shared tab and chat details pane: builds file/link list from cache, Substrate shared items and a channel's SharePoint folder, with filter/keyword and row busy/rename/delete/create state.
-- `sounds.rs`: Sound playback (message, reminder, call cue, ringtone, ringback, Settings preview): tone selection, file decoding/fitting, cpal output threads, and policy gating via Engine methods.
+- `sounds.rs`: Sound playback (message, urgent, reminder, call cue, ringtone, ringback, Settings preview): tone selection (downloaded Teams sound files by default, synthesized sound as fallback; `fetch_teams_sounds`, `fetch_picked`), file decoding/fitting, cpal output threads, and policy gating via Engine methods.
 - `stickers.rs`: Embedded Teams sticker catalogue (stickers.tsv) with search, CDN image URL and message HTML for sending a sticker.
 - `storyline.rs`: Read-only Storyline tab of a 1:1/self chat: shows card at once from known data, then loads Engage counts and posts for the person's email.
-- `sync.rs`: Engine impl: initial sync of conversations/teams/names into the store, open-chat flow, newest-page storing with history-gap recording and filling, offline retry, load-older paging.
+- `sync.rs`: Engine impl: initial sync of conversations/teams/names into the store, open-chat flow, newest-page storing with history-gap recording and filling, offline retry, load-older paging. `store_newest_page` records the history gap against a kv marker `newest_page:<conv>`; `older_done` stops repeated load-older.
 - `team_photo.rs`: Lazily fetches team pictures (key team:<group id>) into the shared avatar cache once per run, online only, not persisted.
 - `typing.rs`: In-memory per-chat typing-indicator tracker with a 6 s TTL, refresh, stop and expiry.
 - `unread.rs`: Unread helpers: divider index, jump-count, open-at-divider, mark-as-unread start, throttled mark-all-read, Engine mark_chat_unread/mark_all_read.
-- `util.rs`: Pure helpers: conversation-kind mapping, message-to-store-row mapping, chat preview, zone-aware time/day labels, avatar/inline image sizes and keys, image decoding, system-message text, chat row titles.
+- `util.rs`: Pure helpers: conversation-kind mapping, message-to-store-row mapping, chat preview, zone-aware time/day labels, avatar/inline image sizes and keys, image decoding, system-message text, chat row titles. Inline pictures are decoded for the window scale (`inline_box`, `DEFAULT_SCALE_PCT = 200`); `decode_limited` runs at most `DECODES_AT_ONCE = 3` decodes at once; `stored_title`, `preview_is_rtl`, `quote_time`; `preview_of` treats an emptied chat message as deleted.
 - `video_clips.rs`: Video clip recorder state machine behind the ClipDevices trait (open/record/stop/send/play), outbox queuing of takes, media-cache thumbnails for clip cards, and a 100 ms UI tick.
+- `visibility.rs`: What the engine does while the main window is hidden or minimized: `render_paused`, `calendar_interval`/`calendar_wait`/`until_calendar_sync` (120 s shown, 600 s hidden), `Engine::set_visible`, `is_visible`, `window_changed`. Paused while hidden: rendering (dirty marks held), presence and receipt polls, calendar UI pushes.
 - `voice_messages.rs`: Voice message player rows (fetch/decode/waveform cache, per-account played list in store kv) and composer recorder (record/pause/preview/send via outbox), with a 50ms UI tick loop.
 
 ## Interface
@@ -79,7 +83,7 @@ Files:
 - Subdirectory `settings/`: [settings/EGM.md](./settings/EGM.md) - Settings data: prefs, looks, rows, search index, notifications, accounts
 - Subdirectory `shared/`: [shared/EGM.md](./shared/EGM.md) - Files tab actions for the shared-items list
 - Subdirectory `sounds/`: [sounds/EGM.md](./sounds/EGM.md) - Sound policy, synthesis, WAV decoding and sample cursor
-- `[mod.rs:Cmd]` pub enum: all UI->engine commands (chat/channel select, send, react, reply/edit/delete, forward/select, per-page sub-commands, Flush, ClearMediaCache/ClearAllCache, cfg(calls) DirectCall/CallsPage)
+- `[mod.rs:Cmd]` pub enum: all UI->engine commands (chat/channel select, send, react, reply/edit/delete, forward/select, per-page sub-commands, Flush, RowsShown(top, bottom row ids from the list), ClearMediaCache/ClearAllCache, cfg(calls) DirectCall/CallsPage)
 - `[activity.rs:ActivityCmd]` pub enum {Refresh, SetFilter(String), Search(String), Select(String), MarkRead(String,bool), MarkAllRead, GoTo, Reply(String)}: commands the Activity view sends to the engine
 - `[banner.rs:REPLY_PLACEHOLDER]` pub const &str "Send a quick reply"
 - `[cache_ops.rs:Upkeep]` pub(super) struct; sweep state (media_bytes estimate, budget, sweeping flag, last_sweep); owned by Engine as `upkeep`
@@ -91,19 +95,25 @@ Files:
 - `[composer_apps.rs:ComposerAppsCmd]` pub enum {List,Close,Back,Search(String),Action(String),Query(String),Choose(usize),Remove(usize)}; ComposerAppsCmd::parse(name,&str arg)->Option<Self> (None on unknown name or non-numeric Choose/Remove)
 - `[engage.rs:EngageCmd]` pub enum Open(u64)|Refresh|Older|Close|OpenWeb(String); EngageCmd::parse(name,arg)->Option<EngageCmd>
 - `[lists.rs:MANAGE_APPS_NOTE]` pub const &str: banner text for 'Manage apps' (feature unavailable)
-- `[media.rs:MediaCmd]` pub enum: OpenImage{msg,url}, OpenPhoto, ImageStep, ImageClose, ImageSave, ImageCopy, Translate, ShowOriginal, FileCard{action,url}, CopyLink, ShareToOutlook, Report, PopOut, PopOutSend{conv,text}, PopOutClose
+- `[media.rs:MediaCmd]` pub enum: OpenImage{msg,url}, OpenPhoto, ImageStep, ImageClose, ImageSave, ImageCopy, ImageAction{action,msg,url}, CopyText(String), Translate, ShowOriginal, FileCard{action,url}, CopyLink, ShareToOutlook, Report, PopOut, PopOutSend{conv,text}, PopOutClose
 - `[mentions.rs:Entry]` pub(super) struct {mri: String, name: String, kind: MentionKind}: a person/team/channel/everyone picked in the composer
 - `[outsider.rs:Outsider]` pub(crate) enum { External, Guest } (Debug, Clone, Copy, PartialEq, Eq)
 - `[photo.rs:Engine::start_my_photo]` pub(super) fn(self: &Arc<Self>): spawns a one-off read of my avatar via client.avatar (skipped offline)
-- `[render.rs:MsgMarks]` pub(super) struct (Default) with pub fields saved, selected, failed, divider, receipt, fresh: per-row marks passed to build_msgs (Activity preview passes none)
+- `[render.rs:MsgMarks]` pub(super) struct (Default) with pub fields saved, selected, failed, divider, receipt (a `&[ReceiptMark]`), receipt_side, fresh, near (`Option<(usize, usize)>`, the rows that keep pixels): per-row marks passed to build_msgs (Activity preview passes none)
 - `[scheduled.rs:ScheduledCmd]` pub enum { Schedule{at_ms,text}, Edit(String), Delete(String) } send-option commands (Debug, Clone, PartialEq, Eq)
 - `[sounds.rs:SOUNDS_FILE]` pub const &str = "sounds.json"
 - `[sync.rs:Engine::sync]` pub async fn sync(self: &Arc<Self>) -> anyhow::Result<()>: reads conversations (0,200) + snapshot, resolves missing profiles, writes teams/conversations (also quiet channels) to store, sets teams_order, marks chats/teams dirty, spawns lists_refresh, refreshes open chat's newest page
 - `[util.rs:kind_from]` pub(super) fn(ConversationKind) -> Option<ConvKind>; None for Other
 - `[voice_messages.rs:VoiceCmd]` pub enum: Toggle(key,url), Seek(key,url,f32), CycleSpeed, RecordStart, RecordPause, RecordResume, RecordDiscard, RecordSend, PreviewToggle, PreviewSeek(f32)
 - `[mod.rs:Engine]` pub struct: shared engine state (client, SQLite store, cfg, view, dirty, per-page states, avatar/image LRUs, call manager)
-- `[activity.rs:State]` pub(crate) struct (Default): feed items, filter, search, selected, loading, read overrides, all_read_until
+- `[activity.rs:State]` pub(crate) struct (Default): feed items, filter, search, selected, loading, read overrides, all_read_until, server_read_until; `set_server_horizon(ms)` raises the server position
 - `[banner.rs:Route]` pub enum {Held, InApp, Card, System}
+- `[banner.rs:ring_banner]` pub fn(visible, focused, global_ok: bool) -> RingBanner {InApp, Global}; the toast in the window while it is in sight and focused (or when the desktop banner cannot show), else the desktop banner
+- `[mod.rs:Engine::start_cached]` pub fn(self: &Arc<Self>, notice: &str); offline start from saved chats (`start_local` only); `[mod.rs:Engine::go_online]` pub async fn(self: &Arc<Self>); saves the refreshed session and runs `start_online`; `refresh_session`, `adopt_sign_in`, `my_name`, `config` are pub(crate) (no longer test-only)
+- `[visibility.rs:Engine::set_visible]` pub fn(self: &Arc<Self>, visible: bool); `[visibility.rs:Engine::window_changed]` pub fn(self: &Arc<Self>); `[visibility.rs:render_paused]` pub(super) fn(visible, popout_open) -> bool; `[visibility.rs:Engine::visible_tick]` pub(super) async fn(&self, period: Duration); waits one period only while the window is shown (receipt and presence polls use it)
+- `[picture_window.rs:window_for]` pub(super) fn(len, top, bottom) -> (usize, usize); `[picture_window.rs:needs_move]` pub(super) fn(window, len, top, bottom) -> bool; `[picture_window.rs:Engine::rows_shown]` pub(super) fn(self: &Arc<Self>, top: String, bottom: String)
+- `[notify_available.rs:should_notify]` pub fn(previous: Option<&str>, current: &str) -> bool; `can_watch(mri, me)`, `is_available(availability)` and `notice(name) -> Banner` are the other pub items
+- `[ringtone.rs:RingtoneChoice]` pub enum {Teams, Original(&'static Original), IronTeams, Chime, Soft, Pulse, Custom}; `slug()`, `from_slug()`, `original(slot)`; the `ALL` const is replaced by a test-only `all()`
 - `[cache_ops.rs:Upkeep::new]` pub(super) fn new(media_cache_mb: Option<u32>) -> Upkeep; budget from cache::budget_bytes
 - `[cal.rs:CalCmd]` pub enum of all calendar commands (navigation, peek/RSVP/edit/forward/cancel/delete, filters, calendars, saved views, move/new/submit/sched/rooms, share, print/export, work location, ScheduleFromChat)
 - `[call.rs:events]` pub use events::* (private mod events, glob re-export)
@@ -112,20 +122,20 @@ Files:
 - `[channel_tabs.rs:split_add]` pub fn(&str)->Option<(String,String)>: name U+001F url; adds https:// if no '://'; requires https and non-empty host
 - `[composer_apps.rs:Engine::composer_apps_cmd]` pub(super) async fn(self:&Arc<Self>, ComposerAppsCmd)->anyhow::Result<()> dispatcher for the picker
 - `[engage.rs:PostData]` pub struct post row (id,sender,initials,time,text,likes,replies,attachments,url,reply)
-- `[lists.rs:ListsCmd]` pub enum: list UI commands (NewSection, RenameSection, DeleteSection, ToggleSection, CollapseAll, Move, RemoveFromSection, Mute, Unmute, CopyLink, Hide, RemoveHistory, ManageApps, Option, Channel*)
-- `[media.rs:MediaCmd::parse]` pub fn parse(name:&str,arg:&str)->Option<MediaCmd>; 'image' splits on '|', 'file'/'popout-send' split once on U+001F, image-step parses i32
+- `[lists.rs:ListsCmd]` pub enum: list UI commands (NewSection, RenameSection, DeleteSection, ToggleSection, CollapseAll, Move, RemoveFromSection, Mute, Unmute, CopyLink, Hide, RemoveHistory, ManageApps, NotifyWhenAvailable(person, on), Option, Channel*)
+- `[media.rs:MediaCmd::parse]` pub fn parse(name:&str,arg:&str)->Option<MediaCmd>; 'image' splits on '|', 'image-do' splits into 3 parts on U+001F, 'text-copy' takes the whole arg, 'file'/'popout-send' split once on U+001F, image-step parses i32
 - `[mentions.rs:Prepared]` pub(super) struct {text: String, mentions: Vec<Mention>}: draft with OPEN n CLOSE placeholders plus mentions in text order
 - `[outsider.rs:Outsider::label]` pub fn label(self) -> &'static str  ("External"|"Guest")
 - `[photo.rs:Engine::change_photo]` pub(super) async fn(self: &Arc<Self>): rfd file picker (jpg/jpeg/png), check_photo, client.set_my_photo, then keep_my_avatar; reports via ui.settings_notice
-- `[render.rs:Engine::render_loop]` pub(super) async fn(self: Arc<Self>): debounced loop (120 ms) that calls render_dirty, expires/pushes typing indicators, then sleeps on render_wake or the next typing lapse
+- `[render.rs:Engine::render_loop]` pub(super) async fn(self: Arc<Self>): loop that sleeps RENDER_DEBOUNCE (120 ms), then either (window hidden and no pop-out open) renders only badges and holds the dirty marks, or calls render_dirty, expires/pushes typing indicators; then sleeps on render_wake or the next typing lapse
 - `[scheduled.rs:ScheduledCmd::parse]` pub fn parse(name:&str, arg:&str) -> Option<Self>; 'schedule' arg is '<ms>\t<text>', edit/delete need non-empty id
-- `[sounds.rs:SoundPrefs]` pub struct {message: RingtoneChoice, message_file: Option<String>}; Serialize/Deserialize, serde(default), Default
+- `[sounds.rs:SoundPrefs]` pub struct {message, message_file, urgent: RingtoneChoice, download_teams_sounds: bool}; Serialize/Deserialize, serde(default), hand-written Default (`download_teams_sounds: true`)
 - `[sync.rs:Engine::fetch_latest]` pub(super) async fn fetch_latest(self: &Arc<Self>, conv: &str): fetch newest PAGE messages, store them, mark messages dirty; logs warn on error
 - `[util.rs:row_from_message]` pub(super) fn(&Message, Option<&str>) -> MessageRow; packs reactions/files/subject/mentions/card/announcement/importance/language/links as JSON into reactions_json
 - `[voice_messages.rs:State]` pub(super) struct (Default impl): player/recorder/preview/waves/played/fetching/failed/loading/rec_state state held in Engine.voice mutex
-- `[mod.rs:Engine::new]` pub fn(client, Store, session::Config, UiHandle, me, my_name) -> Arc<Engine>; also installs call-window photo callback
+- `[mod.rs:Engine::new]` pub fn(client, Store, session::Config, UiHandle, me, my_name) -> Arc<Engine>; also installs the call-window photo callback and `calls.set_meeting_start`
 - `[activity.rs:State::selected]` pub(crate) field Option<String>: id of the selected item
-- `[banner.rs:Source]` pub enum {Message, Calendar, Call}
+- `[banner.rs:Source]` pub enum {Message, Calendar, Call, Presence}
 - `[cache_ops.rs:sweep]` pub(super) fn sweep(paths: &session::Paths) -> (u64, u64); clean_temp, evict_to the budget from on-disk config, returns (budget_bytes, media_size)
 - `[cal.rs:CalCmd::parse]` pub fn parse(name: &str, arg: &str) -> Option<CalCmd>; maps UI (name, '|'-joined arg) to a command; Sched/RoomList/Submit/Snooze/Dismiss/Propose-less variants are not parsed here
 - `[call.rs:driver]` pub use driver::* (private mod driver, glob re-export; doc names CallDriver, CallHandle, Control)
@@ -142,8 +152,8 @@ Files:
 
 ## Invariants
 - `[mod.rs:Engine::dirty/mark]` SQLite store is source of truth; network/live results are written to store then marked dirty; render loop rebuilds only visible view
-- `[activity.rs:State::merge]` a local read override is kept until the server's is_read equals it, then dropped; items at or before all_read_until are forced read
-- `[banner.rs:route]` Decision::Hidden always yields Route::Held; Message+window_active -> InApp; Call+window_active -> Held; Calendar never InApp; dnd sends non-call to System; Call+cards -> Card even under dnd
+- `[activity.rs:State::merge]` a local read override is kept until the server's is_read equals it, then dropped; items at or before max(all_read_until, server_read_until) are forced read
+- `[banner.rs:route]` Decision::Hidden always yields Route::Held; Message+window_active -> InApp; Call+window_active -> Held (`route` only: which banner rings an incoming call is `ring_banner` + `Engine::sync_ring_banner`); Calendar never InApp; dnd sends non-call to System; Call+cards -> Card even under dnd
 - `[cache_ops.rs:Upkeep.sweeping]` only one sweep at a time: sweep_cache returns early if swap(true, AcqRel) was already true; reset to false (Release) after the sweep
 - `[cal.rs:CalState]` All calendar state is one std Mutex<Inner>; lock() unwraps (panics on poison); lock is dropped (drop(s) / scoped blocks) before calling self.ui.* or awaiting
 - `[call.rs:module doc]` one meeting or 1:1 call at a time
@@ -157,7 +167,9 @@ Files:
 - `[outbox.rs:flush_lock]` flush_outbox holds self.flush_lock for the whole run (one run at a time) and returns immediately if !self.connected
 - `[outsider.rs:classify]` MRI prefix decides first (8:teamsvisitor: -> Guest, 8:live: -> External); non-8:orgid: MRIs get no label (bots/unknown); then guest flag; then tenant mismatch (ASCII case-insensitive) needs both tenant ids else None
 - `[remind.rs:KV_PREFIX]` state is saved under 'remind:<self MRI>' so accounts never mix
-- `[render.rs:RENDER_DEBOUNCE]` render_loop sleeps 120 ms after wake before rendering so bursts of marks make one render
+- `[render.rs:RENDER_DEBOUNCE]` render_loop sleeps 120 ms after wake before rendering so bursts of marks make one render; then, if `visibility::render_paused(is_visible, popout_is_open)`, it only calls `render_badges` (when chats/activity are dirty), moves the dirty marks to `Engine.held`, waits on `render_wake` and merges the held marks when the window is shown
+- `[render.rs:Engine::image_dims]` a row's picture size never changes when its pixels drop: `image_dims` keeps each decoded picture's size by URL, and `grid_images`, `card_rows`/`card_row` and `clip_rows` take `near: bool` so an off-screen row gets the same size without pixels; `ByteLru::begin_pass` exempts what the last two renders read from eviction, so the cache can exceed its budget while those rows are shown
+- `[render.rs:Engine::set_display_scale]` a changed window scale drops all decoded inline pictures (`images.clear()`) and marks messages dirty; `util::decode_limited` allows `DECODES_AT_ONCE = 3` decodes at once
 - `[scheduled.rs:schedule]` thread replies can't be scheduled and at_ms must be > now_ms(); on refusal the text is restored to composer and view.draft_text
 - `[sounds.rs:Role::file_limits]` file length caps: Once 10 s, Ring 30 s plus 1 s of silent rest, Preview 6 s
 - `[sync.rs:teams_known/channel_listed]` Channels are dropped from the store only when the snapshot listed teams (teams non-empty); a failed/empty teams read deletes nothing
@@ -167,17 +179,17 @@ Files:
 - `[activity.rs:State::mark_all_read]` clears all overrides and sets all_read_until; items newer than that time stay unread after merge
 - `[banner.rs:Caps/caps]` notification server capabilities queried once via OnceLock on Linux; non-Linux static (actions only on Windows, no markup, no inline reply)
 - `[cache_ops.rs:SWEEP_EVERY]` media_written starts a sweep only if total > budget AND last_sweep is None or at least 60s ago, so an unmeetable budget does not walk the folder per picture
-- `[cal.rs:Inner.window]` Delta window [start,end) is None until first delta succeeds; sync resets window and delta_link when window start drifts >7 days from today-35d/+90d
+- `[cal.rs:Inner.window]` Delta window [start,end) is None until the saved calendar loads (`load_saved_calendar` seeds `cache` and `window` from store key `calendar.events.v1`, before any network) or the first delta succeeds; sync resets window and delta_link when window start drifts >7 days from today-35d/+90d or the delta link expired (`delta_link_expired`); calendar UI pushes are skipped while the window is not visible
 - `[call.rs:module doc]` CallManager pushes state to the CallStore global after every change
 - `[call_direct.rs:OutgoingState::on]` Connected/Cancelled/Rejected/NoAnswer/Failed/Ended are sticky except Connected->Ended; Ringing/Accepted/Rejected/Cancel/RingTimeout/Failed only from Placing or Ringing
 - `[call_feedback.rs:sampled]` Sometimes asks when demo or roll % 3 == 0; Always/Never ignore roll; Feedback::parse drops issues when rating is good
 
 ## Side Effects
-- `[mod.rs:Engine::start]` tokio::spawn render_loop, live_loop, token loop, activity_refresh, outbox flush + initial sync; calls.start and several start_* background tasks
+- `[mod.rs:Engine::start]` = `start_local` (push_prefs, `load_saved_calendar`, spawns render_loop; no network) + `start_online` (spawns live_loop, token loop with `on_activity_event`, activity_refresh, outbox flush + initial sync; calls.start, `start_ongoing_calls` and several start_* background tasks; `sounds::fetch_teams_sounds()` downloads Microsoft Teams sound files in the background)
 - `[activity.rs:Engine::push_read]` network: client.mark_activity_read; failures are only logged
 - `[banner.rs:show_banner]` desktop notification over D-Bus/OS via notify_rust (appname IronTeams, hints incl. SuppressSound, image_path) on a blocking thread
 - `[cache_ops.rs:Engine::start_cache_upkeep]` tokio::spawn of a background task with a 30s sleep, then a sweep and store upkeep
-- `[cal.rs:start_calendar]` tokio::spawn of three long-lived tasks: sync loop (120s), tick loop (15s), load_calendar_meta
+- `[cal.rs:start_calendar]` tokio::spawn of three long-lived tasks: sync loop (`until_calendar_sync`: 120 s while the window is shown, 600 s hidden), tick loop (15 s, `TICK_EVERY`), load_calendar_meta; `save_calendar_soon` writes the event cache to store key `calendar.events.v1` 5 s after changes
 - None (module declarations and re-exports only; side effects live in submodules not in this chunk)
 - `[call_direct.rs:Engine::start_calls]` tokio::spawn, polling call::manager() every 2 s, then long-lived select loop on invitation/unmatched channels
 - `[call_presence.rs:update]` spawns tokio task calling client.publish_endpoint (network); plays call_cue sound; mutates global PUBLISHED
@@ -187,11 +199,12 @@ Files:
 - `[lists.rs:lists_save/lists_load/lists_apply_folders]` reads/writes store KV rows ('lists', 'lists-server'), via self.store mutex
 - `[media.rs:viewer_load]` tokio::spawn tasks fetching the image via images::fetch or client.avatar_sized (network); decode on spawn_blocking
 - `[outbox.rs:Engine::enqueue]` writes the outbox row to the store (disk), sets view.at_bottom, marks UI dirty
-- `[people_presence.rs:CACHE]` global static Mutex presence cache and [WAKE] static tokio Notify
+- `[people_presence.rs:CACHE]` global static Mutex presence cache and [WAKE] static tokio Notify; `record()` returns (changed, previous availability) and the cache holds `mine` (own MRI) for `refresh_mine()`; the lookup loop reads everyone once a minute only while the window is shown, and only the watched people while it is hidden
 - `[photo.rs:Engine::start_my_photo]` tokio::spawn; network read of own avatar via client.avatar
 - `[render.rs:Engine::render_loop]` pushes typing indicator updates to the UI (self.ui.typing) and runs on a tokio task with timed sleeps
 - `[scheduled.rs:Engine::schedule]` network POST schedule_message / cancel_scheduled / scheduled_messages via client; writes view.scheduled and draft; UI banner/schedule_choice/focus
-- `[sounds.rs:sound_prefs]` reads config_dir/sounds.json on every call (no cache); [sounds.rs:speaker] reads the devices prefs file (settings::DEVICES_FILE)
+- `[sounds.rs:sound_prefs]` reads config_dir/sounds.json on every call (no cache); the default message/ring sounds are Teams files downloaded over the network and cached under the data dir (`fetch_teams_sounds`, `fetch_picked`), the synthesized sound is the fallback; [sounds.rs:speaker] reads the devices prefs file (settings::DEVICES_FILE)
+- `[my_presence.rs:activity_report]` network `client.report_activity(active)` every `CHECK` (30 s) from the idle time of keyboard/mouse input (`IDLE_AFTER` 5 min); never reports inactive during a call
 - `[sync.rs:Engine::sync]` Network: client.conversations, snapshot, profiles; writes users/teams/conversations to SQLite store; deletes stale channel conversations; tokio::spawn lists_refresh
 - `[video_clips.rs:clip_open]` tokio::spawn opens the camera/microphone via ClipDevices (may trigger the camera portal prompt)
 - `[voice_messages.rs:voice_bytes]` network: client.download_media(url); disk: creates <cache_dir>/media and writes <key>.m4a

@@ -38,13 +38,15 @@ Files:
 - `[wire.rs:UiHandle::cal_form_close]` pub fn(&self); CalForm.open=false
 - `[wire.rs:UiHandle::cal_sched]` pub fn(&self, SchedPush)
 - `[wire.rs:UiHandle::cal_rooms]` pub fn(&self, RoomsPush)
+- `[wire.rs:UiHandle::cal_zones]` pub fn(&self, Vec<(String,String)>); sets CalStore.zone_matches (name, display name) for the settings time-zone picker
+- `[wire.rs:UiHandle::cal_perms]` pub fn(&self, Vec<PermRow>, String); sets CalStore share_roles, perms and share_note
 - `[wire.rs:UiHandle::cal_meet_link]` pub fn(&self, String); sets meet_link and opens the "meet-link" modal
 - `[wire.rs:wire]` pub fn(&AppWindow, UnboundedSender<Cmd>); registers CalStore.on_command, CalForm on_submit/on_cancel/on_times_edited/on_pick_slot/on_apply_suggestion/on_pick_room, window.on_schedule_meeting
 
 ## Invariants
 - `[wire.rs:wire]` callbacks hold only a weak window handle (as_weak, upgrade) and return early if the window is gone, so they do not keep it alive
 - `[wire.rs:wire/on_submit]` the form is validated with to_new_event before Cmd::Calendar(Submit) is sent; on Err the error is shown in the form and nothing is sent
-- `[wire.rs:command]` "sched" and "rooms" commands are built from the form here; every other command goes to CalCmd::parse(name, arg)
+- `[wire.rs:command]` "sched", "rooms" and "room-list" commands are built here (sched from the form; room-list as CalCmd::RoomList{email: arg, slot} from the form's start/end date and time); every other command goes to CalCmd::parse(name, arg)
 - `[wire.rs:command/sched]` the room person is set only when room_email is non-empty
 - `[form.rs:refresh_sel]` sel_start and sel_end are -1 when the time fails parse_hm
 - `[form.rs:write_form]` show_optional is derived from optional being non-empty; refresh_sel always runs after writing the fields
