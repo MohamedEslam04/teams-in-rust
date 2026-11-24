@@ -472,7 +472,7 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.by-blocks: PostBlocks {
+                    if root.post-style && root.m.blocks.length > 0 && !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != ""): PostBlocks {
                         blocks: root.m.blocks;
                         code-min: min(240px, root.max-bubble);
                         open-url(u) => { root.open-url(u); }
