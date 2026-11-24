@@ -1,0 +1,148 @@
+# backend/call
+
+## Overview
+Active-call backend. `CallManager` holds at most one active call and drives it via the `CallDriver` trait; `CallModel` is the network-free call state; `EventSink` reports driver events by generation; supporting modules cover camera, screen share, remote control, remote video, bots, video effects and a `FakeDriver` for tests. The live driver is in `live/` behind the `calls` feature.
+
+Files:
+- `bots.rs`: Per-call recorder-bot driver: invites Microsoft's recorder bot once, sends captions/recording/transcription commands, maps refusals to Events.
+- `camera.rs`: Live-call camera: device listing/choice (portal or V4L2), encoder pump to main-video line, self-view, pre-join preview, 1:1 re-offer, env kill switch.
+- `cmd.rs`: CallCmd enum and parse(name, arg) for what the call window sends via CallStore.command.
+- `driver.rs`: Driver-facing types: JoinOptions, Device(s), CallDriver and CallHandle traits, CallData view model, clock().
+- `events.rs`: Event (driver to UI), Control (UI to call), ControlAction/ControlInput remote-control types with parsing, JoinTarget, VideoSlot, Found, consent notices.
+- `fake.rs`: FakeDriver/FakeHandle: network-free CallDriver that logs controls and plays a scripted demo meeting; fake preview.
+- `fallback.rs`: Detects media-server refusal of declared video lines and remembers it per session so joins fall back to audio only.
+- `global.rs`: CallManager call-waiting/adopt entry points, global MANAGER static, and Engine call_cmd/call_find/prejoin_link/prejoin_code glue.
+- `live.rs`: Root of the live (feature calls) driver: module wiring, docs, Reoffer enum and the per-call `Call` state struct.
+- `manager.rs`: CallManager (holds at most one active call, drives the call window): construction, command dispatch, join, feedback, demo; plus Unavailable driver and NoHandle.
+- `model.rs`: CallModel state struct (network-free call state), message constants, recording_state parser, is_meeting_chat.
+- `model_state.rs`: CallModel transitions: prejoin/join/adopt, apply driver Events, end/leave/rejoin, controls, reactions, people search, device picks, and data() snapshot for the UI.
+- `remote_control.rs`: Remote-control of a shared screen in a call: pure state Machine (Mode/Ctx/Step), UI-input-to-wire mapping, and RemoteControl holder with injector task, controller cursor overlay and banner state (gated by IRONTEAMS_REMOTE_CONTROL).
+- `remote_video.rs`: Remote video of a call: routes each video line (mid) to a VideoSlot via per-line decoders, plans gallery/share subscriptions from the roster and sends applyChannelParameters, derives presenter; env-driven join layout/modalities.
+- `roster.rs`: Call window data types: CallKind, Phase, Link/live_phase, Person (with bot check), photo lookup helper, Caption, reaction table and Floating reaction constants.
+- `share.rs`: Screen sharing in a live call: ScreenCast picker, H264 encoder pump onto the sharing line, content-sharing session handling, and telling the service (meeting UpdateMediaDescriptions or 1:1 re-offer).
+- `sink.rs`: EventSink (driver-to-model reporting by generation) and Shared (call model, held-call slot, handle, UI handle, preview, video fx) with hold/resume/promote/end logic and the 1s timer.
+- `video_fx.rs`: Video effects panel prefs (background, filter, brighten, soft focus, mirror) persisted to video-effects.json, FxCmd parsing, and under feature calls the VideoFx state driving calling::video::effects and custom background files.
+
+## Interface
+- Subdirectory `live/`: [live/EGM.md](./live/EGM.md) - Live driver (feature calls): hub, join, run loop, audio, controls, renegotiation
+- `[bots.rs:Bots]` pub(super) struct; new(thread: Option<String>, meeting: bool)
+- `[manager.rs:CallManager]` pub struct (Clone); fields shared: Arc<Shared> (pub(super)), hub: Arc<live::Hub> (calls feature)
+- `[remote_control.rs:wanted]` pub fn() -> bool; whether calls offer remote control (delegates to super::remote_control_wanted)
+- `[share.rs:ROLE]` pub const VideoRole::ApplicationSharing
+- `[bots.rs:Bots::ask]` pub(super) fn(&mut self, &Control) -> bool; queues Captions/Recording/Transcription, false for other controls
+- `[manager.rs:CallManager::new]` pub fn(ui: UiHandle, client: teams_proto::Client, my_name: String) -> Self
+- `[remote_control.rs:Mode]` pub enum Off|Requested|Incoming|Controlling|Controlled {mri,name}; Mode::view() -> (&'static str, String) for CallStore.control-mode
+- `[share.rs:wanted]` pub fn() -> bool; sharing line negotiated unless IRONTEAMS_SCREEN_SHARE=0
+- `[bots.rs:Bots::roster]` pub(super) fn(&mut self, &Value); tracks recorder bot presence from roster body
+- `[manager.rs:CallManager::start]` pub fn(&self): starts hub (calls trouter) and registers global MANAGER
+- `[remote_control.rs:Ctx]` pub struct {can_give, input_allowed, presenter: Option<(mri,name)>}; the call state the machine needs
+- `[share.rs:capture_error_text]` pub fn(&str) -> String; red-bar text, special-cases missing GStreamer
+- `[bots.rs:Bots::conversation]` pub(super) fn(&mut self, &Value) -> Vec<Event>; learns chat thread, emits Recording/Transcribing changes
+- `[manager.rs:CallManager::set_photos]` pub fn(lookup: Fn(&str)->Option<Pixels>)
+- `[remote_control.rs:Step]` pub struct {send: Option<ControlMessage>, inject: Option<InputEvent>, error: Option<String>}
+- `[share.rs:gstreamer_missing]` pub(super) fn(&str) -> bool
+- `[bots.rs:Bots::bot_refused]` pub(super) fn(&mut self, &Value) -> Vec<Event>; addParticipantFailure handling
+- `[manager.rs:CallManager::set_driver]` pub fn(Arc<dyn CallDriver>)
+- `[remote_control.rs:Machine]` pub struct {pub mode}; Default; pure state machine
+- `[share.rs:media_options]` pub fn() -> MediaOptions; audio + camera line if camera::wanted + sharing line if wanted
+- `[bots.rs:Bots::step]` pub(super) async fn(&mut self, &NgcClient, &CallSession, &Links, controller: &str, &EventSink); sends invitation/commands
+- `[manager.rs:CallManager::native]` pub fn(&self) -> bool
+- `[remote_control.rs:Machine::needs_input_consent]` pub fn(&self,&ControlAction,&Ctx)->bool; true when a grant needs desktop input consent first
+- `[share.rs:ShareMsg]` pub enum {Picked(Result<Option<Box<ScreenCapture>>,String>), Input(Result<Option<Box<InputInjector>>,String>), Ended, GrantTimeout(String)}
+- `[camera.rs:wanted]` pub fn() -> bool; false only if IRONTEAMS_CAMERA=0
+- `[manager.rs:CallManager::is_in_meeting]` pub fn(&self, join_url: &str) -> bool
+- `[remote_control.rs:Machine::local]` pub fn(&mut self,&ControlAction,me:&str,&Ctx,Instant)->Step; handles local UI actions
+- `[share.rs:SessionNews]` pub enum {Granted, Refused, Ended, Nothing}
+- `[camera.rs:accept_with_video]` pub fn(on: bool); sets global flag for the next adopted call
+- `[manager.rs:CallManager::prejoin]` pub fn(title: String, target: JoinTarget, chat_id: String)
+- `[remote_control.rs:Machine::remote]` pub fn(&mut self,ControlMessage,me,&Ctx,name_of:impl Fn(&str)->String,Instant)->Step; handles messages from the other side
+- `[share.rs:ask_input]` pub fn(ShareArea, &UnboundedSender<ShareMsg>); spawns request_control, answers as ShareMsg::Input
+- `[camera.rs:take_accept_with_video]` pub fn() -> bool; read-once of that flag
+- `[manager.rs:CallManager::join_now]` pub fn(&self): pre-join Join now
+- `[remote_control.rs:Machine::context]` pub fn(&mut self,&Ctx)->Step; ends control when share stopped or presenter left
+- `[share.rs:Share]` pub struct (Default) one call's share state; pub field `session: Option<SharingSession>`
+- `[camera.rs:v4l2_device]` pub(crate) fn() -> Option<String>
+- `[manager.rs:CallManager::command]` pub fn(&self, c: CallCmd): main call-window command dispatcher
+- `[remote_control.rs:outgoing]` pub fn(&ControlInput)->Option<InputEvent>; normalizes UI input to wire events
+- `[share.rs:Share::sharing]` pub fn(&self) -> bool; true while a capture is held
+- `[camera.rs:chosen]` pub(crate) fn(Option<&str>) -> (CameraChoice, Option<String>)
+- `[manager.rs:CallManager::find_started]` pub fn(&self) -> u64
+- `[remote_control.rs:photo]` pub fn(crate::data::Pixels)->Photo; profile photo for the controller cursor
+- `[share.rs:Share::pick]` pub fn(&mut self, &UnboundedSender<ShareMsg>); opens plain ScreenCast picker (ShareKind::Any), result as ShareMsg::Picked
+- `[camera.rs:list]` pub(crate) fn(Option<&str>) -> (Vec<Device>, usize)
+- `[manager.rs:CallManager::found]` pub fn(&self, seq: u64, found: Vec<Found>)
+- `[remote_control.rs:RemoteControl]` pub struct {pub machine, pub asking: Option<ControlAction>, ..}; Default
+- `[share.rs:Share::start]` pub fn(&mut self, ScreenCapture, &MediaSession, &tx) -> Result<(),String>; encoder+pump on sharing sender
+- `[camera.rs:self_view]` pub fn(&I420Frame, max_width, mirror) -> RgbFrame
+- `[manager.rs:CallManager::demo]` pub fn(&self, connected: bool): scripted FakeDriver demo
+- `[remote_control.rs:RemoteControl::set_share]` pub fn(Option<ShareArea>); None clears asking and injector
+- `[share.rs:Share::stop]` pub async fn(&mut self) -> bool; aborts watcher, stops capture; true if sharing
+- `[camera.rs:preview]` pub fn(EventSink, Option<String>) -> Option<Preview>; None outside tokio runtime; drop aborts capture
+- `[manager.rs:CallManager::add_background]` pub fn(&self, &Path), cfg(calls, not test)
+- `[remote_control.rs:RemoteControl::set_injector]` pub fn(Option<InputInjector>); spawns the injection task
+- `[share.rs:Share::picked_nothing]` pub fn(&mut self); clears picking flag
+- `[camera.rs:open_error_text]` pub fn(&str) -> String; user-facing camera-open error
+- `[manager.rs:CallManager::save_feedback]` pub(super) fn(&Feedback, kind: &str, call: Duration)
+- `[remote_control.rs:RemoteControl::share_area]` pub fn()->Option<ShareArea>
+- `[share.rs:Share::sender_control]` pub fn(&self, &serde_json::Value); forwards keyframe requests to encoder
+
+## Invariants
+- `[camera.rs:Camera::open]` no-op while `opening` or already on; guards against double open
+- `[model_state.rs:CallModel::prejoin]` refused with ALREADY_IN_CALL (and error set) while phase.active(); on success the whole model is reset except my_name
+- `[remote_control.rs:DOUBLE_ESCAPE]` two Escapes within 1000 ms take control back
+- `[share.rs:Share::pick_via]` no-op when already picking or sharing; picker always ShareKind::Any (sharing never asks for control; control is asked on grant via ask_input)
+- `[camera.rs:Camera::start]` clears `opening` first; errors if media has no main-video sender (video_sender(ROLE) None)
+- `[model_state.rs:CallModel::adopted]` returns false (no state change) when a call is already active; otherwise resets model to Phase::Connected
+- `[remote_control.rs:ECHO]` a key within 300 ms of an injected key is treated as its echo and does not take control back (Escape twice still does)
+- `[share.rs:GRANT_WAIT]` 5s wait for meeting content-sharing grant, then ShareMsg::GrantTimeout (marked UNVERIFIED)
+- `[camera.rs:self_view]` only the self-view/preview is mirrored; sent video is never mirrored
+- `[model_state.rs:CallModel::apply]` events are ignored (false) unless phase.active(); Connecting only accepted from Connecting|Lobby; Reconnecting only from Connected
+- `[remote_control.rs:Machine::local]` Give requires ctx.can_give and mri != me; without can_give it yields an error Step instead
+- `[share.rs:Share::session]` content-sharing session is never merged into the call's links; asking holds correlation id until granted; grant_timed_out/session_frame only act when correlation matches/asking is Some
+- `[camera.rs:SELF_VIEW_WIDTH/SELF_VIEW_EVERY]` self-view max width 320, one picture per 2 camera frames; PREVIEW_WIDTH 640
+- `[model_state.rs:CallModel::end]` clears hand/share/camera/presenter/control/recording/captions/held/found/reactions; error cleared only if connected_at is set
+- `[remote_control.rs:Machine::remote]` Request only accepted in Mode::Off with can_give and from != me; Grant/Deny only count when addressed to `to == me`; Input is injected only in Mode::Controlled
+- `[share.rs:Share::next_request_id]` request_id = max(self.request_id, JOIN_REQUEST_ID)+1, one count per call shared with camera
+- `[camera.rs:ACCEPT_WITH_VIDEO]` static AtomicBool SeqCst; set only if wanted(); take_ is swap(false), so read once
+- `[model_state.rs:CallModel::react]` only while Phase::Connected and at least REACTION_EVERY since last send; floating list capped by MAX_FLOATING and REACTION_SHOWN expiry
+- `[remote_control.rs:Machine::context]` Controlled/Incoming end with Revoke sent when can_give is lost; Controlling/Requested end quietly when the presenter changes or leaves
+- `[share.rs:meeting_mid]` a meeting line is switchable only if the join declared its mid AND media server answered it live (not port 0); otherwise server refuses (400/1047) and ends call (410/301999)
+- `[camera.rs:Camera::changed]` returns Some only when (available,on) differs from last shown state
+- `[model_state.rs:CallModel::caption]` dropped unless captions on and non-blank; list capped at CAPTION_LINES, same id updates in place
+- `[remote_control.rs:outgoing]` pointer coordinates clamped to 10_000 and normalized to 0..1; unknown button or keysym yields None (dropped)
+- `[share.rs:meeting_update]` description lists only declared+live mids, receive-only except those in Sending
+- `[camera.rs:Preview]` dropping aborts the spawned task, which stops the camera
+- `[model_state.rs:CallModel::found/find_started]` stale search answers dropped: found applies only if seq == find_seq; pick() bumps find_seq
+- `[remote_control.rs:RemoteControl::set_injector]` any replacement of the injector resets overlay and PointerPolicy; injection runs on its own task so D-Bus never blocks the call loop; task closes the portal session when the channel ends
+- `[share.rs:Share::stop]` caller must give back the content-sharing session via leave_session; stop clears picking, keyframes, asking
+- `[bots.rs:Bots::step]` loop: AddBot needs a chat thread, else all queued commands are refused; after failed AddBot returns without further sends
+- `[model_state.rs:CallModel::toggle_share/toggle_camera]` state follows the driver's Event::Share/Camera, not the toggle; only issued when can_share/can_camera (or already on)
+
+## Side Effects
+- `[bots.rs:Bots::step]` network: ngc.add_recorder_bot, ngc.recorder_command, ngc.set_caption_preference; sends Events to sink; tracing warnings
+- `[manager.rs:CallManager::new]` cfg(not test): call_presence::install(client) global install; reads session::Paths config_dir; VideoFx::load(config_dir)
+- `[remote_control.rs:RemoteControl::set_injector]` tokio::spawn injection task; performs InputInjector::inject (portal/D-Bus) and close
+- `[share.rs:Share::pick_via, ask_input, start, start_session]` tokio::spawn tasks: portal picker/consent, encoder watcher, 5s grant timer
+- `[camera.rs:Camera::open]` tokio::spawn plus spawn_blocking; opens camera via portal/V4L2 (may prompt user); sends CameraMsg::Opened
+- `[manager.rs:CallManager::start]` starts hub (calling trouter) and writes global static MANAGER
+- `[remote_control.rs:RemoteControl::sync_overlay]` ControlOverlay::show draws a cursor window over the share; dropped to remove
+- `[share.rs:Share::start]` starts H264Encoder and pump on the media session's video sender; [Share::stop] stops ScreenCapture
+- `[camera.rs:Camera::start]` spawns H264 encoder pump and watcher task, sends CameraMsg::Ended; draws SelfView via sink.video
+- `[global.rs:MANAGER]` global Mutex<Option<Arc<CallManager>>> static (calls feature)
+- `[remote_control.rs:RemoteControl::apply]` sends control messages over the ControlChannel (network)
+- `[share.rs:start_session, leave_session, tell_meeting, reoffer_direct]` network calls via NgcClient (content sharing, update_media_descriptions, renegotiate_video)
+- `[camera.rs:Camera::stop]` aborts encoder watcher task, stops capture, clears self-view
+- `[manager.rs:CallManager::save_feedback]` appends a JSON line to data_dir/call_feedback::FILE (or test override), logs via tracing, shows UI info toast
+- `[remote_video.rs:RemoteVideo::show]` spawns router task plus one decoder and forward_frames task per line; pushes frames to EventSink
+- `[share.rs:wanted]` reads env IRONTEAMS_SCREEN_SHARE via compat::var_os
+- `[camera.rs:preview]` spawns tokio task owning camera capture; pushes VideoSlot::Preview frames and status text through sink
+- `[manager.rs:CallManager::add_background]` VideoFx::add_background writes the picture into effects config; UI info on failure
+- `[remote_video.rs:RemoteVideo::reselect]` spawns a task sending applyChannelParameters HTTP requests via NgcClient, in order
+- `[sink.rs:Shared::publish_presence]` updates global call_presence state (in a call / meeting)
+- `[camera.rs:v4l2_device/saved_camera]` reads env IRONTEAMS_CAMERA_DEVICE/IRONTEAMS_CAMERA via compat::var_os; reads settings from config dir on disk; enumerates devices::cameras()
+- `[manager.rs:CallManager::command/join_now]` driver.join / handle.control(Leave) / shared.control trigger network call actions; shared.push()/tick()/publish_presence() update UI and presence
+- `[remote_video.rs:wanted_layout]` reads env IRONTEAMS_MEETING_VIDEO_LAYOUT via compat::var_os
+- `[sink.rs:Shared::tick]` spawns a 1s tokio loop pushing state while the call is active
+
+## Verification
+- Run: `cargo test -p ironteams`

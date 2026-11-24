@@ -77,10 +77,12 @@ jobs:
           # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       # The GUI crate's bin and its test build are the two largest rustc processes (~7 GB each);
-      # `--all-targets` runs them side by side and the runner was still killed with exit 143 with
-      # the swap above. Its bin goes first on its own, so the full run only adds the test target.
+      # `--all-targets` runs them side by side and the runner was killed with exit 143 despite the
+      # swap above. Even the bin first was not enough: its test target then ran beside the other
+      # crates' tests. So the other crates go first, then the GUI bin, then its tests alone.
+      - run: cargo clippy --workspace --exclude ironteams --all-targets -- -D warnings
       - run: cargo clippy -p ironteams --bins -- -D warnings
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p ironteams --all-targets -- -D warnings
       - run: cargo clippy -p ironteams-cli --features mcp --all-targets -- -D warnings
 
   # The Linux tests. The job is named `check` so test-build.yml restores this job's cache.

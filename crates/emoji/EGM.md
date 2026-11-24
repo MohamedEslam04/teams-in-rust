@@ -1,0 +1,31 @@
+# emoji
+
+## Overview
+Static emoji table with search, shortcodes, `:name` autocomplete and skin tones. No network and no state: data is a checked-in generated table (`src/table.rs`, private) produced by the generator script `gen/gen.py` (a script, not a package). The crate has no dependencies.
+
+## Interface
+- `Category {SmileysEmotion, PeopleBody, AnimalsNature, FoodDrink, TravelPlaces, Activities, Objects, Symbols, Flags}`, `Category::ALL: [Category; 9]`, `Category::label()` [lib.rs:Category].
+- `Emoji {ch, name, keywords, category, skin_tones}` (`Debug, PartialEq, Eq`) [lib.rs:Emoji].
+- `all() -> &'static [Emoji]` [lib.rs:all].
+- `by_shortcode(code: &str) -> Option<&'static Emoji>` [lib.rs:by_shortcode].
+- `search(q: &str, limit: usize) -> Vec<&'static Emoji>` [lib.rs:search].
+- `autocomplete(text_before_cursor: &str) -> Option<(usize, Vec<&'static Emoji>)>` (usize is the byte offset of `:`) [lib.rs:autocomplete].
+- `with_skin_tone(e: &Emoji, tone: u8) -> String` [lib.rs:with_skin_tone].
+- `gen/gen.py`: `python3 -I crates/emoji/gen/gen.py [emoji-test.txt [annotations.json]]` regenerates `src/table.rs` [gen/gen.py].
+
+## Invariants
+- Table order is picker order (Unicode `emoji-test.txt` group order) and `Category::ALL` has the same order [lib.rs:all].
+- `search` trims and lowercases the query; an empty query or `limit == 0` gives an empty vec. Ranking: exact shortcode or alias prefix first, then name prefix, then word or keyword prefix, then substring; ties keep table order [lib.rs:search, rank].
+- Shortcodes are derived from the CLDR name: lowercase, runs of non-alphanumerics collapsed to `_`; the six Teams `ALIASES` (heart, like, laugh, surprised, sad, angry) take priority and do not fall through to name matching [lib.rs:shortcode_of, by_shortcode, ALIASES].
+- `autocomplete` needs a `:` preceded by a non-alphanumeric char, at least two following chars that are alphanumeric or `_`, and returns at most 8 hits (`AUTOCOMPLETE_LIMIT`) [lib.rs:autocomplete].
+- `with_skin_tone` returns `ch` unchanged unless `skin_tones` is set and `tone` is in 1..=5; the modifier is inserted after the first codepoint and a following U+FE0F is dropped [lib.rs:with_skin_tone].
+- The table holds no skin-tone variant rows and only `fully-qualified` rows of the nine known groups [gen/gen.py:main].
+- `table.rs` is generated; do not edit by hand [table.rs header, gen/gen.py].
+- Lookups are linear scans; there is no index [lib.rs:by_shortcode].
+
+## Side Effects
+- The crate itself: none (immutable static table) [lib.rs, table.rs:EMOJI].
+- `gen/gen.py` with no arguments downloads `emoji-test.txt` (unicode.org) and CLDR annotations (raw.githubusercontent.com) with a 60 s timeout, and always overwrites `crates/emoji/src/table.rs`; it runs `main()` at import time [gen/gen.py].
+
+## Verification
+- Run: `cargo test -p emoji`
