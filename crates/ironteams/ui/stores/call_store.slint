@@ -104,6 +104,8 @@ export global CallStore {
     in property <string> control-name;
     // The pre-join microphone switch.
     in property <bool> prejoin-mic: true;
+    // The pre-join audio choice is Computer audio (else Don't use audio).
+    in property <bool> prejoin-audio: true;
     // Shown only when the call state says the meeting is recorded.
     in property <bool> recording;
     // The meeting is being transcribed.

@@ -309,6 +309,10 @@ impl CallManager {
                     m.mic_on = on;
                     None
                 }
+                CallCmd::PrejoinAudio(computer) => {
+                    m.prejoin_audio(computer);
+                    None
+                }
                 CallCmd::Mic(i) => m.pick_device(true, i),
                 CallCmd::Speaker(i) => m.pick_device(false, i),
                 CallCmd::ToggleMute => m.toggle_mute().map(Control::Mute),

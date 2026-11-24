@@ -8,6 +8,7 @@ import { VideoEffectsPanel } from "video_effects.slint";
 import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { RadioRow } from "../atoms/radio_row.slint";
 
 export component PreJoin inherits Rectangle {
     background: Theme.main;
@@ -37,6 +38,14 @@ export component PreJoin inherits Rectangle {
                     font-size: 13px * Theme.font-scale;
                     overflow: elide;
                 }
+                // Teams' audio choices. Phone and Room audio need a phone bridge and a Teams Room,
+                // which IronTeams cannot use, so they are shown but not offered.
+                VerticalLayout {
+                    RadioRow { label: "Computer audio"; selected: CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "computer"); } }
+                    RadioRow { label: "Phone audio"; enabled: false; tip: "Phone audio isn't available yet"; }
+                    RadioRow { label: "Room audio"; enabled: false; tip: "Room audio isn't available yet"; }
+                    RadioRow { label: "Don't use audio"; selected: !CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "none"); } }
+                }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
@@ -49,9 +58,9 @@ export component PreJoin inherits Rectangle {
                         tip: CallStore.camera-available ? "" : "Video isn't available yet";
                         clicked => { CallStore.command("prejoin-camera", CallStore.prejoin-camera ? "off" : "on"); }
                     }
-                    Switch { variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
+                    if CallStore.prejoin-audio: Switch { variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
                 }
-                DeviceSettings { prefix: "prejoin"; }
+                if CallStore.prejoin-audio: DeviceSettings { prefix: "prejoin"; }
                 if CallStore.error != "": Text {
                     text: CallStore.error;
                     color: Theme.danger;
@@ -64,13 +73,6 @@ export component PreJoin inherits Rectangle {
                     Button { variant: ButtonVariant.action;
                         label: "Cancel";
                         clicked => { CallStore.command("cancel", ""); }
-                    }
-                    // In the meeting on another device already (a phone): join here too with
-                    // the mic and the sound off, so the two do not echo.
-                    Button { variant: ButtonVariant.action;
-                        label: "Add this device";
-                        tip: "Join with your mic and sound off, when you're already in this meeting on another device";
-                        clicked => { CallStore.command("join-device", ""); }
                     }
                     Button { variant: ButtonVariant.action;
                         label: "Join now";

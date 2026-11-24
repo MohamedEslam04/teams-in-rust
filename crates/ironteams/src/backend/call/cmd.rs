@@ -14,6 +14,8 @@ pub enum CallCmd {
     Cancel,
     /// The pre-join microphone switch.
     PrejoinMic(bool),
+    /// The pre-join audio choice: Computer audio (`true`) or Don't use audio.
+    PrejoinAudio(bool),
     Mic(usize),
     Speaker(usize),
     ToggleMute,
@@ -85,6 +87,7 @@ impl CallCmd {
             "sound" => CallCmd::ToggleSound,
             "cancel" => CallCmd::Cancel,
             "prejoin-mic" => CallCmd::PrejoinMic(arg == "on"),
+            "prejoin-audio" => CallCmd::PrejoinAudio(arg == "computer"),
             "mic" => CallCmd::Mic(arg.parse().ok()?),
             "speaker" => CallCmd::Speaker(arg.parse().ok()?),
             "mute" => CallCmd::ToggleMute,

@@ -45,6 +45,19 @@ impl CallModel {
         }
     }
 
+    /// The pre-join audio choice: Computer audio (`true`) or Don't use audio, which joins with
+    /// the mic and the sound off. Computer audio again turns the sound back on; the mic stays as
+    /// it is, for its switch to decide. Only on the pre-join screen.
+    pub fn prejoin_audio(&mut self, computer: bool) {
+        if self.phase != Phase::PreJoin {
+            return;
+        }
+        self.sound_off = !computer;
+        if !computer {
+            self.mic_on = false;
+        }
+    }
+
     /// The call window's sound toggle ("Turn on sound" / "Turn off sound"). Returns whether the
     /// sound is now off, while a call runs.
     pub fn toggle_sound(&mut self) -> Option<bool> {
@@ -596,6 +609,7 @@ impl CallModel {
             control_mode: self.control_mode.clone(),
             control_name: self.control_name.clone(),
             prejoin_mic: self.mic_on,
+            prejoin_audio: !self.sound_off,
             prejoin_camera: self.prejoin_camera,
             recording: self.recording,
             transcribing: self.transcribing,

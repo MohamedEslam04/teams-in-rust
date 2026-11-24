@@ -127,3 +127,46 @@ fn the_commands_parse() {
     assert_eq!(CallCmd::parse("join-device", ""), Some(CallCmd::JoinDevice));
     assert_eq!(CallCmd::parse("sound", ""), Some(CallCmd::ToggleSound));
 }
+
+#[test]
+fn dont_use_audio_joins_with_the_mic_and_the_sound_off() {
+    let mut m = ready();
+    assert!(m.data(Instant::now()).prejoin_audio, "Computer audio is the default");
+    m.prejoin_audio(false);
+    let d = m.data(Instant::now());
+    assert!(!d.prejoin_audio && !d.prejoin_mic);
+    let (_, opts) = m.joining().unwrap();
+    assert!(!opts.mic_on && opts.sound_off);
+}
+
+#[test]
+fn computer_audio_again_brings_the_sound_back_and_leaves_the_mic_off() {
+    let mut m = ready();
+    m.prejoin_audio(false);
+    m.prejoin_audio(true);
+    let d = m.data(Instant::now());
+    assert!(d.prejoin_audio);
+    assert!(!d.prejoin_mic, "the mic stays as Don't use audio left it; its switch is back");
+    let (_, opts) = m.joining().unwrap();
+    assert!(!opts.sound_off);
+}
+
+#[test]
+fn the_audio_choice_is_only_on_the_pre_join_screen() {
+    let mut m = ready();
+    m.joining();
+    m.prejoin_audio(false);
+    assert!(!m.sound_off, "a running call's sound has its own toggle");
+}
+
+#[test]
+fn the_audio_choice_parses() {
+    assert_eq!(
+        CallCmd::parse("prejoin-audio", "none"),
+        Some(CallCmd::PrejoinAudio(false))
+    );
+    assert_eq!(
+        CallCmd::parse("prejoin-audio", "computer"),
+        Some(CallCmd::PrejoinAudio(true))
+    );
+}

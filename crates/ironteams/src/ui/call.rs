@@ -107,6 +107,7 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     s.set_control_mode(d.control_mode.into());
     s.set_control_name(d.control_name.into());
     s.set_prejoin_mic(d.prejoin_mic);
+    s.set_prejoin_audio(d.prejoin_audio);
     s.set_prejoin_camera(d.prejoin_camera);
     s.set_recording(d.recording);
     s.set_transcribing(d.transcribing);

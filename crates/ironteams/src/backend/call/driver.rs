@@ -130,6 +130,8 @@ pub struct CallData {
     /// this meeting when it is the one on hold (a 1:1 call has its own Resume). Empty: no bar.
     pub held_name: String,
     pub people: Vec<Person>,
+    /// The pre-join audio choice is Computer audio (not Don't use audio).
+    pub prejoin_audio: bool,
     /// The call plays no sound here ([`CallModel::sound_off`]).
     pub sound_off: bool,
     /// Our account is in this call on another device too (the roster lists more than one of
