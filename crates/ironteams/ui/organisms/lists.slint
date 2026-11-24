@@ -72,7 +72,8 @@ export component ItemMenu inherits Rectangle {
     in property <ChatRow> data;
     // The item sits in a section made by the user, so it can be removed from it.
     in property <bool> in-section;
-    out property <length> menu-height: (root.view == "main" ? root.main-rows : (root.view == "sections" ? ListStore.choices.length + 2 : 4)) * 32px + 8px;
+    // What the open view's rows take (plus the border), so the popup never cuts the last row off.
+    out property <length> menu-height: lay.preferred-height + 2px;
     callback mark-unread();
     callback leave();
     callback toggle-favorite();
@@ -81,9 +82,6 @@ export component ItemMenu inherits Rectangle {
     callback done();
 
     property <string> view: "main";
-    // Every item: the base five, Favorite and Snooze; chats add Pop out chat, Manage apps, Set
-    // workflows and Remove chat history, channels Pin and Go to team.
-    property <int> main-rows: 7 + (root.in-section ? 1 : 0) + (root.data.channel ? 2 + (ListStore.channel-private ? 1 : 0) : 4) + (root.data.group ? 1 : 0);
 
     background: Theme.surface;
     border-radius: 6px;
@@ -101,7 +99,7 @@ export component ItemMenu inherits Rectangle {
         triggered => { root.shown = true; }
     }
 
-    VerticalLayout {
+    lay := VerticalLayout {
         padding: 4px;
         if root.view == "main": VerticalLayout {
             MenuItem { variant: MenuItemVariant.list; label: @tr("Mark as unread"); clicked => { root.mark-unread(); root.done(); } }
@@ -127,7 +125,9 @@ export component ItemMenu inherits Rectangle {
             if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove chat history"); danger: true; clicked => { root.remove-history(); root.done(); } }
             if root.data.group: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave"); clicked => { root.leave(); root.done(); } }
             if root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.data.id); root.done(); } }
-            if root.data.channel && ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.data.id; ListStore.dialog = "leave-channel"; root.done(); } }
+            // The row's own flag, not the channel menu's details: those arrive after the popup has
+            // opened, too late for its height.
+            if root.data.channel && root.data.private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.data.id; ListStore.dialog = "leave-channel"; root.done(); } }
             MenuItem { variant: MenuItemVariant.list;
                 label: root.data.channel ? @tr("Hide channel") : @tr("Hide");
                 clicked => { ListStore.command(root.data.channel ? "channel-hide" : "hide", root.data.id); root.done(); }
@@ -165,14 +165,18 @@ export component ItemMenu inherits Rectangle {
 // Right-click menu of a channel in the Teams view.
 export component ChannelMenu inherits Rectangle {
     in property <string> channel;
+    // A private channel (Leave channel is offered). From the channel's row, so the popup knows
+    // its height when it opens.
+    in property <bool> is-private;
     callback done();
-    out property <length> menu-height: (root.view == "main" ? 5 + (ListStore.channel-private ? 1 : 0) : 4) * 32px + 8px;
+    // What the open view's rows take (plus the border), so the popup never cuts the last row off.
+    out property <length> menu-height: lay.preferred-height + 2px;
     property <string> view: "main";
     background: Theme.surface;
     border-radius: 6px;
     border-width: 1px;
     border-color: Theme.border;
-    VerticalLayout {
+    lay := VerticalLayout {
         padding: 4px;
         if root.view == "main": VerticalLayout {
             MenuItem { variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
@@ -187,7 +191,7 @@ export component ChannelMenu inherits Rectangle {
             }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Go to team"); clicked => { ListStore.command("channel-team", root.channel); root.done(); } }
-            if ListStore.channel-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.channel; ListStore.dialog = "leave-channel"; root.done(); } }
+            if root.is-private: MenuItem { variant: MenuItemVariant.list; label: @tr("Leave channel"); danger: true; clicked => { ListStore.dialog-target = root.channel; ListStore.dialog = "leave-channel"; root.done(); } }
         }
         if root.view == "notify": VerticalLayout {
             MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
