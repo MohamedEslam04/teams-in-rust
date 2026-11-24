@@ -13,11 +13,11 @@
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
 //! message-sound-file, urgent-sound, urgent-sound-preview, teams-sounds, open-files, perm, switch-account, switch-org, add-account, remove-account,
-//! refresh-license, restart, sign-out, view-account, report-problem, check-updates, check-now,
+//! refresh-license, restart, sign-out, view-account, report-problem, check-now,
 //! release-notes, status, work-location, status-note, notification-style, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
 //! focus-duration, keyword-add, keyword-remove, open-chat-at, link-previews, photo-change,
-//! photo-remove, check-updates-menu, auto-update, beta-updates, restart-update,
+//! photo-remove, check-updates-menu, beta-updates, restart-update,
 //! media-cache-limit, clear-media-cache, clear-all-cache, delete-update-backups.
 
 use super::{UiHandle, model, rgb};
