@@ -426,7 +426,11 @@ export component Composer inherits Rectangle {
                             color: Theme.fg;
                             font-size: 14px * Theme.font-scale;
                             single-line: false;
-                            horizontal-alignment: Theme.start-align;
+                            // The text decides its side as it is typed (a TextInput aligns all its lines
+                            // alike, so it is the first strong character of the whole text); an empty
+                            // box, digits or emoji keep the language's side.
+                            property <int> direction: FormatApi.text-direction(root.draft);
+                            horizontal-alignment: self.direction > 0 ? TextHorizontalAlignment.right : self.direction < 0 ? TextHorizontalAlignment.left : Theme.start-align;
                             wrap: word-wrap;
                             edited => {
                                 root.typing-tick();

@@ -25,6 +25,9 @@ export global FormatApi {
     pure callback preview(string) -> styled-text;
     // true when the source has formatting (the preview strip only shows then)
     pure callback has-format(string) -> bool;
+    // text -> 1 when its first strong character is right to left (Arabic, Hebrew), -1 when it is
+    // left to right (Latin), 0 when it has none
+    pure callback text-direction(string) -> int;
 }
 
 // `#rrggbb` text of a color, for the `color:` and `bg:` actions.

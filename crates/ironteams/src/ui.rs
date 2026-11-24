@@ -153,15 +153,17 @@ fn styled(markdown: &str) -> StyledText {
 /// A run of text or a code block of a message that has code blocks (`Msg.parts`).
 fn body_part(s: &Segment) -> BodyPart {
     match s {
-        Segment::Text(md) => BodyPart {
+        Segment::Text { md, rtl } => BodyPart {
             body: styled(md),
             code: SharedString::default(),
             is_code: false,
+            rtl: *rtl,
         },
         Segment::Code(code) => BodyPart {
             body: StyledText::default(),
             code: code.as_str().into(),
             is_code: true,
+            rtl: false,
         },
     }
 }

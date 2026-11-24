@@ -313,7 +313,7 @@ export component MessageRow inherits TouchArea {
                                 default-font-size: 14px * Theme.font-scale;
                                 link-color: Theme.accent;
                                 selectable: true;
-                                horizontal-alignment: root.m.rtl ? right : left;
+                                horizontal-alignment: p.rtl ? right : left;
                                 link-clicked(url) => { root.open-url(url); }
                             }
                             if p.is-code: CodeBlock {
