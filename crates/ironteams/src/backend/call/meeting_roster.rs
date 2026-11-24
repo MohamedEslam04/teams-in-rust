@@ -209,9 +209,13 @@ impl Engine {
     /// fetched), and shows it. The fetch is the rest.
     pub(super) fn call_people_open(self: &Arc<Self>) -> Option<Rest> {
         let chat = self.calls.meeting_chat()?;
+        // Tests answer with `CallManager::set_meeting_people`; what the engine would read here
+        // (nothing, in a test) must not replace it.
+        if cfg!(test) {
+            return None;
+        }
         self.push_meeting_people(&chat, self.members_known(&chat).unwrap_or_default());
-        // Tests answer with `CallManager::set_meeting_people`.
-        if cfg!(test) || self.offline.load(Ordering::Relaxed) {
+        if self.offline.load(Ordering::Relaxed) {
             return None;
         }
         let e = self.clone();
