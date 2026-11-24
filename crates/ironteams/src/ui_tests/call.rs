@@ -8,6 +8,7 @@ use crate::CallStore;
 use crate::backend::CalCmd;
 use crate::backend::call::{CallCmd, Event, FakeDriver, Person};
 use i_slint_backend_testing::AccessibleRole;
+use store::UserRow;
 
 const THREAD: &str = "19:meeting_abc@thread.v2";
 
@@ -27,7 +28,10 @@ struct CallHarness {
 
 impl CallHarness {
     fn new() -> Self {
-        let h = Harness::new();
+        Self::on(Harness::new())
+    }
+
+    fn on(h: Harness) -> Self {
         let fake = FakeDriver::manual();
         h.engine.calls.set_driver(Arc::new(fake.clone()));
         crate::ui::call::wire(&h.app);
@@ -1188,6 +1192,160 @@ fn the_tile_menu_offers_pin_and_shows_what_the_call_cannot_do_yet_as_disabled() 
     click(&c.button("More options for Me"));
     assert!(c.shows("Pin for me"));
     assert!(!c.shows("Mute participant") && !c.shows("Spotlight for everyone"));
+}
+
+/// What the person card shows: its person's MRI while it is open, else "".
+fn card_of(c: &CallHarness) -> String {
+    let ps = c.h.app.global::<crate::PeopleStore>();
+    if ps.get_card_open() {
+        ps.get_card().id.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// The gallery tile that holds the pill with this name.
+fn tile_of(c: &CallHarness, name: &str) -> ElementHandle {
+    let pill = c.with_role(name, AccessibleRole::Text).absolute_position();
+    tiles(c)
+        .into_iter()
+        .find(|t| {
+            let (at, size) = (t.absolute_position(), t.size());
+            pill.x >= at.x
+                && pill.x <= at.x + size.width
+                && pill.y >= at.y
+                && pill.y <= at.y + size.height
+        })
+        .unwrap_or_else(|| panic!("no tile of {name:?}"))
+}
+
+#[test]
+fn clicking_a_tile_asks_for_that_persons_card_and_shows_it_over_the_call() {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    store
+        .upsert_user(&UserRow {
+            mri: "8:orgid:bo".into(),
+            display_name: "Bo Ström".into(),
+            email: Some("bo@example.com".into()),
+            avatar: None,
+            updated_ms: 1,
+        })
+        .unwrap();
+    let c = CallHarness::on(Harness::with_store(store));
+    c.connected();
+    tile_menu_roster(&c);
+    assert_eq!(card_of(&c), "");
+
+    let bo = tile_of(&c, "Bo Ström");
+    click(&bo);
+    assert_eq!(c.sent().last().unwrap(), "person-card 8:orgid:bo");
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    let ps = c.h.app.global::<crate::PeopleStore>();
+    assert_eq!(ps.get_card().name, "Bo Ström");
+    assert_eq!(ps.get_card_email(), "bo@example.com");
+    assert!(!ps.get_card_by_hover(), "a click opens it, so it stays");
+
+    // It sits inside the window, level with the tile it belongs to.
+    let card = ElementHandle::find_by_element_type_name(&c.h.app, "ProfileCard")
+        .next()
+        .expect("the card");
+    let (at, size) = (card.absolute_position(), card.size());
+    let window =
+        c.h.app
+            .window()
+            .size()
+            .to_logical(c.h.app.window().scale_factor());
+    assert!(
+        at.x >= 0.0 && at.x + size.width <= window.width,
+        "card x {}",
+        at.x
+    );
+    assert!(
+        at.y >= 0.0 && at.y + size.height <= window.height,
+        "card y {}",
+        at.y
+    );
+    let tile = (
+        bo.absolute_position().y,
+        bo.absolute_position().y + bo.size().height,
+    );
+    assert!(
+        at.y < tile.1 && at.y + size.height > tile.0,
+        "the card at {}..{} is beside the tile at {}..{}",
+        at.y,
+        at.y + size.height,
+        tile.0,
+        tile.1
+    );
+
+    // Our own tile opens our own card (a click while a card is open only closes it).
+    key(&c.h.app, Key::Escape, true);
+    key(&c.h.app, Key::Escape, false);
+    click(&tile_of(&c, "Me (You)"));
+    assert_eq!(c.sent().last().unwrap(), "person-card 8:orgid:me");
+    assert_eq!(card_of(&c), "8:orgid:me");
+}
+
+#[test]
+fn the_person_card_closes_on_escape_and_on_a_click_outside_it() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    click(&tile_of(&c, "Bo Ström"));
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    key(&c.h.app, Key::Escape, true);
+    key(&c.h.app, Key::Escape, false);
+    assert_eq!(card_of(&c), "", "Escape closes it");
+
+    click(&tile_of(&c, "Bo Ström"));
+    assert_eq!(card_of(&c), "8:orgid:bo");
+    // A press away from the card closes it (the layer under it takes the press): in the bottom
+    // left corner, which the card, placed next to the tile, does not reach.
+    let corner = slint::LogicalPosition::new(4., 790.);
+    let window = c.h.app.window();
+    window.dispatch_event(WindowEvent::PointerMoved { position: corner });
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position: corner,
+        button: PointerEventButton::Left,
+    });
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: corner,
+        button: PointerEventButton::Left,
+    });
+    assert_eq!(card_of(&c), "", "a click outside closes it");
+}
+
+#[test]
+fn a_bot_or_a_tile_without_an_mri_has_no_card() {
+    let c = CallHarness::new();
+    c.connected();
+    tile_menu_roster(&c);
+    let run = c.h.runner();
+    for mri in ["28:bot", ""] {
+        run(Cmd::Call(CallCmd::PersonCard(mri.into())));
+        assert_eq!(card_of(&c), "", "{mri:?}");
+    }
+    // The same through a tile: no MRI, nothing asked.
+    c.fake.emit(Event::Roster(vec![
+        Person {
+            name: "Guest".into(),
+            ..Default::default()
+        },
+        Person {
+            mri: "8:orgid:me".into(),
+            name: "Me".into(),
+            me: true,
+            ..Default::default()
+        },
+    ]));
+    let asked = c.sent().len();
+    click(&tile_of(&c, "Guest"));
+    assert_eq!(c.sent().len(), asked, "nothing was asked");
+    assert_eq!(card_of(&c), "");
+
+    run(Cmd::Call(CallCmd::PersonCard("8:orgid:bo".into())));
+    assert_eq!(card_of(&c), "8:orgid:bo", "a person does");
 }
 
 #[test]

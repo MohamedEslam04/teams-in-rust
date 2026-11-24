@@ -183,6 +183,7 @@ impl Engine {
             }
             CallCmd::JoinOngoing(thread) => self.join_ongoing(&thread)?,
             CallCmd::Find(q) => return Ok(self.call_find(&q)),
+            CallCmd::PersonCard(mri) => return Ok(self.call_person_card(mri)),
             #[cfg(all(feature = "calls", not(test)))]
             CallCmd::Fx(video_fx::FxCmd::AddBackground) => {
                 let e = self.clone();
@@ -202,6 +203,16 @@ impl Engine {
             other => self.calls.command(other),
         }
         Ok(None)
+    }
+
+    /// A tile's click: the person's profile card, the one the chat opens, shows over the call
+    /// window. A bot has no card.
+    pub(super) fn call_person_card(self: &Arc<Self>, mri: String) -> Option<Rest> {
+        if mri.is_empty() || mri.starts_with(BOT_PREFIX) {
+            return None;
+        }
+        let e = self.clone();
+        in_order::rest(async move { e.profile_in(mri, false).await })
     }
 
     /// Add people and Transfer's search: it starts here, in order with the commands around it, and

@@ -27,6 +27,8 @@ pub enum CallCmd {
     Invite(String),
     /// "Transfer now" to a person from the search.
     Transfer(String),
+    /// A click on a person's tile: their profile card opens over the call (an MRI).
+    PersonCard(String),
     ToggleShare,
     ToggleCamera,
     /// The pre-join camera switch.
@@ -88,6 +90,7 @@ impl CallCmd {
             "find" => CallCmd::Find(arg.into()),
             "invite" if !arg.is_empty() => CallCmd::Invite(arg.into()),
             "transfer" if !arg.is_empty() => CallCmd::Transfer(arg.into()),
+            "person-card" if !arg.is_empty() => CallCmd::PersonCard(arg.into()),
             "share" => CallCmd::ToggleShare,
             "camera" => CallCmd::ToggleCamera,
             "prejoin-camera" => CallCmd::PrejoinCamera(arg == "on"),
