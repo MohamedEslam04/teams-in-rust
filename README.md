@@ -42,6 +42,9 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   the camera, microphone, location, notifications and links you allowed the app.
 - **Calls and meetings:** a native call window with pre-join, meeting controls and the roster,
   1:1 incoming and outgoing call screens (`calls` feature, on by default; `crates/calling`).
+  The microphone gets echo cancellation and noise suppression that also removes keyboard and
+  mouse clicks; the camera sends 720p and lowers its quality when the machine falls behind;
+  background blur and pictures in the Video effects panel.
 - **Settings:** theme (light, dark, system), accent, density and text size; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
@@ -131,9 +134,10 @@ top of `release.yml` (used by `release-add.yml`), and warns otherwise. Free Wind
 
 ## Platforms
 
-CI (`ci.yml`) runs clippy and the whole test suite on Linux, Windows (x86_64) and macOS (Apple
-Silicon and Intel) on every push. The runners have no screen, camera or microphone, so what
-needs one is only checked to build there. Daily use is on Linux (KDE Plasma, Wayland); nothing
+CI (`ci.yml`) runs clippy and the whole test suite on Linux on every push. Windows (x86_64) and
+macOS (Apple Silicon and Intel) run the whole test suite on a manual CI run, and before
+`release-add.yml` adds that system to a release. The runners have no screen, camera or
+microphone, so what needs one is only checked to build there. Daily use is on Linux (KDE Plasma, Wayland); nothing
 has been tried on real Windows or macOS hardware yet.
 
 | | Linux | Windows | macOS |
@@ -242,7 +246,7 @@ The ADRs in [`docs/adr/`](docs/adr/) explain the toolkit, the web host and the c
 
 Parallel builds on a small machine: run cargo through `flock /tmp/ironteams-build.lock cargo …` so only one
 build compiles the large `ironteams` crate at a time. GitHub CI runs fmt, clippy and the whole test
-suite on every push to `dev` and `feat/**` and on pull requests.
+suite on Linux on every push to `dev`, `feat/**` and `fix/**` and on pull requests.
 
 Translations: interface strings are wrapped in `@tr()` and compiled in from
 `crates/ironteams/translations/<lang>/LC_MESSAGES/ironteams.po`.
@@ -272,4 +276,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 1413be6 ("docs(plans): S3.6 action commands open in the web host", 2026-11-19)
+Docs synced to commit eef582a0 ("Merge fix/image-decode-thrash: keep on-screen pictures cached, at most three decodes at a time", 2026-11-24)

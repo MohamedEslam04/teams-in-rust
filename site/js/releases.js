@@ -13,8 +13,9 @@
   var DOWNLOAD_PREFIX = 'https://github.com/' + REPO + '/releases/download/';
 
   /* Asset catalogue. `match` runs against the file name in a release; the first pattern of
-     `match` that finds a file wins. Names come from .github/workflows/release.yml (Velopack
-     names per channel: IronTeams.AppImage, IronTeams-win-Setup.exe, IronTeams-osx-arm64-Setup.pkg …). */
+     `match` that finds a file wins. Names come from .github/workflows/release.yml (Linux) and
+     release-add.yml (Windows, macOS), with Velopack names per channel:
+     IronTeams.AppImage, IronTeams-win-Setup.exe, IronTeams-osx-arm64-Setup.pkg … */
   var ASSETS = {
     'linux-appimage': {
       os: 'linux', format: 'AppImage', recommended: true, installId: 'appimage',
