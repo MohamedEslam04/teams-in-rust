@@ -217,14 +217,10 @@ export component MessageRow inherits TouchArea {
     // window coordinates: resting on it opens the hover card.
     callback photo-hover(string, bool, length, length, length, length);
     height: content.preferred-height;
-    // A post's pictures scale to its width: a lone picture up to its own size and 480px tall
-    // (once it has loaded), several up to 560px wide. A chat bubble keeps the grid's own size.
-    property <int> lone-w: root.m.images.length == 1 ? root.m.images[0].img.width : 0;
-    property <int> lone-h: root.m.images.length == 1 ? root.m.images[0].img.height : 0;
-    property <length> post-grid-w: root.lone-w > 0 && root.lone-h > 0
-        ? min(min(root.max-bubble, root.lone-w * 1px), 480px * root.lone-w / root.lone-h)
-        : min(root.max-bubble, root.m.images.length == 1 ? root.m.grid-w : 560px);
-    property <float> grid-scale: root.post-style && root.m.grid-w > 0px ? root.post-grid-w / root.m.grid-w : 1.0;
+    // A post's pictures keep the grid's size, which does not change when their pixels are
+    // dropped off screen and is what they are decoded for (larger would blur), and shrink to
+    // fit a card narrower than the grid. A chat bubble keeps the grid's own size.
+    property <float> grid-scale: root.post-style && root.m.grid-w > root.max-bubble ? root.max-bubble / root.m.grid-w : 1.0;
     // A post with headings or lists draws its body block by block.
     property <bool> by-blocks: root.post-style && root.m.blocks.length > 0;
     // A message that just arrived fades in (150 ms); the rest are placed at once.

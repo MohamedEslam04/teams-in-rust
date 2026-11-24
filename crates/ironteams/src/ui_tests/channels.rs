@@ -952,37 +952,53 @@ fn a_post_lays_out_its_headings_and_lists_block_by_block() {
     assert_eq!(rows(&h.app).len(), 1, "the post is drawn");
 }
 
-/// A post's lone picture is as wide as the card allows (never wider than its own pixels) and
-/// keeps its shape; the chat grid caps it at 420px.
+/// A post's picture keeps the grid's size whether or not its pixels are loaded (they are dropped
+/// off screen, and the card must not change height), and a grid wider than the card shrinks to
+/// fit it, keeping its shape.
 #[test]
-fn a_picture_in_a_post_scales_to_the_card_and_keeps_its_shape() {
+fn a_picture_in_a_post_keeps_its_size_and_fits_the_card() {
     let h = channel_harness(0);
     let posts = cs(&h.app).get_posts();
-    let mut p = posts.row_data(1).unwrap();
-    let pixels = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(800, 400);
-    p.post.images = ModelRc::new(VecModel::from(vec![crate::ImageItem {
-        url: "https://x.example/1.png".into(),
-        img: slint::Image::from_rgba8(pixels),
-        loaded: true,
-        w: 420.,
-        h: 210.,
-        ..Default::default()
-    }]));
-    p.post.grid_w = 420.;
-    p.post.grid_h = 210.;
-    posts.set_row_data(1, p);
-    let cell = first(&h.app, "Open image 1");
-    let card = &post_cards(&h.app)[1];
-    let want = (card.size().width - 48.).min(800.);
+    let set_picture = |loaded: bool, pw: f32, ph: f32| {
+        let mut p = posts.row_data(1).unwrap();
+        let img = if loaded {
+            slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(
+                pw as u32, ph as u32,
+            ))
+        } else {
+            slint::Image::default()
+        };
+        p.post.images = ModelRc::new(VecModel::from(vec![crate::ImageItem {
+            url: "https://x.example/1.png".into(),
+            img,
+            loaded,
+            w: pw,
+            h: ph,
+            ..Default::default()
+        }]));
+        p.post.grid_w = pw;
+        p.post.grid_h = ph;
+        posts.set_row_data(1, p);
+    };
+    let size = |app: &AppWindow| {
+        let s = first(app, "Open image 1").size();
+        (s.width, s.height)
+    };
+    set_picture(true, 420., 210.);
+    let loaded = size(&h.app);
     assert!(
-        want > 420.,
-        "the column is wider than the chat grid: {want}"
+        (loaded.0 - 420.).abs() < 1. && (loaded.1 - 210.).abs() < 1.,
+        "the grid's size: {loaded:?}"
     );
+    set_picture(false, 420., 210.);
+    assert_eq!(size(&h.app), loaded, "the same size without its pixels");
+
+    set_picture(false, 1600., 800.);
+    let card = post_cards(&h.app)[1].size().width;
+    let (w, h2) = size(&h.app);
     assert!(
-        (cell.size().width - want).abs() < 1. && (cell.size().height - want / 2.).abs() < 1.,
-        "the picture is {:?}, want {want} by {}",
-        cell.size(),
-        want / 2.
+        (w - (card - 48.)).abs() < 1. && (h2 - w / 2.).abs() < 1.,
+        "a grid wider than the card fits it: {w} x {h2}, card {card}"
     );
 }
 
