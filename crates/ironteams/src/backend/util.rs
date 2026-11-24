@@ -250,11 +250,24 @@ pub(super) fn avatar_key(mri: &str, px: u32) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// What a message's inline picture is decoded to: the grid draws one at most 420 x 320 logical
-/// pixels, so this is a little over that at a scale factor of 2 (the pictures kept in memory
-/// stay below 2.2 MB each).
-pub(super) const INLINE_W: u32 = 840;
-pub(super) const INLINE_H: u32 = 640;
+/// The largest a message's inline picture is drawn, in logical pixels (the grid; a channel
+/// post's card draws it at 360 x 240 at most).
+const INLINE_LOGICAL: (f32, f32) = (420.0, 320.0);
+
+/// The window's scale factor in percent before the window has been read: 2, so a picture
+/// decoded that early is sharp on any screen (and decoded again once the real factor is known).
+pub const DEFAULT_SCALE_PCT: u16 = 200;
+
+/// What a message's inline picture is decoded to at a scale factor of `scale_pct` percent: the
+/// largest it is drawn, in physical pixels. At 1 a picture kept in memory takes about 0.5 MB, at
+/// 2 about 2.2 MB. A factor below 1 counts as 1, one above 4 as 4.
+pub(super) fn inline_box(scale_pct: u16) -> (u32, u32) {
+    let scale = f32::from(scale_pct.clamp(100, 400)) / 100.0;
+    (
+        (INLINE_LOGICAL.0 * scale).ceil() as u32,
+        (INLINE_LOGICAL.1 * scale).ceil() as u32,
+    )
+}
 
 /// True for a stored avatar from before avatars were read at [`AVATAR_PX`] (they were 64 pixels
 /// at most): it is shown while the sharper picture is read again. A picture whose longer side is
@@ -392,6 +405,31 @@ pub(super) fn stored_title(
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn inline_pictures_are_decoded_to_their_largest_size_on_screen() {
+        assert_eq!(inline_box(100), (420, 320));
+        assert_eq!(inline_box(125), (525, 400));
+        assert_eq!(inline_box(200), (840, 640));
+        // Out of range: never smaller than at 1, never larger than at 4.
+        assert_eq!(inline_box(0), (420, 320));
+        assert_eq!(inline_box(1000), (1680, 1280));
+    }
+
+    #[test]
+    fn a_screenshot_decoded_for_a_scale_of_one_fits_the_logical_box() {
+        let img = image::RgbaImage::from_pixel(1920, 1080, image::Rgba([10, 20, 30, 255]));
+        let mut png = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        let (w, h) = inline_box(100);
+        let px = decode_image(png.get_ref(), w, h).unwrap();
+        assert!(px.width() <= 420 && px.height() <= 320);
+        assert_eq!(
+            px.width(),
+            420,
+            "the aspect ratio is kept, the width fills the box"
+        );
+    }
 
     #[test]
     fn a_burst_of_decodes_runs_a_few_at_a_time() {

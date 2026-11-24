@@ -8,6 +8,7 @@
 //! The decisions are pure helpers with unit tests.
 
 use crate::AppWindow;
+use crate::backend::util::DEFAULT_SCALE_PCT;
 use slint::ComponentHandle;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -31,6 +32,8 @@ pub struct WindowStatus {
     pub visible: bool,
     /// Has the keyboard focus (never while out of sight).
     pub focused: bool,
+    /// The window's scale factor in percent (`Engine::set_display_scale`).
+    pub scale_pct: u16,
 }
 
 pub fn mode(shown: bool, minimized: bool) -> Mode {
@@ -46,6 +49,16 @@ pub fn status(mode: Mode, has_focus: bool) -> WindowStatus {
     WindowStatus {
         visible,
         focused: visible && has_focus,
+        scale_pct: DEFAULT_SCALE_PCT,
+    }
+}
+
+/// A scale factor in whole percent; one that is not a number counts as the default.
+pub fn scale_pct(factor: f32) -> u16 {
+    if factor.is_finite() && factor > 0.0 {
+        (factor * 100.0).round().min(f32::from(u16::MAX)) as u16
+    } else {
+        DEFAULT_SCALE_PCT
     }
 }
 
@@ -75,6 +88,7 @@ pub fn install() -> tokio::sync::watch::Receiver<WindowStatus> {
     let (tx, rx) = tokio::sync::watch::channel(WindowStatus {
         visible: true,
         focused: true,
+        scale_pct: DEFAULT_SCALE_PCT,
     });
     WATCH.with(|w| {
         *w.borrow_mut() = Some(Rc::new(Watch {
@@ -124,7 +138,10 @@ fn apply(w: &AppWindow, m: Mode, focused: bool) {
     let Some(watch) = WATCH.with(|c| c.borrow().clone()) else {
         return;
     };
-    let now = status(m, focused);
+    let now = WindowStatus {
+        scale_pct: scale_pct(w.window().scale_factor()),
+        ..status(m, focused)
+    };
     watch.tx.send_if_modified(|s| {
         let changed = *s != now;
         *s = now;
@@ -176,14 +193,16 @@ mod tests {
             status(Mode::Visible, true),
             WindowStatus {
                 visible: true,
-                focused: true
+                focused: true,
+                scale_pct: DEFAULT_SCALE_PCT
             }
         );
         assert_eq!(
             status(Mode::Visible, false),
             WindowStatus {
                 visible: true,
-                focused: false
+                focused: false,
+                scale_pct: DEFAULT_SCALE_PCT
             }
         );
         // A minimized window that still reports the focus does not count: notifications show.
@@ -191,16 +210,27 @@ mod tests {
             status(Mode::Minimized, true),
             WindowStatus {
                 visible: false,
-                focused: false
+                focused: false,
+                scale_pct: DEFAULT_SCALE_PCT
             }
         );
         assert_eq!(
             status(Mode::Hidden, true),
             WindowStatus {
                 visible: false,
-                focused: false
+                focused: false,
+                scale_pct: DEFAULT_SCALE_PCT
             }
         );
+    }
+
+    #[test]
+    fn the_scale_factor_is_sent_in_whole_percent() {
+        assert_eq!(scale_pct(1.0), 100);
+        assert_eq!(scale_pct(1.25), 125);
+        assert_eq!(scale_pct(2.0), 200);
+        assert_eq!(scale_pct(f32::NAN), DEFAULT_SCALE_PCT);
+        assert_eq!(scale_pct(0.0), DEFAULT_SCALE_PCT);
     }
 
     #[test]
