@@ -182,7 +182,8 @@ jobs:
 
   aur:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # As the RPM and Flatpak jobs: a cold build (new dependencies) ran past 60 minutes.
+    timeout-minutes: 90
     container:
       image: archlinux:base-devel
       options: --privileged -v /mnt:/mnt
