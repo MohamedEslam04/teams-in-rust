@@ -120,6 +120,9 @@ pub struct Person {
     pub lobby: bool,
     /// Us.
     pub me: bool,
+    /// Their account is in the call (or its lobby) on more than one device: for us, a phone
+    /// in the call while this computer is too.
+    pub elsewhere: bool,
     /// `organizer`, `presenter`, `attendee` or empty.
     pub role: String,
     /// Heard right now (the meeting mixer names their audio source).

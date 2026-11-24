@@ -5,6 +5,8 @@ use super::*;
 pub struct JoinOptions {
     pub name: String,
     pub mic_on: bool,
+    /// Join playing no sound ([`CallModel::sound_off`]).
+    pub sound_off: bool,
     /// Device ids for the live driver's audio (`None`: the system default).
     #[cfg(any(test, feature = "calls"))]
     pub mic: Option<String>,
@@ -128,6 +130,11 @@ pub struct CallData {
     /// this meeting when it is the one on hold (a 1:1 call has its own Resume). Empty: no bar.
     pub held_name: String,
     pub people: Vec<Person>,
+    /// The call plays no sound here ([`CallModel::sound_off`]).
+    pub sound_off: bool,
+    /// Our account is in this call on another device too (the roster lists more than one of
+    /// our devices): the window says so.
+    pub other_device: bool,
     pub in_call: usize,
     pub in_lobby: usize,
     /// We may let people in from the lobby (we are not a plain attendee).

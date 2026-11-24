@@ -10,6 +10,9 @@ pub struct CallModel {
     pub my_name: String,
     /// The pre-join microphone choice.
     pub mic_on: bool,
+    /// The call plays no sound here ("Add this device": we are in the call on another device
+    /// too, so two speakers in one room would echo). "Turn on sound" brings it back.
+    pub sound_off: bool,
     pub muted: bool,
     pub hand: bool,
     /// The driver can share a screen in this call (it negotiated a sharing line).

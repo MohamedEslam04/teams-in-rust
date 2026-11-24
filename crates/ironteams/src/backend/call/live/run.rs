@@ -25,6 +25,8 @@ impl Call {
         if let Err(e) = audio.start(opts.mic.as_deref(), opts.speaker.as_deref()) {
             sink.send(Event::Error(format!("Audio device: {e:#}")));
         }
+        // "Add this device" joins playing no sound; any other join plays it.
+        calling::audio::set_output_off(opts.sound_off);
         let mut forwarders = vec![forward(play_rx.clone(), audio.held.clone(), events.audio)];
         let mut state_rx = events.state;
         let mut speakers_rx = events.speakers;
@@ -442,6 +444,8 @@ impl Call {
         self.camera.stop(&sink).await;
         self.video.stop(&sink);
         audio.stop();
+        // The next call (a 1:1 one too) plays its sound.
+        calling::audio::set_output_off(false);
         let _ = self.media.close().await;
         if let Some(n) = self.next.take() {
             let _ = n.media.close().await;

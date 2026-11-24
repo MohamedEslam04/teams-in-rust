@@ -133,6 +133,8 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
         s.get_gallery_per_page(),
     ));
     s.set_in_lobby(int(d.in_lobby));
+    s.set_sound_off(d.sound_off);
+    s.set_other_device(d.other_device);
     s.set_can_admit(d.can_admit);
     let images = photo_images(&photos);
     // Every tile and People row shows its person's live reaction.

@@ -112,6 +112,7 @@ pub(super) fn people(
             hand: p.hand.is_some(),
             lobby: p.presence == Presence::Lobby,
             me: p.mri == me,
+            elsewhere: p.devices() > 1,
             role: p.role.map(|r| r.name().to_owned()).unwrap_or_default(),
             video_slot: video.slot_of(&p.mri),
             outsider: if p.mri == me {

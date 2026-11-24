@@ -8,12 +8,17 @@ pub enum CallCmd {
     /// The live-call strip's Join in a chat or channel header (`ongoing_call`).
     JoinOngoing(String),
     JoinNow,
+    /// Pre-join "Add this device": join with the mic and the sound off (we are in the call on
+    /// another device too).
+    JoinDevice,
     Cancel,
     /// The pre-join microphone switch.
     PrejoinMic(bool),
     Mic(usize),
     Speaker(usize),
     ToggleMute,
+    /// The call window's "Turn on sound" / "Turn off sound".
+    ToggleSound,
     ToggleHand,
     /// The React menu: send a live reaction (a wire name of [`REACTIONS`]).
     React(&'static str),
@@ -76,6 +81,8 @@ impl CallCmd {
             "join-chat" if is_meeting_chat(arg) => CallCmd::JoinChat(arg.into()),
             "join-ongoing" if arg.starts_with("19:") => CallCmd::JoinOngoing(arg.into()),
             "join-now" => CallCmd::JoinNow,
+            "join-device" => CallCmd::JoinDevice,
+            "sound" => CallCmd::ToggleSound,
             "cancel" => CallCmd::Cancel,
             "prejoin-mic" => CallCmd::PrejoinMic(arg == "on"),
             "mic" => CallCmd::Mic(arg.parse().ok()?),

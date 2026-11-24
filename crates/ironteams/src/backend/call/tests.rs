@@ -3,6 +3,7 @@ use serde_json::json;
 
 mod lifecycle;
 mod reactions_and_commands;
+mod other_device;
 mod roster;
 
 fn devices() -> Devices {

@@ -65,6 +65,13 @@ export component PreJoin inherits Rectangle {
                         label: "Cancel";
                         clicked => { CallStore.command("cancel", ""); }
                     }
+                    // In the meeting on another device already (a phone): join here too with
+                    // the mic and the sound off, so the two do not echo.
+                    Button { variant: ButtonVariant.action;
+                        label: "Add this device";
+                        tip: "Join with your mic and sound off, when you're already in this meeting on another device";
+                        clicked => { CallStore.command("join-device", ""); }
+                    }
                     Button { variant: ButtonVariant.action;
                         label: "Join now";
                         primary: true;

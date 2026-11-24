@@ -293,6 +293,36 @@ fn roster_people_mark_us_and_the_lobby() {
 }
 
 #[test]
+fn our_account_on_a_second_device_marks_us_elsewhere() {
+    let mut r = Roster::default();
+    r.apply(&json!({"participants": {
+        "8:orgid:me": {"version": 1, "state": "active", "details": {"displayName": "Me"},
+            "endpoints": {"laptop": {"call": {}}, "phone": {"call": {}}}},
+        "8:orgid:ada": {"version": 1, "state": "active", "details": {"displayName": "Ada"},
+            "endpoints": {"e": {"call": {}}}}
+    }}));
+    let shown = |r: &Roster| {
+        people(
+            r,
+            "8:orgid:me",
+            None,
+            &HashMap::new(),
+            &Talk::default(),
+            &RemoteVideo::default(),
+        )
+    };
+    let p = shown(&r);
+    assert_eq!(p.iter().filter(|p| p.me).count(), 1, "listed once");
+    assert!(p.iter().find(|p| p.me).unwrap().elsewhere);
+    assert!(!p.iter().find(|p| !p.me).unwrap().elsewhere);
+
+    // The phone left: only the laptop is in the call.
+    r.apply(&json!({"participants": {"8:orgid:me": {"version": 2, "state": "active",
+        "endpoints": {"laptop": {"call": {}}}}}}));
+    assert!(!shown(&r).iter().find(|p| p.me).unwrap().elsewhere);
+}
+
+#[test]
 fn a_looked_up_guest_and_outsiders_are_labelled_in_the_call() {
     use crate::backend::outsider::Outsider;
     let mut r = Roster::default();
