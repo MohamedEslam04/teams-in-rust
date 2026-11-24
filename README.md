@@ -289,4 +289,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 705bbad5 ("Merge fix/ams-asyncgw-fallback: media downloads retry on the asyncgw host when the AMS host fails", 2026-11-24)
+Docs synced to commit dc9c2202 ("Merge fix/http-error-causes: HTTP errors log their cause chain", 2026-11-24)
