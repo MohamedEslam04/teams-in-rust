@@ -1128,29 +1128,45 @@ fn the_gallery_pages_sixteen_tiles_at_a_time_with_a_pager() {
     assert!(c.shows("Person 01") && !c.shows("Person 17"));
 }
 
-/// Sixteen people in the speaker view: the strip keeps all fifteen others (it used to stop at
-/// eight, with no way to reach the rest) and scrolls with its arrows.
+/// Sixteen people in the speaker view: the strip used to stop at eight with no way to reach the
+/// rest. Now the ones that do not fit are out of sight until the arrows scroll them in (items
+/// clipped by the strip are not in the accessibility tree).
 #[test]
 fn the_speaker_strip_scrolls_to_everyone_instead_of_stopping_at_eight() {
     let c = CallHarness::new();
     c.connected();
     cs(&c.h.app).set_view_mode("speaker".into());
     let names = crowd(&c, 16);
+    let last = &names[15];
 
-    for name in &names {
-        assert!(c.shows(name), "{name} is in the strip or the large tile");
-    }
+    assert!(
+        c.shows(&names[0]) && c.shows(&names[1]),
+        "the speaker and the strip's start"
+    );
+    assert!(!c.shows(last), "the last person does not fit the strip yet");
     assert!(
         !c.shows("Show previous people"),
         "at the start of the strip"
     );
-    click(&c.button("Show more people"));
-    assert!(
-        c.shows("Show previous people"),
-        "scrolled: the way back is there"
-    );
-    click(&c.button("Show previous people"));
+
+    for _ in 0..10 {
+        if !c.shows("Show more people") {
+            break;
+        }
+        click(&c.button("Show more people"));
+    }
+    assert!(!c.shows("Show more people"), "scrolled to the end");
+    assert!(c.shows(last), "the last person is reachable");
+    assert!(c.shows("Show previous people"), "the way back is there");
+
+    for _ in 0..10 {
+        if !c.shows("Show previous people") {
+            break;
+        }
+        click(&c.button("Show previous people"));
+    }
     assert!(!c.shows("Show previous people"), "back at the start");
+    assert!(c.shows(&names[1]) && !c.shows(last));
 }
 
 #[test]
