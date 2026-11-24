@@ -3,6 +3,7 @@ use serde_json::json;
 
 mod lifecycle;
 mod other_device;
+mod people;
 mod reactions_and_commands;
 mod roster;
 

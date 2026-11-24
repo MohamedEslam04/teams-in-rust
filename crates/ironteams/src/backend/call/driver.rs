@@ -154,6 +154,14 @@ pub struct CallData {
     pub found: Vec<Found>,
     /// A short status under the invite box ("Calling Ada…").
     pub invite_status: String,
+    /// The People panel's "Others invited": invited to the meeting, not in the call.
+    pub invited: Vec<Absent>,
+    /// The People panel's "People added to the chat": in the chat, neither invited nor in the call.
+    pub chat_people: Vec<Absent>,
+    /// The meeting has a join link "Share invite" can copy.
+    pub can_share_invite: bool,
+    /// The text in the People panel's search box (the panel hides the rows that do not match).
+    pub people_filter: String,
     /// The reactions floating over the stage now, oldest first.
     pub reactions: Vec<Floating>,
 }

@@ -29,6 +29,24 @@ export struct CallPerson {
     // "External" or "Guest" for someone outside our organization ("" for a colleague): shown as
     // "(External)" after their name in People, the lobby and the tiles.
     badge: string,
+    // The People panel lists them: the text in its search box matches their name (always true
+    // for an empty box).
+    listed: bool,
+}
+
+// Someone the People panel lists although they are not in the call: invited to the meeting
+// ("Others invited") or only a member of its chat ("People added to the chat").
+export struct CallAbsent {
+    // Their MRI ("" when unknown: the row is then not clickable).
+    id: string,
+    name: string,
+    initials: string,
+    photo: image,
+    has-photo: bool,
+    // An invitee's answer: Declined | No response | Tentative | Accepted; "" for a chat member.
+    status: string,
+    // The search box text matches their name.
+    listed: bool,
 }
 
 // One meeting gallery slot's picture.
@@ -130,6 +148,12 @@ export global CallStore {
     in property <string> held-name;
     // In the call first, then the lobby.
     in property <[CallPerson]> people;
+    // The People panel's other sections: invited to the meeting but not in the call, and in the
+    // meeting chat but neither invited nor in the call.
+    in property <[CallAbsent]> invited;
+    in property <[CallAbsent]> chat-people;
+    // The meeting has a join link (the panel's Share invite copies it).
+    in property <bool> can-share-invite;
     // In the call (not the lobby) for the speaker view: the latest speaker first, then the rest.
     in property <[CallPerson]> speaker-people;
     // Who the floating call shows, latest speakers first (us only when alone), at most four,
@@ -192,7 +216,8 @@ export global CallStore {
     // prejoin-camera, leave, close, rejoin, dismiss-error, captions (on|off), recording
     // (start|stop), transcription (start|stop), dismiss-notice, resume, end-held,
     // control-request, control-release, control-give (MRI), control-allow, control-deny,
-    // admit (MRI), admit-all, control-take-back, control-key (key text), control-input (move x y | down b | up b |
+    // admit (MRI), admit-all, person-card (MRI), people-open, people-filter (text), share-invite,
+    // control-take-back, control-key (key text), control-input (move x y | down b | up b |
     // scroll dx dy | key-down text | key-up text). See
     // `backend/call.rs` `CallCmd::parse`.
     callback command(string, string);

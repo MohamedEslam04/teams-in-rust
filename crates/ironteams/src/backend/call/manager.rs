@@ -390,6 +390,16 @@ impl CallManager {
                 CallCmd::Control(a) => m.remote_control(a),
                 CallCmd::Admit(mri) => m.admit(&mri),
                 CallCmd::AdmitAll => m.admit_all(),
+                CallCmd::PeopleOpen => {
+                    m.people_opened();
+                    None
+                }
+                CallCmd::PeopleFilter(text) => {
+                    m.set_people_filter(&text);
+                    None
+                }
+                // The engine copies the link (`Engine::call_cmd`).
+                CallCmd::ShareInvite => None,
                 CallCmd::CameraDevice(i) => {
                     let changed = m.pick_camera(i);
                     let id = m.camera_id();

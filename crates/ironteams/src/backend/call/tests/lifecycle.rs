@@ -401,19 +401,10 @@ fn the_audio_devices_open_again_only_in_a_call() {
 
 #[test]
 fn photos_are_looked_up_by_mri_for_the_people_who_have_one() {
-    let p = |mri: &str| Person {
-        mri: mri.into(),
-        ..Default::default()
-    };
     let px = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(2, 2);
     let looked: Mutex<Vec<String>> = Mutex::new(Vec::new());
     let found = photos(
-        &[
-            p("8:example-ada"),
-            p(""),
-            p("8:example-bo"),
-            p("8:example-ada"),
-        ],
+        ["8:example-ada", "", "8:example-bo", "8:example-ada"],
         |mri| {
             looked.lock().unwrap().push(mri.to_owned());
             (mri == "8:example-ada").then(|| px.clone())

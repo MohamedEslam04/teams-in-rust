@@ -58,6 +58,10 @@ pub struct CallModel {
     pub find_seq: u64,
     /// A short status under the invite box ("Calling Ada…").
     pub invite_status: String,
+    /// Who the meeting's calendar event invited and who its chat holds (the People panel).
+    pub meeting_people: MeetingPeople,
+    /// The text in the People panel's search box, which its sections filter by.
+    pub people_filter: String,
     /// The reactions floating over the stage, oldest first.
     pub reactions: Vec<Floating>,
     /// The last [`Floating::id`] handed out.

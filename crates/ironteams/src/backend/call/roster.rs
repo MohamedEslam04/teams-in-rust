@@ -148,19 +148,19 @@ impl Person {
     }
 }
 
-/// The profile photos `lookup` knows for these people, by MRI. A lookup may start a download, so
-/// each MRI is asked once.
-pub(super) fn photos(
-    people: &[Person],
+/// The profile photos `lookup` knows for these people (MRIs), by MRI. A lookup may start a
+/// download, so each MRI is asked once.
+pub(super) fn photos<'a>(
+    mris: impl IntoIterator<Item = &'a str>,
     lookup: impl Fn(&str) -> Option<Pixels>,
 ) -> HashMap<String, Pixels> {
     let mut found = HashMap::new();
     let mut asked = HashSet::new();
-    for p in people.iter().filter(|p| !p.mri.is_empty()) {
-        if asked.insert(p.mri.as_str())
-            && let Some(px) = lookup(&p.mri)
+    for mri in mris.into_iter().filter(|m| !m.is_empty()) {
+        if asked.insert(mri)
+            && let Some(px) = lookup(mri)
         {
-            found.insert(p.mri.clone(), px);
+            found.insert(mri.to_owned(), px);
         }
     }
     found
