@@ -316,6 +316,8 @@ impl CallManager {
                 CallCmd::ToggleHold => m.toggle_hold().map(Control::Hold),
                 CallCmd::TransferOpen => m.transfer_opened().map(Control::Hold),
                 CallCmd::Find(_) => None,
+                // The card is the engine's (`call_person_card`); the call has nothing to do.
+                CallCmd::PersonCard(_) => None,
                 CallCmd::Invite(mri) => m.invite(&mri),
                 CallCmd::Transfer(mri) => m.transfer(&mri),
                 CallCmd::ToggleShare => m.toggle_share(),
