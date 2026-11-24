@@ -351,10 +351,7 @@ mod tests {
         let m = "8:orgid:pp-test-record";
         assert_eq!(record(m, "Busy", ""), (true, None));
         assert_eq!(record(m, "Busy", ""), (false, Some("Busy".to_string())));
-        assert_eq!(
-            record(m, "Available", ""),
-            (true, Some("Busy".to_string()))
-        );
+        assert_eq!(record(m, "Available", ""), (true, Some("Busy".to_string())));
     }
 
     #[test]

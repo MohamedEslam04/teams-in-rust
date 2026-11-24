@@ -1336,7 +1336,11 @@ mod tests {
             ["8:orgid:a", "8:orgid:b"]
         );
         // A list saved before the feature existed has no such key.
-        assert!(Local::from_json(&json!({"sections": []})).watched.is_empty());
+        assert!(
+            Local::from_json(&json!({"sections": []}))
+                .watched
+                .is_empty()
+        );
         let mut o = overlay();
         assert!(!o.is_watching("8:orgid:a"));
         o.local.watched.insert("8:orgid:a".into());

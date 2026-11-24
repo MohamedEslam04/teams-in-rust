@@ -640,8 +640,14 @@ impl Engine {
                 _ => String::new(),
             };
             let notify = match (&r.kind, &avatar_mri) {
-                (ConvKind::OneOnOne, Some(m)) if super::notify_available::can_watch(m, &self.me) => {
-                    if ov.is_watching(m) { "on" } else { "off" }
+                (ConvKind::OneOnOne, Some(m))
+                    if super::notify_available::can_watch(m, &self.me) =>
+                {
+                    if ov.is_watching(m) {
+                        "on"
+                    } else {
+                        "off"
+                    }
                 }
                 _ => "",
             };

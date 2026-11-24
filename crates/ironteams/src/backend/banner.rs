@@ -676,11 +676,11 @@ mod tests {
         use crate::support::quiet::Why;
         for why in [Why::Paused, Why::QuietHours, Why::Focus, Why::Routing] {
             for source in [
-            Source::Message,
-            Source::Calendar,
-            Source::Call,
-            Source::Presence,
-        ] {
+                Source::Message,
+                Source::Calendar,
+                Source::Call,
+                Source::Presence,
+            ] {
                 for active in [true, false] {
                     for cards in [true, false] {
                         for dnd in [true, false] {

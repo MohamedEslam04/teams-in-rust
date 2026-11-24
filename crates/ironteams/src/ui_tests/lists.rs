@@ -406,8 +406,14 @@ fn notify_when_available_switches_to_turn_off_notifications_and_is_saved() {
     h.runner()(Cmd::SetFilter("all".into()));
     open_item_menu(&h.app, "Ahmed Ali");
     let rows = menu_rows(&h.app);
-    assert!(rows.contains(&"Turn off notifications".to_string()), "{rows:?}");
-    assert!(!rows.contains(&"Notify when available".to_string()), "{rows:?}");
+    assert!(
+        rows.contains(&"Turn off notifications".to_string()),
+        "{rows:?}"
+    );
+    assert!(
+        !rows.contains(&"Notify when available".to_string()),
+        "{rows:?}"
+    );
     click(&menu_row(&h.app, "Turn off notifications"));
     assert_eq!(
         log.borrow().last().unwrap(),
@@ -446,14 +452,29 @@ fn a_watched_person_turning_available_raises_the_notice_but_others_do_not() {
         !h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"),
         "not on the list"
     );
-    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(AHMED_MRI.into(), true)));
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(
+        AHMED_MRI.into(),
+        true,
+    )));
     assert!(h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"));
-    assert!(h.engine.raises_notice(AHMED_MRI, Some("Offline"), "Available"));
-    assert!(!h.engine.raises_notice(AHMED_MRI, None, "Available"), "first sight");
-    assert!(!h.engine.raises_notice(AHMED_MRI, Some("Available"), "Available"));
+    assert!(
+        h.engine
+            .raises_notice(AHMED_MRI, Some("Offline"), "Available")
+    );
+    assert!(
+        !h.engine.raises_notice(AHMED_MRI, None, "Available"),
+        "first sight"
+    );
+    assert!(
+        !h.engine
+            .raises_notice(AHMED_MRI, Some("Available"), "Available")
+    );
     assert!(!h.engine.raises_notice(other, Some("Busy"), "Available"));
     // Turned off again: nothing more.
-    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(AHMED_MRI.into(), false)));
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(
+        AHMED_MRI.into(),
+        false,
+    )));
     assert!(!h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"));
 }
 
@@ -466,7 +487,10 @@ fn nobody_who_cannot_be_watched_gets_on_the_list() {
         demo::ME.into(),
         true,
     )));
-    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable("28:bot".into(), true)));
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(
+        "28:bot".into(),
+        true,
+    )));
     assert!(h.engine.test_saved_watchers().is_empty());
 }
 
