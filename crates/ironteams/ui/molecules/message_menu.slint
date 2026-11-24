@@ -3,6 +3,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Motion } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { FileItem, ImageItem } from "../tokens/types.slint";
 
 export component MessageMenu inherits Rectangle {
     in property <bool> mine;
@@ -18,6 +19,11 @@ export component MessageMenu inherits Rectangle {
     in property <bool> pinned: false;
     // The links in the text (Open link, Copy link).
     in property <[string]> urls;
+    // The pictures and files of the message: Copy image, Open in Browser, Download and Share for a
+    // picture, Open, Download, Copy link and Share for a file. A right click cannot tell which one
+    // was under the pointer, so with several each entry lists them.
+    in property <[ImageItem]> images;
+    in property <[FileItem]> files;
     // How many people have seen my message (`Msg.reader-list`): "Read by" shows when there are some.
     in property <int> reader-count: 0;
     // Opened from the Activity preview: only what works outside the open chat.
@@ -29,6 +35,10 @@ export component MessageMenu inherits Rectangle {
     callback unpin();
     callback open-link(string);
     callback copy-link-url(string);
+    // "copy", "browser" or "download" on one picture (its url).
+    callback image-action(string, string);
+    // "open", "download", "copy" or "share" on one file.
+    callback file-action(string, FileItem);
     callback immersive-reader();
     callback share-outlook();
     callback report();
@@ -63,6 +73,9 @@ export component MessageMenu inherits Rectangle {
     // With several links, Open link and Copy link list them.
     property <bool> open-links: false;
     property <bool> copy-links: false;
+    // Which picture or file entry shows its list when the message has several.
+    property <string> image-pick: "";
+    property <string> file-pick: "";
 
     width: 240px;
     height: items.preferred-height + 12px;
@@ -123,6 +136,56 @@ export component MessageMenu inherits Rectangle {
             clicked => { if root.urls.length == 1 { root.copy-link-url(root.urls[0]); } else { root.copy-links = !root.copy-links; } }
         }
         if root.copy-links: VerticalLayout { for u in root.urls: MenuItem { variant: MenuItemVariant.message; label: u; indent: true; clicked => { root.copy-link-url(u); } } }
+        if root.images.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Copy image");
+            icon: @image-url("../icons/copy.svg");
+            chevron: root.images.length > 1;
+            clicked => { if root.images.length == 1 { root.image-action("copy", root.images[0].url); } else { root.image-pick = root.image-pick == "copy" ? "" : "copy"; } }
+        }
+        if root.image-pick == "copy": VerticalLayout { for im[i] in root.images: MenuItem { variant: MenuItemVariant.message; label: @tr("Image {}", i + 1); indent: true; clicked => { root.image-action("copy", im.url); } } }
+        if root.images.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Open in Browser");
+            icon: @image-url("../icons/open.svg");
+            chevron: root.images.length > 1;
+            clicked => { if root.images.length == 1 { root.image-action("browser", root.images[0].url); } else { root.image-pick = root.image-pick == "browser" ? "" : "browser"; } }
+        }
+        if root.image-pick == "browser": VerticalLayout { for im[i] in root.images: MenuItem { variant: MenuItemVariant.message; label: @tr("Image {}", i + 1); indent: true; clicked => { root.image-action("browser", im.url); } } }
+        if root.images.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Download");
+            icon: @image-url("../icons/download.svg");
+            chevron: root.images.length > 1;
+            clicked => { if root.images.length == 1 { root.image-action("download", root.images[0].url); } else { root.image-pick = root.image-pick == "download" ? "" : "download"; } }
+        }
+        if root.image-pick == "download": VerticalLayout { for im[i] in root.images: MenuItem { variant: MenuItemVariant.message; label: @tr("Image {}", i + 1); indent: true; clicked => { root.image-action("download", im.url); } } }
+        if root.images.length > 0: MenuItem { variant: MenuItemVariant.message; label: @tr("Share"); icon: @image-url("../icons/share.svg"); clicked => { root.forward-one(); } }
+        if root.files.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Open file");
+            icon: @image-url("../icons/open.svg");
+            chevron: root.files.length > 1;
+            clicked => { if root.files.length == 1 { root.file-action("open", root.files[0]); } else { root.file-pick = root.file-pick == "open" ? "" : "open"; } }
+        }
+        if root.file-pick == "open": VerticalLayout { for f in root.files: MenuItem { variant: MenuItemVariant.message; label: f.name; indent: true; clicked => { root.file-action("open", f); } } }
+        if root.files.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Download file");
+            icon: @image-url("../icons/download.svg");
+            chevron: root.files.length > 1;
+            clicked => { if root.files.length == 1 { root.file-action("download", root.files[0]); } else { root.file-pick = root.file-pick == "download" ? "" : "download"; } }
+        }
+        if root.file-pick == "download": VerticalLayout { for f in root.files: MenuItem { variant: MenuItemVariant.message; label: f.name; indent: true; clicked => { root.file-action("download", f); } } }
+        if root.files.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Copy file link");
+            icon: @image-url("../icons/link.svg");
+            chevron: root.files.length > 1;
+            clicked => { if root.files.length == 1 { root.file-action("copy", root.files[0]); } else { root.file-pick = root.file-pick == "copy" ? "" : "copy"; } }
+        }
+        if root.file-pick == "copy": VerticalLayout { for f in root.files: MenuItem { variant: MenuItemVariant.message; label: f.name; indent: true; clicked => { root.file-action("copy", f); } } }
+        if root.files.length > 0: MenuItem { variant: MenuItemVariant.message;
+            label: @tr("Share file");
+            icon: @image-url("../icons/share.svg");
+            chevron: root.files.length > 1;
+            clicked => { if root.files.length == 1 { root.file-action("share", root.files[0]); } else { root.file-pick = root.file-pick == "share" ? "" : "share"; } }
+        }
+        if root.file-pick == "share": VerticalLayout { for f in root.files: MenuItem { variant: MenuItemVariant.message; label: f.name; indent: true; clicked => { root.file-action("share", f); } } }
         if !root.mine: MenuItem { variant: MenuItemVariant.message;
             label: root.saved ? @tr("Unsave this message") : @tr("Save this message");
             icon: @image-url("../icons/star.svg");

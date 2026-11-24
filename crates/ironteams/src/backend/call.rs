@@ -45,6 +45,8 @@ pub(crate) mod video_fx;
 
 mod roster;
 pub use roster::*;
+mod meeting_roster;
+pub use meeting_roster::*;
 mod events;
 pub use events::*;
 mod driver;

@@ -4,13 +4,17 @@
 //! devices, so a status the user forced stays in charge.
 //!
 //! [`install`] is called once with the signed-in client; [`update`] from the call manager on
-//! every call state change. Repeated updates with the same state send nothing.
+//! every call state change. Repeated updates with the same state send nothing. Each publish also
+//! asks for our own presence to be read again, so the status shown follows at once.
 
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 use teams_proto::Client;
 use teams_proto::presence::Availability;
 
 static CLIENT: OnceLock<Client> = OnceLock::new();
+/// How long after publishing our own presence is read a second time.
+const SETTLE: Duration = Duration::from_secs(3);
 /// The activity last published: `None` for no call (Available).
 static PUBLISHED: Mutex<Option<&'static str>> = Mutex::new(None);
 
@@ -68,6 +72,11 @@ pub fn update(connected: bool, meeting: bool) {
         if let Err(e) = r {
             tracing::warn!("in-call presence: {e}");
         }
+        // The status shown to us follows the service: read it now, and once more shortly after
+        // in case the service had not combined the devices yet, instead of at the next minute.
+        super::people_presence::refresh_mine();
+        tokio::time::sleep(SETTLE).await;
+        super::people_presence::refresh_mine();
     });
 }
 

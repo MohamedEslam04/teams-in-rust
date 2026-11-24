@@ -12,9 +12,11 @@ use tracing_subscriber::prelude::*;
 
 /// Info for the app and the call code, warnings from everything else. The raw conversation
 /// properties of `ongoing_call::capture` are a development aid and stay off. `teams_proto` and
-/// the rest stay at warn: they are the chatty ones.
-const DEFAULT_FILTER: &str =
-    "ironteams=info,ironteams::ongoing_call::capture=warn,calling=info,teams_proto=warn,warn";
+/// the rest stay at warn: they are the chatty ones. The WebRTC stack's packet handlers warn about
+/// every duplicate SRTP packet and stray STUN reply a relayed call has (20 000 lines in one
+/// evening, none of them actionable), so those two targets only log errors.
+const DEFAULT_FILTER: &str = "ironteams=info,ironteams::ongoing_call::capture=warn,calling=info,teams_proto=warn,\
+rtc::peer_connection::handler=error,rtc_ice::agent::agent_selector=error,warn";
 const FILE_NAME: &str = "ironteams.log";
 /// 5 files of up to 5 MiB: `ironteams.log` and `ironteams.log.1` ... `.4`, the oldest deleted.
 const MAX_BYTES: u64 = 5 * 1024 * 1024;
@@ -183,6 +185,13 @@ mod tests {
             pick_directives(Some("  ")),
             (DEFAULT_FILTER.to_owned(), false)
         );
+    }
+
+    #[test]
+    fn default_filter_parses_and_keeps_the_packet_handlers_to_errors() {
+        assert!(EnvFilter::try_new(DEFAULT_FILTER).is_ok());
+        assert!(DEFAULT_FILTER.contains("rtc::peer_connection::handler=error"));
+        assert!(DEFAULT_FILTER.contains("rtc_ice::agent::agent_selector=error"));
     }
 
     #[test]

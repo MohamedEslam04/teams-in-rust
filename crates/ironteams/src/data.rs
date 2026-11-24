@@ -37,6 +37,9 @@ pub struct ChatData {
     pub private: bool,
     /// `chat` (1:1), `notes`, `group`, `meeting` or `channel`: the row's avatar style.
     pub kind: &'static str,
+    /// "Notify when available" in the item menu of a 1:1 chat with another person: `""` (not
+    /// offered), `off` (offered) or `on` (the menu offers to turn it off).
+    pub notify: &'static str,
 }
 
 /// A chip above the composer.

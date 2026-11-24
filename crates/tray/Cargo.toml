@@ -23,9 +23,14 @@ ksni = { version = "0.3.7", default-features = false, features = ["async-io"] }
 # zbus panic there ("no reactor running"). async-io has its own reactor, so it also works inside tokio.
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
-# Autostart: the per-user Run key.
+# Autostart: the per-user Run key. Idle time: the last input tick.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Registry"] }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

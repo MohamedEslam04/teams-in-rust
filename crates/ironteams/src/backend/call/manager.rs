@@ -293,6 +293,13 @@ impl CallManager {
                     drop(m);
                     return self.join_now();
                 }
+                CallCmd::JoinDevice => {
+                    if !m.add_device() {
+                        return;
+                    }
+                    drop(m);
+                    return self.join_now();
+                }
                 CallCmd::JoinChat(_) | CallCmd::JoinOngoing(_) => None,
                 CallCmd::Cancel => {
                     m.cancel();
@@ -302,9 +309,14 @@ impl CallManager {
                     m.mic_on = on;
                     None
                 }
+                CallCmd::PrejoinAudio(computer) => {
+                    m.prejoin_audio(computer);
+                    None
+                }
                 CallCmd::Mic(i) => m.pick_device(true, i),
                 CallCmd::Speaker(i) => m.pick_device(false, i),
                 CallCmd::ToggleMute => m.toggle_mute().map(Control::Mute),
+                CallCmd::ToggleSound => m.toggle_sound().map(Control::Sound),
                 CallCmd::ToggleHand => m.toggle_hand().map(|up| {
                     if up {
                         Control::RaiseHand
@@ -316,6 +328,8 @@ impl CallManager {
                 CallCmd::ToggleHold => m.toggle_hold().map(Control::Hold),
                 CallCmd::TransferOpen => m.transfer_opened().map(Control::Hold),
                 CallCmd::Find(_) => None,
+                // The card is the engine's (`call_person_card`); the call has nothing to do.
+                CallCmd::PersonCard(_) => None,
                 CallCmd::Invite(mri) => m.invite(&mri),
                 CallCmd::Transfer(mri) => m.transfer(&mri),
                 CallCmd::ToggleShare => m.toggle_share(),
@@ -376,6 +390,16 @@ impl CallManager {
                 CallCmd::Control(a) => m.remote_control(a),
                 CallCmd::Admit(mri) => m.admit(&mri),
                 CallCmd::AdmitAll => m.admit_all(),
+                CallCmd::PeopleOpen => {
+                    m.people_opened();
+                    None
+                }
+                CallCmd::PeopleFilter(text) => {
+                    m.set_people_filter(&text);
+                    None
+                }
+                // The engine copies the link (`Engine::call_cmd`).
+                CallCmd::ShareInvite => None,
                 CallCmd::CameraDevice(i) => {
                     let changed = m.pick_camera(i);
                     let id = m.camera_id();

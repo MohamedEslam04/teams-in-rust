@@ -37,6 +37,7 @@ impl Engine {
                     tokio::spawn(async move { e.flush_outbox(true).await });
                     if was_disconnected {
                         // Catch up on anything missed while offline.
+                        self.on_activity_event();
                         let e = self.clone();
                         tokio::spawn(async move {
                             let _ = e.sync().await;
@@ -90,6 +91,11 @@ impl Engine {
             }
             Event::ConversationUpdate { conversation_id }
             | Event::ThreadUpdate { conversation_id } => {
+                if conversation_id == "48:notifications" {
+                    // Another client moved the Activity feed's read position.
+                    self.on_activity_event();
+                    return;
+                }
                 let known = self
                     .store
                     .lock()

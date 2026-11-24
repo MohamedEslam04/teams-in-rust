@@ -14,7 +14,7 @@ use super::Engine;
 use crate::data::ChatData;
 use crate::lists_data::{ChannelMenuData, ChoiceData, ListOptions, SectionData};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use teams_proto::sections::{FolderKind, Folders};
 use teams_proto::teams::{ChannelKind, ChannelNotify, ChannelRef, NotifyLevel, TeamEntry};
@@ -60,6 +60,9 @@ pub enum ListsCmd {
     /// The chat item menu's "Manage apps": no read of a chat's installed apps is known, so it
     /// says so (see `MANAGE_APPS_NOTE`).
     ManageApps(String),
+    /// The chat item menu's "Notify when available" (or "Turn off notifications") for the person
+    /// of a 1:1 chat, by their MRI (see `notify_available`).
+    NotifyWhenAvailable(String, bool),
     /// `previews`, `times` or `combined`, on or off.
     Option(String, bool),
     ChannelMenu(String),
@@ -92,6 +95,8 @@ impl ListsCmd {
             "hide" => ListsCmd::Hide(a),
             "remove-history" => ListsCmd::RemoveHistory(a),
             "manage-apps" => ListsCmd::ManageApps(a),
+            "notify-available" => ListsCmd::NotifyWhenAvailable(a, true),
+            "notify-available-off" => ListsCmd::NotifyWhenAvailable(a, false),
             "option" => ListsCmd::Option(a, b == "on"),
             "channel-menu" => ListsCmd::ChannelMenu(a),
             "channel-show" => ListsCmd::ChannelShow(a),
@@ -116,6 +121,8 @@ pub(crate) struct Local {
     pub expanded: HashMap<String, bool>,
     /// Chats hidden from the list until they get a newer message: id, time of hiding.
     pub hidden: HashMap<String, i64>,
+    /// People to notify when they turn Available (`notify_available`), by MRI.
+    pub watched: BTreeSet<String>,
     pub opts: ListOptions,
 }
 
@@ -126,6 +133,7 @@ impl Local {
             "assign": self.assign,
             "expanded": self.expanded,
             "hidden": self.hidden,
+            "watched": self.watched,
             "opts": {"previews": self.opts.previews, "times": self.opts.times, "combined": self.opts.combined},
         })
     }
@@ -166,6 +174,13 @@ impl Local {
             hidden: map("hidden")
                 .into_iter()
                 .filter_map(|(k, v)| Some((k, v.as_i64()?)))
+                .collect(),
+            watched: v
+                .get("watched")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|m| m.as_str().map(str::to_owned))
                 .collect(),
             opts: ListOptions {
                 previews: flag("previews", true),
@@ -283,6 +298,11 @@ impl Overlay {
                 .hidden
                 .get(id)
                 .is_some_and(|at| last_activity_ms <= *at)
+    }
+
+    /// The person is on the "Notify when available" list.
+    pub(super) fn is_watching(&self, person: &str) -> bool {
+        self.local.watched.contains(person)
     }
 
     /// The group Teams-and-channels rows belong to when the user chose to combine them.
@@ -429,6 +449,50 @@ impl Engine {
         if let Err(err) = self.store.lock().unwrap().set_kv(KV_KEY, &json) {
             tracing::warn!(%err, "saving the list state failed");
         }
+    }
+
+    /// "Notify when available" was turned on or off for a person. Saved with the list state; a
+    /// person turned on is looked up at once, so the first status is known before it changes.
+    fn set_watching(&self, person: &str, on: bool) -> anyhow::Result<()> {
+        if on && !super::notify_available::can_watch(person, &self.me) {
+            return Ok(());
+        }
+        let changed = {
+            let mut st = self.lists.lock().unwrap();
+            if on {
+                st.local.watched.insert(person.to_string())
+            } else {
+                st.local.watched.remove(person)
+            }
+        };
+        if !changed {
+            return Ok(());
+        }
+        self.lists_save();
+        if on {
+            super::people_presence::want(person);
+        }
+        self.mark(|d| d.chats = true);
+        Ok(())
+    }
+
+    /// Whether the person is on the "Notify when available" list.
+    pub(super) fn is_watching(&self, person: &str) -> bool {
+        self.lists_load();
+        self.lists.lock().unwrap().local.watched.contains(person)
+    }
+
+    /// Everyone on the "Notify when available" list.
+    pub(super) fn watched_people(&self) -> Vec<String> {
+        self.lists_load();
+        self.lists
+            .lock()
+            .unwrap()
+            .local
+            .watched
+            .iter()
+            .cloned()
+            .collect()
     }
 
     /// A snapshot for rendering the chat list.
@@ -670,6 +734,7 @@ impl Engine {
                 self.ui.banner(MANAGE_APPS_NOTE.into());
                 Ok(())
             }
+            ListsCmd::NotifyWhenAvailable(person, on) => self.set_watching(&person, on),
             ListsCmd::Option(name, on) => self.set_option(&name, on),
             ListsCmd::ChannelMenu(id) => self.channel_menu(&id).await,
             ListsCmd::ChannelShow(id) => self.set_channel_shown(&id, true).await,
@@ -1168,6 +1233,16 @@ impl Engine {
         self.lists_apply_folders(f);
     }
 
+    /// The people to notify when available as saved in the store (what the next start reads).
+    #[cfg(test)]
+    pub(crate) fn test_saved_watchers(&self) -> Vec<String> {
+        let saved = self.store.lock().unwrap().get_kv(KV_KEY).ok().flatten();
+        saved
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .map(|v| Local::from_json(&v).watched.into_iter().collect())
+            .unwrap_or_default()
+    }
+
     #[cfg(test)]
     pub(crate) fn test_set_teams(&self, teams: &[TeamEntry]) {
         self.lists_apply_teams(teams);
@@ -1236,6 +1311,40 @@ mod tests {
             ListsCmd::parse("manage-apps", "19:x"),
             Some(ListsCmd::ManageApps("19:x".into()))
         );
+    }
+
+    #[test]
+    fn parses_notify_when_available_on_and_off() {
+        assert_eq!(
+            ListsCmd::parse("notify-available", "8:orgid:a"),
+            Some(ListsCmd::NotifyWhenAvailable("8:orgid:a".into(), true))
+        );
+        assert_eq!(
+            ListsCmd::parse("notify-available-off", "8:orgid:a"),
+            Some(ListsCmd::NotifyWhenAvailable("8:orgid:a".into(), false))
+        );
+    }
+
+    #[test]
+    fn the_people_to_notify_survive_a_round_trip_and_an_old_save_has_none() {
+        let mut l = Local::default();
+        l.watched.insert("8:orgid:b".into());
+        l.watched.insert("8:orgid:a".into());
+        let back = Local::from_json(&l.to_json());
+        assert_eq!(
+            back.watched.iter().collect::<Vec<_>>(),
+            ["8:orgid:a", "8:orgid:b"]
+        );
+        // A list saved before the feature existed has no such key.
+        assert!(
+            Local::from_json(&json!({"sections": []}))
+                .watched
+                .is_empty()
+        );
+        let mut o = overlay();
+        assert!(!o.is_watching("8:orgid:a"));
+        o.local.watched.insert("8:orgid:a".into());
+        assert!(o.is_watching("8:orgid:a"));
     }
 
     #[test]

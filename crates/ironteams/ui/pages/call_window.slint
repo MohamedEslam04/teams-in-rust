@@ -13,6 +13,7 @@ import { PreJoin } from "../organisms/call_prejoin.slint";
 import { PeoplePanel, MorePanel } from "../organisms/call_people.slint";
 import { CaptionStrip } from "../molecules/call_captions.slint";
 import { HeldBar } from "../molecules/call_held.slint";
+import { DeviceBar } from "../molecules/call_device_bar.slint";
 import { CallFeedback } from "../organisms/call_feedback.slint";
 import { ReactionMenu, ReactionsOverlay } from "../molecules/call_reactions.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
@@ -41,6 +42,7 @@ component InCall inherits Rectangle {
             tone: #4b4f8a;
         }
         if CallStore.held-name != "": HeldBar { }
+        if CallStore.other-device || CallStore.sound-off: DeviceBar { }
         if CallStore.phase == "reconnecting": Banner {
             message: "Reconnecting… Your connection was interrupted.";
             tone: #8a5a00;

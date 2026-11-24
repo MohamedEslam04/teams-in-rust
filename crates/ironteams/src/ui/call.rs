@@ -1,13 +1,15 @@
 //! UI-thread side of the call window: fills the `CallStore` global (`ui/stores/call_store.slint`).
 
 use super::{UiHandle, model};
-use crate::backend::call::{CallData, Floating, Found, Person, REACTIONS, is_meeting_chat};
+use crate::backend::call::{
+    Absent, CallData, Floating, Found, Person, REACTIONS, is_meeting_chat, matches_query,
+};
 use crate::backend::call_feedback::{self, Ask};
 use crate::backend::outsider::Outsider;
 use crate::data::{Pixels, initials};
 use crate::{
-    AppWindow, CallCaption, CallFound, CallPerson, CallReaction, CallStore, SettingsStore,
-    VideoFxStore,
+    AppWindow, CallAbsent, CallCaption, CallFound, CallPerson, CallReaction, CallStore,
+    SettingsStore, VideoFxStore,
 };
 use slint::{ComponentHandle, Image, SharedString};
 use std::cell::RefCell;
@@ -107,6 +109,7 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     s.set_control_mode(d.control_mode.into());
     s.set_control_name(d.control_name.into());
     s.set_prejoin_mic(d.prejoin_mic);
+    s.set_prejoin_audio(d.prejoin_audio);
     s.set_prejoin_camera(d.prejoin_camera);
     s.set_recording(d.recording);
     s.set_transcribing(d.transcribing);
@@ -133,6 +136,8 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
         s.get_gallery_per_page(),
     ));
     s.set_in_lobby(int(d.in_lobby));
+    s.set_sound_off(d.sound_off);
+    s.set_other_device(d.other_device);
     s.set_can_admit(d.can_admit);
     let images = photo_images(&photos);
     // Every tile and People row shows its person's live reaction.
@@ -160,13 +165,31 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     fill_speakers(&s, &last);
     LAST.with(|l| *l.borrow_mut() = Some(last));
     let owner = video_owner(&d.people);
+    // The People panel hides the rows its search box does not match; the stage keeps everyone.
+    let filter = d.people_filter;
     s.set_people(model(
         d.people
             .into_iter()
             .enumerate()
-            .map(|(i, p)| call_person(p, &images, Some(i) == owner))
+            .map(|(i, p)| CallPerson {
+                listed: matches_query(&p.name, &filter),
+                ..call_person(p, &images, Some(i) == owner)
+            })
             .collect(),
     ));
+    s.set_invited(model(
+        d.invited
+            .into_iter()
+            .map(|a| call_absent(a, &images, &filter))
+            .collect(),
+    ));
+    s.set_chat_people(model(
+        d.chat_people
+            .into_iter()
+            .map(|a| call_absent(a, &images, &filter))
+            .collect(),
+    ));
+    s.set_can_share_invite(d.can_share_invite);
     MIC_ID.with(|m| m.borrow_mut().clone_from(&d.mic_id));
     s.set_mics(texts(d.mics));
     s.set_mic(int(d.mic));
@@ -291,9 +314,24 @@ fn photo_images(photos: &HashMap<String, Pixels>) -> HashMap<String, Image> {
     })
 }
 
+/// A People panel row of someone who is not in the call.
+fn call_absent(a: Absent, images: &HashMap<String, Image>, filter: &str) -> CallAbsent {
+    let photo = images.get(&a.mri);
+    CallAbsent {
+        id: a.mri.into(),
+        has_photo: photo.is_some(),
+        photo: photo.cloned().unwrap_or_default(),
+        initials: initials(&a.name).into(),
+        listed: matches_query(&a.name, filter),
+        name: a.name.into(),
+        status: a.status.into(),
+    }
+}
+
 fn call_person(p: Person, images: &HashMap<String, Image>, video: bool) -> CallPerson {
     let photo = images.get(&p.mri);
     CallPerson {
+        listed: true,
         id: p.mri.clone().into(),
         has_photo: photo.is_some(),
         photo: photo.cloned().unwrap_or_default(),

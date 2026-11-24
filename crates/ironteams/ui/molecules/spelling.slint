@@ -11,6 +11,8 @@ export struct SpellWord {
     start: int,
     end: int,
     word: string,
+    // the side of the word's line in the composer: 1 right, -1 left, 0 the language's side
+    dir: int,
 }
 
 export global SpellApi {
@@ -83,7 +85,7 @@ export component SpellOverlay inherits Rectangle {
             font-size: root.font-size;
             single-line: false;
             wrap: word-wrap;
-            horizontal-alignment: root.align;
+            horizontal-alignment: w.dir > 0 ? TextHorizontalAlignment.right : w.dir < 0 ? TextHorizontalAlignment.left : root.align;
             color: transparent;
             read-only: true;
             enabled: false;

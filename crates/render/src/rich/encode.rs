@@ -11,24 +11,48 @@ use super::{
     HIGHLIGHT_ITEMTYPE, HIGHLIGHT_PALETTE, ListItem, RichBlock, RichDoc, RichList, RichTable,
     TableCell, clean_language, is_http_url, is_safe_link, parse_css_color,
 };
-use crate::compose::escape;
-use crate::{FontSize, Span};
+use crate::compose::{dir_attr, escape};
+use crate::{Dir, FontSize, Span, spans_text, text_direction};
 
 impl RichDoc {
-    /// Teams message HTML for this document.
+    /// Teams message HTML for this document. When a block is right-to-left,
+    /// every paragraph, heading, quote and list item with a strong character
+    /// says its own direction (`dir="rtl"` or `dir="ltr"`).
     pub fn to_html(&self) -> String {
+        let mixed = self.blocks.iter().any(block_is_rtl);
         let mut out = String::new();
         for block in &self.blocks {
-            block_html(block, &mut out);
+            block_html(block, mixed, &mut out);
         }
         out
     }
 }
 
-fn block_html(block: &RichBlock, out: &mut String) {
+fn spans_dir(spans: &[Span]) -> Option<Dir> {
+    text_direction(&spans_text(spans))
+}
+
+fn block_is_rtl(block: &RichBlock) -> bool {
+    fn list_is_rtl(list: &RichList) -> bool {
+        list.items.iter().any(|item| {
+            spans_dir(&item.spans) == Some(Dir::Rtl) || item.children.iter().any(list_is_rtl)
+        })
+    }
+    match block {
+        RichBlock::Paragraph(spans)
+        | RichBlock::Heading { spans, .. }
+        | RichBlock::Quote(spans) => spans_dir(spans) == Some(Dir::Rtl),
+        RichBlock::List(list) => list_is_rtl(list),
+        _ => false,
+    }
+}
+
+fn block_html(block: &RichBlock, mixed: bool, out: &mut String) {
     match block {
         RichBlock::Paragraph(spans) => {
-            out.push_str("<p>");
+            out.push_str("<p");
+            out.push_str(dir_attr(spans_dir(spans), mixed));
+            out.push('>');
             if !spans_html(spans, out) {
                 out.push_str("&nbsp;");
             }
@@ -36,16 +60,19 @@ fn block_html(block: &RichBlock, out: &mut String) {
         }
         RichBlock::Heading { level, spans } => {
             let level = (*level).clamp(1, 3);
-            out.push_str(&format!("<h{level}>"));
+            out.push_str(&format!("<h{level}{}>", dir_attr(spans_dir(spans), mixed)));
             spans_html(spans, out);
             out.push_str(&format!("</h{level}>"));
         }
         RichBlock::Quote(spans) => {
-            out.push_str("<blockquote>");
+            out.push_str(&format!(
+                "<blockquote{}>",
+                dir_attr(spans_dir(spans), mixed)
+            ));
             spans_html(spans, out);
             out.push_str("</blockquote>");
         }
-        RichBlock::List(list) => list_html(list, out),
+        RichBlock::List(list) => list_html(list, mixed, out),
         RichBlock::Code { language, text } => {
             let language = language
                 .as_deref()
@@ -85,7 +112,7 @@ fn block_html(block: &RichBlock, out: &mut String) {
     }
 }
 
-fn list_html(list: &RichList, out: &mut String) {
+fn list_html(list: &RichList, mixed: bool, out: &mut String) {
     if list.items.is_empty() {
         return;
     }
@@ -95,10 +122,12 @@ fn list_html(list: &RichList, out: &mut String) {
         (true, _) => out.push_str("<ol>"),
     }
     for ListItem { spans, children } in &list.items {
-        out.push_str("<li>");
+        out.push_str("<li");
+        out.push_str(dir_attr(spans_dir(spans), mixed));
+        out.push('>');
         spans_html(spans, out);
         for child in children {
-            list_html(child, out);
+            list_html(child, mixed, out);
         }
         out.push_str("</li>");
     }

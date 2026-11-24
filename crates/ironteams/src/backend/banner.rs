@@ -43,6 +43,9 @@ pub enum Source {
     Calendar,
     /// An incoming call.
     Call,
+    /// A person on the "Notify when available" list turned Available. Like a calendar notice it
+    /// has no in-app card: it shows on the desktop whatever the window is doing.
+    Presence,
 }
 
 /// What the place depends on besides the notification rules.
@@ -573,6 +576,25 @@ mod tests {
     }
 
     #[test]
+    fn a_person_turning_available_shows_on_the_desktop_like_a_calendar_notice() {
+        for active in [true, false] {
+            assert_eq!(
+                route(&SHOW, Source::Presence, &at(active, true, false)),
+                Route::Card
+            );
+            assert_eq!(
+                route(&SHOW, Source::Presence, &at(active, false, false)),
+                Route::System
+            );
+            assert_eq!(
+                route(&SHOW, Source::Presence, &at(active, true, true)),
+                Route::System,
+                "the desktop's Do Not Disturb keeps it quiet"
+            );
+        }
+    }
+
+    #[test]
     fn calendar_notices_go_to_the_desktop_even_with_the_window_in_front() {
         for active in [true, false] {
             assert_eq!(
@@ -653,7 +675,12 @@ mod tests {
     fn muted_paused_and_focused_out_notifications_show_nowhere() {
         use crate::support::quiet::Why;
         for why in [Why::Paused, Why::QuietHours, Why::Focus, Why::Routing] {
-            for source in [Source::Message, Source::Calendar, Source::Call] {
+            for source in [
+                Source::Message,
+                Source::Calendar,
+                Source::Call,
+                Source::Presence,
+            ] {
                 for active in [true, false] {
                     for cards in [true, false] {
                         for dnd in [true, false] {

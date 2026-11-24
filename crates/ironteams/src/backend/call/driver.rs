@@ -5,6 +5,8 @@ use super::*;
 pub struct JoinOptions {
     pub name: String,
     pub mic_on: bool,
+    /// Join playing no sound ([`CallModel::sound_off`]).
+    pub sound_off: bool,
     /// Device ids for the live driver's audio (`None`: the system default).
     #[cfg(any(test, feature = "calls"))]
     pub mic: Option<String>,
@@ -128,6 +130,13 @@ pub struct CallData {
     /// this meeting when it is the one on hold (a 1:1 call has its own Resume). Empty: no bar.
     pub held_name: String,
     pub people: Vec<Person>,
+    /// The pre-join audio choice is Computer audio (not Don't use audio).
+    pub prejoin_audio: bool,
+    /// The call plays no sound here ([`CallModel::sound_off`]).
+    pub sound_off: bool,
+    /// Our account is in this call on another device too (the roster lists more than one of
+    /// our devices): the window says so.
+    pub other_device: bool,
     pub in_call: usize,
     pub in_lobby: usize,
     /// We may let people in from the lobby (we are not a plain attendee).
@@ -145,6 +154,14 @@ pub struct CallData {
     pub found: Vec<Found>,
     /// A short status under the invite box ("Calling Ada…").
     pub invite_status: String,
+    /// The People panel's "Others invited": invited to the meeting, not in the call.
+    pub invited: Vec<Absent>,
+    /// The People panel's "People added to the chat": in the chat, neither invited nor in the call.
+    pub chat_people: Vec<Absent>,
+    /// The meeting has a join link "Share invite" can copy.
+    pub can_share_invite: bool,
+    /// The text in the People panel's search box (the panel hides the rows that do not match).
+    pub people_filter: String,
     /// The reactions floating over the stage now, oldest first.
     pub reactions: Vec<Floating>,
 }

@@ -188,7 +188,7 @@ impl Engine {
     }
 
     /// Fetches and stores the profiles of members we have no name for yet.
-    pub(super) async fn resolve_names(&self, mris: &[String]) {
+    pub(in super::super) async fn resolve_names(&self, mris: &[String]) {
         if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
             return;
         }

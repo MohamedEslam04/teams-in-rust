@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::backend::MediaCmd;
-use crate::{FileItem, LoopCard, MediaStore, PeopleStore};
+use crate::{FileItem, ImageItem, LoopCard, MediaStore, PeopleStore};
 
 /// Records the `MediaStore` and `PeopleStore` commands as `"<store> <name> <argument>"` (the unit
 /// separator shown as `|`).
@@ -206,6 +206,108 @@ fn a_file_card_says_where_it_opens_and_its_menu_downloads_copies_shares_and_open
     tap(&app, "More options for plan.docx");
     tap(&app, "Open");
     assert_eq!(*opened.borrow(), [format!("kelma-file:DOCX:{SP_FILE}")]);
+}
+
+fn pictures(urls: &[&str]) -> ModelRc<ImageItem> {
+    ModelRc::new(VecModel::from(
+        urls.iter()
+            .map(|u| ImageItem {
+                url: (*u).into(),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>(),
+    ))
+}
+
+#[test]
+fn a_picture_offers_copy_open_in_browser_download_and_share_in_the_message_menu() {
+    let mut m = msg("m1", "a screenshot", false);
+    m.images = pictures(&["https://pics.invalid/a.png"]);
+    let app = app_with_messages(vec![m, msg("m2", "no picture", false)]);
+    let log = store_log(&app);
+
+    open_menu(&app, &rows(&app)[0]);
+    let labels = menu_labels(&app);
+    for entry in ["Copy image", "Open in Browser", "Download", "Share"] {
+        assert!(labels.contains(&entry.to_string()), "{entry}: {labels:?}");
+    }
+    click(&menu_item(&app, "Copy image"));
+    assert!(!app.get_menu_open());
+    for (entry, cmd) in [("Open in Browser", "browser"), ("Download", "download")] {
+        open_menu(&app, &rows(&app)[0]);
+        click(&menu_item(&app, entry));
+        assert_eq!(
+            log.borrow().last().unwrap(),
+            &format!("media image-do {cmd}|m1|https://pics.invalid/a.png")
+        );
+    }
+    assert_eq!(
+        log.borrow()[0],
+        "media image-do copy|m1|https://pics.invalid/a.png"
+    );
+
+    open_menu(&app, &rows(&app)[1]);
+    let labels = menu_labels(&app);
+    assert!(!labels.contains(&"Copy image".to_string()), "{labels:?}");
+    assert!(
+        !labels.contains(&"Open in Browser".to_string()),
+        "{labels:?}"
+    );
+}
+
+#[test]
+fn several_pictures_are_listed_under_each_picture_entry() {
+    let mut m = msg("m1", "two screenshots", false);
+    m.images = pictures(&["https://pics.invalid/a.png", "https://pics.invalid/b.png"]);
+    let app = app_with_messages(vec![m]);
+    let log = store_log(&app);
+
+    open_menu(&app, &rows(&app)[0]);
+    click(&menu_item(&app, "Download"));
+    assert!(app.get_menu_open(), "the pictures are listed");
+    click(&menu_item(&app, "Image 2"));
+    assert_eq!(
+        *log.borrow(),
+        ["media image-do download|m1|https://pics.invalid/b.png"]
+    );
+}
+
+#[test]
+fn a_file_offers_open_download_copy_link_and_share_in_the_message_menu() {
+    let mut m = msg("m1", "the plan", false);
+    m.files = ModelRc::new(VecModel::from(vec![FileItem {
+        name: "plan.docx".into(),
+        url: SP_FILE.into(),
+        ext: "DOCX".into(),
+        place: "OneDrive".into(),
+        detail: "Opens in the desktop app".into(),
+    }]));
+    let app = app_with_messages(vec![m, msg("m2", "no file", false)]);
+    let log = store_log(&app);
+    let opened = Log::default();
+    let o = opened.clone();
+    app.on_open_url(move |u| o.borrow_mut().push(u.to_string()));
+
+    for (entry, cmd) in [
+        ("Download file", "download"),
+        ("Copy file link", "copy"),
+        ("Share file", "share"),
+    ] {
+        open_menu(&app, &rows(&app)[0]);
+        click(&menu_item(&app, entry));
+        assert!(!app.get_menu_open());
+        assert_eq!(
+            log.borrow().last().unwrap(),
+            &format!("media file {cmd}|{SP_FILE}")
+        );
+    }
+    open_menu(&app, &rows(&app)[0]);
+    click(&menu_item(&app, "Open file"));
+    assert_eq!(*opened.borrow(), [format!("kelma-file:DOCX:{SP_FILE}")]);
+
+    open_menu(&app, &rows(&app)[1]);
+    let labels = menu_labels(&app);
+    assert!(!labels.contains(&"Open file".to_string()), "{labels:?}");
 }
 
 #[test]

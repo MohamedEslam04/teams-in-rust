@@ -486,12 +486,37 @@ impl Engine {
         if crate::external::suppressed() {
             return;
         }
+        self.play_message_tone(
+            decision,
+            self.lists_silenced(&m.conversation_id),
+            inc.urgent,
+            inc.priority_sender,
+        );
+    }
+
+    /// A person on the "Notify when available" list turned Available, with the banner decision
+    /// `decision`: plays the message sound the same way a new message does.
+    pub(super) fn play_available_sound(&self, inc: &Incoming<'_>, decision: &Decision<'_>) {
+        if crate::external::suppressed() {
+            return;
+        }
+        self.play_message_tone(decision, false, false, inc.priority_sender);
+    }
+
+    /// The message sound, when the settings, the presence and the chat allow it.
+    fn play_message_tone(
+        &self,
+        decision: &Decision<'_>,
+        muted_chat: bool,
+        urgent: bool,
+        priority: bool,
+    ) {
         let facts = policy::Message {
             banner: banner_shown(decision),
-            muted_chat: self.lists_silenced(&m.conversation_id),
+            muted_chat,
             open_and_focused: false,
-            urgent: inc.urgent,
-            priority: inc.priority_sender,
+            urgent,
+            priority,
             status: status_of(&people_presence::known(&self.me)),
             occupied: occupied(
                 &people_presence::known_activity(&self.me),
@@ -508,7 +533,7 @@ impl Engine {
             message_tone(
                 prefs.message,
                 prefs.message_file.as_deref(),
-                (inc.urgent || inc.priority_sender).then_some(prefs.urgent),
+                (urgent || priority).then_some(prefs.urgent),
                 teams_dir(&prefs).as_deref(),
             ),
             Role::Once,
