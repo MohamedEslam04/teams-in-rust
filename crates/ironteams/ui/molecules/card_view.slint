@@ -61,6 +61,7 @@ export component CardView inherits Rectangle {
                     default-font-size: r.size;
                     link-color: Theme.accent;
                     selectable: true;
+                    min-width: 0px;
                     link-clicked(url) => { root.open-url(url); }
                 }
                 if r.kind == "fact": HorizontalLayout {
@@ -80,6 +81,7 @@ export component CardView inherits Rectangle {
                         link-color: Theme.accent;
                         selectable: true;
                         horizontal-stretch: 1;
+                        min-width: 0px;
                         link-clicked(url) => { root.open-url(url); }
                     }
                 }
@@ -95,6 +97,7 @@ export component CardView inherits Rectangle {
                             default-font-size: c.size;
                             link-color: Theme.accent;
                             selectable: true;
+                            min-width: 0px;
                             link-clicked(url) => { root.open-url(url); }
                         }
                     }
