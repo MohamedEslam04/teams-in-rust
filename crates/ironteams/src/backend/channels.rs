@@ -131,10 +131,12 @@ fn kind(k: Kind) -> &'static str {
 }
 
 /// Size of a card image before its pixels are known, then its real size capped for the card.
-fn image_size(px: &Option<Pixels>) -> (f32, f32) {
-    match px {
-        Some(p) => {
-            let (w, h) = (p.width() as f32, p.height() as f32);
+/// `dims` is the size of the picture decoded before: a card off screen has no pixels but keeps
+/// the size it had.
+fn image_size(px: &Option<Pixels>, dims: Option<(u32, u32)>) -> (f32, f32) {
+    match px.as_ref().map(|p| (p.width(), p.height())).or(dims) {
+        Some((w, h)) => {
+            let (w, h) = (w as f32, h as f32);
             let scale = (360.0 / w.max(1.0)).min(240.0 / h.max(1.0)).min(1.0);
             (w * scale, h * scale)
         }
@@ -186,7 +188,13 @@ fn older_page(page: &[(&str, bool, i64)], known: &HashSet<String>, more: bool) -
 
 impl Engine {
     /// The drawn rows of a message's card (`props` is the stored message extras), or none.
-    pub(super) fn card_rows(self: &Arc<Self>, props: &Value, headline: &str) -> Vec<CardRowData> {
+    /// Pictures are decoded only for a row near the screen (`near`).
+    pub(super) fn card_rows(
+        self: &Arc<Self>,
+        props: &Value,
+        headline: &str,
+        near: bool,
+    ) -> Vec<CardRowData> {
         let Some(raw) = props.get("c").and_then(Value::as_str) else {
             return Vec::new();
         };
@@ -195,16 +203,16 @@ impl Engine {
         };
         rows_for_attachments(&attachments, headline)
             .into_iter()
-            .map(|r| self.card_row(r))
+            .map(|r| self.card_row(r, near))
             .collect()
     }
 
-    fn card_row(self: &Arc<Self>, r: Row) -> CardRowData {
-        let pixels = (r.kind == Kind::Image && !r.image.is_empty())
+    fn card_row(self: &Arc<Self>, r: Row, near: bool) -> CardRowData {
+        let pixels = (near && r.kind == Kind::Image && !r.image.is_empty())
             .then(|| self.inline_image(&r.image))
             .flatten();
         let (image_w, image_h) = if r.kind == Kind::Image {
-            image_size(&pixels)
+            image_size(&pixels, self.image_dims(&r.image))
         } else {
             (0.0, 0.0)
         };
@@ -229,7 +237,11 @@ impl Engine {
                 .cells
                 .into_iter()
                 .map(|c| CardCellData {
-                    pixels: c.image.as_deref().and_then(|u| self.inline_image(u)),
+                    pixels: c
+                        .image
+                        .as_deref()
+                        .filter(|_| near)
+                        .and_then(|u| self.inline_image(u)),
                     text: bold_each_line(&if c.bold && !c.text.contains("**") {
                         format!("**{}**", c.text)
                     } else {
@@ -875,9 +887,15 @@ mod tests {
 
     #[test]
     fn card_images_start_small_and_are_capped_when_decoded() {
-        assert_eq!(image_size(&None), (120.0, 80.0));
+        assert_eq!(image_size(&None, None), (120.0, 80.0));
         let big = Pixels::new(720, 480);
-        let (w, h) = image_size(&Some(big));
+        let (w, h) = image_size(&Some(big), None);
         assert!(w <= 360.0 && h <= 240.0, "{w}x{h}");
+    }
+
+    #[test]
+    fn a_card_image_without_pixels_keeps_the_size_it_was_decoded_at() {
+        let shown = image_size(&Some(Pixels::new(720, 480)), None);
+        assert_eq!(image_size(&None, Some((720, 480))), shown);
     }
 }

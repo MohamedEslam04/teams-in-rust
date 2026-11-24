@@ -467,6 +467,8 @@ export component ChannelPosts inherits Rectangle {
     callback retry-send(string);
     callback discard-send(string);
     callback load-older();
+    // The posts at the list's top and bottom edges (`MessagePane.rows-shown`).
+    callback rows-shown(string, string);
     // Bumped when the conversation opens (and when End is pressed): back to the newest post.
     in property <int> scroll-tick;
     // The next older page is being read.
@@ -542,6 +544,17 @@ export component ChannelPosts inherits Rectangle {
             // The card holding the view's top and how far the view's top is below the card's
             // top, as the user scrolls; and the same when older posts landed (`a-tick`).
             property <string> top-id;
+            // The post that holds the view's bottom edge, and what goes to the engine: with the
+            // newest post at the bottom and the list pinned there, the list ends on screen.
+            property <string> bottom-id;
+            property <string> shown-bottom: self.pinned && !ChannelStore.newest-top ? "" : self.bottom-id;
+            function report-rows() {
+                if self.top-id != "" {
+                    root.rows-shown(self.top-id, self.shown-bottom);
+                }
+            }
+            changed top-id => { self.report-rows(); }
+            changed shown-bottom => { self.report-rows(); }
             property <length> top-gap;
             property <string> anchor-id;
             property <length> anchor-gap;
@@ -621,6 +634,14 @@ export component ChannelPosts inherits Rectangle {
                     if self.holds-top {
                         posts-list.top-id = item.post.id;
                         posts-list.top-gap = self.top-gap;
+                    }
+                }
+                property <length> bottom-gap: -posts-list.content-y + posts-list.visible-height - self.y;
+                property <bool> holds-bottom: self.bottom-gap > 0px && self.bottom-gap <= self.height;
+                property <string> bottom-mark: self.holds-bottom ? item.post.id : "";
+                changed bottom-mark => {
+                    if self.holds-bottom {
+                        posts-list.bottom-id = item.post.id;
                     }
                 }
                 // Also when the list reuses the card holding the top for another post.

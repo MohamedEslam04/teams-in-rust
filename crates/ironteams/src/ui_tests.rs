@@ -62,6 +62,7 @@ mod overlay_order;
 mod page_switch;
 mod palette;
 mod people;
+mod picture_window;
 mod reaction_card;
 pub(crate) mod responsive;
 mod saved;
