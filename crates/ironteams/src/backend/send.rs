@@ -54,12 +54,13 @@ impl Engine {
             p.entries.clear();
             prepared
         };
-        let (target, reply, editing) = {
+        let (target, reply, editing, quotes) = {
             let mut v = self.view.lock().unwrap();
             (
                 self.current_target_locked(&v),
                 v.reply_to.take(),
                 v.editing.take(),
+                std::mem::take(&mut v.edit_quotes),
             )
         };
         self.ui.reply_bar(String::new(), String::new(), false);
@@ -71,10 +72,12 @@ impl Engine {
             // The composer shows the draft that was there before the edit again.
             let draft = self.view.lock().unwrap().draft_text.clone();
             self.ui.set_draft(draft);
+            // The forwarded or quoted message of the original goes back exactly as it was.
             let html = mentions::finish(
                 &render::markdown_to_composer_html(&prepared.text),
                 &prepared,
             );
+            let html = format!("{}{html}{}", quotes.0, quotes.1);
             if prepared.mentions.is_empty() {
                 self.client
                     .edit_message(&target, &id, &html, &self.my_name)
@@ -113,7 +116,7 @@ impl Engine {
                 let mut quote = render::reply_quote_html(
                     &r.id,
                     &r.sender_mri,
-                    &r.sender_name,
+                    &self.sender_display_name(r),
                     r.compose_ms,
                     &preview,
                 );
@@ -160,6 +163,32 @@ impl Engine {
         }
         self.flush_outbox(false).await;
         Ok(())
+    }
+
+    /// Who wrote a stored message, for a reply quote or the reply bar. The server leaves the
+    /// display name off some messages (Teams then shows "Display Name" for a quote without one),
+    /// so it falls back to the cached profile and, in a 1:1 chat, to the chat's title.
+    pub(super) fn sender_display_name(&self, r: &store::MessageRow) -> String {
+        if !r.sender_name.is_empty() {
+            return r.sender_name.clone();
+        }
+        if r.sender_mri == self.me {
+            return self.my_name.clone();
+        }
+        let st = self.store.lock().unwrap();
+        st.user(&r.sender_mri)
+            .ok()
+            .flatten()
+            .map(|u| u.display_name)
+            .filter(|n| !n.is_empty())
+            .or_else(|| {
+                st.conversation(&r.conversation_id)
+                    .ok()
+                    .flatten()
+                    .filter(|c| c.kind == store::ConvKind::OneOnOne)
+                    .map(|c| c.title)
+            })
+            .unwrap_or_default()
     }
 
     /// Reacts to any stored message, not only one of the open chat (the Activity preview and
@@ -291,5 +320,167 @@ impl Engine {
         };
         self.add_attachment(file.file_name(), file.read().await)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use store::{ConvKind, ConversationRow, MessageRow};
+
+    pub(super) const FORWARD: &str = r#"<blockquote itemscope="" itemtype="http://schema.skype.com/Forward" itemid="1731234567890"><strong itemprop="mri" itemid="8:orgid:aaa">Sara</strong><span itemprop="time" itemid="1731234567890"></span><p itemprop="preview">https://linear.app/x/issue/ABC-1 &amp; more</p></blockquote>"#;
+
+    /// An engine on an in-memory store with a 1:1 chat open and a client that reaches no server;
+    /// the window is returned too, because the engine only holds a weak handle to it.
+    pub(super) fn engine(kind: ConvKind, id: &str) -> (Arc<Engine>, crate::AppWindow) {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let store = store::Store::open_in_memory().unwrap();
+        store
+            .upsert_conversation(&ConversationRow {
+                id: id.into(),
+                kind,
+                title: "Sara Example".into(),
+                team_id: None,
+                team_name: None,
+                last_activity_ms: 1,
+                last_preview: String::new(),
+                unread: false,
+                favorite: false,
+                read_horizon_ms: 0,
+            })
+            .unwrap();
+        let client = teams_proto::Client::offline("test").unwrap();
+        let e = Engine::new(
+            client,
+            store,
+            session::Config::default(),
+            ui,
+            "8:me".into(),
+            "Me".into(),
+        );
+        e.view.lock().unwrap().current = Some(id.into());
+        (e, window)
+    }
+
+    pub(super) fn row(id: &str, conv: &str, from: &str, name: &str, html: &str) -> MessageRow {
+        MessageRow {
+            id: id.into(),
+            conversation_id: conv.into(),
+            parent_id: None,
+            sender_mri: from.into(),
+            sender_name: name.into(),
+            compose_ms: 1_731_234_567_890,
+            edited_ms: None,
+            deleted: false,
+            message_type: "RichText/Html".into(),
+            content_html: html.into(),
+            client_message_id: None,
+            reactions_json: "{}".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn editing_a_message_with_a_forward_puts_only_the_own_text_in_the_composer() {
+        let conv = "48:notes";
+        let (e, window) = engine(ConvKind::Notes, conv);
+        let html = format!("{FORWARD}<p>my own comment</p>");
+        e.store
+            .lock()
+            .unwrap()
+            .upsert_message(&row("m1", conv, "8:me", "Me", &html))
+            .unwrap();
+        e.clone()
+            .handle(crate::backend::Cmd::Edit("m1".into()))
+            .await;
+        assert_eq!(window.get_draft(), "my own comment");
+        let v = e.view.lock().unwrap();
+        assert_eq!(v.editing.as_deref(), Some("m1"));
+        assert_eq!(
+            v.edit_quotes,
+            (FORWARD.to_string(), String::new()),
+            "the forward is kept as it was, to be sent back with the edit"
+        );
+    }
+
+    /// `mri|name` of the quote block that names the author of the replied-to message.
+    fn quoted_author(html: &str) -> String {
+        let after = html.split(r#"itemprop="mri" itemid=""#).nth(1).unwrap();
+        let (mri, rest) = after.split_once(r#"">"#).unwrap();
+        let (name, _) = rest.split_once("</strong>").unwrap();
+        format!("{mri}|{name}")
+    }
+
+    async fn reply_html(e: &Arc<Engine>, conv: &str, id: &str) -> String {
+        e.connected
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        e.clone()
+            .handle(crate::backend::Cmd::Reply(id.into()))
+            .await;
+        e.clone()
+            .handle(crate::backend::Cmd::Send("answer".into(), String::new()))
+            .await;
+        let q = e.store.lock().unwrap().outbox_for(conv).unwrap();
+        assert_eq!(q.len(), 1);
+        q[0].html.clone()
+    }
+
+    const THEM: &str = "8:orgid:11111111-2222-3333-4444-555555555555";
+
+    #[tokio::test]
+    async fn a_reply_quote_names_the_author_when_the_message_carries_no_display_name() {
+        let conv = "19:a_b@unq.gbl.spaces";
+        let (e, _w) = engine(ConvKind::OneOnOne, conv);
+        e.store
+            .lock()
+            .unwrap()
+            .upsert_user(&store::UserRow {
+                mri: THEM.into(),
+                display_name: "Sara Hassan".into(),
+                email: None,
+                avatar: None,
+                updated_ms: 1,
+            })
+            .unwrap();
+        // A link-only message from the other person: no `imdisplayname` came with it.
+        let msg = row(
+            "m1",
+            conv,
+            THEM,
+            "",
+            r#"<p><a href="https://x.test/a">https://x.test/a</a></p>"#,
+        );
+        e.store.lock().unwrap().upsert_message(&msg).unwrap();
+        let html = reply_html(&e, conv, "m1").await;
+        assert_eq!(
+            quoted_author(&html),
+            format!("{THEM}|Sara Hassan"),
+            "{html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_quote_in_a_1_1_chat_falls_back_to_the_chat_title() {
+        let conv = "19:a_b@unq.gbl.spaces";
+        let (e, _w) = engine(ConvKind::OneOnOne, conv);
+        let msg = row("m1", conv, THEM, "", "<p>hi</p>");
+        e.store.lock().unwrap().upsert_message(&msg).unwrap();
+        let html = reply_html(&e, conv, "m1").await;
+        assert_eq!(
+            quoted_author(&html),
+            format!("{THEM}|Sara Example"),
+            "{html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_quote_keeps_the_display_name_the_message_came_with() {
+        let conv = "19:a_b@unq.gbl.spaces";
+        let (e, _w) = engine(ConvKind::OneOnOne, conv);
+        let msg = row("m1", conv, THEM, "Sara H.", "<p>hi</p>");
+        e.store.lock().unwrap().upsert_message(&msg).unwrap();
+        let html = reply_html(&e, conv, "m1").await;
+        assert_eq!(quoted_author(&html), format!("{THEM}|Sara H."), "{html}");
     }
 }

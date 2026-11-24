@@ -250,6 +250,9 @@ struct View {
     limit: usize,
     reply_to: Option<MessageRow>,
     editing: Option<String>,
+    /// The reply and forward quote blocks of the message being edited, as received: they stood
+    /// before and after its own text, are not part of the composer text and go back unchanged.
+    edit_quotes: (String, String),
     /// Sent messages (client message id, optimistic row) waiting for their echo.
     pending: Vec<(String, MessageRow)>,
     typing: typing::Typing,
@@ -808,7 +811,7 @@ impl Engine {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row {
                     self.ui
-                        .reply_bar(r.sender_name.clone(), reply_preview(&r), false);
+                        .reply_bar(self.sender_display_name(&r), reply_preview(&r), false);
                     let mut v = self.view.lock().unwrap();
                     v.editing = None;
                     v.reply_to = Some(r);
@@ -820,14 +823,21 @@ impl Engine {
             Cmd::Edit(id) => {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row.filter(|r| r.sender_mri == self.me) {
-                    let text = ::render::plain_text(&::render::parse_teams_html(&r.content_html));
+                    // Only the author's own text is edited; a forwarded or quoted message is kept.
+                    let split = ::render::split_quote_blocks(&r.content_html);
+                    let text = ::render::plain_text(&::render::parse_teams_html(&split.body));
                     let text = self.restore_edit_mentions(&r, text);
-                    self.ui
-                        .reply_bar(String::new(), text.chars().take(120).collect(), true);
+                    let banner = if text.is_empty() {
+                        reply_preview(&r)
+                    } else {
+                        text.chars().take(120).collect()
+                    };
+                    self.ui.reply_bar(String::new(), banner, true);
                     self.ui.set_draft(text);
                     let mut v = self.view.lock().unwrap();
                     v.reply_to = None;
                     v.editing = Some(r.id);
+                    v.edit_quotes = (split.before, split.after);
                 }
                 self.ui.focus();
             }

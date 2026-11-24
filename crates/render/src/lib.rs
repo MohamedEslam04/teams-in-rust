@@ -10,6 +10,7 @@ pub mod lines;
 mod links;
 mod markdown_out;
 mod parse;
+mod quotes;
 mod rich;
 
 pub use compose::{reply_html, reply_quote_html, text_to_teams_html};
@@ -18,6 +19,7 @@ pub use links::{
 };
 pub use markdown_out::markdown_to_teams_html;
 pub use parse::parse_teams_html;
+pub use quotes::{QuoteSplit, split_quote_blocks};
 pub use rich::{
     ListItem, RichBlock, RichDoc, RichList, RichTable, TableCell, markdown_to_composer_html,
     markdown_to_rich, parse_rich_html,
