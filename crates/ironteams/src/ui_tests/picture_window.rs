@@ -191,14 +191,18 @@ fn renders_and_reports_inside_the_window_decode_nothing_again() {
     let (h, _tmp, reports) = harness();
     h.select(CHAT);
     settle(&h, &reports);
-    let decoded = h.engine.test_images_decoded();
-    let (loaded, _) = rows(&h);
     let shown = reports
         .last
         .borrow()
         .clone()
         .expect("the list reported its rows");
     let run = h.runner();
+    // A report inside the window renders nothing (the window lags the screen by design), so the
+    // first render for another reason may still move it to the last report: start from there.
+    h.engine.test_mark_messages();
+    settle(&h, &reports);
+    let decoded = h.engine.test_images_decoded();
+    let (loaded, _) = rows(&h);
     // Renders for other reasons (a reaction, presence) and the list saying the same again.
     for _ in 0..5 {
         h.engine.test_mark_messages();
