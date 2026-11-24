@@ -129,6 +129,7 @@ fn chat_row(c: ChatData) -> ChatRow {
         person: c.person.into(),
         private: c.private,
         kind: c.kind.into(),
+        notify: c.notify.into(),
     }
 }
 

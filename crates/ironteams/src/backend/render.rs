@@ -639,7 +639,14 @@ impl Engine {
                 ConvKind::OneOnOne | ConvKind::Notes => avatar_mri.clone().unwrap_or_default(),
                 _ => String::new(),
             };
+            let notify = match (&r.kind, &avatar_mri) {
+                (ConvKind::OneOnOne, Some(m)) if super::notify_available::can_watch(m, &self.me) => {
+                    if ov.is_watching(m) { "on" } else { "off" }
+                }
+                _ => "",
+            };
             let data = ChatData {
+                notify,
                 person,
                 presence,
                 mention,

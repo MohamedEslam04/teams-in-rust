@@ -378,6 +378,7 @@ fn the_item_menu_of_a_chat_has_the_teams_entries() {
             "Move to section",
             "Snooze",
             "Mute",
+            "Notify when available",
             "Manage apps",
             "Set workflows",
             "Copy link",
@@ -385,6 +386,88 @@ fn the_item_menu_of_a_chat_has_the_teams_entries() {
             "Hide"
         ]
     );
+}
+
+/// The MRI of the other person in the chat with Ahmed Ali.
+const AHMED_MRI: &str = "8:orgid:00000000-0000-0000-0000-000000000002";
+
+#[test]
+fn notify_when_available_switches_to_turn_off_notifications_and_is_saved() {
+    let h = harness();
+    let log = wire(&h);
+    open_item_menu(&h.app, "Ahmed Ali");
+    click(&menu_row(&h.app, "Notify when available"));
+    assert_eq!(
+        log.borrow().last().unwrap(),
+        &format!("notify-available {AHMED_MRI}")
+    );
+    // Kept for the next start, not only in memory.
+    assert_eq!(h.engine.test_saved_watchers(), [AHMED_MRI]);
+    h.runner()(Cmd::SetFilter("all".into()));
+    open_item_menu(&h.app, "Ahmed Ali");
+    let rows = menu_rows(&h.app);
+    assert!(rows.contains(&"Turn off notifications".to_string()), "{rows:?}");
+    assert!(!rows.contains(&"Notify when available".to_string()), "{rows:?}");
+    click(&menu_row(&h.app, "Turn off notifications"));
+    assert_eq!(
+        log.borrow().last().unwrap(),
+        &format!("notify-available-off {AHMED_MRI}")
+    );
+    assert!(h.engine.test_saved_watchers().is_empty());
+    h.runner()(Cmd::SetFilter("all".into()));
+    open_item_menu(&h.app, "Ahmed Ali");
+    assert!(menu_rows(&h.app).contains(&"Notify when available".to_string()));
+}
+
+#[test]
+fn notify_when_available_is_only_offered_for_a_chat_with_another_person() {
+    for (title, what) in [
+        ("Backend Team", "a group chat"),
+        ("Mohamed Eslam (You)", "the notes chat"),
+    ] {
+        let h = harness();
+        wire(&h);
+        open_item_menu(&h.app, title);
+        let rows = menu_rows(&h.app);
+        assert!(rows.contains(&"Mute".to_string()), "{what}: {rows:?}");
+        assert!(
+            !rows.contains(&"Notify when available".to_string()),
+            "{what}: {rows:?}"
+        );
+    }
+}
+
+#[test]
+fn a_watched_person_turning_available_raises_the_notice_but_others_do_not() {
+    let h = harness();
+    wire(&h);
+    let other = "8:orgid:00000000-0000-0000-0000-000000000003";
+    assert!(
+        !h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"),
+        "not on the list"
+    );
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(AHMED_MRI.into(), true)));
+    assert!(h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"));
+    assert!(h.engine.raises_notice(AHMED_MRI, Some("Offline"), "Available"));
+    assert!(!h.engine.raises_notice(AHMED_MRI, None, "Available"), "first sight");
+    assert!(!h.engine.raises_notice(AHMED_MRI, Some("Available"), "Available"));
+    assert!(!h.engine.raises_notice(other, Some("Busy"), "Available"));
+    // Turned off again: nothing more.
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(AHMED_MRI.into(), false)));
+    assert!(!h.engine.raises_notice(AHMED_MRI, Some("Busy"), "Available"));
+}
+
+#[test]
+fn nobody_who_cannot_be_watched_gets_on_the_list() {
+    let h = harness();
+    wire(&h);
+    // Ourselves and a bot are refused, as the menu does not offer them.
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable(
+        demo::ME.into(),
+        true,
+    )));
+    h.runner()(Cmd::Lists(ListsCmd::NotifyWhenAvailable("28:bot".into(), true)));
+    assert!(h.engine.test_saved_watchers().is_empty());
 }
 
 #[test]

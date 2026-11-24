@@ -58,7 +58,7 @@ component ChatItem inherits Rectangle {
     property <length> menu-up: 0px;
     property <bool> in-section: root.data.section != "favorites" && root.data.section != "chats" && root.data.section != "meetings" && root.data.section != "channels";
     // The menu's main view (as `ItemMenu.menu-height` counts it).
-    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 2 + (ListStore.channel-private ? 1 : 0) : 4) + (root.data.group ? 1 : 0)) * 32px + 8px;
+    property <length> menu-height: (6 + (root.in-section ? 1 : 0) + (root.data.channel ? 2 + (ListStore.channel-private ? 1 : 0) : 4) + (root.data.group ? 1 : 0) + (root.data.notify != "" ? 1 : 0)) * 32px + 8px;
     function open-menu() {
         root.menu-up = root.absolute-position.y + root.height - 8px + root.menu-height > root.limit ? root.menu-height : 0px;
         item-menu.show();

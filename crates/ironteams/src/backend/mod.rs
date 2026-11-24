@@ -57,6 +57,7 @@ pub(crate) mod meeting_cards;
 mod mentions;
 mod msg_memo;
 mod my_presence;
+mod notify_available;
 mod ongoing_call;
 mod outbox;
 pub(crate) mod outsider;
