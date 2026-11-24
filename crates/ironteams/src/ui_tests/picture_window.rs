@@ -22,13 +22,16 @@ fn id(i: usize) -> String {
     format!("w{i:02}")
 }
 
+/// What the list reported (`rows-shown`): queued until the engine takes them, and the last one.
+#[derive(Default)]
+struct Reports {
+    queue: RefCell<Vec<(String, String)>>,
+    last: RefCell<Option<(String, String)>>,
+}
+
 /// A chat of [`ROWS`] messages, each with one picture kept on disk. The posted size (400 x 300)
 /// is not the picture's (160 x 90): a row that dropped its pixels must keep the decoded size.
-fn harness() -> (
-    Harness,
-    tempfile::TempDir,
-    Rc<RefCell<Vec<(String, String)>>>,
-) {
+fn harness() -> (Harness, tempfile::TempDir, Rc<Reports>) {
     let h = Harness::new();
     let tmp = tempfile::tempdir().unwrap();
     h.engine.test_set_cache_paths(session::Paths {
@@ -62,17 +65,18 @@ fn harness() -> (
     }
     // The reports are queued and handed to the engine between frames, as main.rs sends them
     // over its channel (not from inside the list's layout).
-    let reports = Rc::new(RefCell::new(Vec::new()));
+    let reports = Rc::new(Reports::default());
     let q = reports.clone();
-    h.app
-        .on_rows_shown(move |top, bottom| q.borrow_mut().push((top.into(), bottom.into())));
+    h.app.on_rows_shown(move |top, bottom| {
+        q.queue.borrow_mut().push((top.into(), bottom.into()));
+    });
     let run = h.runner();
     h.app.on_at_bottom_changed(move |b| run(Cmd::AtBottom(b)));
     (h, tmp, reports)
 }
 
 /// Frames, the list's reports, background decodes and renders, until nothing changes.
-fn settle(h: &Harness, reports: &Rc<RefCell<Vec<(String, String)>>>) {
+fn settle(h: &Harness, reports: &Reports) {
     let run = h.runner();
     let mut last = u64::MAX;
     let mut stable = 0;
@@ -80,8 +84,9 @@ fn settle(h: &Harness, reports: &Rc<RefCell<Vec<(String, String)>>>) {
         for ms in [16, 16, 150, 16] {
             testing::mock_elapsed_time(std::time::Duration::from_millis(ms));
         }
-        let queued: Vec<_> = reports.borrow_mut().drain(..).collect();
+        let queued: Vec<_> = reports.queue.borrow_mut().drain(..).collect();
         for (top, bottom) in queued {
+            *reports.last.borrow_mut() = Some((top.clone(), bottom.clone()));
             run(Cmd::RowsShown(top, bottom));
         }
         h.rt.block_on(async {
@@ -89,7 +94,7 @@ fn settle(h: &Harness, reports: &Rc<RefCell<Vec<(String, String)>>>) {
             h.engine.render_dirty();
         });
         let decoded = h.engine.test_images_decoded();
-        stable = if decoded == last && reports.borrow().is_empty() {
+        stable = if decoded == last && reports.queue.borrow().is_empty() {
             stable + 1
         } else {
             0
@@ -188,10 +193,16 @@ fn renders_and_reports_inside_the_window_decode_nothing_again() {
     settle(&h, &reports);
     let decoded = h.engine.test_images_decoded();
     let (loaded, _) = rows(&h);
+    let shown = reports
+        .last
+        .borrow()
+        .clone()
+        .expect("the list reported its rows");
     let run = h.runner();
+    // Renders for other reasons (a reaction, presence) and the list saying the same again.
     for _ in 0..5 {
         h.engine.test_mark_messages();
-        run(Cmd::RowsShown(id(ROWS - 3), String::new()));
+        run(Cmd::RowsShown(shown.0.clone(), shown.1.clone()));
         settle(&h, &reports);
     }
     assert_eq!(h.engine.test_images_decoded(), decoded);
