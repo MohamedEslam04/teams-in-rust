@@ -13,6 +13,30 @@ pub enum Segment {
     Code(String),
 }
 
+/// One block of a body as a channel post lays it out (`Rendered::post`): a heading that stands
+/// out, a list item that hangs beside its marker. `StyledText` can do neither.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PostBlock {
+    pub kind: PostKind,
+    /// Markdown for `StyledText` (empty for code).
+    pub md: String,
+    pub rtl: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PostKind {
+    Text,
+    /// A heading, level 1 to 3.
+    Heading(u8),
+    /// A list item: its marker ("•", "◦", "▪" or "3.") and how deep its list is nested (0: top).
+    Item {
+        marker: String,
+        depth: usize,
+    },
+    /// A code block, the code as written.
+    Code(String),
+}
+
 /// One message a reply quotes, drawn as a card above the text.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct QuoteCard {
@@ -39,6 +63,9 @@ pub struct Rendered {
     pub plain: String,
     pub rtl: bool,
     pub images: Vec<(String, Option<u32>, Option<u32>)>,
+    /// The body as a channel post lays it out, block by block. Empty when it has no heading and
+    /// no list (then the post draws `markdown` or `segments` as a chat bubble does).
+    pub post: Vec<PostBlock>,
 }
 
 /// Escapes Markdown control characters in plain text.
@@ -155,6 +182,9 @@ struct Piece {
     code: Option<String>,
     /// The text runs right to left (its first strong character is Arabic or Hebrew).
     rtl: bool,
+    /// How a post lays the piece out when that is not as one block of text (or code): a heading,
+    /// or the items of a list.
+    post: Vec<PostBlock>,
 }
 
 impl Piece {
@@ -163,12 +193,38 @@ impl Piece {
             md,
             code: None,
             rtl: false,
+            post: Vec::new(),
         }
     }
 
     fn rtl(mut self, dir: Dir) -> Self {
         self.rtl = dir == Dir::Rtl;
         self
+    }
+
+    fn post(mut self, blocks: Vec<PostBlock>) -> Self {
+        self.post = blocks;
+        self
+    }
+
+    /// The piece as post blocks: its own `post`, or one block of text or code.
+    fn post_blocks(&self) -> Vec<PostBlock> {
+        if !self.post.is_empty() {
+            return self.post.clone();
+        }
+        match &self.code {
+            Some(code) => vec![PostBlock {
+                kind: PostKind::Code(code.clone()),
+                md: String::new(),
+                rtl: false,
+            }],
+            None if self.md.trim().is_empty() => vec![],
+            None => vec![PostBlock {
+                kind: PostKind::Text,
+                md: self.md.clone(),
+                rtl: self.rtl,
+            }],
+        }
     }
 
     /// A code block. `StyledText` has no blocks, so its Markdown is one inline-code run per line
@@ -184,6 +240,7 @@ impl Piece {
             md,
             code: (!code.trim().is_empty()).then(|| code.to_string()),
             rtl: false,
+            post: Vec::new(),
         }
     }
 }
@@ -233,6 +290,11 @@ fn direction_runs(spans: &[Span], dir: &mut Dir) -> Vec<(Vec<Span>, Dir)> {
 /// blocks or lines of both directions is cut into segments, each text segment aligned by its own
 /// direction; any other body is one run of text aligned by `r.rtl`.
 fn set_body(r: &mut Rendered, pieces: Vec<Piece>) {
+    r.post = if pieces.iter().any(|p| !p.post.is_empty()) {
+        pieces.iter().flat_map(Piece::post_blocks).collect()
+    } else {
+        Vec::new()
+    };
     r.markdown = pieces
         .iter()
         .map(|p| p.md.as_str())
@@ -324,6 +386,13 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
             }
             Block::List { ordered, items } => {
                 let mut lines = vec![];
+                let mut post = vec![];
+                // A list is one run of text: it takes the direction of its first item. In a post
+                // each item takes its own.
+                let list_dir = items
+                    .first()
+                    .and_then(|it| render::text_direction(&spans_plain(it)))
+                    .unwrap_or(dir);
                 for (i, it) in items.iter().enumerate() {
                     let bullet = if *ordered {
                         format!("{}.", i + 1)
@@ -332,12 +401,15 @@ pub fn render_blocks(rt: &RichText) -> Rendered {
                     };
                     lines.push(format!("{bullet} {}", spans_md(it)));
                     plain.push(spans_plain(it));
+                    post.push(item_block(
+                        it,
+                        if *ordered { bullet } else { "•".into() },
+                        0,
+                        list_dir,
+                    ));
                 }
-                // A list is one run of text: it takes the direction of its first item.
-                if let Some(firstitem) = items.first() {
-                    dir = render::text_direction(&spans_plain(firstitem)).unwrap_or(dir);
-                }
-                md.push(Piece::text(lines.join("\n")).rtl(dir));
+                dir = list_dir;
+                md.push(Piece::text(lines.join("\n")).rtl(dir).post(post));
             }
             Block::Code { text } => {
                 md.push(Piece::code(text));
@@ -375,10 +447,17 @@ fn needs_rich(doc: &RichDoc) -> bool {
     })
 }
 
-fn list_md(list: &RichList, depth: usize, out: &mut Vec<String>) {
+fn list_md(
+    list: &RichList,
+    depth: usize,
+    dir: Dir,
+    out: &mut Vec<String>,
+    post: &mut Vec<PostBlock>,
+) {
     for (i, item) in list.items.iter().enumerate() {
+        let number = format!("{}.", list.start.unwrap_or(1) as usize + i);
         let bullet = if list.ordered {
-            format!("{}.", list.start.unwrap_or(1) as usize + i)
+            number.clone()
         } else {
             "-".to_string()
         };
@@ -387,10 +466,41 @@ fn list_md(list: &RichList, depth: usize, out: &mut Vec<String>) {
             "  ".repeat(depth),
             spans_md(&item.spans)
         ));
+        // Markdown's bullets for each depth, as `StyledText` draws them.
+        let marker = if list.ordered {
+            number
+        } else {
+            ["•", "◦", "▪"][depth % 3].to_string()
+        };
+        post.push(item_block(&item.spans, marker, depth, dir));
         for child in &item.children {
-            list_md(child, depth + 1, out);
+            list_md(child, depth + 1, dir, out, post);
         }
     }
+}
+
+/// A list item as a post block: aligned by its own direction (`dir` when it has no strong
+/// character), its text never read as the start of another list.
+fn item_block(spans: &[Span], marker: String, depth: usize, dir: Dir) -> PostBlock {
+    let dir = render::text_direction(&spans_plain(spans)).unwrap_or(dir);
+    PostBlock {
+        kind: PostKind::Item { marker, depth },
+        md: literal_start(spans_md(spans)),
+        rtl: dir == Dir::Rtl,
+    }
+}
+
+/// `md` with a leading list marker ("- ", "+ ", "2. ", "3) ") escaped, so a line drawn on its
+/// own keeps it as text.
+fn literal_start(md: String) -> String {
+    if md.starts_with("- ") || md.starts_with("+ ") {
+        return format!("\\{md}");
+    }
+    let digits = md.len() - md.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    if digits > 0 && matches!(md[digits..].chars().next(), Some('.' | ')')) {
+        return format!("{}\\{}", &md[..digits], &md[digits..]);
+    }
+    md
 }
 
 /// A table as aligned monospace rows (`StyledText` has no tables): cells padded with no-break
@@ -469,7 +579,7 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
                     md.push(Piece::text(spans_md(&run)).rtl(run_dir));
                 }
             }
-            RichBlock::Heading { spans, .. } => {
+            RichBlock::Heading { level, spans } => {
                 dir = render::text_direction(&spans_plain(spans)).unwrap_or(dir);
                 let bold: Vec<Span> = spans
                     .iter()
@@ -479,7 +589,13 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
                         s
                     })
                     .collect();
-                md.push(Piece::text(spans_md(&bold)).rtl(dir));
+                let text = spans_md(&bold);
+                let heading = PostBlock {
+                    kind: PostKind::Heading(*level),
+                    md: text.clone(),
+                    rtl: dir == Dir::Rtl,
+                };
+                md.push(Piece::text(text).rtl(dir).post(vec![heading]));
             }
             RichBlock::Quote(spans) => {
                 dir = render::text_direction(&spans_plain(spans)).unwrap_or(dir);
@@ -495,12 +611,12 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
                 );
             }
             RichBlock::List(l) => {
-                let mut lines = Vec::new();
-                list_md(l, 0, &mut lines);
                 if let Some(first) = l.items.first() {
                     dir = render::text_direction(&spans_plain(&first.spans)).unwrap_or(dir);
                 }
-                md.push(Piece::text(lines.join("\n")).rtl(dir));
+                let (mut lines, mut post) = (Vec::new(), Vec::new());
+                list_md(l, 0, dir, &mut lines, &mut post);
+                md.push(Piece::text(lines.join("\n")).rtl(dir).post(post));
             }
             RichBlock::Code { text, .. } => md.push(Piece::code(text)),
             RichBlock::Table(t) => md.push(Piece::text(table_md(t)).rtl(dir)),
@@ -958,6 +1074,53 @@ mod tests {
         let x = rich("<h2>x</h2><ul><li>a<ul><li>b</li></ul></li></ul><hr>");
         parses(&x.markdown);
         assert!(x.markdown.contains("- a\n  - b"), "{:?}", x.markdown);
+    }
+
+    #[test]
+    fn a_post_lays_out_headings_and_list_items_block_by_block() {
+        let x = rich(
+            "<h2>What is new</h2><p>intro</p><ul><li>one</li><li>two<ul><li>deep</li></ul></li></ul><ol><li>first</li><li>2. second</li></ol><pre>code</pre>",
+        );
+        let item = |marker: &str, depth| PostKind::Item {
+            marker: marker.into(),
+            depth,
+        };
+        let blocks: Vec<(PostKind, &str)> = x
+            .post
+            .iter()
+            .map(|b| (b.kind.clone(), b.md.as_str()))
+            .collect();
+        assert_eq!(
+            blocks,
+            vec![
+                (PostKind::Heading(2), "**What is new**"),
+                (PostKind::Text, "intro"),
+                (item("•", 0), "one"),
+                (item("•", 0), "two"),
+                (item("◦", 1), "deep"),
+                (item("1.", 0), "first"),
+                // Drawn on its own, the item's text must not become a list of its own.
+                (item("2.", 0), "2\\. second"),
+                (PostKind::Code("code".into()), ""),
+            ]
+        );
+        for b in &x.post {
+            parses(&b.md);
+        }
+        // The chat bubble's markdown is what it was.
+        assert!(x.markdown.contains("- two\n  - deep"), "{:?}", x.markdown);
+    }
+
+    #[test]
+    fn each_list_item_of_a_post_is_aligned_by_its_own_direction() {
+        let x = r("<p>intro</p><ul><li>نقطة أولى</li><li>second</li></ul>");
+        let blocks: Vec<(&str, bool)> = x.post.iter().map(|b| (b.md.as_str(), b.rtl)).collect();
+        assert_eq!(
+            blocks,
+            vec![("intro", false), ("نقطة أولى", true), ("second", false)]
+        );
+        // A body with no heading and no list is drawn as a bubble draws it.
+        assert!(r("<p>hello</p><p>there</p>").post.is_empty());
     }
 
     #[test]

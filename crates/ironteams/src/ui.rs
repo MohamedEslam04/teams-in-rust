@@ -11,12 +11,12 @@ use crate::data::{
     AttachmentData, ChatData, HeaderData, MeetingCardData, MsgData, Pixels, RecipientData, Scroll,
     TeamData,
 };
-use crate::markdown::Segment;
+use crate::markdown::{PostKind, Segment};
 use crate::reactions;
 use crate::ui_api::UiHandle;
 use crate::{
     AppWindow, BodyPart, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem,
-    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, QuoteItem,
+    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, PostBlock, QuoteItem,
     ReactionItem, Reactor, ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
 };
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
@@ -168,6 +168,38 @@ fn body_part(s: &Segment) -> BodyPart {
     }
 }
 
+/// The blocks of a channel post's body (`Msg.blocks`).
+fn post_blocks(blocks: &[crate::markdown::PostBlock]) -> ModelRc<PostBlock> {
+    model(
+        blocks
+            .iter()
+            .map(|b| {
+                let (kind, code, marker, depth, level) = match &b.kind {
+                    PostKind::Text => ("text", "", "", 0, 0),
+                    PostKind::Heading(level) => ("heading", "", "", 0, *level as i32),
+                    PostKind::Item { marker, depth } => {
+                        ("item", "", marker.as_str(), *depth as i32, 0)
+                    }
+                    PostKind::Code(code) => ("code", code.as_str(), "", 0, 0),
+                };
+                PostBlock {
+                    kind: kind.into(),
+                    body: if b.md.is_empty() {
+                        StyledText::default()
+                    } else {
+                        styled(&b.md)
+                    },
+                    code: code.into(),
+                    marker: marker.into(),
+                    depth,
+                    level,
+                    rtl: b.rtl,
+                }
+            })
+            .collect(),
+    )
+}
+
 /// Everyone who has seen my newest message: a circle of initials and the full name each. The
 /// line under the message draws the first three (`Msg.readers`); the "Seen by" list shows them
 /// all (`Msg.reader_list`).
@@ -186,6 +218,7 @@ fn readers(names: &[String]) -> Vec<ReaderItem> {
 fn msg(m: MsgData) -> Msg {
     let (avatar, has_avatar) = img(&m.avatar);
     let readers = readers(&m.receipt_readers);
+    let subject_rtl = render::text_direction(&m.subject) == Some(render::Dir::Rtl);
     Msg {
         id: m.id.into(),
         sender: m.sender.into(),
@@ -201,6 +234,7 @@ fn msg(m: MsgData) -> Msg {
         deleted: m.deleted,
         system: m.system,
         subject: m.subject.into(),
+        subject_rtl,
         quotes: model(
             m.quotes
                 .into_iter()
@@ -215,6 +249,8 @@ fn msg(m: MsgData) -> Msg {
         ),
         body: styled(&m.markdown),
         parts: model(m.segments.iter().map(body_part).collect()),
+        // Filled for channel posts only (`channels::post`): a chat bubble draws `body` or `parts`.
+        blocks: ModelRc::default(),
         plain: m.plain.into(),
         rtl: m.rtl,
         images: model(
