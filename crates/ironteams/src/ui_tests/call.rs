@@ -6,7 +6,7 @@
 use super::*;
 use crate::CallStore;
 use crate::backend::CalCmd;
-use crate::backend::call::{CallCmd, Event, FakeDriver, Person};
+use crate::backend::call::{Absent, CallCmd, Event, FakeDriver, JoinTarget, MeetingPeople, Person};
 use i_slint_backend_testing::AccessibleRole;
 
 const THREAD: &str = "19:meeting_abc@thread.v2";
@@ -1526,8 +1526,12 @@ fn the_invite_box_rings_a_person_into_the_call() {
     c.direct();
     click(&c.button("People"));
     assert!(c.shows("Currently in this call (0)"));
-    c.search("Invite someone or dial a number", "bo");
-    assert_eq!(c.sent(), ["find bo"]);
+    c.search("Type a name", "bo");
+    assert_eq!(
+        c.sent(),
+        ["people-open", "find bo", "people-filter bo"],
+        "the one box finds people to invite and filters the panel"
+    );
     click(&c.row("Bo Example"));
     assert_eq!(c.fake.calls(), [format!("add {BO}")]);
     assert_eq!(c.sent().last().unwrap(), &format!("invite {BO}"));
@@ -1565,13 +1569,156 @@ fn transfer_holds_the_call_then_transfers_now_to_the_picked_person() {
 }
 
 #[test]
-fn a_meeting_has_no_hold_transfer_or_invite_box() {
+fn a_meeting_has_no_hold_or_transfer_and_shares_no_invite_without_a_link() {
     let c = CallHarness::new();
     c.connected();
     assert!(c.all("Hold").is_empty() && c.all("Transfer").is_empty());
     click(&c.button("People"));
-    assert!(c.all("Invite someone or dial a number").is_empty());
+    assert!(
+        c.all("Invite someone or dial a number").is_empty(),
+        "one box, named by what it takes"
+    );
+    c.with_role("Type a name", AccessibleRole::TextInput);
     assert!(c.shows("In this meeting (0)"));
+    assert!(c.all("Share invite").is_empty(), "no join link is known");
+    assert!(c.all("Others invited (0)").is_empty());
+}
+
+/// Joins `THREAD` by this link, so the meeting has a join link to share.
+fn connected_by_link(c: &CallHarness, link: &str) {
+    c.h.engine
+        .calls
+        .prejoin("Standup".into(), JoinTarget::Link(link.into()), THREAD.into());
+    click(&c.button("Join now"));
+    c.fake.emit(Event::Connected);
+    assert_eq!(c.phase(), "connected");
+}
+
+#[test]
+fn share_invite_copies_the_join_link_and_says_so() {
+    let c = CallHarness::new();
+    connected_by_link(&c, "https://teams.example/j");
+    click(&c.button("People"));
+    assert!(c.all("Link copied").is_empty());
+    click(&c.button("Share invite"));
+    assert_eq!(c.sent().last().unwrap(), "share-invite");
+    assert!(c.shows("Link copied"));
+    assert!(c.all("Share invite").is_empty(), "the button says it for a moment");
+}
+
+#[test]
+fn a_one_on_one_call_has_no_invite_to_share() {
+    let c = CallHarness::new();
+    c.direct();
+    click(&c.button("People"));
+    assert!(c.all("Share invite").is_empty());
+}
+
+fn absent(mri: &str, name: &str, status: &str) -> Absent {
+    Absent {
+        mri: mri.into(),
+        name: name.into(),
+        status: status.into(),
+    }
+}
+
+const ADA: &str = "8:orgid:00000000-0000-0000-0000-0000000000b1";
+const DI: &str = "8:orgid:00000000-0000-0000-0000-0000000000b2";
+
+/// A meeting with us and Ada in the call, two invitees who are not (one the chat knows), and a
+/// chat member nobody invited.
+fn invited_meeting(c: &CallHarness) {
+    c.connected();
+    let p = |mri: &str, name: &str, me| Person {
+        mri: mri.into(),
+        name: name.into(),
+        me,
+        ..Default::default()
+    };
+    c.fake.emit(Event::Roster(vec![
+        p(ORGANIZER, "Me", true),
+        p(ADA, "Ada Lovelace", false),
+        p("", "Unknown Guest", false),
+    ]));
+    c.h.engine.calls.set_meeting_people(
+        THREAD,
+        MeetingPeople {
+            join_link: None,
+            invited: vec![
+                absent(ADA, "Ada Lovelace", "Accepted"),
+                absent(BO, "Bo Ström", "Declined"),
+                absent("", "cy@x.example", "No response"),
+            ],
+            chat: vec![absent(ADA, "Ada Lovelace", ""), absent(DI, "Di Example", "")],
+        },
+    );
+    click(&c.button("People"));
+}
+
+#[test]
+fn the_people_panel_lists_who_was_invited_and_who_is_only_in_the_chat() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    assert!(c.shows("In this meeting (3)"));
+    assert!(c.shows("Others invited (2)"), "Ada is in the call");
+    assert!(c.shows("People added to the chat (1)"), "Ada is in, Bo is invited");
+    for (name, status) in [("Bo Ström", "Declined"), ("cy@x.example", "No response")] {
+        assert_eq!(c.row(name).accessible_description().unwrap(), status, "{name}");
+    }
+    assert_eq!(c.row("Di Example").accessible_description().unwrap(), "");
+    assert_eq!(c.sent().first().unwrap(), "people-open");
+}
+
+#[test]
+fn a_person_row_opens_their_card_when_their_mri_is_known() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    for (row, mri) in [("Ada Lovelace", ADA), ("Bo Ström", BO), ("Di Example", DI)] {
+        click(&c.row(row));
+        assert_eq!(c.sent().last().unwrap(), &format!("person-card {mri}"), "{row}");
+    }
+    let asked = c.sent().len();
+    click(&c.row("Unknown Guest"));
+    click(&c.row("cy@x.example"));
+    assert_eq!(c.sent().len(), asked, "no MRI, no card");
+}
+
+#[test]
+fn a_section_folds_under_its_header_and_unfolds() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    let listed = |name: &str| c.all(name).iter().any(|e| e.accessible_role() == Some(AccessibleRole::ListItem));
+    for (header, row) in [
+        ("In this meeting (3)", "Ada Lovelace"),
+        ("Others invited (2)", "Bo Ström"),
+        ("People added to the chat (1)", "Di Example"),
+    ] {
+        assert!(listed(row), "{row} is shown to start with");
+        click(&c.with_role(header, AccessibleRole::Button));
+        assert!(!listed(row), "{header} folded");
+        assert!(c.shows(header), "the header stays");
+        click(&c.with_role(header, AccessibleRole::Button));
+        assert!(listed(row), "{header} unfolded");
+    }
+}
+
+#[test]
+fn the_search_box_filters_every_section_and_empty_shows_all() {
+    let c = CallHarness::new();
+    invited_meeting(&c);
+    let listed = |name: &str| c.all(name).iter().any(|e| e.accessible_role() == Some(AccessibleRole::ListItem));
+    c.search("Type a name", "di");
+    assert_eq!(c.sent().last().unwrap(), "people-filter di");
+    assert!(listed("Di Example"));
+    for hidden in ["Ada Lovelace", "Bo Ström", "cy@x.example", "Unknown Guest"] {
+        assert!(!listed(hidden), "{hidden} does not match");
+    }
+    c.search("Type a name", "BO");
+    assert!(listed("Bo Ström") && !listed("Di Example"), "any case");
+    c.search("Type a name", "");
+    for shown in ["Ada Lovelace", "Bo Ström", "cy@x.example", "Unknown Guest", "Di Example"] {
+        assert!(listed(shown), "{shown} is back");
+    }
 }
 
 const SURVEY: &str = "How was the call quality?";
