@@ -353,6 +353,24 @@ impl Engine {
         }
     }
 
+    /// Replaces the inline image cache with an empty one of `budget` bytes.
+    #[cfg(test)]
+    pub(crate) fn test_image_budget(&self, budget: usize) {
+        *self.images.lock().unwrap() = super::byte_lru::ByteLru::new(budget);
+    }
+
+    /// How many decoded inline pictures were stored in the cache (one per decode).
+    #[cfg(test)]
+    pub(crate) fn test_images_decoded(&self) -> u64 {
+        self.images.lock().unwrap().filled()
+    }
+
+    /// Marks the messages for the next render, as a reaction or an arrived picture does.
+    #[cfg(test)]
+    pub(crate) fn test_mark_messages(&self) {
+        self.mark(|d| d.messages = true);
+    }
+
     pub(super) fn inline_image(self: &Arc<Self>, url: &str) -> Option<Pixels> {
         let mut cache = self.images.lock().unwrap();
         if let Some(p) = cache.get(url) {
@@ -825,6 +843,11 @@ impl Engine {
 
     fn render_messages(self: &Arc<Self>, scroll: bool) {
         let started = Instant::now();
+        // The pictures this render reads stay in the caches even over their budgets: the view
+        // holds them anyway, and evicting one on screen made the next render decode it again,
+        // whose arrival evicted another one on screen, forever.
+        self.images.lock().unwrap().begin_pass();
+        self.media.lock().unwrap().begin_thumb_pass();
         let (cur, thread, limit, pending, selected) = {
             let v = self.view.lock().unwrap();
             (

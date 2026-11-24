@@ -172,6 +172,11 @@ impl State {
         self.thumbs.clear();
     }
 
+    /// The messages are drawn again: the link pictures they show stay (`ByteLru::begin_pass`).
+    pub(super) fn begin_thumb_pass(&mut self) {
+        self.thumbs.begin_pass();
+    }
+
     fn put_thumb(&mut self, url: String, thumb: Thumb) {
         let bytes = thumb.cost();
         self.thumbs.insert(url, thumb, bytes);

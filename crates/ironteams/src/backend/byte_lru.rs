@@ -6,6 +6,11 @@
 //!
 //! Empty placeholders (a lookup in progress, a picture that failed) cost next to nothing but are
 //! evicted like any other entry: the next lookup then starts the work again.
+//!
+//! A view that draws its pictures from the cache on every render marks each render's start
+//! (`begin_pass`). What the last two renders read is then not evicted, even over the budget: the
+//! view holds those pictures anyway, and dropping one makes the next render decode it again,
+//! whose arrival drops another one on screen, and so on forever.
 
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
@@ -45,6 +50,13 @@ pub(super) struct ByteLru<K, V> {
     map: HashMap<K, Entry<V>>,
     /// Keys from the least to the most recently used.
     order: BTreeMap<u64, K>,
+    /// The first tick of the current render (`begin_pass`), and of the one before it: entries
+    /// read or stored since `keep_from` are not evicted.
+    pass_start: Option<u64>,
+    keep_from: Option<u64>,
+    /// Decoded pictures stored so far (`insert_pixels` with a picture).
+    #[cfg(test)]
+    filled: u64,
 }
 
 impl<K: Hash + Eq + Clone, V> ByteLru<K, V> {
@@ -55,6 +67,10 @@ impl<K: Hash + Eq + Clone, V> ByteLru<K, V> {
             next_tick: 0,
             map: HashMap::new(),
             order: BTreeMap::new(),
+            pass_start: None,
+            keep_from: None,
+            #[cfg(test)]
+            filled: 0,
         }
     }
 
@@ -72,8 +88,15 @@ impl<K: Hash + Eq + Clone, V> ByteLru<K, V> {
         Some(&entry.value)
     }
 
+    /// A render of the view starts: what it and the render before it read stays in the cache.
+    pub(super) fn begin_pass(&mut self) {
+        self.keep_from = Some(self.pass_start.unwrap_or(self.next_tick));
+        self.pass_start = Some(self.next_tick);
+    }
+
     /// Stores `value`, which takes `bytes`, as the most recently used entry (replacing the
-    /// entry of the same key), then drops the oldest entries while the total is over budget.
+    /// entry of the same key), then drops the oldest entries while the total is over budget,
+    /// except those the last two renders read (`begin_pass`).
     pub(super) fn insert(&mut self, key: K, value: V, bytes: usize) {
         self.remove(&key);
         let tick = self.next_tick;
@@ -82,6 +105,12 @@ impl<K: Hash + Eq + Clone, V> ByteLru<K, V> {
         self.map.insert(key, Entry { value, bytes, tick });
         self.total += bytes;
         while self.total > self.budget && self.map.len() > 1 {
+            let Some((&tick, _)) = self.order.first_key_value() else {
+                break;
+            };
+            if self.keep_from.is_some_and(|keep| tick >= keep) {
+                break;
+            }
             let Some((_, oldest)) = self.order.pop_first() else {
                 break;
             };
@@ -118,12 +147,22 @@ impl<K: Hash + Eq + Clone, V> ByteLru<K, V> {
     pub(super) fn len(&self) -> usize {
         self.map.len()
     }
+
+    /// How many decoded pictures were stored, replaced ones included.
+    #[cfg(test)]
+    pub(super) fn filled(&self) -> u64 {
+        self.filled
+    }
 }
 
 impl<K: Hash + Eq + Clone> ByteLru<K, Option<Pixels>> {
     /// `insert` for a decoded picture, or `None` for a lookup in progress or a failure.
     pub(super) fn insert_pixels(&mut self, key: K, px: Option<Pixels>) {
         let bytes = pixels_cost(&px);
+        #[cfg(test)]
+        if px.is_some() {
+            self.filled += 1;
+        }
         self.insert(key, px, bytes);
     }
 }
@@ -192,6 +231,70 @@ mod tests {
         c.insert("huge".into(), 2, 500);
         assert_eq!(c.len(), 1);
         assert_eq!(c.get("huge"), Some(&2));
+    }
+
+    /// One render of a view showing `keys`: what is not cached is asked for (a placeholder
+    /// marks it in progress), as `Engine::inline_image` does. Returns the keys asked for.
+    fn render(c: &mut ByteLru<String, u32>, keys: &[&str]) -> Vec<String> {
+        c.begin_pass();
+        let mut asked = Vec::new();
+        for k in keys {
+            if c.get(*k).is_none() {
+                c.insert((*k).into(), 0, 1);
+                asked.push((*k).to_string());
+            }
+        }
+        asked
+    }
+
+    #[test]
+    fn pictures_a_render_reads_are_not_evicted_by_each_other() {
+        // Room for two pictures, four on screen.
+        let mut c = lru(100);
+        let shown = ["a", "b", "c", "d"];
+        assert_eq!(render(&mut c, &shown).len(), 4);
+        // The decoded pictures arrive; each arrival draws the view again.
+        for k in shown {
+            c.insert(k.into(), 1, 40);
+            assert!(render(&mut c, &shown).is_empty(), "nothing asked again");
+        }
+        for _ in 0..3 {
+            assert!(render(&mut c, &shown).is_empty());
+        }
+        assert_eq!(
+            (c.len(), c.bytes()),
+            (4, 160),
+            "over the budget while shown"
+        );
+    }
+
+    #[test]
+    fn pictures_no_longer_shown_go_once_two_renders_left_them_out() {
+        let mut c = lru(100);
+        render(&mut c, &["a", "b", "c"]);
+        for k in ["a", "b", "c"] {
+            c.insert(k.into(), 1, 40);
+        }
+        // Another chat: `a`, `b` and `c` stay through its first render.
+        render(&mut c, &["x"]);
+        c.insert("x".into(), 2, 40);
+        assert_eq!(c.len(), 4);
+        render(&mut c, &["x"]);
+        c.insert("y".into(), 3, 40);
+        assert_eq!(c.bytes(), 80, "back within the budget");
+        for k in ["a", "b", "c"] {
+            assert_eq!(c.get(k), None, "{k} is no longer shown");
+        }
+        assert!(c.get("x").is_some() && c.get("y").is_some());
+    }
+
+    #[test]
+    fn without_renders_the_budget_holds_as_before() {
+        let mut c = lru(100);
+        for k in ["a", "b", "c", "d"] {
+            c.insert(k.into(), 1, 40);
+        }
+        assert_eq!((c.len(), c.bytes()), (2, 80));
     }
 
     #[test]
