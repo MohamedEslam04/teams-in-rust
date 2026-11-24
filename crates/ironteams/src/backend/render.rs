@@ -373,6 +373,24 @@ impl Engine {
         self.mark(|d| d.messages = true);
     }
 
+    /// The window's scale factor, in percent, as `window_watch` reads it. Inline pictures are
+    /// decoded for it: at 1 a picture takes a quarter of the memory it takes at 2. When it
+    /// changes (the window moved to another screen) the decoded pictures are dropped, and the
+    /// next render decodes them again from the copies on disk at the new size.
+    pub fn set_display_scale(self: &Arc<Self>, scale_pct: u16) {
+        use std::sync::atomic::Ordering;
+        if self.display_scale.swap(scale_pct, Ordering::Relaxed) == scale_pct {
+            return;
+        }
+        self.images.lock().unwrap().clear();
+        self.mark(|d| d.messages = true);
+    }
+
+    fn display_scale(&self) -> u16 {
+        self.display_scale
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub(super) fn inline_image(self: &Arc<Self>, url: &str) -> Option<Pixels> {
         let mut cache = self.images.lock().unwrap();
         if let Some(p) = cache.get(url) {
@@ -436,18 +454,24 @@ impl Engine {
     /// picture (`keep`) that decodes is also kept on disk for the next run. False when the bytes
     /// do not decode.
     async fn show_inline_image(self: &Arc<Self>, url: &str, bytes: Vec<u8>, keep: bool) -> bool {
-        let decoded =
-            decode_limited(move || decode_image(&bytes, INLINE_W, INLINE_H).map(|px| (px, bytes)))
-                .await
-                .flatten();
+        let scale = self.display_scale();
+        let (w, h) = inline_box(scale);
+        let decoded = decode_limited(move || decode_image(&bytes, w, h).map(|px| (px, bytes)))
+            .await
+            .flatten();
         let Some((px, bytes)) = decoded else {
             tracing::warn!(url = %teams_proto::logsafe::url(url), "image could not be decoded");
             return false;
         };
-        self.images
-            .lock()
-            .unwrap()
-            .insert_pixels(url.to_string(), Some(px));
+        {
+            let mut images = self.images.lock().unwrap();
+            if self.display_scale() == scale {
+                images.insert_pixels(url.to_string(), Some(px));
+            } else {
+                // The scale changed during the decode: the next render asks again at the new size.
+                images.remove(url);
+            }
+        }
         self.mark(|d| d.messages = true);
         if keep {
             self.keep_img(url, bytes).await;

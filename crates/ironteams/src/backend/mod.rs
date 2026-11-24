@@ -398,6 +398,9 @@ pub struct Engine {
     avatar_placeholders: Mutex<avatar_placeholder::Placeholders>,
     /// Decoded inline message pictures by URL, kept under a byte budget.
     images: Mutex<ByteLru<String, Option<Pixels>>>,
+    /// The window's scale factor in percent: inline pictures are decoded for it
+    /// (`set_display_scale`).
+    display_scale: std::sync::atomic::AtomicU16,
     /// Reactor MRIs whose profile fetch was already started (tooltip names).
     name_requests: Mutex<HashSet<String>>,
     pub focused: Arc<AtomicBool>,
@@ -516,6 +519,7 @@ impl Engine {
             avatars: Mutex::new(ByteLru::new(AVATAR_BUDGET)),
             avatar_placeholders: Mutex::new(avatar_placeholders),
             images: Mutex::new(ByteLru::new(IMAGE_BUDGET)),
+            display_scale: std::sync::atomic::AtomicU16::new(util::DEFAULT_SCALE_PCT),
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
             offline: AtomicBool::new(false),
