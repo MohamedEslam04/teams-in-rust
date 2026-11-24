@@ -38,7 +38,8 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   threads and Saved quick views, the Shared tab and a chat details pane.
 - **Activity:** the Teams activity feed with filters, a preview pane, mark all as read and badges
   that follow what you read in other Teams clients.
-- **Teams and channels:** posts as cards with replies, announcements, follow thread, channel files,
+- **Teams and channels:** posts as full-width cards (a title, headings, bullet and numbered lists,
+  each line in its own direction) with replies, announcements, follow thread, channel files,
   plus a management page: discover and join, channels, members, tags, email address, notifications.
 - **Calendar:** day, week and month views, event peek and full view, the event form with
   recurrence, the scheduling assistant, rooms, proposals, filters, share and print.
@@ -292,4 +293,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 5e36a9fa ("Merge feat/mandatory-auto-update: updates cannot be turned off", 2026-11-24)
+Docs synced to commit 7cd34f85 ("Merge feat/channel-post-layout: channel posts as full-width cards with a title, headings and lists like Teams", 2026-11-24)
