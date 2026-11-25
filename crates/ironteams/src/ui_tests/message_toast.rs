@@ -310,3 +310,148 @@ fn a_card_without_buttons_has_no_reply_box() {
             .is_none()
     );
 }
+
+/// Twenty-odd lines of text at the card's width.
+fn long_text() -> String {
+    (1..=120)
+        .map(|n| format!("word{n}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The scroll box holding the message text.
+fn body_box(app: &AppWindow) -> ElementHandle {
+    settle();
+    ElementHandle::find_by_element_id(app, "MessageToast::body-box")
+        .next()
+        .expect("the body's scroll box")
+}
+
+/// The middle of the scroll box.
+fn in_body(app: &AppWindow) -> LogicalPosition {
+    let (l, t, r, b) = rect(&body_box(app));
+    LogicalPosition::new((l + r) / 2., (t + b) / 2.)
+}
+
+fn move_pointer(app: &AppWindow, at: LogicalPosition) {
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: at });
+    settle();
+}
+
+#[test]
+fn a_long_message_is_whole_and_scrolls_inside_a_box_of_seven_lines() {
+    let (app, ui) = window();
+    let text = long_text();
+    ui.message_toast(toast("Tech Team", "Abdullah:", &text));
+    let body = labelled(&app, &text);
+    assert_eq!(body.len(), 1, "the whole text is on the card, not elided");
+    let body_h = body[0].size().height;
+    let box_h = body_box(&app).size().height;
+    assert!(
+        (box_h - 7. * 18.).abs() < 0.5,
+        "the box shows seven lines, not {box_h}"
+    );
+    assert!(body_h > box_h + 18., "the text is taller than the box");
+    // The reply box stays fixed under the scroll box.
+    let (_, _, _, box_bottom) = rect(&body_box(&app));
+    let (_, reply_top, _, _) = rect(&reply_input(&app));
+    assert!(reply_top >= box_bottom, "the reply box is below the text");
+}
+
+#[test]
+fn a_short_message_takes_only_its_own_height() {
+    let (app, ui) = window();
+    ui.message_toast(toast("Tech Team", "Abdullah:", "see you at ten"));
+    let body = labelled(&app, "see you at ten").remove(0);
+    let box_h = body_box(&app).size().height;
+    assert!(
+        (box_h - body.size().height).abs() < 0.5,
+        "no empty space under a short text"
+    );
+    assert!(box_h < 7. * 18.);
+}
+
+#[test]
+fn the_wheel_scrolls_a_long_message_to_its_end_without_opening_the_chat() {
+    let (app, ui) = window();
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let o = opened.clone();
+    app.global::<MessageToastStore>()
+        .on_open(move |c| o.borrow_mut().push(c.to_string()));
+    let text = long_text();
+    ui.message_toast(toast("Tech Team", "Abdullah:", &text));
+    let at = in_body(&app);
+    move_pointer(&app, at);
+    let y = |app: &AppWindow| labelled(app, &text).remove(0).absolute_position().y;
+    let top = y(&app);
+    app.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: at,
+        delta_x: 0.,
+        delta_y: -40.,
+    });
+    settle();
+    assert!(
+        (top - y(&app) - 40.).abs() < 1.,
+        "the text moved up by the wheel"
+    );
+    // A long wheel run stops at the end: the text's bottom meets the box's bottom.
+    app.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: at,
+        delta_x: 0.,
+        delta_y: -10000.,
+    });
+    settle();
+    let body = labelled(&app, &text).remove(0);
+    let (_, _, _, body_bottom) = rect(&body);
+    let (_, _, _, box_bottom) = rect(&body_box(&app));
+    assert!((body_bottom - box_bottom).abs() < 1., "scrolled to the end");
+    assert!(opened.borrow().is_empty(), "scrolling does not open the chat");
+    assert_eq!(cards(&app), 1, "scrolling does not close the card");
+}
+
+#[test]
+fn a_click_on_a_long_message_still_opens_its_chat() {
+    let (app, ui) = window();
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let o = opened.clone();
+    app.global::<MessageToastStore>()
+        .on_open(move |c| o.borrow_mut().push(c.to_string()));
+    ui.message_toast(toast("Tech Team", "Abdullah:", &long_text()));
+    let at = in_body(&app);
+    move_pointer(&app, at);
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: at,
+        button: PointerEventButton::Left,
+    });
+    testing::mock_elapsed_time(std::time::Duration::from_millis(50));
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: at,
+        button: PointerEventButton::Left,
+    });
+    assert_eq!(*opened.borrow(), vec![CHAT.to_string()]);
+    assert_eq!(cards(&app), 0);
+}
+
+#[test]
+fn a_card_stays_while_the_pointer_is_on_its_text_and_goes_after_it_leaves() {
+    let (app, ui) = window();
+    ui.message_toast(toast("Tech Team", "Abdullah:", &long_text()));
+    let at = in_body(&app);
+    move_pointer(&app, at);
+    // Scrolling on it keeps it too.
+    for _ in 0..30 {
+        app.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: at,
+            delta_x: 0.,
+            delta_y: -5.,
+        });
+        testing::mock_elapsed_time(std::time::Duration::from_secs(1));
+    }
+    assert_eq!(cards(&app), 1, "30 seconds on the text, the card stays");
+    move_pointer(&app, LogicalPosition::new(5., 5.));
+    for _ in 0..10 {
+        testing::mock_elapsed_time(std::time::Duration::from_secs(1));
+    }
+    assert_eq!(cards(&app), 0, "the card times out once the pointer is off");
+}

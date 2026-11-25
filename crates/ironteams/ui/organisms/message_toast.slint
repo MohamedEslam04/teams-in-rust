@@ -2,8 +2,9 @@
 // is the active one, a new message is a purple card in the bottom-right corner instead of a
 // desktop notification. The app name and the card's buttons on top, the sender's photo (a calendar
 // for a meeting chat), the chat in bold, "Sender:" and the text, and a box to answer without
-// opening the chat. Hovering the message shows four quick reactions. It closes by itself after
-// eight seconds, not while the pointer is on it or something is being typed.
+// opening the chat. A long text scrolls inside the card (seven lines show). Hovering the message
+// shows four quick reactions. It closes by itself after eight seconds, not while the pointer is on
+// it or something is being typed.
 //
 // Rust (`src/ui/message_toast.rs`) fills `toasts` (newest last, three at most) and takes the
 // callbacks; `app.slint` places `MessageToasts` above the call window and opens a chat.
@@ -161,6 +162,8 @@ export component MessageToast inherits Rectangle {
     property <bool> is-call: root.card.kind == "call";
     property <bool> is-calendar: root.card.kind == "meeting" || root.card.kind == "reminder";
     property <bool> is-message: !root.is-call && !root.is-calendar;
+    // The most the message text shows before it scrolls: seven lines.
+    out property <length> body-max-height: 7 * 18px * Theme.font-scale;
     // The Snooze button shows the minutes to pick.
     property <bool> snooze-open: false;
 
@@ -244,18 +247,6 @@ export component MessageToast inherits Rectangle {
             // The message: a click opens the chat; the pointer on it shows the reactions.
             msg := Rectangle {
                 height: row.preferred-height;
-                msg-touch := TouchArea {
-                    mouse-cursor: root.is-call ? MouseCursor.default : MouseCursor.pointer;
-                    clicked => {
-                        if root.is-message {
-                            MessageToastStore.open(root.card.conversation);
-                            MessageToastStore.dismiss(root.card.id);
-                        } else if root.is-calendar {
-                            MessageToastStore.act(root.card.id, "open");
-                            MessageToastStore.dismiss(root.card.id);
-                        }
-                    }
-                }
                 row := HorizontalLayout {
                     spacing: 10px;
                     VerticalLayout {
@@ -306,16 +297,54 @@ export component MessageToast inherits Rectangle {
                             accessible-role: text;
                             accessible-label: self.text;
                         }
-                        Text {
-                            text: root.card.text;
-                            color: #ffffff;
-                            font-size: 13px * Theme.font-scale;
-                            wrap: word-wrap;
-                            overflow: elide;
-                            max-height: 36px * Theme.font-scale;
-                            horizontal-alignment: root.card.rtl-text ? right : left;
-                            accessible-role: text;
-                            accessible-label: self.text;
+                        // The whole text, scrolling with the wheel past seven lines (the touch area
+                        // below sits in front and scrolls it, so the pointer stays "on the card"
+                        // while scrolling). A short text takes only its own height.
+                        body-box := Rectangle {
+                            height: min(body.preferred-height, root.body-max-height);
+                            body-scroll := Flickable {
+                                width: parent.width;
+                                height: parent.height;
+                                viewport-height: body.preferred-height;
+                                interactive: false;
+                                body := Text {
+                                    x: 0px;
+                                    y: 0px;
+                                    width: parent.width;
+                                    text: root.card.text;
+                                    color: #ffffff;
+                                    font-size: 13px * Theme.font-scale;
+                                    wrap: word-wrap;
+                                    horizontal-alignment: root.card.rtl-text ? right : left;
+                                    accessible-role: text;
+                                    accessible-label: self.text;
+                                }
+                            }
+                            // A thin thumb while there is more to scroll to.
+                            if body.preferred-height > root.body-max-height: Rectangle {
+                                x: parent.width - self.width;
+                                y: (parent.height - self.height) * (-body-scroll.viewport-y) / (body.preferred-height - parent.height);
+                                width: 3px;
+                                height: max(16px, parent.height * parent.height / body.preferred-height);
+                                border-radius: 1.5px;
+                                background: #ffffff80;
+                            }
+                        }
+                    }
+                }
+                msg-touch := TouchArea {
+                    mouse-cursor: root.is-call ? MouseCursor.default : MouseCursor.pointer;
+                    scroll-event(e) => {
+                        body-scroll.viewport-y = min(0px, max(body-box.height - body.preferred-height, body-scroll.viewport-y + e.delta-y));
+                        accept
+                    }
+                    clicked => {
+                        if root.is-message {
+                            MessageToastStore.open(root.card.conversation);
+                            MessageToastStore.dismiss(root.card.id);
+                        } else if root.is-calendar {
+                            MessageToastStore.act(root.card.id, "open");
+                            MessageToastStore.dismiss(root.card.id);
                         }
                     }
                 }
