@@ -1082,7 +1082,12 @@ impl Engine {
         let selected = marks.selected;
         let failed = marks.failed.unwrap_or(&none);
         let divider = marks.divider;
-        let receipt = marks.receipt;
+        // One lookup for the whole build: a group can mark many of my messages.
+        let receipt: HashMap<&str, &super::people::ReceiptMark> = marks
+            .receipt
+            .iter()
+            .map(|x| (x.msg_id.as_str(), x))
+            .collect();
         let receipt_side = marks.receipt_side;
         let fresh = marks.fresh;
         let near = marks.near;
@@ -1096,7 +1101,7 @@ impl Engine {
             let system = system_text(r);
             // Off screen: the row's pictures keep their size but hold no pixels.
             let close = near.is_none_or(|(lo, hi)| (lo..=hi).contains(&i));
-            let this_receipt = receipt.iter().find(|x| x.msg_id == r.id);
+            let this_receipt = receipt.get(r.id.as_str());
             let mine = r.sender_mri == self.me;
             let shown = self.translated_html(&r.id);
             let html = shown.as_deref().unwrap_or(&r.content_html);
@@ -1282,6 +1287,7 @@ impl Engine {
                 receipt: this_receipt.map(|x| x.state.clone()).unwrap_or_default(),
                 receipt_names: this_receipt.map(|x| x.names.clone()).unwrap_or_default(),
                 receipt_readers: this_receipt.map(|x| x.readers.clone()).unwrap_or_default(),
+                receipt_compact: this_receipt.is_some_and(|x| x.compact),
                 receipt_side: receipt_side && mine,
                 flash: false,
                 fresh: fresh.is_some_and(|f| {

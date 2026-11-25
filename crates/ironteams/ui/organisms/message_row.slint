@@ -693,7 +693,7 @@ export component MessageRow inherits TouchArea {
         // Delivery under my newest message of a group: a clock while it is being sent, a check once
         // sent, an eye (and the readers) when someone saw it. The glyphs cross-fade (200 ms). A
         // 1:1 chat draws the mark beside the bubble instead (`DeliveryMark`).
-        if !root.m.receipt-side && (root.m.receipt != "" || (root.m.mine && root.m.pending && !root.m.failed)): receipt-mark := Rectangle {
+        if !root.m.receipt-side && !root.m.receipt-compact && (root.m.receipt != "" || (root.m.mine && root.m.pending && !root.m.failed)): receipt-mark := Rectangle {
             property <bool> sending: root.m.pending;
             property <bool> seen: !self.sending && root.m.receipt == "seen";
             property <string> seen-line: root.m.receipt-names != "" ? @tr("Seen by {}", root.m.receipt-names) : @tr("Seen");
@@ -778,6 +778,43 @@ export component MessageRow inherits TouchArea {
                 height: 0px;
                 text: receipt-mark.seen-line;
                 font-size: 11px * Theme.font-scale;
+            }
+        }
+
+        // An older message of mine that someone read (the full line above stays on the newest
+        // one): just an eye and how many read it, at the right. It opens the same "Seen by" list.
+        if !root.m.receipt-side && root.m.receipt-compact && root.m.reader-list.length > 0: Rectangle {
+            height: 16px;
+            HorizontalLayout {
+                alignment: end;
+                compact-link := TouchArea {
+                    width: 12px + 4px + compact-count.preferred-width;
+                    mouse-cursor: pointer;
+                    accessible-role: button;
+                    accessible-label: @tr("Seen by {}", "" + root.m.reader-list.length);
+                    clicked => {
+                        root.show-readers(self.absolute-position.x + self.width, self.absolute-position.y, self.absolute-position.y + self.height);
+                    }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        Rectangle {
+                            width: 12px;
+                            Icon {
+                                source: @image-url("../icons/eye.svg");
+                                tint: Theme.accent;
+                                width: 12px;
+                                height: 12px;
+                                y: 2px;
+                            }
+                        }
+                        compact-count := Text {
+                            text: "" + root.m.reader-list.length;
+                            color: Theme.fg-subtle;
+                            font-size: 11px * Theme.font-scale;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
             }
         }
     }

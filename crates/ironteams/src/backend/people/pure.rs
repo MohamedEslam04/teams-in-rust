@@ -100,6 +100,9 @@ pub(in super::super) struct ReceiptMark {
     pub names: String,
     /// Every reader's name.
     pub readers: Vec<String>,
+    /// An older message of mine in a group that someone read: the row draws just an eye and the
+    /// reader count, not the full line (that stays on the newest message).
+    pub compact: bool,
 }
 
 impl ReceiptMark {
@@ -110,6 +113,7 @@ impl ReceiptMark {
             state: state.into(),
             names: String::new(),
             readers: Vec::new(),
+            compact: false,
         }
     }
 }

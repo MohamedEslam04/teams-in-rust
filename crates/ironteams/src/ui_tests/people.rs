@@ -1667,13 +1667,25 @@ fn a_group_receipt_names_who_has_seen_it() {
         vec![horizon(&mri(3), &mine), horizon(&mri(4), &mine)],
     );
     h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
-    assert_eq!(receipts(&h.app), vec![(mine, "seen".to_string())]);
+    // The demo chat has an older message of mine too: both were read, so it is seen as well,
+    // but only the newest carries the full line.
+    let seen = receipts(&h.app);
+    assert_eq!(seen.last(), Some(&(mine.clone(), "seen".to_string())));
     let row = h
         .app
         .get_messages()
         .iter()
-        .find(|m| m.receipt == "seen")
+        .find(|m| m.id.as_str() == mine)
         .unwrap();
+    assert!(!row.receipt_compact, "the newest keeps the full line");
+    assert!(
+        h.app
+            .get_messages()
+            .iter()
+            .filter(|m| m.receipt == "seen" && m.id.as_str() != mine)
+            .all(|m| m.receipt_compact),
+        "older read messages are compact"
+    );
     assert_eq!(row.receipt_names, "Sara Hassan, Omar Khaled");
     let listed: Vec<String> = row.reader_list.iter().map(|r| r.name.to_string()).collect();
     assert_eq!(
@@ -1686,6 +1698,71 @@ fn a_group_receipt_names_who_has_seen_it() {
             .accessible_label()
             .unwrap(),
         "Seen by Sara Hassan, Omar Khaled"
+    );
+}
+
+/// The receipt facts of my message `id` in the window: its state, whether it is the compact mark,
+/// and the names in its "Seen by" list.
+fn receipt_of(app: &AppWindow, id: &str) -> (String, bool, Vec<String>) {
+    let m = app
+        .get_messages()
+        .iter()
+        .find(|m| m.id == id)
+        .unwrap_or_else(|| panic!("message {id}"));
+    let names = m.reader_list.iter().map(|r| r.name.to_string()).collect();
+    (m.receipt.to_string(), m.receipt_compact, names)
+}
+
+#[test]
+fn a_group_marks_every_older_message_someone_read_with_a_compact_receipt() {
+    let h = Harness::new();
+    wire(&h);
+    h.engine
+        .test_set_members(BACKEND, &[demo::ME, &mri(3), &mri(4)]);
+    let now = teams_proto::time::now_ms();
+    let ids: Vec<String> = (1..=3).map(|i| (now + i * 1000).to_string()).collect();
+    h.engine.test_store(|s| {
+        for (i, id) in ids.iter().enumerate() {
+            s.upsert_message(&my_message(BACKEND, id, now + (i as i64 + 1) * 1000))
+                .unwrap();
+        }
+    });
+    h.select(BACKEND);
+    let sara = || "Sara Hassan".to_string();
+    let omar = || "Omar Khaled".to_string();
+
+    // Sara has read all three, Omar the first: the newest keeps the full mark, the older ones
+    // are compact and list who read them.
+    h.engine.test_set_horizons(
+        BACKEND,
+        vec![horizon(&mri(3), &ids[2]), horizon(&mri(4), &ids[0])],
+    );
+    h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
+    assert_eq!(
+        receipt_of(&h.app, &ids[2]),
+        ("seen".to_string(), false, vec![sara()])
+    );
+    assert_eq!(
+        receipt_of(&h.app, &ids[1]),
+        ("seen".to_string(), true, vec![sara()])
+    );
+    assert_eq!(
+        receipt_of(&h.app, &ids[0]),
+        ("seen".to_string(), true, vec![sara(), omar()])
+    );
+
+    // Only the first is read: the second, unread, shows nothing; the newest is just sent.
+    h.engine
+        .test_set_horizons(BACKEND, vec![horizon(&mri(3), &ids[0])]);
+    h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
+    assert_eq!(
+        receipt_of(&h.app, &ids[2]),
+        ("sent".to_string(), false, vec![])
+    );
+    assert_eq!(receipt_of(&h.app, &ids[1]), (String::new(), false, vec![]));
+    assert_eq!(
+        receipt_of(&h.app, &ids[0]),
+        ("seen".to_string(), true, vec![sara()])
     );
 }
 
