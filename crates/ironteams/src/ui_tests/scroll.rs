@@ -180,13 +180,22 @@ fn assert_divider_shown(app: &AppWindow, what: &str) {
 }
 
 /// A chat with new messages opens at its "New messages" divider, not at the top of the loaded
-/// history: the list had just been emptied for the chat (content height 0) when it was told where
-/// the divider is. A row below the divider that grows afterwards (a picture getting its size) does
-/// not pull the view to the newest message.
+/// history: the list still had the content height of the chat shown before (or none) when it was
+/// told where the divider is. A row below the divider that grows afterwards (a picture getting its
+/// size) does not pull the view to the newest message.
 #[test]
 fn opening_a_chat_with_new_messages_lands_at_the_divider() {
     let h = unread_chat(60, 29);
+    // Another chat first, as when switching chats: the message pane exists already (a pane
+    // created by the open itself never sees the divider tick change).
+    h.select(BACKEND);
+    settle(&h.app);
+    let ticks = h.app.get_divider_tick();
     h.select(NOTES);
+    assert!(
+        h.app.get_divider_tick() > ticks,
+        "the chat opens at its divider"
+    );
     let at = h.app.get_unread_index();
     let rows = h.app.get_messages().row_count() as i32;
     assert!(
