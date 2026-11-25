@@ -521,16 +521,17 @@ fn video_feedback_summary(sdp: &str) -> Vec<String> {
             mid = m.to_owned();
         } else if let Some(f) = line.strip_prefix("a=rtcp-fb:") {
             // "<pt> <type> [param]" -> keep "<type> [param]".
-            if let Some((_, typ)) = f.split_once(' ')
-                && !fb.iter().any(|t| t == typ)
-            {
-                fb.push(typ.to_owned());
+            if let Some((_, typ)) = f.split_once(' ') {
+                let typ = typ.to_owned();
+                if !fb.contains(&typ) {
+                    fb.push(typ);
+                }
             }
         } else if let Some(e) = line.strip_prefix("a=extmap:") {
             // The URI is the last token; keep its final path segment (abs-send-time, …).
             if let Some(uri) = e.split_whitespace().last() {
                 let short = uri.rsplit('/').next().unwrap_or(uri).to_owned();
-                if !ext.iter().any(|x| *x == short) {
+                if !ext.contains(&short) {
                     ext.push(short);
                 }
             }
