@@ -1481,4 +1481,42 @@ mod tests {
         }
         assert_eq!(notify_level("loud"), None);
     }
+
+    /// The sync and the Teams view take the lists' lock while they hold the store's (a channel's
+    /// name, its team's picture). The first load of the lists read the store while it held the
+    /// lists' lock, the other way round: the two could deadlock each other, and with them every
+    /// task and the window waiting on the store. Waiting for the store, it must hold nothing.
+    #[test]
+    fn loading_the_lists_holds_no_lock_while_it_waits_for_the_store() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let e = Engine::new(
+            teams_proto::Client::offline("test").unwrap(),
+            store::Store::open_in_memory().unwrap(),
+            session::Config::default(),
+            ui,
+            "8:me".into(),
+            "Me".into(),
+        );
+        assert!(!e.lists.lock().unwrap().loaded, "not loaded yet");
+        // Something else (the sync) holds the store.
+        let store = e.store.lock().unwrap();
+        let loading = {
+            let e = e.clone();
+            std::thread::spawn(move || e.lists_load())
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let lists_free = e.lists.try_lock().is_ok();
+        drop(store);
+        loading.join().unwrap();
+        assert!(
+            lists_free,
+            "the lists' lock was held while waiting for the store's"
+        );
+        assert!(
+            e.lists.lock().unwrap().loaded,
+            "loaded once the store is free"
+        );
+    }
 }
