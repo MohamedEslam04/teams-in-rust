@@ -353,6 +353,21 @@ pub(super) fn system_text(m: &MessageRow) -> Option<String> {
     }
 }
 
+/// Whether an MRI is an app or bot (`28:`), not a person.
+pub(crate) fn is_bot_mri(mri: &str) -> bool {
+    mri.starts_with("28:")
+}
+
+/// The members of a chat other than `me`, apps and bots left out: Teams does not name a chat
+/// after the Linear app someone added to it. A chat of only apps keeps their names.
+pub(super) fn others_of<'a>(members: &'a [String], me: &str) -> Vec<&'a String> {
+    let others: Vec<&String> = members.iter().filter(|m| *m != me).collect();
+    if others.iter().all(|m| is_bot_mri(m)) {
+        return others;
+    }
+    others.into_iter().filter(|m| !is_bot_mri(m)).collect()
+}
+
 /// A chat list title that is never empty. Teams sends no topic for most group chats and no name
 /// for the General channel, and a stored title may be blank. A group falls back to its members'
 /// names (the first four), a channel to its own name and then "General".
@@ -504,6 +519,19 @@ mod tests {
             avatar_key("8:orgid:a", AVATAR_LIST_PX),
             avatar_key("8:orgid:a", AVATAR_PX)
         );
+    }
+
+    #[test]
+    fn apps_are_left_out_of_the_members_a_title_is_derived_from() {
+        let members: Vec<String> = ["8:orgid:me", "8:orgid:m1", "28:linear", "8:orgid:m2"]
+            .map(String::from)
+            .into();
+        let others = others_of(&members, "8:orgid:me");
+        assert_eq!(others, ["8:orgid:m1", "8:orgid:m2"]);
+        // A chat of only apps still has something to call it by.
+        let only_apps: Vec<String> = ["8:orgid:me", "28:linear"].map(String::from).into();
+        assert_eq!(others_of(&only_apps, "8:orgid:me"), ["28:linear"]);
+        assert!(is_bot_mri("28:linear") && !is_bot_mri("8:orgid:m1"));
     }
 
     #[test]

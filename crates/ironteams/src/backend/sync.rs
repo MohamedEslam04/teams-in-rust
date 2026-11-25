@@ -99,9 +99,8 @@ impl Engine {
                     .get(c.id.as_str())
                     .map(|m| m.members.clone())
                     .unwrap_or_else(|| one_on_one_members(&c.id));
-                let others: Vec<String> = members
-                    .iter()
-                    .filter(|m| *m != &self.me)
+                let others: Vec<String> = others_of(&members, &self.me)
+                    .into_iter()
                     .filter_map(|m| name_of(m))
                     .collect();
                 let (team_id, team_name, channel_name) = channel_info

@@ -6,7 +6,7 @@ use super::Engine;
 use super::mentions::{self, Entry};
 use super::outbox::PENDING_PREFIX;
 use super::outsider::{Outsider, Standing, classify, is_guest_upn, tagged};
-use super::util::{AVATAR_PX, decode_image, one_on_one_members};
+use super::util::{AVATAR_PX, decode_image, is_bot_mri, one_on_one_members};
 use crate::data::{CardData, PersonData, PinnedData};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap};
