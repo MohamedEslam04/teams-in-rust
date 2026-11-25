@@ -3,6 +3,7 @@
 //! an offset past the end, or inside a character, is moved back to a valid one.
 
 use crate::{Dir, text_direction};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// How many lines `text` has (an empty text has one).
 pub fn line_count(text: &str) -> usize {
@@ -93,6 +94,43 @@ pub fn vertical(text: &str, offset: usize, delta: isize) -> Option<usize> {
         .nth(chars)
         .map_or(content.len(), |(i, _)| i);
     Some(line_start(text, target) + column)
+}
+
+/// Where the caret goes when it moves one character (`delta` > 0 forward in the text, < 0 back) or
+/// one word (`by_word`) from `offset`, staying in the line of `offset`: a character is a whole
+/// grapheme (a letter with its marks), a word step goes to the end of the next word or the start of
+/// the one before, as a TextInput does. At the end of the line a forward step stays there, and at
+/// its start a backward one; the line break is crossed by the caller.
+pub fn step(text: &str, offset: usize, delta: isize, by_word: bool) -> usize {
+    let (line, column) = locate(text, offset);
+    let start = line_start(text, line);
+    let content = line_text(text, line);
+    let column = column.min(content.len());
+    let column = match (delta > 0, by_word) {
+        (true, false) => content
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .find(|&i| i > column)
+            .unwrap_or(content.len()),
+        (false, false) => content
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .take_while(|&i| i < column)
+            .last()
+            .unwrap_or(0),
+        (true, true) => content
+            .unicode_word_indices()
+            .map(|(i, word)| i + word.len())
+            .find(|&end| end > column)
+            .unwrap_or(content.len()),
+        (false, true) => content
+            .unicode_word_indices()
+            .map(|(i, _)| i)
+            .take_while(|&i| i < column)
+            .last()
+            .unwrap_or(0),
+    };
+    start + column
 }
 
 /// The direction of line `line`: its own first strong character, else the line before it; `None`
@@ -209,5 +247,51 @@ mod tests {
             [0, 1, 2].map(|i| line_direction(MIXED, i)),
             [Some(Dir::Ltr), Some(Dir::Rtl), Some(Dir::Ltr)]
         );
+    }
+
+    #[test]
+    fn a_step_moves_over_a_whole_grapheme() {
+        // Meem with a fatha (four bytes, one character on screen), then three plain letters.
+        let text = "\u{645}\u{64e}\u{631}\u{62d}\u{628}";
+        assert_eq!(step(text, 0, 1, false), 4);
+        assert_eq!(step(text, 4, 1, false), 6);
+        assert_eq!(step(text, 6, -1, false), 4);
+        assert_eq!(step(text, 4, -1, false), 0);
+        // An offset inside a character counts as the one before it.
+        assert_eq!(step(text, 1, 1, false), 4);
+        // An emoji with a skin tone is one step too.
+        assert_eq!(step("a\u{1F44B}\u{1F3FD}b", 1, 1, false), 9);
+    }
+
+    #[test]
+    fn a_step_stops_at_the_ends_of_its_line() {
+        let text = "ab\n\u{627}\u{628}";
+        assert_eq!(step(text, 0, -1, false), 0);
+        assert_eq!(step(text, 2, 1, false), 2);
+        // Line 1 starts at 3: a step back stays there, the caller crosses the break.
+        assert_eq!(step(text, 3, -1, false), 3);
+        assert_eq!(step(text, text.len(), 1, false), text.len());
+        assert_eq!(step("", 0, 1, true), 0);
+        assert_eq!(step(text, 99, -1, false), 5);
+    }
+
+    #[test]
+    fn a_word_step_goes_to_the_end_or_the_start_of_a_word() {
+        let text = "hello world";
+        assert_eq!(step(text, 0, 1, true), 5);
+        assert_eq!(step(text, 5, 1, true), 11);
+        assert_eq!(step(text, 11, 1, true), 11);
+        assert_eq!(step(text, 11, -1, true), 6);
+        assert_eq!(step(text, 6, -1, true), 0);
+        assert_eq!(step(text, 3, -1, true), 0);
+        let arabic = "\u{645}\u{631}\u{62d}\u{628}\u{627} \u{628}\u{643}";
+        // Two words of five and two letters (two bytes each).
+        assert_eq!(step(arabic, 0, 1, true), 10);
+        assert_eq!(step(arabic, 10, 1, true), arabic.len());
+        assert_eq!(step(arabic, arabic.len(), -1, true), 11);
+        assert_eq!(step(arabic, 11, -1, true), 0);
+        // A word step stays in its line.
+        assert_eq!(step("one\ntwo", 4, -1, true), 4);
+        assert_eq!(step("one\ntwo", 3, 1, true), 3);
     }
 }

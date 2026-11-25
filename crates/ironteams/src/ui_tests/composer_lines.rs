@@ -109,3 +109,210 @@ fn text_set_from_outside_is_split_into_lines() {
     settle();
     assert_eq!(line_inputs(&app), 1);
 }
+fn press(app: &AppWindow, k: Key) {
+    key(app, k, true);
+    key(app, k, false);
+}
+
+/// `k` pressed with `modifier` held.
+fn press_with(app: &AppWindow, modifier: Key, k: Key) {
+    key(app, modifier, true);
+    press(app, k);
+    key(app, modifier, false);
+}
+
+fn select_all(app: &AppWindow) {
+    key(app, Key::Control, true);
+    key(app, "a", true);
+    key(app, "a", false);
+    key(app, Key::Control, false);
+}
+
+/// The composer, clicked, with the lines of `lines` typed in (a new line with Shift+Enter).
+fn composer_with(lines: &[&str]) -> AppWindow {
+    let app = app_with_messages(vec![]);
+    composer(&app).mock_single_click(PointerEventButton::Left);
+    for (i, line) in lines.iter().enumerate() {
+        if i > 0 {
+            shift_enter(&app);
+        }
+        type_text(&app, line);
+    }
+    settle();
+    app
+}
+
+#[test]
+fn the_steps_of_the_line_api_follow_graphemes_and_words() {
+    let app = app_with_messages(vec![]);
+    let api = app.global::<LineApi>();
+    let text: SharedString = "\u{645}\u{64e}\u{631} hello".into();
+    assert_eq!(api.invoke_step(text.clone(), 0, 1, false), 4);
+    assert_eq!(api.invoke_step(text.clone(), 4, -1, false), 0);
+    assert_eq!(api.invoke_step(text, 0, 1, true), 6);
+    assert!(api.invoke_printable("a".into()));
+    assert!(!api.invoke_printable(SharedString::from(Key::Return)));
+    assert!(!api.invoke_printable(SharedString::from(Key::LeftArrow)));
+}
+
+#[test]
+fn in_an_arabic_line_right_moves_back_in_the_text_and_left_moves_forward() {
+    let app = composer_with(&["مرحبا"]);
+    // The cursor is at the end of the text: Right is a step back, before the last letter.
+    press(&app, Key::RightArrow);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "مرحبxا");
+    // Left is a step forward: over the last letter.
+    press(&app, Key::LeftArrow);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "مرحبxاy");
+}
+
+#[test]
+fn in_an_english_line_the_arrows_keep_their_meaning() {
+    let app = composer_with(&["abc"]);
+    press(&app, Key::LeftArrow);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "abxc");
+    press(&app, Key::RightArrow);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "abxcy");
+}
+
+#[test]
+fn shift_and_ctrl_work_with_the_swapped_arrows_of_an_arabic_line() {
+    let app = composer_with(&["مرحبا"]);
+    // Shift+Right selects the last letter (it is back in the text), typing replaces it.
+    press_with(&app, Key::Shift, Key::RightArrow);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "مرحبx");
+
+    let app = composer_with(&["مرحبا بكم"]);
+    // Ctrl+Right goes back a word, Ctrl+Left forward to the end of it.
+    press_with(&app, Key::Control, Key::RightArrow);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "مرحبا xبكم");
+    press_with(&app, Key::Control, Key::LeftArrow);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "مرحبا xبكمy");
+}
+
+#[test]
+fn the_cursor_crosses_to_the_other_line_with_the_swapped_arrows_of_an_arabic_line() {
+    let app = composer_with(&["أ", "ب"]);
+    // Right: back to the start of the second line, then to the end of the first.
+    press(&app, Key::RightArrow);
+    press(&app, Key::RightArrow);
+    settle();
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "أx\nب");
+    // Left at the end of the first line: forward, to the start of the second.
+    press(&app, Key::LeftArrow);
+    settle();
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "أx\nyب");
+}
+
+#[test]
+fn the_cursor_at_the_start_of_a_right_aligned_line_is_not_cut_off() {
+    let app = composer_with(&["مرحبا"]);
+    let editor = rect(&composer(&app));
+    let input = rect(
+        &ElementHandle::find_by_element_id(&app, "LineEditor::ti")
+            .next()
+            .expect("line input"),
+    );
+    // The cursor is drawn past the right edge of the input's text there: room for it.
+    assert!(
+        editor.2 - input.2 >= 2.9,
+        "the input ends {}px before the editor's edge",
+        editor.2 - input.2
+    );
+}
+
+#[test]
+fn ctrl_a_selects_every_line_and_backspace_clears_them() {
+    let app = composer_with(&["one", "اثنان", "three"]);
+    select_all(&app);
+    press(&app, Key::Backspace);
+    settle();
+    assert_eq!(app.get_draft(), "");
+    assert_eq!(line_inputs(&app), 1);
+    type_text(&app, "z");
+    assert_eq!(app.get_draft(), "z");
+}
+
+#[test]
+fn a_typed_character_replaces_the_whole_selection() {
+    let app = composer_with(&["one", "اثنان"]);
+    select_all(&app);
+    type_text(&app, "x");
+    settle();
+    assert_eq!(app.get_draft(), "x");
+    assert_eq!(line_inputs(&app), 1);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "xy");
+}
+
+#[test]
+fn arrows_end_the_whole_selection_at_its_start_or_its_end() {
+    // The cursor is in the last line, an English one: Left goes to the start of the text.
+    let app = composer_with(&["one", "two"]);
+    select_all(&app);
+    press(&app, Key::LeftArrow);
+    settle();
+    type_text(&app, "!");
+    assert_eq!(app.get_draft(), "!one\ntwo");
+
+    // Up goes to the start too, Right to the end.
+    let app = composer_with(&["one", "two"]);
+    select_all(&app);
+    press(&app, Key::UpArrow);
+    settle();
+    type_text(&app, "!");
+    assert_eq!(app.get_draft(), "!one\ntwo");
+    select_all(&app);
+    press(&app, Key::RightArrow);
+    settle();
+    type_text(&app, "?");
+    assert_eq!(app.get_draft(), "!one\ntwo?");
+
+    // In an Arabic line Left and Right are swapped: Left is the end, Right the start.
+    let app = composer_with(&["one", "اثنان"]);
+    select_all(&app);
+    press(&app, Key::LeftArrow);
+    settle();
+    type_text(&app, "!");
+    assert_eq!(app.get_draft(), "one\nاثنان!");
+    select_all(&app);
+    press(&app, Key::RightArrow);
+    settle();
+    type_text(&app, "?");
+    assert_eq!(app.get_draft(), "?one\nاثنان!");
+}
+
+#[test]
+fn a_click_ends_the_whole_selection() {
+    let app = composer_with(&["one", "two"]);
+    select_all(&app);
+    composer(&app).mock_single_click(PointerEventButton::Left);
+    settle();
+    type_text(&app, "x");
+    let draft = app.get_draft();
+    assert!(draft.contains("one") && draft.contains("tw") && draft.contains('x'));
+}
+
+#[test]
+fn enter_sends_the_whole_text_after_ctrl_a() {
+    let app = composer_with(&["one", "اثنان"]);
+    let sent = record_send(&app);
+    select_all(&app);
+    enter(&app);
+    assert_eq!(*sent.borrow(), vec!["one\nاثنان".to_string()]);
+    assert_eq!(app.get_draft(), "");
+    settle();
+    // Typing after the send adds to an empty box, not over a selection.
+    type_text(&app, "n");
+    type_text(&app, "m");
+    assert_eq!(app.get_draft(), "nm");
+}
