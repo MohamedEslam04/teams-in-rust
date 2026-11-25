@@ -437,6 +437,11 @@ impl Walker {
         } else {
             quote_lines(el, false)
         };
+        // A forward of only a picture has nothing to put in a card: the picture stands alone.
+        if forwarded && preview.is_empty() && !images.is_empty() {
+            self.blocks.extend(images);
+            return;
+        }
         let dir = base_direction(&preview);
         self.blocks.push(Block::Quote {
             message_id,
@@ -1094,20 +1099,11 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_gif_is_an_image_after_its_card_not_placeholder_text() {
+    fn forwarded_gif_is_a_lone_image_without_an_empty_card() {
         let html = r#"<blockquote itemtype="http://schema.skype.com/Forward"><div><img src="https://media4.giphy.com/media/v1.Y2lkPWZjZGU1NDk1ZGgzaTI4cnd1N21mMWkwZHV5eDgyN3UwNGN3bDF4NnR1ZWNhbDFlaSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/QtkaYLHzBgh0WUCgjC/giphy.gif" alt="Pack It Up Its Over GIF" itemscope="" itemtype="http://schema.skype.com/Giphy" style="width:480px; height:320px"></div></blockquote>"#;
         assert_eq!(
             parse(html),
             vec![
-                Block::Quote {
-                    message_id: None,
-                    author_mri: None,
-                    author: None,
-                    time_ms: None,
-                    forwarded: true,
-                    preview: String::new(),
-                    dir: Dir::Ltr,
-                },
                 Block::Image {
                     url: "https://media4.giphy.com/media/v1.Y2lkPWZjZGU1NDk1ZGgzaTI4cnd1N21mMWkwZHV5eDgyN3UwNGN3bDF4NnR1ZWNhbDFlaSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/QtkaYLHzBgh0WUCgjC/giphy.gif".into(),
                     width: None,
