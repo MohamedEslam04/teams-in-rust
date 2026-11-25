@@ -1,0 +1,10 @@
+# cargo-nextest, used by the Linux `check` job in .github/workflows/ci.yml.
+
+[profile.ci]
+# Report every failure, not only the first.
+fail-fast = false
+# A test still running after 60 s is reported as SLOW, by name; after 3 periods it is killed and
+# fails as TIMEOUT, so a hang costs 3 minutes instead of the job's whole time limit.
+slow-timeout = { period = "60s", terminate-after = 3 }
+# Print a failing test's output where it fails and again in the summary at the end.
+failure-output = "immediate-final"

@@ -86,6 +86,34 @@ async fn loopback_carries_opus_both_ways() {
     callee.close().await.unwrap();
 }
 
+/// A native Teams client offers no `a=setup` (RFC 4145: the offerer is then `active`). The callee
+/// answers `passive` and must really be the DTLS server: an answer that said `passive` while
+/// webrtc-rs stayed the client would leave both sides waiting for a ClientHello.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_offer_without_setup_is_answered_passive_and_connects() {
+    let (caller, mut caller_events) = MediaSession::with_options(vec![], local()).await.unwrap();
+    let (callee, mut callee_events) = MediaSession::with_options(vec![], local()).await.unwrap();
+
+    let offer = caller
+        .create_offer()
+        .await
+        .unwrap()
+        .replace("a=setup:actpass\r\n", "");
+    assert!(!offer.contains("a=setup:"), "{offer}");
+    let answer = callee.accept_offer(&offer).await.unwrap();
+    assert!(answer.contains("a=setup:passive\r\n"), "{answer}");
+    assert!(!answer.contains("a=setup:active"), "{answer}");
+    caller.set_answer(&answer).await.unwrap();
+
+    wait_for(&mut caller_events, MediaState::Connected).await;
+    wait_for(&mut callee_events, MediaState::Connected).await;
+    let to_callee = pump(&caller, &mut callee_events, 0x00).await;
+    assert!(to_callee.len() >= 20, "callee got {}", to_callee.len());
+
+    caller.close().await.unwrap();
+    callee.close().await.unwrap();
+}
+
 /// Turns a webrtc-rs re-offer (already in the Teams dialect) into what the media servers send:
 /// the same audio line plus a `sendonly` screen-sharing video line and an `x-data` line, all on
 /// the audio line's transport.

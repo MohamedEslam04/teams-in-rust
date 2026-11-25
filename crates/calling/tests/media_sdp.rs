@@ -7,7 +7,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use calling::SdpBlob;
 use calling::media::sdp::{
-    CONTENT_TYPE_NGC, CONTENT_TYPE_SDP, from_teams, to_teams_answer, to_teams_offer,
+    CONTENT_TYPE_NGC, CONTENT_TYPE_SDP, from_teams, from_teams_with, to_teams_answer,
+    to_teams_offer,
 };
 use flate2::Compression;
 use flate2::write::DeflateEncoder;
@@ -160,6 +161,41 @@ fn from_teams_refuses_sdes_only_sdp() {
     assert!(err.contains("DTLS"), "{err}");
 }
 
+// A native Teams client's offer has a fingerprint but no `a=setup` (live 2026-11-25: 406/4122
+// `FinalAnswerError` 0.3 s after our `a=setup:active` answer). RFC 4145 §4.1: with no `setup`
+// the offerer is `active` and the answerer `passive`.
+
+#[test]
+fn from_teams_states_the_default_active_role_of_an_offer_without_setup() {
+    let out = from_teams_with(P2P_OFFER, &[], true).unwrap();
+    let l = lines(&out);
+    let m = l.iter().position(|x| x.starts_with("m=audio")).unwrap();
+    assert!(l[m..].contains(&"a=setup:active"), "{out}");
+    assert!(
+        !l.iter()
+            .any(|x| *x == "a=setup:actpass" || *x == "a=setup:passive")
+    );
+}
+
+#[test]
+fn from_teams_states_the_default_passive_role_of_an_answer_without_setup() {
+    let answer = MEETING_ANSWER.replace("a=setup:passive\n", "");
+    assert!(!answer.contains("a=setup:"));
+    let out = from_teams(&answer).unwrap();
+    assert!(lines(&out).contains(&"a=setup:passive"), "{out}");
+    assert!(!out.contains("a=setup:active"), "{out}");
+}
+
+#[test]
+fn from_teams_keeps_a_stated_setup_as_it_is() {
+    let out = from_teams_with(WEB_OFFER, &[], true).unwrap();
+    let setups: Vec<_> = lines(&out)
+        .into_iter()
+        .filter(|l| l.starts_with("a=setup:"))
+        .collect();
+    assert_eq!(setups, ["a=setup:actpass"], "{out}");
+}
+
 // --- outbound: webrtc-rs -> Teams ---
 
 /// What webrtc-rs writes for an audio-only offer after gathering (shape, not byte-for-byte).
@@ -202,6 +238,38 @@ fn to_teams_offer_uses_the_service_profile_and_bundle_transport() {
     assert!(l.contains(&"a=msid-semantic: WMS *"));
 }
 
+// RFC 8445 §5.1.4: the default candidate (the m-line port and `c=`) SHOULD be the relayed one,
+// then the server reflexive one, then a host. Live 2026-11-25 our offer and answer put a docker
+// bridge host (172.17.0.1) there; the native client's offer puts its relay there.
+
+#[test]
+fn to_teams_offer_puts_the_relay_candidate_on_the_m_line() {
+    let offer = LOCAL_OFFER.replace(
+        "a=end-of-candidates",
+        "a=candidate:3 1 udp 1694498815 203.0.113.5 41000 typ srflx raddr 192.0.2.30 rport 40000\r\n\
+         a=candidate:4 1 udp 16777215 198.51.100.7 52000 typ relay raddr 192.0.2.30 rport 40000\r\n\
+         a=end-of-candidates",
+    );
+    let out = to_teams_offer(&offer);
+    let l = lines(&out);
+    assert!(l.contains(&"m=audio 52000 RTP/SAVP 111"), "{out}");
+    assert!(l.contains(&"c=IN IP4 198.51.100.7"), "{out}");
+    assert!(l.contains(&"a=rtcp:52000"), "{out}");
+}
+
+#[test]
+fn to_teams_offer_puts_a_server_reflexive_candidate_before_a_host() {
+    let offer = LOCAL_OFFER.replace(
+        "a=end-of-candidates",
+        "a=candidate:3 1 udp 1694498815 203.0.113.5 41000 typ srflx raddr 192.0.2.30 rport 40000\r\n\
+         a=end-of-candidates",
+    );
+    let out = to_teams_offer(&offer);
+    let l = lines(&out);
+    assert!(l.contains(&"m=audio 41000 RTP/SAVP 111"), "{out}");
+    assert!(l.contains(&"c=IN IP4 203.0.113.5"), "{out}");
+}
+
 #[test]
 fn to_teams_offer_adds_label_ssrc_range_and_section_fingerprint() {
     let out = to_teams_offer(LOCAL_OFFER);
@@ -238,6 +306,30 @@ fn to_teams_answer_keeps_the_answer_shape() {
     // Offer-only additions are not made on an answer (SdpParsingFailure, teams-lite §2.5).
     assert!(!l.contains(&"b=CT:4000"));
     assert!(!l.iter().any(|x| x.starts_with("a=rtcp:")));
+}
+
+#[test]
+fn to_teams_answer_is_passive_to_an_offer_without_setup() {
+    // webrtc-rs answers `active` whatever the offer says; the native offerer is `active` by
+    // default, so the answer must be `passive` (from_teams told webrtc-rs it is the DTLS server).
+    // The native offer names its audio mid `audio_0`; a section on another mid is stubbed.
+    let answer = LOCAL_OFFER
+        .replace("a=setup:actpass", "a=setup:active")
+        .replace("a=mid:0", "a=mid:audio_0")
+        .replace("BUNDLE 0", "BUNDLE audio_0");
+    let out = to_teams_answer(&answer, P2P_OFFER);
+    let l = lines(&out);
+    assert!(l.contains(&"a=setup:passive"), "{out}");
+    assert!(!l.contains(&"a=setup:active"), "{out}");
+}
+
+#[test]
+fn to_teams_answer_keeps_its_role_when_the_offer_states_setup() {
+    let answer = LOCAL_OFFER.replace("a=setup:actpass", "a=setup:active");
+    let out = to_teams_answer(&answer, WEB_OFFER);
+    let l = lines(&out);
+    assert!(l.contains(&"a=setup:active"), "{out}");
+    assert!(!l.contains(&"a=setup:passive"), "{out}");
 }
 
 #[test]
