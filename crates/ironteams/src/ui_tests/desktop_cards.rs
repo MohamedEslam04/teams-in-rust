@@ -416,6 +416,48 @@ fn a_card_after_the_stack_went_empty_gets_its_whole_height() {
     near(second, first, "the same card, the same height");
 }
 
+/// The live repro on KWin: a long message on the desktop card showed the scroll thumb but the
+/// wheel did not move its text. The layer shell's wheel (`layer.rs`, one notch is 60 px) reaches
+/// the card as a `PointerScrolled`; it scrolls the text and neither opens nor closes the card.
+#[test]
+fn the_wheel_scrolls_a_long_message_on_the_desktop_card() {
+    let (h, core, sent) = host();
+    let text = (1..=120)
+        .map(|n| format!("word{n}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    show(
+        &core,
+        Card {
+            text: text.clone(),
+            ..message(9)
+        },
+    );
+    settle();
+    let body_box = ElementHandle::find_by_element_id(&h, "MessageToast::body-box")
+        .next()
+        .expect("the body's scroll box");
+    let (l, t, r, b) = rect(&body_box);
+    let at = LogicalPosition::new((l + r) / 2., (t + b) / 2.);
+    h.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: at });
+    settle();
+    let y = || labelled(&h, &text).remove(0).absolute_position().y;
+    let top = y();
+    h.window().dispatch_event(WindowEvent::PointerScrolled {
+        position: at,
+        delta_x: 0.,
+        delta_y: -60.,
+    });
+    settle();
+    near(top - y(), 60., "one notch moves the text up");
+    assert!(
+        actions(&sent).is_empty(),
+        "the wheel neither opens nor closes the card"
+    );
+    assert_eq!(cards(&core), 1);
+}
+
 #[test]
 fn quit_ends_the_host() {
     let (_h, core, _) = host();
