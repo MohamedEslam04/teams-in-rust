@@ -337,6 +337,97 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::should_notify;
+    use crate::backend::Engine;
+    use slint::Model;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    use store::{ConvKind, ConversationRow};
+    use teams_proto::model::Message;
+
+    const GROUP: &str = "19:group@thread.v2";
+
+    fn group_message(text: &str) -> Message {
+        Message {
+            id: "1764000000000".into(),
+            conversation_id: GROUP.into(),
+            parent_id: None,
+            sender_mri: "8:orgid:sara".into(),
+            sender_name: "Sara Example".into(),
+            compose_ms: 1_764_000_000_000,
+            edited_ms: None,
+            deleted: false,
+            message_type: "RichText/Html".into(),
+            content: format!("<p>{text}</p>"),
+            client_message_id: None,
+            reactions: Vec::new(),
+            files: Vec::new(),
+            subject: None,
+            mentions: Vec::new(),
+            card: None,
+            importance: Default::default(),
+            announcement: None,
+            language_stamp: None,
+            links: Vec::new(),
+        }
+    }
+
+    /// A message in another chat while the window has the focus becomes a card in the window
+    /// (route InApp). The card looks the sender's photo up, and on a cache miss that lookup locks
+    /// the store. `on_message` used to call the notification while it still held the store's
+    /// lock: the std mutex deadlocked the live loop's worker on itself, and with it every task
+    /// and the window waiting on the store (the freeze of 2026-11-25, in a call, at a group
+    /// chat's message). Runs on a thread of its own so a deadlock fails the test instead of
+    /// hanging it.
+    #[test]
+    fn an_in_window_card_for_a_new_message_does_not_deadlock_on_the_store() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            i_slint_backend_testing::init_no_event_loop();
+            let window = crate::AppWindow::new().unwrap();
+            crate::ui::message_toast::install_local(&window);
+            let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+            let store = store::Store::open_in_memory().unwrap();
+            store
+                .upsert_conversation(&ConversationRow {
+                    id: GROUP.into(),
+                    kind: ConvKind::Group,
+                    title: "Tech Team".into(),
+                    team_id: None,
+                    team_name: None,
+                    last_activity_ms: 1,
+                    last_preview: String::new(),
+                    unread: false,
+                    favorite: false,
+                    read_horizon_ms: 0,
+                })
+                .unwrap();
+            let e = Engine::new(
+                teams_proto::Client::offline("test").unwrap(),
+                store,
+                session::Config::default(),
+                ui,
+                "8:me".into(),
+                "Me".into(),
+            );
+            e.offline.store(true, Ordering::Relaxed);
+            // The window is the active one and shows no chat: the message is a card in it.
+            e.focused.store(true, Ordering::Relaxed);
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let m = group_message(&"a long message in the group chat ".repeat(9));
+            rt.block_on(async { e.on_message(m) });
+            let cards = slint::ComponentHandle::global::<crate::MessageToastStore>(&window)
+                .get_toasts()
+                .row_count();
+            let _ = tx.send(cards);
+        });
+        let cards = rx
+            .recv_timeout(Duration::from_secs(20))
+            .expect("on_message never returned: deadlocked on the store's lock");
+        assert_eq!(cards, 1, "the message is a card in the window");
+    }
 
     #[test]
     fn notifies_only_for_new_messages_from_others_out_of_view() {
