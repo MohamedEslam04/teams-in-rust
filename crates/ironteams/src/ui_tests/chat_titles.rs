@@ -7,6 +7,7 @@ use store::{ConvKind, ConversationRow, UserRow};
 
 const GROUP: &str = "19:unnamed@thread.v2";
 const BARE_GROUP: &str = "19:bare@thread.v2";
+const BOT_GROUP: &str = "19:with_app@thread.v2";
 const CHANNEL: &str = "19:nameless@thread.tacv2";
 const PRIVATE: &str = "19:private_leads@thread.tacv2";
 const MEETING: &str = "19:meeting_sprint@thread.v2";
@@ -100,6 +101,7 @@ fn harness() -> Harness {
         row(COLLEAGUE_CHAT, ConvKind::OneOnOne, "Omar Example"),
         row(GROUP, ConvKind::Group, ""),
         row(BARE_GROUP, ConvKind::Group, "  "),
+        row(BOT_GROUP, ConvKind::Group, ""),
         row(CHANNEL, ConvKind::Channel, ""),
         // A private channel the sync stored under the stand-in "General".
         row(PRIVATE, ConvKind::Channel, "General"),
@@ -124,8 +126,24 @@ fn harness() -> Harness {
             "8:orgid:m4",
         ],
     );
+    // An app (Linear) was added to this chat: it is not one of the people.
+    h.engine
+        .test_set_members(BOT_GROUP, &[demo::ME, "8:orgid:m1", "28:linear-bot"]);
     h.runner()(Cmd::SetFilter("all".into()));
     h
+}
+
+#[test]
+fn an_app_in_a_chat_is_not_part_of_its_title_or_member_count() {
+    let h = harness();
+    assert_eq!(titles(&h.app)[BOT_GROUP], "Ann");
+    h.rt.block_on(h.engine.clone().handle(Cmd::SelectChat(BOT_GROUP.into())));
+    h.rt.block_on(tokio::task::yield_now());
+    assert_eq!(
+        h.app.global::<crate::PeopleStore>().get_member_count(),
+        2,
+        "you and Ann, not the app"
+    );
 }
 
 #[test]

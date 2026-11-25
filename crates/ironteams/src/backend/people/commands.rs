@@ -283,7 +283,10 @@ impl Engine {
     /// Shows or hides the rename pencil and participants button for the open chat.
     pub(in super::super) fn push_group_header(&self, conv: &str) {
         let group = self.conv_kind(conv) == Some(ConvKind::Group);
-        let count = self.members_known(conv).map_or(0, |m| m.len());
+        // Apps added to the chat are not people in the count.
+        let count = self
+            .members_known(conv)
+            .map_or(0, |m| m.iter().filter(|m| !is_bot_mri(m)).count());
         self.ui.group_header(group, count);
     }
 }

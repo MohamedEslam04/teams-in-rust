@@ -195,7 +195,7 @@ impl Engine {
 
     /// The photo decoded to `px`; the cache keeps one picture per person and size (`avatar_key`).
     fn avatar_lookup(self: &Arc<Self>, mri: &str, defer: bool, px: u32) -> Option<Pixels> {
-        if mri.is_empty() || mri.starts_with("28:") {
+        if mri.is_empty() || is_bot_mri(mri) {
             return None;
         }
         let key = avatar_key(mri, px);
@@ -503,9 +503,8 @@ impl Engine {
     fn member_names(&self, conv_id: &str) -> Vec<String> {
         let members = self.members_known(conv_id).unwrap_or_default();
         let st = self.store.lock().unwrap();
-        members
-            .iter()
-            .filter(|m| **m != self.me)
+        others_of(&members, &self.me)
+            .into_iter()
             .filter_map(|m| st.user(m).ok().flatten().map(|u| u.display_name))
             .collect()
     }
