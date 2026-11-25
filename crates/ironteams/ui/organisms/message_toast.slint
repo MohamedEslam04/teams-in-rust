@@ -335,8 +335,13 @@ export component MessageToast inherits Rectangle {
                 msg-touch := TouchArea {
                     mouse-cursor: root.is-call ? MouseCursor.default : MouseCursor.pointer;
                     scroll-event(e) => {
+                        // A text that fits has nothing to scroll: the wheel goes on to whatever is
+                        // behind the card (the message list), as if the card were not there.
+                        if body.preferred-height <= body-box.height {
+                            return EventResult.reject;
+                        }
                         body-scroll.viewport-y = min(0px, max(body-box.height - body.preferred-height, body-scroll.viewport-y + e.delta-y));
-                        accept
+                        return EventResult.accept;
                     }
                     clicked => {
                         if root.is-message {
