@@ -393,7 +393,7 @@ pub async fn reoffer_direct(
         offer = calling::media::sdp::with_role_direction(
             &offer,
             VideoRole::ApplicationSharing,
-            if sharing { "sendonly" } else { "inactive" },
+            if sharing { "sendonly" } else { "recvonly" },
         );
     }
     let mut sending = Vec::new();

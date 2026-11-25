@@ -451,14 +451,15 @@ pub async fn tell_meeting(
 }
 
 /// A 1:1 re-offer (`offer`, as the media session made it) for the share: the sharing line
-/// `sendonly` (or `inactive`), and the camera line, when there is one (`camera_on` is `Some`),
-/// as the camera is ([`super::camera::direct_direction`]): webrtc-rs leaves it `sendonly` from
+/// `sendonly` while we send and `recvonly` otherwise (never `inactive`: the peer could not then
+/// present to us without a renegotiation it does not start), and the camera line, when there is
+/// one (`camera_on` is `Some`), as the camera is ([`super::camera::direct_direction`]): webrtc-rs leaves it `sendonly` from
 /// the answer to a caller who offered it `recvonly`, which said our camera sends while it was off.
 pub fn direct_offer(offer: &str, sending: bool, camera_on: Option<bool>) -> String {
     let mut offer = calling::media::sdp::with_role_direction(
         offer,
         ROLE,
-        if sending { "sendonly" } else { "inactive" },
+        if sending { "sendonly" } else { "recvonly" },
     );
     if let Some(on) = camera_on {
         offer = calling::media::sdp::with_role_direction(
@@ -470,7 +471,7 @@ pub fn direct_offer(offer: &str, sending: bool, camera_on: Option<bool>) -> Stri
     offer
 }
 
-/// Re-offers a 1:1 call's media with the sharing line `sendonly` (or `inactive`) and the camera
+/// Re-offers a 1:1 call's media with the sharing line `sendonly` (or `recvonly`) and the camera
 /// line as the camera is (`camera_on`). Returns the answer when it came inline; otherwise it
 /// arrives on `call/mediaAnswer/`.
 pub async fn reoffer_direct(
@@ -654,8 +655,28 @@ mod tests {
         );
         assert_eq!(
             directions(&direct_offer(offer, false, None)),
-            ["a=sendonly", "a=inactive"]
+            ["a=sendonly", "a=recvonly"]
         );
+    }
+
+    /// Live 2026-11-25: after we stopped sharing, the re-offer said the sharing line `inactive`;
+    /// the peer answered `inactive` and its later presentation had no line to arrive on ("Waiting
+    /// for the shared screen..." for good). Stopping keeps the line `recvonly`, as our first
+    /// answer had it, so the peer can still present to us.
+    #[test]
+    fn stopping_a_direct_share_keeps_the_sharing_line_receiving() {
+        let sharing = "v=0\r\n\
+            m=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n\
+            m=video 9 RTP/SAVP 107\r\na=mid:2\r\na=recvonly\r\na=label:main-video\r\n\
+            m=video 9 RTP/SAVP 107\r\na=mid:3\r\na=sendonly\r\n\
+            a=label:applicationsharing-video\r\n";
+        let stopped = direct_offer(sharing, false, Some(false));
+        let share_line = stopped
+            .split("m=video")
+            .find(|m| m.contains("a=label:applicationsharing-video"))
+            .unwrap();
+        assert!(share_line.contains("a=recvonly"), "{stopped}");
+        assert!(!stopped.contains("a=inactive"), "{stopped}");
     }
 
     const FULL_REOFFER: &str =

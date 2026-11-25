@@ -304,6 +304,7 @@ pub const AUDIO_ONLY: &str = "Video isn't available: the call is audio only.";
 pub fn dial_offer(offer: &str, camera_line: bool, video: bool) -> (String, Vec<Modality>) {
     let video = video && camera_line;
     let offer = call::share::direct_offer(offer, false, camera_line.then_some(video));
+    let offer = calling::media::sdp::with_role_direction(&offer, call::share::ROLE, "inactive");
     let sending: &[VideoRole] = if video { &[call::camera::ROLE] } else { &[] };
     (offer, video_modalities(sending))
 }
