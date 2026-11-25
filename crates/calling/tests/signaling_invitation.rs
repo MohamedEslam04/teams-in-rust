@@ -1,8 +1,8 @@
 //! Parsing pushed call invitations and in-call callbacks (offline, hand-written fixtures).
 
 use calling::invitation::{
-    CallEvent, EndReason, NgcPush, classify, conversation_controller, media_leg_id,
-    own_participant_id, parse_call_event, parse_callback_path, parse_invitation,
+    CallEvent, EndReason, NgcPush, classify, conversation_controller, media_leg_id, mri_kind,
+    own_participant_id, parse_call_event, parse_callback_path, parse_invitation, ring_summary,
 };
 use calling::{Modality, SdpBlob};
 use serde_json::{Value, json};
@@ -278,4 +278,82 @@ fn classify_routes_invitations_callbacks_and_the_rest() {
         classify(&ngc, &json!({"notificationType": "MeetingStart"})),
         NgcPush::Other { .. }
     ));
+}
+
+/// Live 2026-11-25: a placed 1:1 call stayed "Calling…" and closed, and an answered one ended
+/// 1.4 s in, with nothing in the log about the callbacks either received. Every callback of a
+/// 1:1 call is now logged as one line: its kind, its status or end code, whether it carried an
+/// SDP, and the names of its links. Never an URL, an SDP or an id.
+#[test]
+fn call_event_summaries_name_the_kind_codes_and_links_but_no_urls() {
+    let summary = |path: &str, body: Value| parse_call_event(&cb(path), &body).unwrap().1.summary();
+    let accepted = summary("call/acceptance/", fixture("cb_acceptance"));
+    assert_eq!(
+        accepted,
+        "acceptance answer=yes by=8:orgid keepAlive=2700 links=[callLeg,mediaRenegotiation]"
+    );
+    assert!(!accepted.contains("https://"));
+    assert_eq!(
+        summary(
+            "call/progress/",
+            json!({"callProgress": {"status": "ringing", "phrase": "ringing"}})
+        ),
+        "progress status=ringing"
+    );
+    assert_eq!(
+        summary("call/end/", fixture("cb_call_end")),
+        "end code=603 sub=10003 phrase=CallEndReasonDeclined"
+    );
+    assert_eq!(
+        summary(
+            "call/rejection/",
+            json!({"sessionRejection": {"code": 480, "subCode": 10037, "phrase": "Unavailable"}})
+        ),
+        "rejection code=480 sub=10037 phrase=Unavailable"
+    );
+    let answer = summary("call/mediaAnswer/", fixture("cb_media_answer"));
+    assert!(answer.starts_with("mediaAnswer answer=yes links=["), "{answer}");
+    assert!(answer.contains("mediaAcknowledgement"), "{answer}");
+    assert!(!answer.contains("meeting-answer"), "no SDP in the log: {answer}");
+    // An unknown callback names its top-level keys, not their values.
+    assert_eq!(
+        summary(
+            "call/redirection/",
+            json!({"callRedirection": {"target": "secret"}, "debugContent": {}})
+        ),
+        "call/redirection keys=[callRedirection,debugContent]"
+    );
+    assert_eq!(summary("conversation/rosterUpdate/", json!({})), "rosterUpdate");
+}
+
+#[test]
+fn an_mri_kind_drops_the_id() {
+    assert_eq!(mri_kind("8:orgid:00000000-0000-0000-0000-0000000000a1"), "8:orgid");
+    assert_eq!(mri_kind("8:live:.cid.0123abcd"), "8:live");
+    assert_eq!(mri_kind("8:teamsvisitor:abc"), "8:teamsvisitor");
+    assert_eq!(mri_kind("28:bot-id"), "28");
+    assert_eq!(mri_kind(""), "-");
+}
+
+/// The ring in one line: who calls (the kind of MRI, and whether caller and callee are in the
+/// same tenant), whether it carries an offer and of which content type, and its link names.
+#[test]
+fn a_ring_summary_tells_the_caller_kind_tenants_offer_and_links() {
+    let inv = parse_invitation(&fixture("call_invitation")).unwrap();
+    assert_eq!(
+        ring_summary(&inv),
+        "from=8:orgid tenants=? offer=application/sdp-ngc-1.0 modalities=[Audio, Video] \
+         links=[attach,mediaAnswer,progress,reject]"
+    );
+    let mut body = fixture("call_invitation");
+    body["callNotification"]["mediaContent"] = Value::Null;
+    body["callNotification"]["from"]["id"] = json!("8:live:.cid.0123abcd");
+    body["callNotification"]["from"]["tenantId"] = json!("t-1");
+    body["callNotification"]["to"]["tenantId"] = json!("t-2");
+    let s = ring_summary(&parse_invitation(&body).unwrap());
+    assert!(s.starts_with("from=8:live tenants=different offer=none "), "{s}");
+    body["callNotification"]["to"]["tenantId"] = json!("t-1");
+    let s = ring_summary(&parse_invitation(&body).unwrap());
+    assert!(s.contains(" tenants=same "), "{s}");
+    assert!(!s.contains("https://"), "{s}");
 }
