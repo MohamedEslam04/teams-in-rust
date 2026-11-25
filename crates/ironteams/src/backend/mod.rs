@@ -658,6 +658,7 @@ impl Engine {
 
     /// What needs no network: preferences, the render loop and the saved calendar.
     fn start_local(self: &Arc<Self>) {
+        crate::support::watchdog::start_runtime();
         self.push_prefs();
         self.load_saved_calendar();
         let e = self.clone();

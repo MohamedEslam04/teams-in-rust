@@ -443,6 +443,7 @@ fn picker_model(query: &str) -> ModelRc<EmojiItem> {
 
 /// Wires what the UI thread answers by itself, without the engine: the "More reactions" search.
 pub fn install_local(window: &AppWindow) {
+    crate::support::watchdog::start_ui();
     crate::loop_compose::install_local(window);
     palette::wire(window);
     message_toast::install_local(window);
