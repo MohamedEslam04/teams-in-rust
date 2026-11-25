@@ -81,25 +81,27 @@ pub fn with_rtl_mark(mut html: String) -> String {
         if rest.starts_with('<') {
             let Some(end) = rest.find('>') else { break };
             let tag = &rest[1..end];
+            let closing = tag.starts_with('/');
             let name = tag
+                .trim_start_matches('/')
                 .split(|c: char| c.is_whitespace() || c == '/')
                 .next()
                 .unwrap_or("")
                 .to_ascii_lowercase();
-            let is_reply = tag.contains("schema.skype.com/Reply");
-            match name.as_str() {
-                "blockquote" if is_reply => in_quote = true,
-                "/blockquote" => in_quote = false,
-                "a" => in_link = true,
-                "/a" => in_link = false,
-                "span" if tag.contains("schema.skype.com/Mention") => in_mention = true,
-                "/span" => in_mention = false,
+            match (closing, name.as_str()) {
+                (false, "blockquote") if tag.contains("schema.skype.com/Reply") => in_quote = true,
+                (true, "blockquote") => in_quote = false,
+                (false, "a") => in_link = true,
+                (true, "a") => in_link = false,
+                (false, "span") if tag.contains("schema.skype.com/Mention") => in_mention = true,
+                (true, "span") => in_mention = false,
                 _ => {}
             }
-            let block = matches!(
-                name.as_str(),
-                "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "blockquote"
-            );
+            let block = !closing
+                && matches!(
+                    name.as_str(),
+                    "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "blockquote"
+                );
             if block && !in_quote && insert_at.is_none() {
                 insert_at = Some(i + end + 1);
             }
@@ -281,8 +283,8 @@ mod tests {
         );
         // Equal counts are not a majority.
         assert_eq!(
-            text_to_teams_html("abcd\nمرحبا"),
-            "<p dir=\"ltr\">abcd</p><p dir=\"rtl\">مرحبا</p>"
+            text_to_teams_html("abcde\nمرحبا"),
+            "<p dir=\"ltr\">abcde</p><p dir=\"rtl\">مرحبا</p>"
         );
     }
 
