@@ -9,10 +9,34 @@ use std::time::Duration;
 /// others), then GNOME's idle monitor.
 #[cfg(target_os = "linux")]
 pub async fn idle_for() -> Option<Duration> {
-    if let Some(idle) = wayland::idle_for() {
-        return Some(idle);
+    let (idle, source) = linux_idle_for().await;
+    note_source(source);
+    idle
+}
+
+/// Logs which source answers the idle time when it changes: at start, and when the Wayland
+/// watcher connects (its first answer comes a moment after the first ask) or ends.
+#[cfg(target_os = "linux")]
+fn note_source(source: &'static str) {
+    static LAST: std::sync::Mutex<&str> = std::sync::Mutex::new("");
+    let mut last = LAST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *last != source {
+        tracing::info!(source, "idle: input idle time source");
+        *last = source;
     }
-    let conn = zbus::Connection::session().await.ok()?;
+}
+
+/// The idle time and the source that gave it (`wayland`, `dbus-screensaver`, `mutter` or `none`).
+#[cfg(target_os = "linux")]
+async fn linux_idle_for() -> (Option<Duration>, &'static str) {
+    if let Some(idle) = wayland::idle_for() {
+        return (Some(idle), "wayland");
+    }
+    let Ok(conn) = zbus::Connection::session().await else {
+        return (None, "none");
+    };
     let saver = conn
         .call_method(
             Some("org.freedesktop.ScreenSaver"),
@@ -25,9 +49,9 @@ pub async fn idle_for() -> Option<Duration> {
     if let Ok(reply) = saver
         && let Ok(ms) = reply.body().deserialize::<u32>()
     {
-        return Some(Duration::from_millis(ms.into()));
+        return (Some(Duration::from_millis(ms.into())), "dbus-screensaver");
     }
-    let reply = conn
+    let mutter = conn
         .call_method(
             Some("org.gnome.Mutter.IdleMonitor"),
             "/org/gnome/Mutter/IdleMonitor/Core",
@@ -35,10 +59,13 @@ pub async fn idle_for() -> Option<Duration> {
             "GetIdletime",
             &(),
         )
-        .await
-        .ok()?;
-    let ms = reply.body().deserialize::<u64>().ok()?;
-    Some(Duration::from_millis(ms))
+        .await;
+    if let Ok(reply) = mutter
+        && let Ok(ms) = reply.body().deserialize::<u64>()
+    {
+        return (Some(Duration::from_millis(ms)), "mutter");
+    }
+    (None, "none")
 }
 
 /// Idle time from the Wayland `ext_idle_notifier_v1` protocol. KDE on Wayland refuses
@@ -104,7 +131,9 @@ mod wayland {
             let _ = std::thread::Builder::new()
                 .name("idle-wayland".into())
                 .spawn(|| {
-                    let _ = watch();
+                    if let Err(e) = watch() {
+                        tracing::warn!(%e, "idle: the Wayland idle watcher ended");
+                    }
                     set(Input::Unknown);
                 });
         });
@@ -126,11 +155,17 @@ mod wayland {
         let timeout = TIMEOUT.as_millis() as u32;
         // Version 2 counts input only, as Teams does: a playing video's idle inhibitor does not
         // keep the user Available.
-        let _notification = if notifier.version() >= 2 {
+        let input_only = notifier.version() >= 2;
+        let _notification = if input_only {
             notifier.get_input_idle_notification(timeout, &seat, &qh, ())
         } else {
             notifier.get_idle_notification(timeout, &seat, &qh, ())
         };
+        tracing::info!(
+            version = notifier.version(),
+            input_only,
+            "idle: Wayland idle notification requested"
+        );
         set(Input::Active);
         loop {
             queue.blocking_dispatch(&mut Watch)?;
@@ -162,8 +197,14 @@ mod wayland {
             _: &QueueHandle<Self>,
         ) {
             match event {
-                ext_idle_notification_v1::Event::Idled => set(Input::idled(Instant::now())),
-                ext_idle_notification_v1::Event::Resumed => set(Input::Active),
+                ext_idle_notification_v1::Event::Idled => {
+                    tracing::info!("idle: Wayland says idled (no input for 30 s)");
+                    set(Input::idled(Instant::now()));
+                }
+                ext_idle_notification_v1::Event::Resumed => {
+                    tracing::info!("idle: Wayland says resumed (input again)");
+                    set(Input::Active);
+                }
                 _ => {}
             }
         }

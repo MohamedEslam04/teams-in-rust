@@ -18,7 +18,7 @@ use std::io::Read;
 use std::time::Duration;
 use teams_proto::Client;
 use teams_proto::client_info::{CLIENT_VERSION, TROUTER_TCCV, USER_AGENT};
-use teams_proto::trouter::{Frame, parse_frame, registration_body, retry_after};
+use teams_proto::trouter::{Frame, activity_event, parse_frame, registration_body, retry_after};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::{
     Message as WsMessage, client::IntoClientRequest, http::HeaderValue,
@@ -362,11 +362,6 @@ fn ws_err(e: tokio_tungstenite::tungstenite::Error) -> teams_proto::Error {
     teams_proto::Error::Ws(Box::new(e))
 }
 
-fn activity_cv() -> String {
-    let id = uuid::Uuid::new_v4().simple().to_string();
-    format!("{}.0.1", &id[..22])
-}
-
 async fn connect_once(
     client: &Client,
     epid: &str,
@@ -426,6 +421,8 @@ async fn connect_once(
     };
     let mut ping = tokio::time::interval(Duration::from_secs(30));
     ping.tick().await;
+    let mut active = teams_proto::trouter::user_activity();
+    let mut ready = false;
     let renew = Duration::from_secs(REGISTRATION_TTL - 600);
     let mut last_loss_register: Option<tokio::time::Instant> = None;
     let reregister = tokio::time::sleep(renew);
@@ -446,8 +443,11 @@ async fn connect_once(
                             "connectparams": alloc.connectparams,
                         }]});
                         sink.send(WsMessage::text(format!("5:::{auth}"))).await.map_err(ws_err)?;
-                        let activity = json!({"name": "user.activity", "args": [{"state": "active", "cv": activity_cv()}]});
-                        sink.send(WsMessage::text(next(activity))).await.map_err(ws_err)?;
+                        // The user's activity as the presence connection tells it (an "active"
+                        // here forever would keep the user Available).
+                        let now = *active.borrow_and_update();
+                        sink.send(WsMessage::text(next(activity_event(now)))).await.map_err(ws_err)?;
+                        ready = true;
                         let wait = register_or_retry(client, &alloc.surl, &registration_id).await.unwrap_or(renew);
                         reregister.as_mut().reset(tokio::time::Instant::now() + wait);
                         surl_tx.send_replace(Some(alloc.surl.clone()));
@@ -479,6 +479,11 @@ async fn connect_once(
             _ = ping.tick() => {
                 sink.send(WsMessage::text(next(json!({"name": "ping"})))).await.map_err(ws_err)?;
             }
+            Ok(()) = active.changed(), if ready => {
+                let now = *active.borrow_and_update();
+                sink.send(WsMessage::text(next(activity_event(now)))).await.map_err(ws_err)?;
+                tracing::debug!(active = now, "calling trouter: user activity sent");
+            }
             _ = &mut reregister => {
                 let wait = register_or_retry(client, &alloc.surl, &registration_id).await.unwrap_or(renew);
                 reregister.as_mut().reset(tokio::time::Instant::now() + wait);
@@ -505,7 +510,6 @@ mod tests {
         let q = connect_query(&a, "ep");
         assert!(q.starts_with("v=v4&sr=abc&tc="));
         assert!(q.contains("&epid=ep&ccid=cc&auth=true&timeout=40&"));
-        assert_eq!(activity_cv().len(), 26);
     }
 
     #[test]

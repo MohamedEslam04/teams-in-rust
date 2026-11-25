@@ -38,7 +38,7 @@ IronTeams tray and desktop integration: a StatusNotifierItem (SNI) tray icon wit
 - Disk: writes or removes the autostart desktop entry and the macOS LaunchAgent plist (no `launchctl` call in code) [autostart.rs].
 - Windows registry: HKCU `...\Run` values written, deleted and read via `windows_sys` FFI [autostart.rs]. `idle_for` calls `GetLastInputInfo` and `GetTickCount` via `windows_sys` (Cargo enables `Win32_System_SystemInformation` and `Win32_UI_Input_KeyboardAndMouse` for it); on macOS it calls `CGEventSourceSecondsSinceLastEventType` from the CoreGraphics framework through `extern "C"` [idle.rs].
 - Reads env vars `XDG_CONFIG_HOME`, `HOME` and `WAYLAND_DISPLAY`; probes `/.flatpak-info`; embeds `packaging/io.github.mohamedeslam04.ironteams.desktop` at compile time [autostart.rs, lib.rs].
-- No logging. One global: the Wayland watcher's last idle state (`static INPUT`, a `Mutex`) and its start-once guard [idle.rs:wayland].
+- Logging (info): the idle source when it changes (`idle: input idle time source`, `source` = `wayland`, `dbus-screensaver`, `mutter` or `none`), the Wayland notification requested (notifier `version`, `input_only`), each `idled` and `resumed` event, and a warn when the watcher ends [idle.rs:note_source, wayland]. One global: the Wayland watcher's last idle state (`static INPUT`, a `Mutex`) and its start-once guard [idle.rs:wayland], plus the last logged source [idle.rs:note_source].
 
 ## Verification
 - Run: `cargo test -p tray`

@@ -11,8 +11,9 @@ use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::io::Read;
+use std::sync::LazyLock;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::{
     Message as WsMessage, client::IntoClientRequest, http::HeaderValue,
 };
@@ -281,6 +282,30 @@ fn activity_cv() -> String {
     format!("{}.0.1", &id[..22])
 }
 
+/// Whether the user is at the keyboard, as the trouter connections tell the presence service.
+/// This device's presence endpoint is registered with `activityReporting: "Transport"`
+/// (`presence::endpoint_body`), so the service takes its activity from the trouter's
+/// `user.activity` events, as Teams web does (rusty-teams `realtime/native.rs`): an inactive here
+/// is what turns the user Away. One value for the process: the keyboard belongs to the machine.
+static USER_ACTIVE: LazyLock<watch::Sender<bool>> = LazyLock::new(|| watch::Sender::new(true));
+
+/// Records whether the user is at the keyboard; a change goes out on every trouter connection at
+/// once, and the current value on every (re)connect. The same value again sends nothing.
+pub fn set_user_active(active: bool) {
+    USER_ACTIVE.send_if_modified(|now| std::mem::replace(now, active) != active);
+}
+
+/// Follows [`set_user_active`] (for the calling crate's own trouter connection).
+pub fn user_activity() -> watch::Receiver<bool> {
+    USER_ACTIVE.subscribe()
+}
+
+/// The `user.activity` event telling the service whether the user is active.
+pub fn activity_event(active: bool) -> Value {
+    let state = if active { "active" } else { "inactive" };
+    json!({"name": "user.activity", "args": [{"state": state, "cv": activity_cv()}]})
+}
+
 /// Runs the trouter connection forever, reconnecting with backoff. Events go to `tx`; the task
 /// ends when the receiver is dropped.
 pub async fn run(client: Client, tx: mpsc::UnboundedSender<TrouterEvent>) {
@@ -353,6 +378,9 @@ async fn connect_once(client: &Client, tx: &mpsc::UnboundedSender<TrouterEvent>)
     };
     let mut ping = tokio::time::interval(Duration::from_secs(30));
     ping.tick().await;
+    let mut active = user_activity();
+    // Activity goes out once authenticated; a change before then is sent with the connect.
+    let mut ready = false;
     let mut last_loss_register: Option<tokio::time::Instant> = None;
     let reregister = tokio::time::sleep(Duration::from_secs(86400 - 600));
     tokio::pin!(reregister);
@@ -372,8 +400,10 @@ async fn connect_once(client: &Client, tx: &mpsc::UnboundedSender<TrouterEvent>)
                             "connectparams": alloc.connectparams,
                         }]});
                         sink.send(WsMessage::text(format!("5:::{auth}"))).await.map_err(|e| Error::Ws(Box::new(e)))?;
-                        let activity = json!({"name": "user.activity", "args": [{"state": "active", "cv": activity_cv()}]});
-                        sink.send(WsMessage::text(next(activity))).await.map_err(|e| Error::Ws(Box::new(e)))?;
+                        let now = *active.borrow_and_update();
+                        sink.send(WsMessage::text(next(activity_event(now)))).await.map_err(|e| Error::Ws(Box::new(e)))?;
+                        ready = true;
+                        tracing::info!(active = now, "trouter: connected, user activity sent");
                         let wait = register_or_retry(client, &alloc.surl).await.unwrap_or(Duration::from_secs(86400 - 600));
                         reregister.as_mut().reset(tokio::time::Instant::now() + wait);
                         if tx.send(TrouterEvent::Connected).is_err() { return Ok(()); }
@@ -402,6 +432,11 @@ async fn connect_once(client: &Client, tx: &mpsc::UnboundedSender<TrouterEvent>)
             }
             _ = ping.tick() => {
                 sink.send(WsMessage::text(next(json!({"name": "ping"})))).await.map_err(|e| Error::Ws(Box::new(e)))?;
+            }
+            Ok(()) = active.changed(), if ready => {
+                let now = *active.borrow_and_update();
+                sink.send(WsMessage::text(next(activity_event(now)))).await.map_err(|e| Error::Ws(Box::new(e)))?;
+                tracing::info!(active = now, "trouter: user activity sent");
             }
             _ = &mut reregister => {
                 let wait = register_or_retry(client, &alloc.surl).await.unwrap_or(Duration::from_secs(86400 - 600));
@@ -526,5 +561,28 @@ mod tests {
         assert_eq!(r["transports"]["TROUTER"][0]["ttl"], 86400);
         assert_eq!(r["registrationId"], "ep");
         assert_eq!(activity_cv().len(), 26);
+    }
+
+    #[test]
+    fn the_activity_event_carries_active_or_inactive() {
+        let inactive = activity_event(false);
+        assert_eq!(inactive["name"], "user.activity");
+        assert_eq!(inactive["args"][0]["state"], "inactive");
+        assert_eq!(inactive["args"][0]["cv"].as_str().unwrap().len(), 26);
+        assert_eq!(activity_event(true)["args"][0]["state"], "active");
+    }
+
+    #[test]
+    fn the_user_activity_wakes_the_connections_only_when_it_changes() {
+        let mut seen = user_activity();
+        seen.borrow_and_update();
+        set_user_active(false);
+        assert!(seen.has_changed().unwrap());
+        assert!(!*seen.borrow_and_update());
+        // The same answer again is no news: nothing is sent.
+        set_user_active(false);
+        assert!(!seen.has_changed().unwrap());
+        set_user_active(true);
+        assert!(*seen.borrow_and_update());
     }
 }

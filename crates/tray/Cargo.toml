@@ -13,6 +13,8 @@ publish = false
 # Receiver is Clone and Sync, so the UI can hand clones of `events()` to any thread.
 crossbeam-channel = "0.5.17"
 tokio = { version = "1.54.1", features = ["rt", "sync", "time"] }
+# Logs the idle source and the Wayland idle notification's events (presence's Away).
+tracing = "0.1.44"
 
 # The StatusNotifierItem and the launcher badge are D-Bus, Linux only. Windows and macOS show the
 # tray through Slint's SystemTrayIcon in the app (`ironteams::native_tray`).

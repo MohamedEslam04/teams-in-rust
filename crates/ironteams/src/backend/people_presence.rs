@@ -270,6 +270,11 @@ impl Engine {
             return;
         }
         if mri == self.me {
+            tracing::info!(
+                availability,
+                activity,
+                "presence: mine as the service shows it"
+            );
             self.ui
                 .me_presence(availability.to_string(), known_activity(mri));
         }
