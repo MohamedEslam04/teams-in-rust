@@ -86,9 +86,9 @@ pub(crate) fn attr_lower(el: &ElementRef, name: &str) -> String {
     attr(el, name).unwrap_or("").to_ascii_lowercase()
 }
 
-/// `text`, the first text of `el`, without the right-to-left mark we put in front of a block that
-/// says `dir="ltr"` (see [`crate::with_rtl_mark`]): the mark is for Teams mobile, and here it
-/// would turn an English first line into a right-to-left paragraph.
+/// `text`, the first text of `el`, without the right-to-left mark that older builds of this app
+/// put in front of a block that says `dir="ltr"`: messages already sent still carry it, and here
+/// it would turn an English first line into a right-to-left paragraph.
 pub(crate) fn own_mark_free<'a>(el: &ElementRef, text: &'a str) -> &'a str {
     if attr_lower(el, "dir") == "ltr" {
         text.trim_start_matches('\u{200F}')
