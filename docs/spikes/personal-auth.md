@@ -11,8 +11,12 @@ Code: `crates/ironteams-cli/src/spike.rs`.
 ## How to run it
 
 ```text
-ironteams-cli spike personal-login [--client office|azcli] [--out FILE]
+ironteams-cli spike personal-login [--flow devicecode|pkce] [--client teamsweb|office|azcli] [--out FILE]
 ```
+
+Two sign-in flows share stages 2 and 3; pick one with `--flow`.
+
+### `--flow devicecode` (the default)
 
 1. Run `ironteams-cli spike personal-login --out personal-auth.json`.
 2. The command prints a verification URL and a short code. Open microsoft.com/devicelogin
@@ -21,10 +25,45 @@ ironteams-cli spike personal-login [--client office|azcli] [--out FILE]
    (about 15 minutes). It then runs stages 2 and 3 and prints one GO/NO-GO line per stage.
 4. Read the transcript before you share it or copy facts from it into a doc or fixture.
 
-`--client office` (the default) uses the Microsoft Office public client
+`--client office` (the default for this flow) uses the Microsoft Office public client
 `d3590ed6-52b3-4102-aeff-aad2292ab01c`. Use `--client azcli` (Azure CLI,
 `04b07795-8ddb-461a-bbee-02f9e1bf7b46`) only if Office is refused, and only after a pause.
-Never run it in a loop.
+
+**Device code is a dead end for the Teams scope.** Live, Microsoft refused the device-code grant
+for the Office client with: *"The application is a first party application … users are not
+permitted to consent to first party applications. Rather, the first party application should
+obtain pre-authorization for the resource server."* A first-party public client cannot consent a
+personal account to the Teams audience through device code, and there is no pre-authorization we
+can add. So this flow stays recorded for the result, but the PKCE flow below is the live path.
+
+### `--flow pkce` (auth-code + PKCE on a loopback redirect)
+
+1. Run `ironteams-cli spike personal-login --flow pkce --out personal-auth-pkce.json`.
+2. The command binds a loopback listener on `127.0.0.1:<random port>`, builds the authorize URL
+   and opens it in your browser (if it cannot, it prints the URL for you to paste). The URL holds
+   only the public PKCE S256 challenge, an anti-CSRF `state` and the loopback redirect — no token,
+   so it is the one line printed unscrubbed.
+3. Sign in with your own personal account. Microsoft redirects back to
+   `http://localhost:<port>/?code=…&state=…`; the command accepts that one GET, shows a
+   "you can close this tab" page, checks the `state`, and exchanges the code for a token.
+4. It then runs stages 2 and 3 and prints one GO/NO-GO line per stage. Read the transcript before
+   sharing it.
+
+`--flow pkce` defaults to `--client teamsweb`, the Teams web client
+`4b3e8f46-56d3-427f-b1e2-d239b2ea6bca`. An unauthenticated probe (2026-11-25) showed this client
+on `…/consumers/oauth2/v2.0/authorize` with `response_type=code`, the loopback `redirect_uri`, the
+Teams scope and `code_challenge_method=S256` returns HTTP 302 to the MSA sign-in page — it does not
+reject the loopback redirect or the scope, the way device code rejected first-party consent.
+
+**The SPA / Origin open question.** The Teams web client is registered as a single-page app, so the
+token endpoint may require an `Origin` header to redeem an SPA-issued code cross-origin. The command
+answers this live: it sends the code exchange **first with no `Origin` header**; only if that fails
+with a cross-origin / `AADSTS9002327` ("tokens issued for a Single-Page Application … may only be
+redeemed via cross-origin requests") body does it retry **once** with `Origin: https://teams.live.com`.
+It prints which attempt succeeded, and the transcript records `origin_needed`. It never loops beyond
+these two attempts.
+
+Never run either flow in a loop.
 
 The binary: `ironteams-cli` is not in the release artifacts. Build it with
 `cargo build -p ironteams-cli` on a machine that has the memory for it. Do not build it on the
@@ -51,16 +90,22 @@ checks.
 
 A JSON file for this doc and for the P2 fixtures. It holds status codes, request and response
 header names, key names, field presence, scopes, lifetimes, `regionGtms` key names, value shapes
-and chat-service URLs, and the shape-only conversation rows. It never holds a token, the device
-or user code, a tenant id (only `tid_is_consumer_tenant`), names or message text. The file is
-also passed through the same token scrubber as the terminal output.
+and chat-service URLs, and the shape-only conversation rows. It records the `flow` and `client`
+used, and for the PKCE flow a `pkce` block: the authorize endpoint, the redirect URI shape
+(host and port only, e.g. `http://localhost:PORT/` — never the real port), the fixed
+`response_type` / `code_challenge_method` / `response_mode`, whether the redirect carried a code
+and a matching state, and `origin_needed` (whether the `Origin` header was needed to redeem the
+code). It never holds a token, an authorization code, the PKCE verifier, the device or user code,
+a tenant id (only `tid_is_consumer_tenant`), names or message text. The file is also passed through
+the same token scrubber as the terminal output.
 
 ## Where the tokens go
 
 Nowhere. The access token, the refresh token and the skypetoken stay in memory for the length of
-the run. Nothing is written to the keyring or the config, and the existing work-account session is
-not read or touched. The refresh token is not kept at all; the spike only records whether one came
-back.
+the run. In the PKCE flow the code verifier and the authorization code also stay in memory for the
+one exchange and are never printed or written. Nothing is written to the keyring or the config, and
+the existing work-account session is not read or touched. The refresh token is not kept at all; the
+spike only records whether one came back.
 
 ## Risk notes
 

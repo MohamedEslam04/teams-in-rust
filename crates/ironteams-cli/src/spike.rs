@@ -1,10 +1,15 @@
 //! `ironteams-cli spike personal-login`: the Gate 0 personal-account (Teams free) sign-in spike.
 //!
-//! One interactive device-code sign-in on the `/consumers` authority with a first-party public
-//! client, then the consumer skypetoken exchange and a five-row conversation list. It answers
-//! "does this chain work" and nothing else: it changes no product code path, stores nothing in
-//! the keyring or the config, and sends each request once (the device-code poll is the protocol's
-//! own wait, not a retry). See docs/spikes/personal-auth.md.
+//! One interactive sign-in on the `/consumers` authority with a first-party public client, then
+//! the consumer skypetoken exchange and a five-row conversation list. It answers "does this chain
+//! work" and nothing else: it changes no product code path, stores nothing in the keyring or the
+//! config, and sends each request once (the device-code poll is the protocol's own wait, not a
+//! retry). See docs/spikes/personal-auth.md.
+//!
+//! Two sign-ins are offered: `--flow devicecode` (the default) and `--flow pkce`, an auth-code +
+//! PKCE loopback flow for clients that refuse device code — the Teams web client refuses the
+//! first-party consent device code needs, but accepts the loopback redirect. The PKCE flow holds
+//! a verifier in memory for the one exchange and never prints or writes it.
 //!
 //! Output rule: tokens never leave memory. The terminal and the `--out` transcript get status
 //! codes, header names, key names, field presence, scopes, lifetimes and service hosts only;
@@ -12,16 +17,21 @@
 
 use anyhow::{Result, bail};
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::time::Duration;
 use teams_proto::client_info::USER_AGENT;
 
-pub const USAGE: &str = "ironteams-cli spike personal-login [--client office|azcli] [--out FILE]";
+pub const USAGE: &str = "ironteams-cli spike personal-login [--flow devicecode|pkce] [--client teamsweb|office|azcli] [--out FILE]";
 
 /// The `/consumers` (personal Microsoft account) v2 authority.
 pub const CONSUMERS_AUTHORITY: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0";
 /// The audience Teams free exchanges for a skypetoken, plus a refresh token.
 pub const SCOPE: &str = "https://auth.fl.teams.microsoft.com/teams.auth.readwrite offline_access";
+/// The PKCE flow's scope: the Teams audience plus `offline_access` and `openid` (the Teams web
+/// client's own request shape, which the unauthenticated authorize probe accepted).
+pub const PKCE_SCOPE: &str =
+    "https://auth.fl.teams.microsoft.com/teams.auth.readwrite offline_access openid";
 /// The consumer skypetoken exchange (the work one is `authsvc/v1.0/authz`).
 pub const AUTHZ_CONSUMER_URL: &str = "https://teams.live.com/api/auth/v2.0/authz/consumer";
 /// The consumer chat service tried first.
@@ -47,6 +57,9 @@ const CHAT_HEADERS: [&str; 6] = [
 /// Which first-party public client signs in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpikeClient {
+    /// The Teams web client, registered as an SPA. Refused the first-party consent device code
+    /// needs, but the authorize probe accepted its loopback redirect (the PKCE flow's default).
+    TeamsWeb,
     /// Microsoft Office, MSA-enabled and allowed device code (live probe 2026-11-25).
     Office,
     /// Azure CLI, the fallback.
@@ -56,6 +69,7 @@ pub enum SpikeClient {
 impl SpikeClient {
     pub fn id(self) -> &'static str {
         match self {
+            SpikeClient::TeamsWeb => "4b3e8f46-56d3-427f-b1e2-d239b2ea6bca",
             SpikeClient::Office => "d3590ed6-52b3-4102-aeff-aad2292ab01c",
             SpikeClient::AzCli => "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
         }
@@ -63,6 +77,7 @@ impl SpikeClient {
 
     pub fn name(self) -> &'static str {
         match self {
+            SpikeClient::TeamsWeb => "teamsweb",
             SpikeClient::Office => "office",
             SpikeClient::AzCli => "azcli",
         }
@@ -70,6 +85,7 @@ impl SpikeClient {
 
     fn parse(s: &str) -> Option<Self> {
         match s {
+            "teamsweb" => Some(SpikeClient::TeamsWeb),
             "office" => Some(SpikeClient::Office),
             "azcli" => Some(SpikeClient::AzCli),
             _ => None,
@@ -77,36 +93,81 @@ impl SpikeClient {
     }
 }
 
+/// Which sign-in flow runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpikeFlow {
+    /// Device code on `/consumers` (the default; the existing behaviour).
+    DeviceCode,
+    /// Auth-code + PKCE on a loopback redirect.
+    Pkce,
+}
+
+impl SpikeFlow {
+    pub fn name(self) -> &'static str {
+        match self {
+            SpikeFlow::DeviceCode => "devicecode",
+            SpikeFlow::Pkce => "pkce",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "devicecode" => Some(SpikeFlow::DeviceCode),
+            "pkce" => Some(SpikeFlow::Pkce),
+            _ => None,
+        }
+    }
+
+    /// The client used when `--client` is not given.
+    fn default_client(self) -> SpikeClient {
+        match self {
+            SpikeFlow::DeviceCode => SpikeClient::Office,
+            SpikeFlow::Pkce => SpikeClient::TeamsWeb,
+        }
+    }
+}
+
 /// Parsed command-line options.
 #[derive(Debug, PartialEq, Eq)]
 struct Opts {
+    flow: SpikeFlow,
     client: SpikeClient,
     out: Option<PathBuf>,
 }
 
 fn parse_opts(args: &[String]) -> Result<Opts> {
-    let mut opts = Opts {
-        client: SpikeClient::Office,
-        out: None,
-    };
+    let mut flow = SpikeFlow::DeviceCode;
+    let mut client: Option<SpikeClient> = None;
+    let mut out = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--flow" => {
+                let v = it.next().map(String::as_str).unwrap_or_default();
+                flow = SpikeFlow::parse(v)
+                    .ok_or_else(|| anyhow::anyhow!("--flow devicecode|pkce, not {v:?}"))?;
+            }
             "--client" => {
                 let v = it.next().map(String::as_str).unwrap_or_default();
-                opts.client = SpikeClient::parse(v)
-                    .ok_or_else(|| anyhow::anyhow!("--client office|azcli, not {v:?}"))?;
+                client =
+                    Some(SpikeClient::parse(v).ok_or_else(|| {
+                        anyhow::anyhow!("--client teamsweb|office|azcli, not {v:?}")
+                    })?);
             }
             "--out" => {
                 let v = it
                     .next()
                     .ok_or_else(|| anyhow::anyhow!("--out needs a file path"))?;
-                opts.out = Some(PathBuf::from(v));
+                out = Some(PathBuf::from(v));
             }
             other => bail!("unknown argument {other:?}; usage: {USAGE}"),
         }
     }
-    Ok(opts)
+    Ok(Opts {
+        flow,
+        client: client.unwrap_or_else(|| flow.default_client()),
+        out,
+    })
 }
 
 /// A form POST, built without sending so the tests can read it. No `Debug`: the poll body
@@ -145,6 +206,159 @@ pub fn token_poll_request(client: SpikeClient, device_code: &str) -> FormRequest
             ("device_code", device_code),
         ],
     )
+}
+
+/// base64url without padding (the PKCE and the authorize-URL alphabet). Shared with the test
+/// JWT builder.
+fn b64url_encode(data: &[u8]) -> String {
+    const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let (mut out, mut acc, mut bits) = (String::new(), 0u32, 0u32);
+    for &b in data {
+        acc = (acc << 8) | u32::from(b);
+        bits += 8;
+        while bits >= 6 {
+            bits -= 6;
+            out.push(A[((acc >> bits) & 63) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        out.push(A[((acc << (6 - bits)) & 63) as usize] as char);
+    }
+    out
+}
+
+/// The PKCE S256 code challenge for a verifier: base64url(SHA-256(verifier)), no padding
+/// (RFC 7636 §4.2).
+pub fn pkce_challenge(verifier: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(verifier.as_bytes());
+    b64url_encode(hasher.finalize().as_slice())
+}
+
+/// `n` random bytes as base64url: every character is a PKCE-unreserved character, so the result
+/// is a valid verifier or state. 32 bytes give 43 characters (within the 43-128 PKCE range).
+fn random_b64url(n: usize) -> String {
+    let mut buf = vec![0u8; n];
+    getrandom::fill(&mut buf).expect("the OS CSPRNG must be available");
+    b64url_encode(&buf)
+}
+
+/// A fresh PKCE code verifier (43 unreserved characters from 32 random bytes).
+pub fn new_verifier() -> String {
+    random_b64url(32)
+}
+
+/// A fresh anti-CSRF `state` (22 characters from 16 random bytes).
+pub fn new_state() -> String {
+    random_b64url(16)
+}
+
+/// The authorize URL: the consumers authority, `response_type=code`, the loopback redirect, the
+/// PKCE scope, the S256 challenge, the state and `response_mode=query`. No secret is in it (the
+/// challenge is a hash, the state a nonce), so it may be shown so it can be pasted.
+pub fn authorize_url(
+    client: SpikeClient,
+    redirect_uri: &str,
+    challenge: &str,
+    state: &str,
+) -> String {
+    let mut s = url::form_urlencoded::Serializer::new(String::new());
+    s.append_pair("client_id", client.id());
+    s.append_pair("response_type", "code");
+    s.append_pair("redirect_uri", redirect_uri);
+    s.append_pair("scope", PKCE_SCOPE);
+    s.append_pair("code_challenge", challenge);
+    s.append_pair("code_challenge_method", "S256");
+    s.append_pair("state", state);
+    s.append_pair("response_mode", "query");
+    format!("{CONSUMERS_AUTHORITY}/authorize?{}", s.finish())
+}
+
+/// The auth-code token exchange: `grant_type=authorization_code`, the code, the same redirect
+/// and scope, and the PKCE verifier. No `client_secret` (a public client). No `Debug`: the body
+/// carries the code and the verifier.
+pub fn code_exchange_request(
+    client: SpikeClient,
+    code: &str,
+    redirect_uri: &str,
+    verifier: &str,
+) -> FormRequest {
+    form(
+        format!("{CONSUMERS_AUTHORITY}/token"),
+        &[
+            ("client_id", client.id()),
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("code_verifier", verifier),
+            ("scope", PKCE_SCOPE),
+        ],
+    )
+}
+
+/// What came back on the loopback redirect. No `Debug`: `code` is the authorization code.
+pub struct Redirect {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Parses `code`, `state` and `error` from a redirect query string (no leading `?`).
+pub fn parse_redirect_query(query: &str) -> Redirect {
+    let mut r = Redirect {
+        code: None,
+        state: None,
+        error: None,
+    };
+    for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
+        match k.as_ref() {
+            "code" => r.code = Some(v.into_owned()),
+            "state" => r.state = Some(v.into_owned()),
+            "error" => r.error = Some(v.into_owned()),
+            _ => {}
+        }
+    }
+    r
+}
+
+/// The query of an HTTP request line like `GET /?code=…&state=… HTTP/1.1`, or `None`.
+pub fn request_target_query(request_line: &str) -> Option<String> {
+    let target = request_line.split_whitespace().nth(1)?;
+    target.split_once('?').map(|(_, q)| q.to_string())
+}
+
+/// The authorization code from a redirect, once the state matches. Errors (never with the code
+/// in the message) on an authorize error, a missing code, or a state mismatch.
+pub fn accept_code(redirect: &Redirect, expected_state: &str) -> Result<String> {
+    if let Some(e) = &redirect.error {
+        bail!("the authorize endpoint returned error {}", safe_word(e));
+    }
+    match (&redirect.code, redirect.state.as_deref()) {
+        (Some(_), Some(state)) if state != expected_state => bail!("state does not match"),
+        (Some(code), Some(_)) => Ok(code.clone()),
+        (_, None) => bail!("no state on the redirect"),
+        (None, _) => bail!("no code on the redirect"),
+    }
+}
+
+/// Whether a failed token answer is the SPA cross-origin refusal, so the exchange should be
+/// retried once with an `Origin` header (AADSTS9002327).
+fn needs_origin(body: &str) -> bool {
+    let low = body.to_ascii_lowercase();
+    low.contains("aadsts9002327") || low.contains("origin") || low.contains("cors")
+}
+
+/// The redirect URI reduced to host and a `PORT` placeholder for the transcript, e.g.
+/// `http://localhost:PORT/`.
+fn redirect_uri_shape(redirect_uri: &str) -> String {
+    match url::Url::parse(redirect_uri) {
+        Ok(u) => format!(
+            "{}://{}:PORT/",
+            u.scheme(),
+            u.host_str().unwrap_or("localhost")
+        ),
+        Err(_) => "http://localhost:PORT/".to_string(),
+    }
 }
 
 /// The first page (five rows) of conversations on a chat service base URL.
@@ -735,25 +949,266 @@ async fn stage_token(
         "response_headers": last.map(|m| m.1).unwrap_or_default(),
     });
     match &grant {
-        Some(g) => {
-            let j = jwt_summary(&g.access_token);
-            for l in token_lines(g, &j) {
-                say(&l);
-            }
-            t["field_names"] = json!(g.field_names);
-            t["scopes"] = json!(g.scopes);
-            t["expires_in"] = json!(g.expires_in);
-            t["refresh_token_present"] = json!(g.refresh_present);
-            t["refresh_token_expires_in"] = json!(g.refresh_token_expires_in);
-            t["token_type"] = json!(g.token_type);
-            t["jwt"] = json!({
-                "is_jwt": j.is_jwt,
-                "claim_names": j.claim_names,
-                "tid_is_consumer_tenant": j.tid.as_deref().map(|tid| tid == CONSUMER_TENANT),
-                "aud": j.aud,
-            });
-        }
+        Some(g) => record_grant(&mut t, g),
         None => say(&format!("sign-in ended: {outcome}")),
+    }
+    rec.insert("token".into(), t);
+    grant
+}
+
+/// Prints the shape-only token lines and folds the grant's field summary into a `token` record.
+/// The access token and the claim values never reach `t`.
+fn record_grant(t: &mut Value, g: &Grant) {
+    let j = jwt_summary(&g.access_token);
+    for l in token_lines(g, &j) {
+        say(&l);
+    }
+    t["field_names"] = json!(g.field_names);
+    t["scopes"] = json!(g.scopes);
+    t["expires_in"] = json!(g.expires_in);
+    t["refresh_token_present"] = json!(g.refresh_present);
+    t["refresh_token_expires_in"] = json!(g.refresh_token_expires_in);
+    t["token_type"] = json!(g.token_type);
+    t["jwt"] = json!({
+        "is_jwt": j.is_jwt,
+        "claim_names": j.claim_names,
+        "tid_is_consumer_tenant": j.tid.as_deref().map(|tid| tid == CONSUMER_TENANT),
+        "aud": j.aud,
+    });
+}
+
+/// Opens `url` in the user's browser. The URL carries no secret (the challenge is a hash, the
+/// state a nonce). Returns whether a launcher started; it does not wait for the browser.
+fn spawn_browser(url: &str) -> bool {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    {
+        #[cfg(target_os = "linux")]
+        let (cmd, pre): (&str, &[&str]) = ("xdg-open", &[]);
+        #[cfg(target_os = "macos")]
+        let (cmd, pre): (&str, &[&str]) = ("open", &[]);
+        #[cfg(target_os = "windows")]
+        let (cmd, pre): (&str, &[&str]) = ("cmd", &["/C", "start", ""]);
+        std::process::Command::new(cmd)
+            .args(pre)
+            .arg(url)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .is_ok()
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        let _ = url;
+        false
+    }
+}
+
+/// Waits (up to five minutes) for one HTTP GET on the loopback listener, replies with a tiny
+/// "you can close this tab" page, and returns the request's query string. Runs on a blocking
+/// thread so it does not stall the async runtime.
+async fn await_redirect(listener: std::net::TcpListener) -> Result<String> {
+    use std::io::{BufRead, BufReader, Write};
+    tokio::task::spawn_blocking(move || -> Result<String> {
+        listener.set_nonblocking(true)?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(300);
+        loop {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream.set_nonblocking(false)?;
+                    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+                    let request_line = {
+                        let mut reader = BufReader::new(stream.try_clone()?);
+                        let mut line = String::new();
+                        reader.read_line(&mut line)?;
+                        line
+                    };
+                    let html = "<!doctype html><meta charset=\"utf-8\"><title>IronTeams sign-in</title>\
+                        <body style=\"font-family:system-ui;margin:3rem\"><p>Signed in. You can close this tab.</p></body>";
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{html}",
+                        html.len()
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    let _ = stream.flush();
+                    return request_target_query(&request_line)
+                        .ok_or_else(|| anyhow::anyhow!("the redirect request had no query"));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() > deadline {
+                        bail!("timed out after 5 min waiting for the browser redirect");
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+    })
+    .await?
+}
+
+/// POSTs the auth-code exchange, first without an `Origin` header; on an SPA cross-origin
+/// refusal it retries once with `Origin: https://teams.live.com`. Returns the grant (if any),
+/// whether the final attempt used `Origin`, and that attempt's status and header names.
+async fn exchange_code(
+    http: &reqwest::Client,
+    req: &FormRequest,
+) -> (Option<Grant>, bool, Option<u16>, Vec<String>) {
+    // First attempt: no Origin header.
+    match post_form(http, req).await {
+        Ok(ex) => {
+            if let Poll::Done(g) = parse_poll(&ex.body) {
+                say("token exchange succeeded WITHOUT an Origin header.");
+                return (Some(g), false, Some(ex.status), ex.header_names);
+            }
+            let (error, aadsts) = aad_error(&ex.body);
+            say(&format!(
+                "first token attempt (no Origin): HTTP {}, error {}, AADSTS {}",
+                ex.status,
+                error.as_deref().unwrap_or("?"),
+                aadsts.map_or("?".into(), |c| c.to_string())
+            ));
+            if !needs_origin(&ex.body) {
+                return (None, false, Some(ex.status), ex.header_names);
+            }
+            say(
+                "answer looks like the SPA cross-origin refusal; retrying once with Origin: https://teams.live.com",
+            );
+        }
+        Err(e) => {
+            say(&format!("token exchange request failed: {e}"));
+            return (None, false, None, vec![]);
+        }
+    }
+    // Second attempt: with the Origin header.
+    match send(
+        http.post(&req.url)
+            .header("User-Agent", USER_AGENT)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Origin", LIVE_ORIGIN)
+            .body(req.body.clone()),
+    )
+    .await
+    {
+        Ok(ex) => {
+            if let Poll::Done(g) = parse_poll(&ex.body) {
+                say("token exchange succeeded WITH an Origin header.");
+                (Some(g), true, Some(ex.status), ex.header_names)
+            } else {
+                let (error, aadsts) = aad_error(&ex.body);
+                say(&format!(
+                    "second token attempt (with Origin): HTTP {}, error {}, AADSTS {}",
+                    ex.status,
+                    error.as_deref().unwrap_or("?"),
+                    aadsts.map_or("?".into(), |c| c.to_string())
+                ));
+                (None, true, Some(ex.status), ex.header_names)
+            }
+        }
+        Err(e) => {
+            say(&format!("second token attempt failed: {e}"));
+            (None, true, None, vec![])
+        }
+    }
+}
+
+/// Stage 1 (PKCE): bind a loopback listener, open the authorize URL, take the redirect back, and
+/// exchange the code for a token. Records which flow, the client, the redirect shape, whether an
+/// `Origin` header was needed, and the grant's shape-only fields.
+async fn stage_token_pkce(
+    http: &reqwest::Client,
+    client: SpikeClient,
+    rec: &mut Map<String, Value>,
+) -> Option<Grant> {
+    say(&format!(
+        "== 1. token: auth-code + PKCE loopback on /consumers with the {} client",
+        client.name()
+    ));
+    // Bind first, so the redirect_uri names a real port.
+    let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+        Ok(l) => l,
+        Err(e) => {
+            say(&format!("could not bind a loopback port: {e}"));
+            return None;
+        }
+    };
+    let port = match listener.local_addr() {
+        Ok(a) => a.port(),
+        Err(e) => {
+            say(&format!("could not read the loopback port: {e}"));
+            return None;
+        }
+    };
+    // `localhost` is what the authorize probe used; 127.0.0.1 is a registered fallback.
+    let redirect_uri = format!("http://localhost:{port}/");
+    let shape = redirect_uri_shape(&redirect_uri);
+
+    let verifier = new_verifier();
+    let challenge = pkce_challenge(&verifier);
+    let state = new_state();
+    let url = authorize_url(client, &redirect_uri, &challenge, &state);
+
+    say(&format!("redirect_uri: {shape}"));
+    if spawn_browser(&url) {
+        say("opening the sign-in page in your browser; sign in with your personal account once.");
+        say(
+            "if no window opened, paste this URL (it holds no token, only the public challenge and state):",
+        );
+    } else {
+        say("could not launch a browser; paste this URL to sign in (it holds no token):");
+    }
+    // Printed raw, not via scrub(): the authorize URL carries only the public S256 challenge, the
+    // anti-CSRF state and the loopback redirect. The verifier and the code are never in it.
+    println!("{url}");
+    say("waiting for the redirect back to localhost. Do not rerun this in a loop.");
+
+    let mut pkce = json!({
+        "authorize_endpoint": format!("{CONSUMERS_AUTHORITY}/authorize"),
+        "redirect_uri_shape": shape,
+        "response_type": "code",
+        "code_challenge_method": "S256",
+        "response_mode": "query",
+    });
+
+    let query = match await_redirect(listener).await {
+        Ok(q) => q,
+        Err(e) => {
+            say(&format!("stopped waiting for the redirect: {e}"));
+            pkce["redirect_received"] = json!(false);
+            rec.insert("pkce".into(), pkce);
+            return None;
+        }
+    };
+    let redirect = parse_redirect_query(&query);
+    pkce["redirect_received"] = json!(true);
+    pkce["redirect_has_code"] = json!(redirect.code.is_some());
+    pkce["redirect_has_state"] = json!(redirect.state.is_some());
+    pkce["redirect_error"] = json!(redirect.error.as_deref().map(safe_word));
+
+    let code = match accept_code(&redirect, &state) {
+        Ok(c) => c,
+        Err(e) => {
+            say(&format!("redirect rejected: {e}"));
+            pkce["state_verified"] = json!(false);
+            rec.insert("pkce".into(), pkce);
+            return None;
+        }
+    };
+    pkce["state_verified"] = json!(true);
+    say("redirect received, state matches; exchanging the code for a token.");
+
+    let req = code_exchange_request(client, &code, &redirect_uri, &verifier);
+    let (grant, origin_needed, status, headers) = exchange_code(http, &req).await;
+    pkce["origin_needed"] = json!(origin_needed);
+    rec.insert("pkce".into(), pkce);
+
+    let mut t = json!({
+        "status": status,
+        "response_headers": headers,
+        "origin_needed": origin_needed,
+    });
+    match &grant {
+        Some(g) => record_grant(&mut t, g),
+        None => say("token exchange failed; see the status above."),
     }
     rec.insert("token".into(), t);
     grant
@@ -933,10 +1388,20 @@ async fn personal_login(args: &[String]) -> Result<()> {
     rec.insert("tool".into(), json!("ironteams-cli spike personal-login"));
     rec.insert("fabricated".into(), json!(false));
     rec.insert("time_ms".into(), json!(teams_proto::time::now_ms()));
+    rec.insert("flow".into(), json!(opts.flow.name()));
     rec.insert("client".into(), json!(opts.client.name()));
-    rec.insert("scope".into(), json!(SCOPE));
+    rec.insert(
+        "scope".into(),
+        json!(match opts.flow {
+            SpikeFlow::Pkce => PKCE_SCOPE,
+            SpikeFlow::DeviceCode => SCOPE,
+        }),
+    );
 
-    let grant = stage_token(&http, opts.client, &mut rec).await;
+    let grant = match opts.flow {
+        SpikeFlow::DeviceCode => stage_token(&http, opts.client, &mut rec).await,
+        SpikeFlow::Pkce => stage_token_pkce(&http, opts.client, &mut rec).await,
+    };
     let authz = match &grant {
         Some(g) => stage_authz(&http, g, &mut rec).await,
         None => None,
@@ -993,20 +1458,7 @@ mod tests {
     use super::*;
 
     fn b64url(data: &[u8]) -> String {
-        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-        let (mut out, mut acc, mut bits) = (String::new(), 0u32, 0u32);
-        for &b in data {
-            acc = (acc << 8) | u32::from(b);
-            bits += 8;
-            while bits >= 6 {
-                bits -= 6;
-                out.push(A[((acc >> bits) & 63) as usize] as char);
-            }
-        }
-        if bits > 0 {
-            out.push(A[((acc << (6 - bits)) & 63) as usize] as char);
-        }
-        out
+        b64url_encode(data)
     }
 
     /// A fabricated JWT, built at run time so no token-looking literal sits in the source.
@@ -1213,9 +1665,11 @@ mod tests {
     #[test]
     fn options() {
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // The default is unchanged: device code with the Office client.
         assert_eq!(
             parse_opts(&[]).unwrap(),
             Opts {
+                flow: SpikeFlow::DeviceCode,
                 client: SpikeClient::Office,
                 out: None
             }
@@ -1223,11 +1677,31 @@ mod tests {
         assert_eq!(
             parse_opts(&a(&["--client", "azcli", "--out", "t.json"])).unwrap(),
             Opts {
+                flow: SpikeFlow::DeviceCode,
                 client: SpikeClient::AzCli,
                 out: Some(PathBuf::from("t.json"))
             }
         );
+        // --flow pkce defaults the client to teamsweb.
+        assert_eq!(
+            parse_opts(&a(&["--flow", "pkce"])).unwrap(),
+            Opts {
+                flow: SpikeFlow::Pkce,
+                client: SpikeClient::TeamsWeb,
+                out: None
+            }
+        );
+        // An explicit --client overrides the per-flow default.
+        assert_eq!(
+            parse_opts(&a(&["--flow", "pkce", "--client", "office"])).unwrap(),
+            Opts {
+                flow: SpikeFlow::Pkce,
+                client: SpikeClient::Office,
+                out: None
+            }
+        );
         assert!(parse_opts(&a(&["--client", "teams"])).is_err());
+        assert!(parse_opts(&a(&["--flow", "implicit"])).is_err());
         assert!(parse_opts(&a(&["--out"])).is_err());
         assert!(parse_opts(&a(&["--retry"])).is_err());
     }
@@ -1378,5 +1852,139 @@ mod tests {
         assert_eq!(rows[2].members, Some(3));
         assert!(rows[3].thread_type.is_none());
         assert!(parse_conversations(r#"{"errorCode":911}"#).is_err());
+    }
+
+    #[test]
+    fn pkce_challenge_is_s256_of_the_verifier() {
+        // The RFC 7636 Appendix B vector.
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn generated_verifier_is_a_valid_pkce_verifier() {
+        let v = new_verifier();
+        assert_eq!(v.len(), 43);
+        assert!((43..=128).contains(&v.len()));
+        // Every character is PKCE-unreserved (base64url uses a subset of it).
+        assert!(
+            v.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b)),
+            "{v}"
+        );
+        // Two draws differ (not a constant).
+        assert_ne!(new_verifier(), new_verifier());
+    }
+
+    #[test]
+    fn authorize_url_has_the_right_endpoint_and_params() {
+        let url = authorize_url(
+            SpikeClient::TeamsWeb,
+            "http://localhost:49152/",
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+            "STATE-fabricated",
+        );
+        assert!(
+            url.starts_with("https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?"),
+            "{url}"
+        );
+        let u = url::Url::parse(&url).unwrap();
+        let q: std::collections::HashMap<_, _> = u.query_pairs().into_owned().collect();
+        assert_eq!(
+            q.get("client_id").map(String::as_str),
+            Some("4b3e8f46-56d3-427f-b1e2-d239b2ea6bca")
+        );
+        assert_eq!(q.get("response_type").map(String::as_str), Some("code"));
+        assert_eq!(q.get("scope").map(String::as_str), Some(PKCE_SCOPE));
+        assert_eq!(
+            q.get("code_challenge").map(String::as_str),
+            Some("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        );
+        assert_eq!(
+            q.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(q.get("state").map(String::as_str), Some("STATE-fabricated"));
+        assert_eq!(
+            q.get("redirect_uri").map(String::as_str),
+            Some("http://localhost:49152/")
+        );
+        assert_eq!(q.get("response_mode").map(String::as_str), Some("query"));
+    }
+
+    #[test]
+    fn redirect_handler_parses_code_and_state_and_rejects_a_mismatch() {
+        let q = request_target_query("GET /?code=AUTHCODE-fabricated&state=S1 HTTP/1.1\r\n")
+            .expect("a query");
+        assert_eq!(q, "code=AUTHCODE-fabricated&state=S1");
+        let r = parse_redirect_query(&q);
+        assert_eq!(r.code.as_deref(), Some("AUTHCODE-fabricated"));
+        assert_eq!(r.state.as_deref(), Some("S1"));
+        // The state must match.
+        assert_eq!(accept_code(&r, "S1").unwrap(), "AUTHCODE-fabricated");
+        let mismatch = accept_code(&r, "S2").unwrap_err().to_string();
+        assert!(mismatch.contains("state"), "{mismatch}");
+        assert!(
+            !mismatch.contains("AUTHCODE-fabricated"),
+            "the code must not be in the error"
+        );
+        // An authorize error is surfaced, no code.
+        let err = parse_redirect_query("error=access_denied&state=S1");
+        assert!(accept_code(&err, "S1").is_err());
+        // A request line with no query is not a redirect.
+        assert!(request_target_query("GET / HTTP/1.1\r\n").is_none());
+    }
+
+    #[test]
+    fn code_exchange_request_is_the_auth_code_grant() {
+        let r = code_exchange_request(
+            SpikeClient::TeamsWeb,
+            "AUTHCODE-fabricated",
+            "http://localhost:49152/",
+            "VERIFIER-fabricated",
+        );
+        assert_eq!(
+            r.url,
+            "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
+        );
+        let p = form_pairs(&r.body);
+        assert_eq!(pair(&p, "grant_type"), Some("authorization_code"));
+        assert_eq!(pair(&p, "code"), Some("AUTHCODE-fabricated"));
+        assert_eq!(pair(&p, "code_verifier"), Some("VERIFIER-fabricated"));
+        assert_eq!(pair(&p, "redirect_uri"), Some("http://localhost:49152/"));
+        assert_eq!(
+            pair(&p, "client_id"),
+            Some("4b3e8f46-56d3-427f-b1e2-d239b2ea6bca")
+        );
+        assert_eq!(
+            pair(&p, "client_secret"),
+            None,
+            "a public client has no secret"
+        );
+    }
+
+    #[test]
+    fn needs_origin_spots_the_spa_refusal() {
+        assert!(needs_origin(
+            r#"{"error":"invalid_request","error_description":"AADSTS9002327: Tokens issued for the 'Single-Page Application' client-type may only be redeemed via cross-origin requests."}"#
+        ));
+        assert!(!needs_origin(
+            r#"{"error":"invalid_grant","error_description":"AADSTS70008: the code expired."}"#
+        ));
+    }
+
+    #[test]
+    fn scrub_hides_an_auth_code_and_a_verifier() {
+        // An auth code and a PKCE verifier are 32+ mixed-case alphanumeric runs, so the scrubber
+        // redacts them; the surrounding words survive. Fixed shapes keep the test deterministic
+        // (the verifier is the RFC 7636 vector, a public value, not a real secret).
+        let code = "M.C107_BAY.2.U.a1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuVwXyZ01234";
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let out = scrub(&format!("code={code} verifier={verifier} end"));
+        assert!(!out.contains(code), "{out}");
+        assert!(!out.contains(verifier), "{out}");
+        assert!(out.ends_with(" end"));
     }
 }
