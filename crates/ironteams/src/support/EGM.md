@@ -1,11 +1,12 @@
 # support
 
 ## Overview
-Small shared helpers: turning failed-command errors into readable text (`error_text.rs`), the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`), and the freeze watchdog (`watchdog.rs`).
+Small shared helpers: turning failed-command errors into readable text (`error_text.rs`), the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`), the microphone level meter's worker thread (`meter.rs`), and the freeze watchdog (`watchdog.rs`).
 
 Files:
 - `error_text.rs`: Turns failed-command errors and raw 'HTTP nnn' status lines into short banner sentences.
 - `quiet.rs`: Pure banner decision (pause, quiet hours, Focus, keyword alerts), Arabic-aware keyword matching, and process-global Focus state with prefs persistence.
+- `meter.rs`: `Probe`: opens a microphone and reads its level on a worker thread (the sound server can be slow), so the Slint timers of the call window's mic menu and Settings' mic test never block; one worker per probe, newest reading only.
 - `watchdog.rs`: Freeze watchdog: the UI thread and the async runtime beat every second; a thread of its own logs a warning when one has not beaten for over 5 s (again every 30 s, info once it runs again) and an "alive" line every 60 s.
 
 ## Interface
@@ -27,10 +28,13 @@ Files:
 - `[quiet.rs:persist_focus]` pub fn(Option<i64>); loads general prefs from config dir, sets focus_until_ms, saves
 - `[quiet.rs:load_prefs]` pub fn() -> GeneralPrefs; prefs as saved on disk, defaults if no config dir
 
+- `[meter.rs:Probe::poll]` pub(crate) fn(&mut self, Option<&str>, FnOnce(Option<&str>)->Result<Reader,String>+Send) -> Reading{level,failed}; never blocks; starts a worker for the mic when none is alive; another mic abandons the old worker and its slot
+- `[meter.rs:Probe::stop]` pub(crate) fn(&mut self); the worker closes the mic and ends
 - `[watchdog.rs:start_ui]` pub(crate) fn(); on the UI thread (called from `ui::install_local`): a repeated 1 s Slint timer beats; starts the monitor thread once
 - `[watchdog.rs:start_runtime]` pub(crate) fn(); inside the runtime (called from `Engine::start_local`): a 1 s interval task beats; starts the monitor thread once
 
 ## Invariants
+- `[meter.rs:Probe]` At most one worker thread alive per probe: while one is opening or winding down, `poll` starts nothing and returns an empty Reading; a failed open is reported once
 - `[quiet.rs:should_banner]` Evaluation order is fixed: paused > quiet hours > Focus filter > routing; pause and quiet hours beat keyword hits and Focus exceptions
 - `[quiet.rs:should_banner]` In Focus only mentions_me/urgent/priority_sender/call/keyword pass; a message still needs routed (or call, or keyword) to Show, so a mention in a muted chat is Hidden(Routing)
 - `[quiet.rs:should_banner]` Show carries keyword only when routed is false and not a call; routed or call messages yield Show{keyword: None}

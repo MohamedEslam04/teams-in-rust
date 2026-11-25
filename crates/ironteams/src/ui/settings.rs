@@ -65,8 +65,9 @@ use command::*;
 /// Polls a running microphone test; `None` when there is no new reading.
 pub type MicPoll = Box<dyn FnMut() -> Option<f32>>;
 
-/// Opens a microphone (`None`: the default one) for the level meter.
-pub type OpenMic = Box<dyn Fn(Option<&str>) -> Result<MicPoll, String>>;
+/// Opens a microphone (`None`: the default one) for the level meter. Blocking (it asks the sound
+/// server): it runs on the meter's worker thread, never on the UI thread.
+pub type OpenMic = Arc<dyn Fn(Option<&str>) -> Result<MicPoll, String> + Send + Sync>;
 
 struct Ctl {
     env: SettingsEnv,
@@ -79,6 +80,8 @@ struct Ctl {
     lists: Option<DeviceLists>,
     listing: bool,
     mic: Option<slint::Timer>,
+    /// The worker that listens to the microphone while `mic` runs.
+    mic_probe: crate::support::meter::Probe,
     /// An update check is running.
     checking: bool,
     /// The one automatic check of this start has been made.

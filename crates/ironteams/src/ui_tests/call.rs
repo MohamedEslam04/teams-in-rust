@@ -796,7 +796,16 @@ fn the_mic_menu_listens_to_the_microphone_only_while_it_is_open() {
     assert_eq!(cs(&c.h.app).get_mic_level(), 0.0, "the menu is closed");
 
     click(&c.button("Audio devices"));
-    watch(&c.h.app);
+    // The meter opens the microphone on a worker thread: its first reading comes a moment later.
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        watch(&c.h.app);
+        if cs(&c.h.app).get_mic_level() != 0.0 {
+            break;
+        }
+        assert!(std::time::Instant::now() < until, "no reading in 5 s");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     // Square-rooted, so quiet speech still lights bars.
     assert!((cs(&c.h.app).get_mic_level() - 0.5).abs() < 1e-4);
 

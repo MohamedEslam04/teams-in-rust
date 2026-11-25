@@ -114,7 +114,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
                 ));
             }),
             pick_sound_file: std::rc::Rc::new(|| None),
-            mic_level: Box::new(|_| Ok(Box::new(|| Some(0.5_f32)) as MicPoll)),
+            mic_level: Arc::new(|_| Ok(Box::new(|| Some(0.5_f32)) as MicPoll)),
             // Never the network: a check that was not given a fake answer fails.
             check_update: Arc::new(|| Err("no network in tests".into())),
             // Not a Velopack install unless a test gives it a fake source.
