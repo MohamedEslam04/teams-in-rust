@@ -406,7 +406,10 @@ fn the_wheel_scrolls_a_long_message_to_its_end_without_opening_the_chat() {
     let (_, _, _, body_bottom) = rect(&body);
     let (_, _, _, box_bottom) = rect(&body_box(&app));
     assert!((body_bottom - box_bottom).abs() < 1., "scrolled to the end");
-    assert!(opened.borrow().is_empty(), "scrolling does not open the chat");
+    assert!(
+        opened.borrow().is_empty(),
+        "scrolling does not open the chat"
+    );
     assert_eq!(cards(&app), 1, "scrolling does not close the card");
 }
 
