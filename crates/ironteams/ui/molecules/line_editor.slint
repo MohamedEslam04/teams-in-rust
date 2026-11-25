@@ -21,6 +21,13 @@
 // key (Left or Up the start, Right or Down the end, Left and Right swapped in a right to left line),
 // a click or an edit by the input itself ends it.
 //
+// The cursor of a right aligned line: at the start of a right to left line the cursor is at the
+// right edge of the text, which is the right edge of the input, and an input clips what it draws
+// to its own size, so the cursor it draws there is cut off (padding around the input does not help,
+// and a TextInput has no padding of its own). So in that place the input draws no cursor and
+// `caret` (a child of the input) is drawn instead, `text-cursor-width` wide, just inside the edge.
+// It does not blink.
+//
 // What it does not do: any other selection stays inside one line (no Shift+Up/Down), and an
 // input's own undo only knows its own line.
 import { Theme } from "../tokens/theme.slint";
@@ -190,9 +197,6 @@ export component LineEditor inherits Rectangle {
         content-height: lines-box.height;
 
         lines-box := VerticalLayout {
-            // The cursor at the start of a right aligned line is drawn at the right edge of its
-            // text, past the width of the input: this room keeps it from being cut off.
-            padding-right: 3px;
             width: flick.width;
             height: max(flick.height, self.preferred-height);
             for line[i] in root.lines: ti := TextInput {
@@ -205,6 +209,11 @@ export component LineEditor inherits Rectangle {
                 vertical-stretch: i == root.lines.length - 1 ? 1 : 0;
                 horizontal-alignment: LineApi.direction(root.text, i) > 0 ? TextHorizontalAlignment.right : LineApi.direction(root.text, i) < 0 ? TextHorizontalAlignment.left : Theme.start-align;
                 property <length> caret-y;
+                // Where the input reports its cursor (its top left corner), from the callback below.
+                property <length> caret-x;
+                // The cursor is where the input cannot draw it: at or past its right edge (the
+                // start of a right to left line). Then `caret` is drawn.
+                property <bool> caret-clipped: self.has-focus && self.cursor-position-byte-offset == self.anchor-position-byte-offset && LineApi.direction(root.text, i) > 0 && self.caret-x + self.text-cursor-width > self.width + 0.5px;
                 property <int> wanted: root.poke;
                 property <bool> whole-selected: root.whole;
 
@@ -228,6 +237,12 @@ export component LineEditor inherits Rectangle {
                         root.whole = false;
                     }
                 }
+                // Where the right edge is moves with the width: the cursor is asked for again.
+                changed width => {
+                    if self.has-focus && !root.whole && !root.selecting && self.cursor-position-byte-offset == self.anchor-position-byte-offset && LineApi.direction(root.own, i) > 0 {
+                        self.set-selection-offsets(self.cursor-position-byte-offset, self.cursor-position-byte-offset);
+                    }
+                }
                 // Ctrl+A shows every line selected, and ends it.
                 changed whole-selected => {
                     root.selecting = true;
@@ -246,6 +261,7 @@ export component LineEditor inherits Rectangle {
                     // Not when the editor itself selects the line (`whole-selected` above).
                     if !root.selecting {
                         self.caret-y = pos.y;
+                        self.caret-x = pos.x;
                         // Keep the cursor in view when the lines are taller than the box.
                         let top = self.y + pos.y;
                         if top < -flick.content-y {
@@ -397,6 +413,14 @@ export component LineEditor inherits Rectangle {
                         }
                     }
                     return reject;
+                }
+
+                caret := Rectangle {
+                    x: ti.width - ti.text-cursor-width;
+                    y: ti.caret-y;
+                    width: ti.caret-clipped ? ti.text-cursor-width : 0px;
+                    height: root.row-height;
+                    background: ti.color;
                 }
             }
         }
