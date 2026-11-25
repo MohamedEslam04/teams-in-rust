@@ -28,8 +28,9 @@ use tokio::task::JoinHandle;
 
 /// The gallery's receive-only lines a meeting join offers (as the web client and rusty-teams).
 pub const RECEIVE_SLOTS: usize = 9;
-/// The other side's camera in a 1:1 call, in their tile: no wider than this.
-const REMOTE_WIDTH: usize = 960;
+/// The other side's camera in a 1:1 call, in their tile: no wider than this. 1280 so a 720p peer
+/// is decoded and drawn whole (a lower cap point-sampled it down and the UI upscaled the result).
+const REMOTE_WIDTH: usize = 1280;
 /// A gallery tile.
 const TILE_WIDTH: usize = 640;
 /// A shared screen, on the whole stage.
@@ -224,7 +225,7 @@ impl RemoteVideo {
                     // Which line carries what (a meeting's unasked stream comes as `Remote`).
                     tracing::info!(mid = ?p.mid, ?slot, "remote video line started");
                     let (tx, rx) = mpsc::channel(LINE_QUEUE);
-                    let frames = spawn_decoder(rx, width_for(slot));
+                    let frames = spawn_decoder(rx, p.mid.clone(), width_for(slot));
                     tokio::spawn(forward_frames(
                         frames,
                         p.mid.clone(),
@@ -305,6 +306,12 @@ impl RemoteVideo {
             share_mid = ?share,
             "remote video lines"
         );
+        // What receiver feedback each video line actually negotiated: is transport-cc/REMB there,
+        // and did the answer carry any bandwidth or fmtp caps? Read once per negotiation so a live
+        // run answers it from the SDP we really negotiated, not a guess (measurement only).
+        for summary in video_feedback_summary(sdp) {
+            tracing::info!(phase = %phase.name(), summary = %summary, "negotiated video feedback");
+        }
     }
 
     /// Whether a media server routes this session's video: its SDP gave a gallery slot or the
@@ -474,6 +481,76 @@ pub fn presenter_mri(roster: &Roster, me: &str, own_share: bool) -> Option<Strin
         .screen_sharer(me)
         .map(|(mri, _)| mri)
         .or_else(|| roster.content_presenter(me))
+}
+
+/// A short summary of each `m=video` line's receiver feedback in a negotiated `sdp`: its
+/// `rtcp-fb` types (nack, pli, transport-cc, remb, fir…), the extmaps present (is transport-wide-cc
+/// or abs-send-time negotiated?), and any bandwidth or fmtp caps (`b=`, `max-fs`, `max-br`,
+/// `max-fps`, `max-mbps`). One string per `m=video` line; empty for an empty `sdp` (a direct
+/// call's start). This only reads the SDP for a log line; it does not change negotiation.
+fn video_feedback_summary(sdp: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_video = false;
+    let mut mid = String::new();
+    let (mut fb, mut ext, mut bw, mut caps): (Vec<String>, Vec<String>, Vec<String>, Vec<String>) =
+        Default::default();
+    let push = |mid: &str, fb: &[String], ext: &[String], bw: &[String], caps: &[String]| {
+        format!(
+            "mid={} rtcp-fb=[{}] extmap=[{}] bandwidth=[{}] fmtp-caps=[{}]",
+            if mid.is_empty() { "?" } else { mid },
+            fb.join(", "),
+            ext.join(", "),
+            bw.join(", "),
+            caps.join(", "),
+        )
+    };
+    for line in sdp.split('\n').map(|l| l.trim_end_matches('\r')) {
+        if let Some(rest) = line.strip_prefix("m=") {
+            if in_video {
+                out.push(push(&mid, &fb, &ext, &bw, &caps));
+            }
+            in_video = rest.starts_with("video");
+            mid.clear();
+            fb.clear();
+            ext.clear();
+            bw.clear();
+            caps.clear();
+        } else if !in_video {
+            continue;
+        } else if let Some(m) = line.strip_prefix("a=mid:") {
+            mid = m.to_owned();
+        } else if let Some(f) = line.strip_prefix("a=rtcp-fb:") {
+            // "<pt> <type> [param]" -> keep "<type> [param]".
+            if let Some((_, typ)) = f.split_once(' ')
+                && !fb.iter().any(|t| t == typ)
+            {
+                fb.push(typ.to_owned());
+            }
+        } else if let Some(e) = line.strip_prefix("a=extmap:") {
+            // The URI is the last token; keep its final path segment (abs-send-time, …).
+            if let Some(uri) = e.split_whitespace().last() {
+                let short = uri.rsplit('/').next().unwrap_or(uri).to_owned();
+                if !ext.iter().any(|x| *x == short) {
+                    ext.push(short);
+                }
+            }
+        } else if let Some(b) = line.strip_prefix("b=") {
+            bw.push(b.to_owned());
+        } else if let Some(fmtp) = line.strip_prefix("a=fmtp:") {
+            for part in fmtp.split(';').map(str::trim) {
+                if ["max-fs=", "max-br=", "max-fps=", "max-mbps="]
+                    .iter()
+                    .any(|k| part.starts_with(k))
+                {
+                    caps.push(part.to_owned());
+                }
+            }
+        }
+    }
+    if in_video {
+        out.push(push(&mid, &fb, &ext, &bw, &caps));
+    }
+    out
 }
 
 fn lock(routes: &Mutex<Routes>) -> std::sync::MutexGuard<'_, Routes> {
@@ -900,6 +977,53 @@ mod tests {
         assert_eq!(
             apply_link(&links).as_deref(),
             Some("https://cc.example.invalid/leg/7/applyChannelParameters")
+        );
+    }
+
+    #[test]
+    fn the_negotiated_video_feedback_is_summarised_per_line() {
+        let sdp = "v=0\r\n\
+            m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\na=rtcp-fb:111 transport-cc\r\n\
+            m=video 9 UDP/TLS/RTP/SAVPF 102\r\n\
+            a=mid:1\r\n\
+            a=rtcp-fb:102 nack\r\n\
+            a=rtcp-fb:102 nack pli\r\n\
+            a=rtcp-fb:102 transport-cc\r\n\
+            a=extmap:3 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\r\n\
+            a=extmap:5 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\n\
+            b=AS:2000\r\n\
+            a=fmtp:102 max-fs=3600;max-br=2000;max-fps=3000;profile-level-id=42e01f\r\n\
+            m=video 0 UDP/TLS/RTP/SAVPF 102\r\na=mid:2\r\na=rtcp-fb:102 ccm fir\r\n";
+        let s = video_feedback_summary(sdp);
+        assert_eq!(s.len(), 2, "two m=video lines, the audio skipped");
+        assert!(s[0].contains("mid=1"), "{}", s[0]);
+        assert!(
+            s[0].contains("nack") && s[0].contains("nack pli"),
+            "{}",
+            s[0]
+        );
+        assert!(s[0].contains("transport-cc"), "{}", s[0]);
+        assert!(s[0].contains("abs-send-time"), "{}", s[0]);
+        assert!(s[0].contains("transport-wide-cc"), "{}", s[0]);
+        assert!(s[0].contains("AS:2000"), "{}", s[0]);
+        assert!(
+            s[0].contains("max-fs=3600") && s[0].contains("max-br=2000"),
+            "{}",
+            s[0]
+        );
+        assert!(
+            !s[0].contains("profile-level-id"),
+            "only the caps, {}",
+            s[0]
+        );
+        assert!(
+            s[1].contains("mid=2") && s[1].contains("ccm fir"),
+            "{}",
+            s[1]
+        );
+        assert!(
+            video_feedback_summary("").is_empty(),
+            "a direct call has no sdp"
         );
     }
 }

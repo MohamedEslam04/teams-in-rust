@@ -209,6 +209,53 @@ pub fn step_for(width: usize, max_width: usize) -> usize {
     width.div_ceil(max_width.max(1)).max(1)
 }
 
+/// `frame` shrunk to no wider than `max_width` by an integer factor in each dimension, every
+/// `factor`x`factor` block **averaged** (a box filter). Unlike point-sampling (keeping every
+/// `step`th pixel, as [`i420_to_rgb`]'s `step` does), this low-passes first, so a 1280-wide
+/// camera drawn in a smaller tile does not alias into jagged, blocky edges. A ratio of 2 is
+/// [`halve`]; a frame already within `max_width` is returned borrowed, uncopied.
+pub fn box_downscale(frame: &I420Frame, max_width: usize) -> std::borrow::Cow<'_, I420Frame> {
+    use std::borrow::Cow;
+    match step_for(frame.width, max_width) {
+        0 | 1 => Cow::Borrowed(frame),
+        2 => Cow::Owned(halve(frame)),
+        factor => Cow::Owned(box_down(frame, factor)),
+    }
+}
+
+/// `frame` scaled down by an integer `factor` (>= 2) in each dimension, every `factor`x`factor`
+/// block averaged. [`box_downscale`] uses [`halve`] for the common 2:1 ratio and this for the
+/// rest (a 4K share onto a 1920 stage, say).
+fn box_down(frame: &I420Frame, factor: usize) -> I420Frame {
+    let (w, h) = ((frame.width / factor) & !1, (frame.height / factor) & !1);
+    let (y, u, v) = frame.planes();
+    let n = (factor * factor) as u32;
+    let mut data = Vec::with_capacity(I420Frame::len_for(w, h));
+    for (plane, src_w, out_w, out_h) in [
+        (y, frame.width, w, h),
+        (u, frame.width / 2, w / 2, h / 2),
+        (v, frame.width / 2, w / 2, h / 2),
+    ] {
+        for row in 0..out_h {
+            for col in 0..out_w {
+                let mut sum = 0u32;
+                for dy in 0..factor {
+                    let base = (row * factor + dy) * src_w + col * factor;
+                    for dx in 0..factor {
+                        sum += u32::from(plane[base + dx]);
+                    }
+                }
+                data.push(((sum + n / 2) / n) as u8);
+            }
+        }
+    }
+    I420Frame {
+        width: w,
+        height: h,
+        data,
+    }
+}
+
 /// Passes every frame of `frames` on, after `look` saw it (a self-view next to the encoder).
 /// Frames the consumer is too slow for are dropped, as the capture drops them.
 pub fn tap(
