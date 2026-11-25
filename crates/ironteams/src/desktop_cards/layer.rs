@@ -36,7 +36,8 @@ use smithay_client_toolkit::seat::keyboard::{
     KeyEvent, KeyboardHandler, Keysym, Modifiers, RawModifiers,
 };
 use smithay_client_toolkit::seat::pointer::{
-    CursorIcon, PointerEvent, PointerEventKind, PointerHandler, ThemeSpec, ThemedPointer,
+    AxisScroll, CursorIcon, PointerEvent, PointerEventKind, PointerHandler, ThemeSpec,
+    ThemedPointer,
 };
 use smithay_client_toolkit::seat::{Capability, SeatHandler, SeatState};
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -273,6 +274,11 @@ fn button(code: u32) -> PointerEventButton {
         0x112 => PointerEventButton::Middle,
         _ => PointerEventButton::Other,
     }
+}
+
+/// A wheel turn or a touchpad swipe as Slint's scroll, logical pixels.
+fn scroll_delta(_horizontal: AxisScroll, _vertical: AxisScroll) -> (f32, f32) {
+    (0.0, 0.0)
 }
 
 impl CompositorHandler for State {
@@ -533,7 +539,20 @@ impl PointerHandler for State {
                         button: button(b),
                     });
                 }
-                PointerEventKind::Axis { .. } => {}
+                PointerEventKind::Axis {
+                    horizontal,
+                    vertical,
+                    ..
+                } => {
+                    let (delta_x, delta_y) = scroll_delta(horizontal, vertical);
+                    if delta_x != 0.0 || delta_y != 0.0 {
+                        self.window.dispatch_event(WindowEvent::PointerScrolled {
+                            position,
+                            delta_x,
+                            delta_y,
+                        });
+                    }
+                }
             }
         }
     }
@@ -703,5 +722,35 @@ mod tests {
         assert_eq!(button(0x111), PointerEventButton::Right);
         assert_eq!(button(0x112), PointerEventButton::Middle);
         assert_eq!(button(0x113), PointerEventButton::Other);
+    }
+
+    /// The live repro on KWin: the wheel over a long desktop card did not scroll its text, the
+    /// wheel never reached Slint.
+    #[test]
+    fn the_wheel_and_the_touchpad_scroll() {
+        let none = AxisScroll::default();
+        let axis = |absolute, discrete, value120| AxisScroll {
+            absolute,
+            discrete,
+            value120,
+            ..AxisScroll::default()
+        };
+        // One notch down on KWin (`value120`, 15 px): 60 px like Slint's own window, and down
+        // in Wayland is a negative delta in Slint (the text moves up).
+        assert_eq!(scroll_delta(none, axis(15.0, 0, 120)), (0.0, -60.0));
+        // A high-resolution wheel's half notch.
+        assert_eq!(scroll_delta(none, axis(7.5, 0, 60)), (0.0, -30.0));
+        // One notch up on an older compositor (`discrete`).
+        assert_eq!(scroll_delta(none, axis(-10.0, -1, 0)), (0.0, 60.0));
+        // A touchpad scrolls by its own pixels.
+        assert_eq!(scroll_delta(none, axis(7.5, 0, 0)), (0.0, -7.5));
+        // Sideways.
+        assert_eq!(scroll_delta(axis(-15.0, 0, -120), none), (60.0, 0.0));
+        // The end of a touchpad swipe moves nothing.
+        let stop = AxisScroll {
+            stop: true,
+            ..AxisScroll::default()
+        };
+        assert_eq!(scroll_delta(none, stop), (0.0, 0.0));
     }
 }
