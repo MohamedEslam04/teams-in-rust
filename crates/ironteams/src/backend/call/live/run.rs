@@ -182,6 +182,11 @@ impl Call {
                         self.controller = c;
                     }
                     let NgcPush::Call { event, .. } = classify(&p.url, &p.body) else { continue };
+                    // A 1:1 call's callbacks are few: each one is logged, so a call the service
+                    // ends right after the answer shows what came before the end.
+                    if !self.meeting {
+                        tracing::info!(event = %event.summary(), "1:1 call: callback");
+                    }
                     match event {
                         CallEvent::Accepted { answer, links, keep_alive_interval_s, .. } => {
                             self.links.0.extend(links.0);

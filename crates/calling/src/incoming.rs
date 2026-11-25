@@ -295,16 +295,11 @@ pub async fn answer_invitation(
     no_offer: NoOffer,
     observe: Observe<'_>,
 ) -> Result<Links> {
-    observe(
-        "step",
+    step(
+        observe,
         &format!(
-            "ring: offer {}, links [{}], mode {no_offer:?}",
-            if inv.offer.is_some() {
-                "present"
-            } else {
-                "missing"
-            },
-            inv.links.0.keys().cloned().collect::<Vec<_>>().join(", ")
+            "ring: {}, mode {no_offer:?}",
+            crate::invitation::ring_summary(inv)
         ),
     );
     let r = drive(ngc, s, inv, media, events, no_offer, observe).await;
@@ -420,9 +415,18 @@ async fn drive(
                     false,
                     false,
                 );
+                // What the other side's media stack must take as our final answer: the lines,
+                // and each side's transport (BUNDLE, ICE lite, DTLS role, candidate kinds; no
+                // address or password).
+                let bundled = |text: &str| text.lines().any(|l| l.starts_with("a=group:BUNDLE"));
                 tracing::info!(
+                    offer_type = %offer.content_type,
                     theirs = %crate::media::sdp::directions(&sdp),
                     ours = %crate::media::sdp::directions(&answer),
+                    theirs_transport = %crate::media::sdp::transport_summary(&sdp),
+                    ours_transport = %crate::media::sdp::transport_summary(&answer),
+                    theirs_bundle = bundled(&sdp),
+                    ours_bundle = bundled(&answer),
                     "1:1 call answered"
                 );
                 observe("our-answer", &answer);
@@ -458,6 +462,7 @@ async fn drive(
                 };
                 // An answer that raced the HTTP answers is already queued.
                 while let Ok(ev) = events.try_recv() {
+                    tracing::info!(event = %ev.summary(), "answering a call: callback");
                     a.on_event(&ev);
                 }
                 a.on_accepted(links, inline);
@@ -468,7 +473,10 @@ async fn drive(
                     tokio::time::Instant::now() + ANSWER_WAIT
                 });
                 match tokio::time::timeout_at(until, events.recv()).await {
-                    Ok(Some(ev)) => a.on_event(&ev),
+                    Ok(Some(ev)) => {
+                        tracing::info!(event = %ev.summary(), "answering a call: callback");
+                        a.on_event(&ev)
+                    }
                     Ok(None) => a.fail("the calling connection closed"),
                     Err(_) => a.on_timeout(),
                 }
