@@ -6,7 +6,6 @@ use super::util::*;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
-use store::Store;
 use teams_proto::model::{Event, Message};
 use teams_proto::trouter::TrouterEvent;
 
@@ -157,7 +156,7 @@ impl Engine {
         if let Some(cmid) = outbox_echo {
             let _ = self.store.lock().unwrap().remove(&cmid);
         }
-        let (known, counted, arrived) = {
+        let (known, counted, arrived, notify) = {
             let st = self.store.lock().unwrap();
             let existed = st.message(&m.id).ok().flatten().is_some();
             let _ = st.upsert_message(&row_from_message(&m, None));
@@ -178,15 +177,19 @@ impl Engine {
             }
             let counted =
                 is_current && !follow && !existed && m.parent_id.is_none() && m.is_chat_content();
-            if should_notify(existed, mine, m.is_chat_content(), is_current, focused) {
-                self.notify(&st, &m);
-            }
             (
                 st.conversation(&m.conversation_id).ok().flatten().is_some(),
                 counted,
                 is_current && !mine && !existed && m.parent_id.is_none() && m.is_chat_content(),
+                should_notify(existed, mine, m.is_chat_content(), is_current, focused),
             )
         };
+        // Only once the store's lock is released: the notification takes it again (the chat, the
+        // sender's photo), and a std mutex locked twice on one thread deadlocks it, then every
+        // task and the window waiting on the store.
+        if notify {
+            self.notify(&m);
+        }
         if arrived {
             self.view
                 .lock()
@@ -240,7 +243,9 @@ impl Engine {
         tokio::spawn(async move { e.refresh_horizons(&conv).await });
     }
 
-    fn notify(self: &Arc<Self>, st: &Store, m: &Message) {
+    /// Called without the store's lock held: it takes the lock itself, and what it calls (the
+    /// card's photo lookup) may take it too.
+    fn notify(self: &Arc<Self>, m: &Message) {
         use crate::support::quiet::{self, Decision, Incoming};
         use teams_proto::user_settings::Kind;
         // Muted chats and channels set to "Off" are not routed to a banner, like in Teams; the
@@ -288,7 +293,13 @@ impl Engine {
             }
         };
         let preview = routed.unwrap_or_else(super::settings::previews_enabled);
-        let conv = st.conversation(&m.conversation_id).ok().flatten();
+        let (conv, photo) = {
+            let st = self.store.lock().unwrap();
+            (
+                st.conversation(&m.conversation_id).ok().flatten(),
+                st.user(&m.sender_mri).ok().flatten().and_then(|u| u.avatar),
+            )
+        };
         let kind = conv.as_ref().map(|c| c.kind);
         let channel = kind == Some(store::ConvKind::Channel);
         let chat = conv.map(|c| c.title).unwrap_or_default();
@@ -305,7 +316,6 @@ impl Engine {
             None => chat,
         };
         let line = super::banner::message_line(&full, preview);
-        let photo = st.user(&m.sender_mri).ok().flatten().and_then(|u| u.avatar);
         tracing::info!(conversation = %m.conversation_id, ?route, "message notification");
         let thread_root = m.parent_id.as_deref().unwrap_or(&m.id);
         let pending = super::banner::Pending {

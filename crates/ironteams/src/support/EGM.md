@@ -1,11 +1,12 @@
 # support
 
 ## Overview
-Small shared pure helpers: turning failed-command errors into readable text (`error_text.rs`) and the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`).
+Small shared helpers: turning failed-command errors into readable text (`error_text.rs`), the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`), and the freeze watchdog (`watchdog.rs`).
 
 Files:
 - `error_text.rs`: Turns failed-command errors and raw 'HTTP nnn' status lines into short banner sentences.
 - `quiet.rs`: Pure banner decision (pause, quiet hours, Focus, keyword alerts), Arabic-aware keyword matching, and process-global Focus state with prefs persistence.
+- `watchdog.rs`: Freeze watchdog: the UI thread and the async runtime beat every second; a thread of its own logs a warning when one has not beaten for over 5 s (again every 30 s, info once it runs again) and an "alive" line every 60 s.
 
 ## Interface
 - `[error_text.rs:shown_error]` pub(crate) fn(&anyhow::Error) -> String; transient teams_proto::Error -> 'Couldn't reach Teams...', Status -> status_text, NotMember -> not-a-member banner, else err.to_string()
@@ -26,6 +27,9 @@ Files:
 - `[quiet.rs:persist_focus]` pub fn(Option<i64>); loads general prefs from config dir, sets focus_until_ms, saves
 - `[quiet.rs:load_prefs]` pub fn() -> GeneralPrefs; prefs as saved on disk, defaults if no config dir
 
+- `[watchdog.rs:start_ui]` pub(crate) fn(); on the UI thread (called from `ui::install_local`): a repeated 1 s Slint timer beats; starts the monitor thread once
+- `[watchdog.rs:start_runtime]` pub(crate) fn(); inside the runtime (called from `Engine::start_local`): a 1 s interval task beats; starts the monitor thread once
+
 ## Invariants
 - `[quiet.rs:should_banner]` Evaluation order is fixed: paused > quiet hours > Focus filter > routing; pause and quiet hours beat keyword hits and Focus exceptions
 - `[quiet.rs:should_banner]` In Focus only mentions_me/urgent/priority_sender/call/keyword pass; a message still needs routed (or call, or keyword) to Show, so a mention in a muted chat is Hidden(Routing)
@@ -39,6 +43,8 @@ Files:
 - `[quiet.rs:init_focus]` Saved focus_until_ms already in the past is dropped at start
 - `[quiet.rs:focus_override]` Exists so Local::save_general never undoes a tray Focus change; None when app state uninitialised
 - `[error_text.rs:plain_banner]` Only rewrites when text contains ': HTTP ' followed by exactly 3 digits; otherwise returns text unchanged; the original text is logged at warn through `teams_proto::logsafe::text` (sanitised)
+- `[watchdog.rs:start_ui]` `[watchdog.rs:start_runtime]` No-ops in tests and demo mode (`external::suppressed`)
+- `[watchdog.rs:monitor]` A look more than 5 s after the previous one (suspend, starved thread) reports nothing
 
 ## Side Effects
 - `[quiet.rs:FOCUS]` process-global static Mutex holding Focus mode end time, written by init_focus/set_focus
