@@ -15,6 +15,12 @@
 // Ctrl moves by word, and at the end or the start of the line the cursor crosses to the next or the
 // previous line). An English word inside an Arabic line still moves in logical order.
 //
+// Home and End likewise: a TextInput resolves them on screen, so in a right to left line Home would
+// go to the left edge (the end of the text). The editor handles them for every line: Home is the
+// start of the line in the text (the right edge in a right to left line), End its end, Shift extends
+// the selection, Ctrl+Home and Ctrl+End go to the start and the end of the whole text. A line that
+// wraps is one line for them (not one screen row).
+//
 // Ctrl+A selects the whole text, over all lines (`whole`): every input shows its line selected, and
 // `caret` and `anchor` are the whole text's ends. While it holds, Ctrl+C and Ctrl+X copy (cut) the
 // whole text, Backspace and Delete clear it, a typed character or a paste replaces it, and an arrow
@@ -359,6 +365,25 @@ export component LineEditor inherits Rectangle {
                             root.replace-all(event.text);
                             return accept;
                         }
+                    }
+                    // Home and End: the start and the end of the line in the text, in any direction (a
+                    // TextInput resolves them on screen, so in a right to left line Home went to the
+                    // left edge, the end of the text). Shift extends the selection; Ctrl goes to the start
+                    // or the end of the whole text, over lines (Ctrl+Shift stays in the line).
+                    if (event.text == Key.Home || event.text == Key.End) && !event.modifiers.alt && !event.modifiers.meta && normal {
+                        let home = event.text == Key.Home;
+                        if event.modifiers.control && !event.modifiers.shift {
+                            let far = home ? 0 : LineApi.offset-of(root.own, 2000000000, 0);
+                            root.request(far, far, true);
+                            return accept;
+                        }
+                        let line-start = LineApi.offset-of(root.own, i, 0);
+                        let anc = line-start + self.anchor-position-byte-offset;
+                        let col = home ? 0 : LineApi.line-length(root.own, i);
+                        self.set-selection-offsets(event.modifiers.shift ? self.anchor-position-byte-offset : col, col);
+                        root.caret = line-start + col;
+                        root.anchor = event.modifiers.shift ? anc : line-start + col;
+                        return accept;
                     }
                     // Left and Right in a right to left line: Left is forward in the text.
                     if rtl && (event.text == Key.LeftArrow || event.text == Key.RightArrow) && !event.modifiers.alt && !event.modifiers.meta {

@@ -356,3 +356,141 @@ fn enter_sends_the_whole_text_after_ctrl_a() {
     type_text(&app, "m");
     assert_eq!(app.get_draft(), "nm");
 }
+
+#[test]
+fn home_and_end_go_to_the_start_and_the_end_of_an_arabic_line_in_the_text() {
+    // Home is the start of the text (the right edge of a right to left line), End its end.
+    let app = composer_with(&["مرحبا"]);
+    press(&app, Key::Home);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "xمرحبا");
+    press(&app, Key::End);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "xمرحباy");
+    // End at the end, Home at the start: they stay.
+    press(&app, Key::End);
+    type_text(&app, "z");
+    assert_eq!(app.get_draft(), "xمرحباyz");
+    press(&app, Key::Home);
+    press(&app, Key::Home);
+    type_text(&app, "w");
+    assert_eq!(app.get_draft(), "wxمرحباyz");
+}
+
+#[test]
+fn shift_home_and_shift_end_select_to_the_ends_of_an_arabic_line() {
+    let app = composer_with(&["مرحبا"]);
+    // Left is forward: Home, one letter on, then Shift+End selects the rest.
+    press(&app, Key::Home);
+    press(&app, Key::LeftArrow);
+    press_with(&app, Key::Shift, Key::End);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "مx");
+
+    let app = composer_with(&["مرحبا"]);
+    // Right is back: one letter back from the end, then Shift+Home selects to the start.
+    press(&app, Key::RightArrow);
+    press_with(&app, Key::Shift, Key::Home);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "xا");
+}
+
+#[test]
+fn home_and_end_stay_in_their_line() {
+    let app = composer_with(&["one", "مرحبا", "two"]);
+    // The cursor is at the end of the last line.
+    press(&app, Key::Home);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "one\nمرحبا\nxtwo");
+    press(&app, Key::End);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "one\nمرحبا\nxtwoy");
+    // Left at the start of the last line crosses to the end of the Arabic line.
+    press(&app, Key::Home);
+    press(&app, Key::LeftArrow);
+    settle();
+    type_text(&app, "z");
+    assert_eq!(app.get_draft(), "one\nمرحباz\nxtwoy");
+    press(&app, Key::Home);
+    type_text(&app, "a");
+    assert_eq!(app.get_draft(), "one\naمرحباz\nxtwoy");
+    press(&app, Key::End);
+    type_text(&app, "b");
+    assert_eq!(app.get_draft(), "one\naمرحباzb\nxtwoy");
+}
+
+#[test]
+fn ctrl_home_and_ctrl_end_go_to_the_start_and_the_end_of_the_whole_text() {
+    let app = composer_with(&["أ", "one", "ب"]);
+    press_with(&app, Key::Control, Key::Home);
+    settle();
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "xأ\none\nب");
+    press_with(&app, Key::Control, Key::End);
+    settle();
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "xأ\none\nبy");
+    // From an Arabic line to the end of an English last line, and back to the start of the first.
+    let app = composer_with(&["أب", "two"]);
+    press_with(&app, Key::Control, Key::Home);
+    settle();
+    press_with(&app, Key::Control, Key::End);
+    settle();
+    type_text(&app, "!");
+    assert_eq!(app.get_draft(), "أب\ntwo!");
+}
+
+#[test]
+fn home_and_end_in_an_english_line_are_unchanged() {
+    let app = composer_with(&["abc"]);
+    press(&app, Key::Home);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "xabc");
+    press(&app, Key::End);
+    type_text(&app, "y");
+    assert_eq!(app.get_draft(), "xabcy");
+    press_with(&app, Key::Shift, Key::Home);
+    type_text(&app, "z");
+    assert_eq!(app.get_draft(), "z");
+
+    let app = composer_with(&["one", "two"]);
+    press(&app, Key::Home);
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "one\nxtwo");
+}
+
+#[test]
+fn the_cursor_at_home_of_an_arabic_line_is_drawn_inside_its_input() {
+    let app = composer_with(&["مرحبا"]);
+    press(&app, Key::Home);
+    settle();
+    let caret = rect(&caret_overlay(&app, 0));
+    let input = rect(&line_input(&app, 0));
+    assert!(
+        caret.2 - caret.0 >= 0.5,
+        "no cursor is drawn at the start of the line"
+    );
+    assert!(
+        caret.2 <= input.2 + 0.01 && caret.0 >= input.2 - 8.0,
+        "the cursor {caret:?} is not at the right edge of the input {input:?}"
+    );
+    // End goes back to where the input draws the cursor itself.
+    press(&app, Key::End);
+    settle();
+    assert!(caret_overlay(&app, 0).size().width < 0.5);
+}
+
+#[test]
+fn home_and_end_end_the_whole_selection_as_before() {
+    let app = composer_with(&["one", "اثنان"]);
+    select_all(&app);
+    press(&app, Key::Home);
+    settle();
+    type_text(&app, "!");
+    assert_eq!(app.get_draft(), "!one\nاثنان");
+    select_all(&app);
+    press(&app, Key::End);
+    settle();
+    type_text(&app, "?");
+    assert_eq!(app.get_draft(), "!one\nاثنان?");
+}
