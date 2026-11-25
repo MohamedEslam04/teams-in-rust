@@ -82,6 +82,7 @@ mod topbar;
 #[cfg(feature = "calls")]
 mod video_effects;
 mod web_parity;
+mod wheel_overlays;
 mod window_state;
 
 type Log = Rc<RefCell<Vec<String>>>;
