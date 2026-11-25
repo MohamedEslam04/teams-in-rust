@@ -167,7 +167,14 @@ export component MessagePane inherits Rectangle {
                 self.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
             }
         }
-        changed d-tick => { root.show-row(root.divider-index); }
+        changed d-tick => {
+            root.show-row(root.divider-index);
+            // The estimate used the content height of the rows the list had laid out before the
+            // ones that came with the tick (none in a chat just opened: the view stayed at the
+            // top of the history, far above the divider, whose row was never built to correct
+            // it). It is made again once the new rows are laid out.
+            divider-timer.restart();
+        }
         // The content height the last `changed content-height` saw. A content-y change
         // that arrives with a different height is the content growing under the
         // view (a card, an image or a voice bubble got its real height), not the
@@ -397,6 +404,16 @@ export component MessagePane inherits Rectangle {
                 // (`offset-timer`).
                 msg-list.apply-off = root.anchor-off > 0px;
             }
+        }
+    }
+    // The rows that came with a jump to the divider (or to a found row) are laid out by now: the
+    // estimate again, with their content height; the row there corrects it (`aligning`).
+    divider-timer := Timer {
+        interval: 30ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.show-row(root.divider-index);
         }
     }
     // The anchor row is at the view's top by now: move down to where the user was inside it. The
