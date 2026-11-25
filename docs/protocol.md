@@ -726,4 +726,9 @@ Built from the calls and endpoints above. **UNVERIFIED** means no request was se
 | Dial a phone number | the calling crate cannot place PSTN calls. The Calls search box shows a disabled "Call <number>" row with the reason | not built |
 | Ringtone, hide a call, speed dial | local only: `calls.json` (`ringtone`) and `config.json` (`hidden_calls`) | n/a |
 
+## Idle Away (fix/idle-away-live) 2026-11-25
+| Call | Notes | Live |
+|---|---|---|
+| Report idle / active | The device is registered with `PUT <presence>/v1/me/endpoints/` `activityReporting: "Transport"`, which makes the service take the activity from the trouter: socket.io event `user.activity` `[{"state":"active"\|"inactive","cv":…}]` on the connection whose `epid` is the endpoint's (rusty-teams `realtime/native.rs`, Teams web). IronTeams sent `active` once per connect and never `inactive`, so the user stayed Available while idle. Now `trouter::set_user_active` sends every change (both trouter connections), and `POST me/reportmyactivity/` (the `"Direct"` reporting path) is still sent for its 404 | ⚠️ unverified live: the user's next idle test (log lines `trouter: user activity sent active=false`, then `presence: mine as the service shows it availability="Away"`) |
+
 Docs synced to commit 09fe5c2 ("feat(IronTeams): chat list sections and menus, channel post cards, cloud attach and adaptive cards (chat 8.1 to 8.8)", 2026-11-19)

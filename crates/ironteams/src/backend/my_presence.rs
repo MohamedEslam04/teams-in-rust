@@ -11,6 +11,10 @@
 //! the device reports "not active", which makes the service show Away, and the first input after
 //! that reports "active" again. Only the activity flag is reported, so a status the user forced
 //! (Busy, Do not disturb, Appear away) stays in charge, and a call is never reported inactive.
+//! The device is registered with `activityReporting: "Transport"`, so the service takes the flag
+//! from the trouter connection's `user.activity` ([`teams_proto::trouter::set_user_active`]);
+//! `reportmyactivity` is sent too, and its 404 says the device must be registered again. Every
+//! change (registered, removed, reported, call state) is logged at info.
 
 use super::Engine;
 use std::sync::Arc;
@@ -84,24 +88,38 @@ async fn run(client: Client) {
     let mut registered = false;
     // What the service was last told about our activity; `None` until it is told after registering.
     let mut reported: Option<bool> = None;
+    // Logged on changes only: the call state, and whether registering keeps failing.
+    let mut was_in_call = None;
+    let mut register_failing = false;
     loop {
         let locked = tray::screen::screen_locked().await.unwrap_or(false);
-        match step(registered, locked, super::call_presence::in_call()) {
+        let in_call = super::call_presence::in_call();
+        if was_in_call.replace(in_call) != Some(in_call) {
+            tracing::info!(in_call, "presence: call state");
+        }
+        match step(registered, locked, in_call) {
             Step::Register => {
                 match client
                     .publish_endpoint(Availability::Available, "Available")
                     .await
                 {
                     Ok(()) => {
+                        tracing::info!("presence: this device registered (Available)");
                         registered = true;
                         reported = None;
+                        register_failing = false;
+                    }
+                    Err(e) if !register_failing => {
+                        tracing::warn!(%e, "presence: could not register this device");
+                        register_failing = true;
                     }
                     Err(e) => tracing::debug!(%e, "presence: could not register this device"),
                 }
             }
             Step::Remove => {
-                if let Err(e) = client.remove_endpoint().await {
-                    tracing::debug!(%e, "presence: could not remove this device");
+                match client.remove_endpoint().await {
+                    Ok(()) => tracing::info!("presence: screen locked, this device removed"),
+                    Err(e) => tracing::warn!(%e, "presence: could not remove this device"),
                 }
                 registered = false;
                 reported = None;
@@ -110,16 +128,26 @@ async fn run(client: Client) {
         }
         if registered {
             let idle = tray::idle::idle_for().await;
-            if let Some(active) = activity_report(idle, super::call_presence::in_call(), reported) {
+            if let Some(active) = activity_report(idle, in_call, reported) {
+                // The device is registered with transport reporting: the service takes the
+                // activity from the trouter connection, so that is where it must go first.
+                teams_proto::trouter::set_user_active(active);
+                let idle_secs = idle.map(|d| d.as_secs());
                 match client.report_activity(active).await {
-                    Ok(()) => reported = Some(active),
+                    Ok(()) => tracing::info!(active, ?idle_secs, "presence: activity reported"),
                     // The device's presence expired: register it again, then report again.
                     Err(teams_proto::Error::Status { status: 404, .. }) => {
+                        tracing::info!(
+                            active,
+                            "presence: activity answered 404, registering again"
+                        );
                         registered = false;
-                        reported = None;
                     }
-                    Err(e) => tracing::debug!(%e, "presence: could not report activity"),
+                    Err(e) => tracing::warn!(%e, active, "presence: could not report activity"),
                 }
+                // Told (the trouter carries it even when the HTTP report failed): the next report
+                // is the next change, so a failing report is not repeated every check.
+                reported = registered.then_some(active);
             }
         }
         tokio::time::sleep(CHECK).await;
