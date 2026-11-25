@@ -216,21 +216,58 @@ fn the_cursor_crosses_to_the_other_line_with_the_swapped_arrows_of_an_arabic_lin
     assert_eq!(app.get_draft(), "أx\nyب");
 }
 
+/// The cursor overlay of the line input at `n` (width 0 while the input draws its own cursor).
+fn caret_overlay(app: &AppWindow, n: usize) -> ElementHandle {
+    ElementHandle::find_by_element_id(app, "LineEditor::caret")
+        .nth(n)
+        .expect("caret overlay")
+}
+
+fn line_input(app: &AppWindow, n: usize) -> ElementHandle {
+    ElementHandle::find_by_element_id(app, "LineEditor::ti")
+        .nth(n)
+        .expect("line input")
+}
+
 #[test]
-fn the_cursor_at_the_start_of_a_right_aligned_line_is_not_cut_off() {
+fn the_cursor_at_the_start_of_a_right_aligned_line_is_drawn_inside_its_input() {
+    // An input clips what it draws to its own size, and the cursor at the start of a right to left
+    // line is at its right edge: the input cannot draw it, so the editor draws it just inside.
     let app = composer_with(&["مرحبا"]);
-    let editor = rect(&composer(&app));
-    let input = rect(
-        &ElementHandle::find_by_element_id(&app, "LineEditor::ti")
-            .next()
-            .expect("line input"),
-    );
-    // The cursor is drawn past the right edge of the input's text there: room for it.
+    // At the end of the text the cursor is at the left, where the input draws it itself.
     assert!(
-        editor.2 - input.2 >= 2.9,
-        "the input ends {}px before the editor's edge",
-        editor.2 - input.2
+        caret_overlay(&app, 0).size().width < 0.5,
+        "an overlay cursor is drawn at the end of the line, where the input draws its own"
     );
+
+    // Ctrl+Right goes back a word: to the start of the line.
+    press_with(&app, Key::Control, Key::RightArrow);
+    settle();
+    let caret = rect(&caret_overlay(&app, 0));
+    let input = rect(&line_input(&app, 0));
+    assert!(
+        caret.2 - caret.0 >= 0.5,
+        "no cursor is drawn at the start of the line"
+    );
+    assert!(
+        caret.2 <= input.2 + 0.01 && caret.0 >= input.2 - 8.0,
+        "the cursor {caret:?} is not at the right edge of the input {input:?}"
+    );
+    assert!(caret.3 > caret.1 && caret.1 >= input.1 - 0.5 && caret.3 <= input.3 + 1.0);
+
+    // It is the real position: a typed character goes in there.
+    type_text(&app, "x");
+    assert_eq!(app.get_draft(), "xمرحبا");
+}
+
+#[test]
+fn a_left_aligned_line_draws_no_overlay_cursor() {
+    let app = composer_with(&["abc"]);
+    for _ in 0..3 {
+        press(&app, Key::LeftArrow);
+    }
+    settle();
+    assert!(caret_overlay(&app, 0).size().width < 0.5);
 }
 
 #[test]
