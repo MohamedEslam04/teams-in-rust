@@ -50,17 +50,6 @@ pub fn wire(window: &AppWindow) {
                 .chars()
                 .all(|c| !c.is_control() && !('\u{f700}'..='\u{f7ff}').contains(&c))
     });
-    api.on_copy_text(|text: SharedString| {
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(text.to_string());
-        }
-    });
-    api.on_clipboard_text(|| {
-        arboard::Clipboard::new()
-            .and_then(|mut clipboard| clipboard.get_text())
-            .unwrap_or_default()
-            .into()
-    });
     api.on_direction(
         |text: SharedString, line| match lines::line_direction(&text, index(line)) {
             Some(Dir::Rtl) => 1,

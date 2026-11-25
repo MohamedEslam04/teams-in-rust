@@ -50,9 +50,6 @@ export global LineApi {
     pure callback step(string, int, int, bool) -> int;
     // Whether a key's text is a typed character (not a special key)
     pure callback printable(string) -> bool;
-    // The system clipboard
-    callback copy-text(string);
-    callback clipboard-text() -> string;
 }
 
 export component LineEditor inherits Rectangle {
@@ -88,6 +85,8 @@ export component LineEditor inherits Rectangle {
     property <length> row-height: probe.preferred-height;
 
     probe := Text { text: "Ag"; font-size: root.font-size; visible: false; }
+    // Copies and pastes the whole text through the window's clipboard, as an input does its own.
+    copier := TextInput { visible: false; width: 0px; height: 0px; }
 
     // The text was set from outside: the rows follow it.
     function sync() {
@@ -235,7 +234,10 @@ export component LineEditor inherits Rectangle {
                     if root.whole {
                         self.set-selection-offsets(0, LineApi.line-length(root.own, i));
                     } else {
-                        self.clear-selection();
+                        // The focused input is left as whatever ended the selection made it.
+                        if !self.has-focus {
+                            self.clear-selection();
+                        }
                     }
                     root.selecting = false;
                 }
@@ -311,18 +313,20 @@ export component LineEditor inherits Rectangle {
                         let is-v = event.text == "v" || event.text == "V";
                         let to-start = event.text == Key.UpArrow || event.text == Key.Home || event.text == (rtl ? Key.RightArrow : Key.LeftArrow);
                         let to-end = event.text == Key.DownArrow || event.text == Key.End || event.text == (rtl ? Key.LeftArrow : Key.RightArrow);
-                        if ctrl-only && is-c {
-                            LineApi.copy-text(root.own);
-                            return accept;
-                        }
-                        if ctrl-only && is-x {
-                            LineApi.copy-text(root.own);
-                            root.replace-all("");
+                        if ctrl-only && (is-c || is-x) {
+                            copier.text = root.own;
+                            copier.select-all();
+                            copier.copy();
+                            if is-x {
+                                root.replace-all("");
+                            }
                             return accept;
                         }
                         if ctrl-only && is-v {
-                            if LineApi.clipboard-text() != "" {
-                                root.replace-all(LineApi.clipboard-text());
+                            copier.text = "";
+                            copier.paste();
+                            if copier.text != "" {
+                                root.replace-all(copier.text);
                             }
                             return accept;
                         }
