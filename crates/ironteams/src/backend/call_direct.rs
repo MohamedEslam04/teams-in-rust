@@ -698,21 +698,30 @@ impl Engine {
     }
 
     fn refresh_incoming(self: &Arc<Self>, id: u64) {
-        let c = self.direct();
-        let Some(i) = c
-            .incoming
-            .as_ref()
-            .filter(|i| i.id == id && !i.state.is_over())
-        else {
-            return;
+        // Copied out first: the photo lookup takes the avatar cache and the store, and may decode.
+        let (mri, name, video, waiting, accepting) = {
+            let c = self.direct();
+            let Some(i) = c
+                .incoming
+                .as_ref()
+                .filter(|i| i.id == id && !i.state.is_over())
+            else {
+                return;
+            };
+            (
+                i.mri.clone(),
+                i.name.clone(),
+                i.video,
+                i.waiting,
+                i.state == IncomingState::Accepting,
+            )
         };
-        let mut view = self.call_view(&i.mri, &i.name);
-        view.video = i.video;
-        view.waiting = i.waiting;
-        if i.state == IncomingState::Accepting {
+        let mut view = self.call_view(&mri, &name);
+        view.video = video;
+        view.waiting = waiting;
+        if accepting {
             view.status = "Connecting…".into();
         }
-        drop(c);
         self.ui.call_incoming(view);
     }
 
@@ -1345,14 +1354,22 @@ impl Engine {
     }
 
     fn push_outgoing(self: &Arc<Self>, id: u64) {
-        let c = self.direct();
-        let Some(o) = c.outgoing.as_ref().filter(|o| o.id == id) else {
-            return;
+        // Copied out first: the photo lookup takes the avatar cache and the store, and may decode.
+        let (mri, name, status, over) = {
+            let c = self.direct();
+            let Some(o) = c.outgoing.as_ref().filter(|o| o.id == id) else {
+                return;
+            };
+            (
+                o.mri.clone(),
+                o.name.clone(),
+                o.state.label(),
+                !o.state.is_live(),
+            )
         };
-        let mut view = self.call_view(&o.mri, &o.name);
-        view.status = o.state.label();
-        view.over = !o.state.is_live();
-        drop(c);
+        let mut view = self.call_view(&mri, &name);
+        view.status = status;
+        view.over = over;
         self.ui.call_outgoing(view);
     }
 

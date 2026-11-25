@@ -408,36 +408,36 @@ pub(super) fn clean_name(name: &str) -> Option<String> {
 impl Engine {
     /// Loads the saved state once, and tells the UI the options.
     fn lists_load(&self) {
+        if self.lists.lock().unwrap().loaded {
+            return;
+        }
+        // Read before taking the lists' lock: the sync and the Teams view take the lists' lock
+        // while they hold the store's, so taking them the other way round could deadlock both.
+        let (saved, last) = {
+            let store = self.store.lock().unwrap();
+            let read = |key: &str| {
+                store
+                    .get_kv(key)
+                    .ok()
+                    .flatten()
+                    .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            };
+            (read(KV_KEY), read(KV_SERVER))
+        };
         let fresh = {
             let mut st = self.lists.lock().unwrap();
             if st.loaded {
                 return;
             }
             st.loaded = true;
-            let saved = self
-                .store
-                .lock()
-                .unwrap()
-                .get_kv(KV_KEY)
-                .ok()
-                .flatten()
-                .and_then(|t| serde_json::from_str::<Value>(&t).ok());
             if let Some(v) = saved {
                 st.local = Local::from_json(&v);
             }
             // The sections Teams had last time show at once; the refresh replaces them.
-            if !st.server_known {
-                let last = self
-                    .store
-                    .lock()
-                    .unwrap()
-                    .get_kv(KV_SERVER)
-                    .ok()
-                    .flatten()
-                    .and_then(|t| serde_json::from_str::<Value>(&t).ok());
-                if let Some(v) = last {
-                    (st.server, st.server_favs) = server_from_json(&v);
-                }
+            if !st.server_known
+                && let Some(v) = last
+            {
+                (st.server, st.server_favs) = server_from_json(&v);
             }
             st.local.opts
         };
