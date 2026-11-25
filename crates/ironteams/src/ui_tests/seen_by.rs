@@ -82,6 +82,58 @@ fn clicking_the_seen_by_line_lists_everyone_who_saw_the_message() {
     assert!(the_list(&app).size().height > 0.0);
 }
 
+/// An older message of mine that `names` read: the compact mark (an eye and the count).
+fn compact_seen_by(names: &[&str]) -> Msg {
+    Msg {
+        receipt_compact: true,
+        ..seen_by(names)
+    }
+}
+
+fn the_compact_mark(app: &AppWindow) -> ElementHandle {
+    ElementHandle::find_by_element_id(app, "MessageRow::compact-link")
+        .next()
+        .expect("an older message someone read has the compact mark")
+}
+
+#[test]
+fn an_older_message_shows_a_compact_count_that_opens_the_list() {
+    let app = app_with_messages(vec![compact_seen_by(&NAMES[..3])]);
+    assert!(!app.get_readers_open());
+    assert!(
+        has(&app, "Seen by 3"),
+        "the mark says how many read it, not who"
+    );
+    assert!(
+        ElementHandle::find_by_element_id(&app, "MessageRow::readers-link")
+            .next()
+            .is_none(),
+        "no photos and names on an older message"
+    );
+    assert!(
+        ElementHandle::find_by_element_id(&app, "MessageRow::receipt-mark")
+            .next()
+            .is_none(),
+        "the full line is only for the newest message"
+    );
+
+    // It sits at the right, small.
+    let link = the_compact_mark(&app);
+    let all_rows = rows(&app);
+    let row = &all_rows[0];
+    let right = |e: &ElementHandle| e.absolute_position().x + e.size().width;
+    assert!(right(&link) <= right(row) + 1.0);
+    assert!(link.size().width > 0.0 && link.size().height <= 20.0);
+
+    click(&link);
+    assert!(app.get_readers_open());
+    for name in &NAMES[..3] {
+        assert!(has(&app, name), "{name} is in the list");
+    }
+    assert!(!has(&app, "Reader Four"));
+    assert!(the_list(&app).size().width > 0.0);
+}
+
 #[test]
 fn escape_and_a_click_outside_close_the_list() {
     let app = app_with_messages(vec![seen_by(&NAMES)]);
