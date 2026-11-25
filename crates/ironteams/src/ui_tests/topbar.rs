@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::backend::FindCmd;
+use crate::data::{HeaderData, Scroll};
 use crate::suggest::SuggestData;
 use crate::{FindStore, PeopleStore, SettingsStore, TopBarStore, TopRow};
 use std::path::PathBuf;
@@ -937,4 +938,132 @@ fn closing_the_dropdown_closes_the_card_opened_from_it() {
         !h.app.global::<PeopleStore>().get_card_open(),
         "picking the row closes the card"
     );
+}
+
+// ---- choosing a suggestion switches the view at once --------------------------------------------
+
+fn has_composer(app: &AppWindow) -> bool {
+    ElementHandle::find_by_element_id(app, "Composer::composer-input")
+        .next()
+        .is_some()
+}
+
+/// Types `query`, lets the engine answer with one row and chooses it with the arrow keys and Enter.
+fn choose_suggestion(app: &AppWindow, query: &str, kind: &'static str, id: &str, title: &str) {
+    focus_box(app);
+    type_text(app, query);
+    UiHandle::new(app.as_weak()).topbar_suggestions(
+        query.into(),
+        vec![SuggestData {
+            person: String::new(),
+            kind,
+            id: id.into(),
+            title: title.into(),
+            subtitle: String::new(),
+            initials: "SH".into(),
+            color: 0x5b5fc7,
+        }],
+    );
+    press(app, Key::DownArrow);
+    enter(app);
+    settle();
+}
+
+/// The live case: the engine is slow to switch (nothing answers here), and the window still showed
+/// the previous chat with its composer, which took what the user typed next.
+fn assert_chosen_chat_shown_while_engine_is_slow(kind: &'static str) {
+    let app = ready_window(None);
+    let ui = UiHandle::new(app.as_weak());
+    ui.messages(
+        vec![crate::ui::row_fingerprint::sample_row(
+            "old1",
+            "old chat text",
+        )],
+        Scroll::Bottom,
+    );
+    assert_eq!(app.get_messages().row_count(), 1);
+    let edits = Log::default();
+    let e = edits.clone();
+    app.on_draft_edited(move |t| e.borrow_mut().push(t.to_string()));
+    let opened = Log::default();
+    let o = opened.clone();
+    app.on_select_chat(move |id| o.borrow_mut().push(id.to_string()));
+    // A draft in the chat that is open now.
+    type_text(&app, "unsent");
+    assert_eq!(app.get_draft(), "unsent");
+    edits.borrow_mut().clear();
+
+    choose_suggestion(&app, "sa", kind, "p1", "Sara Hassan");
+
+    assert_eq!(*opened.borrow(), ["p1"], "the engine is asked to switch");
+    // The engine has not answered: the window shows the chat that was chosen, loading.
+    assert_eq!(app.get_current_id(), "p1");
+    assert_eq!(app.get_current_title(), "Sara Hassan");
+    assert_eq!(app.get_current_initials(), "SH");
+    assert!(app.get_loading_latest(), "a loading state for the target");
+    assert_eq!(
+        app.get_messages().row_count(),
+        0,
+        "the previous chat's messages are gone"
+    );
+    assert_eq!(app.get_draft(), "", "the previous chat's draft is gone");
+    assert!(!has_composer(&app), "no composer until the chat is ready");
+
+    // What is typed now goes to the target's draft or nowhere, never the previous chat's.
+    type_text(&app, "hello");
+    assert!(edits.borrow().is_empty(), "{:?}", edits.borrow());
+    assert_eq!(app.get_draft(), "");
+
+    // A header the engine drew for the previous chat before it saw the switch changes nothing.
+    ui.header(HeaderData {
+        id: "a".into(),
+        title: "Old".into(),
+        kind: "group".into(),
+        ..Default::default()
+    });
+    settle();
+    assert_eq!(app.get_current_id(), "p1");
+    assert!(!has_composer(&app));
+
+    // The engine switched: the composer is back, for the chosen chat.
+    ui.header(HeaderData {
+        id: "p1".into(),
+        title: "Sara Hassan".into(),
+        initials: "SH".into(),
+        kind: "chat".into(),
+        ..Default::default()
+    });
+    settle();
+    assert_eq!(app.get_current_id(), "p1");
+    assert!(has_composer(&app));
+}
+
+#[test]
+fn choosing_a_person_shows_that_chat_at_once_and_drops_the_old_composer() {
+    assert_chosen_chat_shown_while_engine_is_slow("person");
+}
+
+#[test]
+fn choosing_a_chat_shows_that_chat_at_once_and_drops_the_old_composer() {
+    assert_chosen_chat_shown_while_engine_is_slow("chat");
+}
+
+#[test]
+fn choosing_the_open_chat_keeps_its_composer() {
+    let app = ready_window(None);
+    choose_suggestion(&app, "sa", "person", "a", "Sara Hassan");
+    assert_eq!(app.get_current_id(), "a");
+    assert!(has_composer(&app), "the engine has nothing to answer");
+    assert!(!app.get_loading_latest());
+}
+
+#[test]
+fn choosing_a_person_with_the_engine_ends_on_that_chat_with_its_composer() {
+    let (h, _log) = engine_window();
+    h.select(NOTES);
+    choose_suggestion(&h.app, "sara", "person", SARA, "Sara Hassan");
+    assert_eq!(h.app.get_current_id(), SARA);
+    assert_eq!(h.app.get_current_title(), "Sara Hassan");
+    assert!(has_composer(&h.app));
+    assert!(!h.app.get_loading_latest());
 }

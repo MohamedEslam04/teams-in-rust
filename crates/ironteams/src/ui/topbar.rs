@@ -280,6 +280,31 @@ fn search(w: &AppWindow, c: &mut Ctl, text: &str) {
     rebuild(w, c);
 }
 
+/// Shows the person or chat that was chosen in the dropdown (its header from the row, a loading
+/// state, no composer) while the engine switches to it, which may take a moment: until then the
+/// previous chat stayed on screen with its composer, and what was typed went into its draft.
+/// The row's id is already the conversation's (the engine suggests from the cached chats), so
+/// nothing is looked up or created first.
+fn show_opening(w: &AppWindow, c: &Ctl, kind: &str, id: &str) {
+    // The chat already open: the engine has nothing to switch, so nothing would end the wait.
+    if w.get_current_id() == id && w.get_thread_root().is_empty() {
+        return;
+    }
+    let Some(row) = c.rows.iter().find(|r| r.kind == kind && r.id == id) else {
+        return;
+    };
+    let shown = if kind == "person" { "chat" } else { "group" };
+    super::show_opening(
+        w,
+        id,
+        &row.title,
+        &row.initials,
+        row.color,
+        shown,
+        &row.person,
+    );
+}
+
 fn apply(w: &AppWindow, c: &mut Ctl, pick: Pick, input: &str) {
     match pick {
         Pick::Insert(text) => {
@@ -297,6 +322,7 @@ fn apply(w: &AppWindow, c: &mut Ctl, pick: Pick, input: &str) {
                 w.invoke_select_channel(s(id), s(title));
             } else {
                 w.set_view(s("chat"));
+                show_opening(w, c, kind, &id);
                 w.invoke_select_chat(s(id));
             }
             clear_input(w, c);

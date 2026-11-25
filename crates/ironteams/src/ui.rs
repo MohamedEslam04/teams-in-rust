@@ -62,6 +62,52 @@ thread_local! {
         const { RefCell::new(Vec::new()) };
 }
 
+/// Drops what the previous conversation left on screen: its messages, posts, thread panel and
+/// live meeting.
+fn forget_previous_chat(w: &AppWindow) {
+    MESSAGES.with(|cell| {
+        if let Some(m) = cell.borrow().as_ref() {
+            m.set_vec(vec![]);
+        }
+    });
+    let posts = w.global::<crate::ChannelStore>();
+    posts.set_posts(ModelRc::default());
+    // The thread panel belongs to the channel it was opened in.
+    posts.set_thread_id("".into());
+    w.set_current_meeting_live(false);
+}
+
+/// The chat the user chose in the search box, shown before the engine has switched to it: its
+/// header from the suggestion, a loading state in place of the messages, and no composer (and an
+/// empty draft) until the engine's header for it comes, so nothing typed meanwhile reaches the
+/// previous chat. `kind` is the header's ("chat" for a person, "group" for a group chat).
+pub(crate) fn show_opening(
+    w: &AppWindow,
+    id: &str,
+    title: &str,
+    initials: &str,
+    color: u32,
+    kind: &str,
+    person: &str,
+) {
+    forget_previous_chat(w);
+    w.set_opening_id(id.into());
+    w.set_current_id(id.into());
+    w.set_current_title(title.into());
+    w.set_current_initials(initials.into());
+    w.set_current_color(rgb(color));
+    w.set_current_avatar(Image::default());
+    w.set_current_has_avatar(false);
+    w.set_current_is_channel(false);
+    w.set_current_kind(kind.into());
+    w.set_current_muted(false);
+    w.set_current_person(person.into());
+    w.set_current_presence("".into());
+    w.set_thread_root("".into());
+    w.set_draft("".into());
+    w.set_loading_latest(true);
+}
+
 fn rgb(c: u32) -> Color {
     Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
@@ -736,6 +782,12 @@ impl UiHandle {
 
     pub fn header(&self, h: HeaderData) {
         self.run(move |w| {
+            let opening = w.get_opening_id();
+            // The chat chosen in the search box is on screen already: a header for any other
+            // chat is one the engine drew before it saw the switch.
+            if !opening.is_empty() && opening != h.id.as_str() {
+                return;
+            }
             let (avatar, has) = img(&h.avatar);
             // The Teams page opens the last channel again; the Chat page the last conversation
             // that was opened outside the Teams page.
@@ -748,18 +800,11 @@ impl UiHandle {
             }
             // Another conversation never shows the messages (or posts) of the previous one
             // under its header while its own are still being drawn.
-            if w.get_current_id() != h.id.as_str() {
-                MESSAGES.with(|cell| {
-                    if let Some(m) = cell.borrow().as_ref() {
-                        m.set_vec(vec![]);
-                    }
-                });
-                let posts = w.global::<crate::ChannelStore>();
-                posts.set_posts(ModelRc::default());
-                // The thread panel belongs to the channel it was opened in.
-                posts.set_thread_id("".into());
-                w.set_current_meeting_live(false);
+            if w.get_current_id() != h.id.as_str() || !opening.is_empty() {
+                forget_previous_chat(&w);
             }
+            // The engine has switched: the composer comes back.
+            w.set_opening_id("".into());
             w.set_current_id(h.id.into());
             w.set_current_title(h.title.into());
             w.set_current_initials(h.initials.into());
@@ -784,6 +829,11 @@ impl UiHandle {
     /// scroll position is kept.
     pub fn messages(&self, msgs: Vec<MsgData>, scroll: Scroll) {
         self.run(move |w| {
+            // Rows drawn for the previous chat before the engine saw the switch chosen in the
+            // search box do not belong under the chat shown now; its own come after its header.
+            if !w.get_opening_id().is_empty() {
+                return;
+            }
             let started = std::time::Instant::now();
             // Where the user is in the list now, before the rows change.
             let top_id = w.get_msg_top_id().to_string();
