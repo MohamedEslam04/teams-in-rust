@@ -143,6 +143,7 @@ export struct Msg {
     mentions-me: bool,     // the message @mentions me (or everyone)
     receipt: string,       // "" | "sent" | "seen" (a group: my newest message; a 1:1 chat: my newest seen one and the ones after)
     receipt-names: string, // who has seen it
+    receipt-compact: bool, // an older message of mine in a group that someone read: an eye and the count only
     receipt-side: bool,    // my message in a 1:1 chat: the mark sits at the bubble's right edge
     flash: bool,           // the row a jump (pinned banner) landed on
     fresh: bool,           // arrived live a moment ago: the row fades in

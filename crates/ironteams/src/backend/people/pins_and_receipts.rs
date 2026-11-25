@@ -468,8 +468,8 @@ impl Engine {
         }
     }
 
-    /// The receipts of my messages in `conv`: in a group the newest message only (with who has
-    /// seen it), in a 1:1 chat the newest one they have read and the ones after it (see
+    /// The receipts of my messages in `conv`: in a group the newest message (with who has seen
+    /// it) and a compact mark on each older one that someone has read, in a 1:1 chat the newest one they have read and the ones after it (see
     /// `delivery_states`). Empty when receipts are off or do not apply to this chat. A message
     /// that is still being sent has none.
     pub(in super::super) fn receipt_marks(
@@ -507,23 +507,29 @@ impl Engine {
                 .map(|(r, state)| ReceiptMark::plain(&r.id, state))
                 .collect();
         }
-        let Some(newest) = mine.last().filter(|r| !r.id.starts_with(PENDING_PREFIX)) else {
-            return Vec::new();
-        };
-        let (state, names, readers) = receipt(
-            &horizons,
-            &self.me,
-            &newest.id,
-            newest.compose_ms,
-            false,
-            |m| self.name_of(m),
-        );
-        vec![ReceiptMark {
-            msg_id: newest.id.clone(),
-            state,
-            names,
-            readers,
-        }]
+        let mut marks = Vec::new();
+        // The newest keeps the full line (sent, or who saw it); the older ones that someone has
+        // read get a compact mark, and the unread ones none.
+        for (i, r) in mine.iter().enumerate() {
+            if r.id.starts_with(PENDING_PREFIX) {
+                continue;
+            }
+            let newest = i + 1 == mine.len();
+            let (state, names, readers) =
+                receipt(&horizons, &self.me, &r.id, r.compose_ms, false, |m| {
+                    self.name_of(m)
+                });
+            if newest || !readers.is_empty() {
+                marks.push(ReceiptMark {
+                    msg_id: r.id.clone(),
+                    state,
+                    names,
+                    readers,
+                    compact: !newest,
+                });
+            }
+        }
+        marks
     }
 
     // ---- chat list marker ----------------------------------------------------

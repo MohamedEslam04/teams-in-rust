@@ -322,6 +322,7 @@ fn msg(m: MsgData) -> Msg {
         mentions_me: m.mentions_me,
         receipt: m.receipt.into(),
         receipt_names: m.receipt_names.into(),
+        receipt_compact: m.receipt_compact,
         receipt_side: m.receipt_side,
         flash: m.flash,
         fresh: m.fresh,

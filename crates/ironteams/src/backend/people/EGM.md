@@ -24,7 +24,7 @@ Files:
 - `[commands.rs:Engine::on_chat_opened]` pub(in backend) fn(&Arc<Self>, conv:&str); clears per-chat state, spawns members+tabs+pins load
 - `[pure.rs:sort_pins]` pub(in backend) fn sort_pins(pins:&mut [teams_proto::actions::PinnedMessage]); newest first by pinned_at
 - `[commands.rs:Engine::remember_members]` pub(in backend) fn(&self,&[ChatMeta]); caches aggregator member lists
-- `[pure.rs:ReceiptMark]` pub(in backend) struct {msg_id, state("sent"|"seen"), names(first three +N), readers:Vec<String>}; `ReceiptMark::plain(msg_id, state)` makes one with no names
+- `[pure.rs:ReceiptMark]` pub(in backend) struct {msg_id, state("sent"|"seen"), names(first three +N), readers:Vec<String>, compact:bool (an older message in a group: the row draws only an eye and the reader count)}; `ReceiptMark::plain(msg_id, state)` makes one with no names
 - `[pure.rs:delivery_states]` pub(in backend) fn(horizons:&[Horizon], me, mine:&[(&str,i64)]) -> Vec<&'static str>; for my messages in a 1:1 chat (oldest first): the newest one the other person has read is "seen", ones before it "", ones after it "sent"; all "sent" when none is read
 - `[commands.rs:Engine::start_people]` pub(in backend) fn(&Arc<Self>); sets receipts UI, spawns receipt poll loop unless offline
 - `[pure.rs:receipt]` pub(in backend) fn receipt(horizons:&[Horizon], me, msg_id, msg_ms:i64, one_on_one:bool, name_of:impl Fn(&str)->String) -> (state, line, readers)
@@ -51,7 +51,7 @@ Files:
 - `[pins_and_receipts.rs:Engine::refresh_pins]` pub(in backend) async fn(&Arc<Self>,conv); fetch/resolve pins and push to UI
 - `[pins_and_receipts.rs:Engine::is_pinned]` pub(in backend) fn(&self,conv,id)->bool
 - `[pins_and_receipts.rs:Engine::jump_to_with/flash_row/clear_flash/take_jump]` pub(in backend) jump+highlight API; take_jump(&mut [MsgData])->Option<usize>
-- `[pins_and_receipts.rs:Engine::receipts_enabled/receipt_marks/has_unread_mention]` pub(in backend) receipt setting, `receipt_marks(conv, rows) -> Vec<ReceiptMark>` (a group: one mark for my newest message; a 1:1 chat: a mark for each sent message of mine whose `delivery_states` entry is non-empty, built with `ReceiptMark::plain`), unread-mention check (asks the store for `mention_candidates(conv, read_horizon_ms, me, 30)` instead of parsing full messages)
+- `[pins_and_receipts.rs:Engine::receipts_enabled/receipt_marks/has_unread_mention]` pub(in backend) receipt setting, `receipt_marks(conv, rows) -> Vec<ReceiptMark>` (a group: a full mark for my newest message, and a `compact` one for each older sent message that someone has read, none for unread older ones and none for pending ones; a 1:1 chat: a mark for each sent message of mine whose `delivery_states` entry is non-empty, built with `ReceiptMark::plain`), unread-mention check (asks the store for `mention_candidates(conv, read_horizon_ms, me, 30)` instead of parsing full messages)
 - `[pins_and_receipts.rs:Engine::refresh_horizons]` pub(in backend) async fn(&Arc<Self>, conv); also used from live.rs
 - `[pins_and_receipts.rs:Engine::load_until_found/unpin/jump_to/set_receipts/receipts_apply]` pub(super) helpers; `load_until_found` returns at once when offline and pages by `oldest_compose_ms`
 - `[pins_and_receipts.rs:Engine::begin_nav/load_to_start/jump_to_first/jump_to_date/jump_to_quote]` pub(super) history-jump API; `load_back`, `nav_live`, `nav_pill`, `end_nav`, `first_row_from`, `land_from`, `land_on_row`, `jump_if_found` are private; `day_start(text, zone, now_ms)` reads `YYYY-MM-DD` or `days:N` in the Settings zone
