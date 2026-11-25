@@ -188,6 +188,15 @@ export global CallStore {
     // Who we pinned for ourselves (an MRI, "" for nobody): their tile is the speaker view's large
     // one whoever speaks. Local only; set by `pin`.
     in property <string> pinned;
+    // While someone shares, the participants show in a filmstrip beside the content stage: its
+    // position is "right" | "bottom" | "hidden", or "auto" (right while a share is on the stage).
+    // Persisted globally by `src/window_state.rs` (serde(default), so old configs load and an
+    // unknown value falls back to "auto"); the View menu picks it.
+    in-out property <string> filmstrip-pos: "auto";
+    // Immersive full screen: the call window fills the whole app area, the rail and the top bars
+    // are covered, and the control bar auto-hides. Esc exits. Set only on this device and never
+    // persisted (see the window_state fullscreen flag); an OS-level fullscreen is out of scope.
+    in-out property <bool> fullscreen;
     // Pin a person for ourselves ("" unpins): `ui/call.rs` sets `pinned` and reorders
     // `speaker-people`.
     callback pin(string);

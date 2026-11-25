@@ -10,7 +10,7 @@
 //! writes them.
 
 use crate::backend::Cmd;
-use crate::{AppWindow, QuickViewsStore};
+use crate::{AppWindow, CallStore, QuickViewsStore};
 use session::window_state::WindowState;
 use slint::{ComponentHandle, LogicalSize, Model, PhysicalPosition, Timer, TimerMode};
 use std::collections::HashSet;
@@ -84,12 +84,18 @@ pub struct Observed {
     /// Physical position; `None` where the platform does not report one (Wayland).
     pub position: Option<(i32, i32)>,
     pub maximized: bool,
+    /// The call is in immersive full screen: the window fills the monitor, so nothing of this
+    /// observation is saved (it would persist the monitor size as the normal geometry).
+    pub fullscreen: bool,
 }
 
 /// Folds what the window looks like into the state. While maximized the size and position are
 /// not touched, so the restored geometry survives. Without a position (Wayland) the stored one is
-/// left alone.
+/// left alone. While full screen nothing is saved at all.
 pub fn apply_observed(s: &mut WindowState, o: &Observed) {
+    if o.fullscreen {
+        return;
+    }
     s.set_maximized(o.maximized);
     if o.maximized {
         return;
@@ -307,7 +313,14 @@ fn observe(window: &slint::Window) -> Option<Observed> {
         size: Some(size),
         position,
         maximized: window.is_maximized(),
+        fullscreen: false,
     })
+}
+
+/// The filmstrip position to persist: the chosen one, or `None` for the "auto" default (and for
+/// anything unexpected), so a default install writes nothing to pin.
+fn filmstrip_to_save(pos: &str) -> Option<String> {
+    matches!(pos, "right" | "bottom" | "hidden").then(|| pos.to_owned())
 }
 
 /// Folds whether the Quick views section is open into `s`.
@@ -341,13 +354,20 @@ pub(crate) fn remember_open_chat(w: &AppWindow, s: &mut WindowState) {
 
 /// Folds the live window and the open chat into the shared state.
 fn capture(w: &AppWindow) {
-    let obs = observe(w.window());
+    let call = w.global::<CallStore>();
+    let fullscreen = call.get_fullscreen();
+    let filmstrip = filmstrip_to_save(&call.get_filmstrip_pos());
+    let obs = observe(w.window()).map(|mut o| {
+        o.fullscreen = fullscreen;
+        o
+    });
     let list = sidebar_width_to_save(w.get_sidebar_width());
     with_shared(|s| {
         if let Some(o) = obs {
             apply_observed(&mut s.state, &o);
         }
         s.state.sidebar_width = list;
+        s.state.filmstrip_pos = filmstrip;
         remember_quick_views(w, &mut s.state);
         remember_open_chat(w, &mut s.state);
     });
@@ -447,6 +467,7 @@ pub fn install(
     let last_chat = state.last_chat.clone();
     let last_channel = state.last_channel.clone();
     let sidebar = state.sidebar_width;
+    let filmstrip = state.filmstrip_pos.clone();
     if persist {
         restore_quick_views(window, &state);
     }
@@ -467,6 +488,9 @@ pub fn install(
     }
     if let Some(w) = sidebar_width_to_restore(sidebar) {
         window.set_sidebar_width(w);
+    }
+    if let Some(pos) = filmstrip {
+        window.global::<CallStore>().set_filmstrip_pos(pos.into());
     }
 
     let mut timers = Vec::new();
@@ -647,6 +671,7 @@ mod tests {
                 size: Some((900, 600)),
                 position: Some((10, 20)),
                 maximized: false,
+                fullscreen: false,
             },
         );
         assert_eq!(
@@ -659,6 +684,7 @@ mod tests {
                 size: Some((1920, 1080)),
                 position: Some((0, 0)),
                 maximized: true,
+                fullscreen: false,
             },
         );
         assert!(s.maximized);
@@ -672,6 +698,7 @@ mod tests {
                 size: Some((900, 600)),
                 position: Some((10, 20)),
                 maximized: false,
+                fullscreen: false,
             },
         );
         assert!(!s.maximized);
@@ -686,10 +713,47 @@ mod tests {
                 size: Some((1000, 700)),
                 position: None,
                 maximized: false,
+                fullscreen: false,
             },
         );
         assert_eq!((s.x, s.y), (None, None));
         assert_eq!((s.width, s.height), (1000, 700));
+    }
+
+    #[test]
+    fn full_screen_geometry_is_never_persisted() {
+        // Immersive full screen fills the monitor; that size must not overwrite the saved window
+        // geometry, so exiting full screen restores the window as it was.
+        let mut s = saved();
+        apply_observed(
+            &mut s,
+            &Observed {
+                size: Some((3840, 2160)),
+                position: Some((0, 0)),
+                maximized: false,
+                fullscreen: true,
+            },
+        );
+        assert_eq!(
+            (s.width, s.height, s.x, s.y),
+            (1280, 800, Some(100), Some(60)),
+            "the monitor size is not saved while full screen"
+        );
+        assert!(
+            !s.maximized,
+            "full screen does not mark the window maximized"
+        );
+    }
+
+    #[test]
+    fn only_a_chosen_filmstrip_position_is_persisted() {
+        assert_eq!(filmstrip_to_save("right"), Some("right".to_owned()));
+        assert_eq!(filmstrip_to_save("bottom"), Some("bottom".to_owned()));
+        assert_eq!(filmstrip_to_save("hidden"), Some("hidden".to_owned()));
+        // "auto" is the default; nothing is pinned for it or for anything unexpected.
+        assert_eq!(filmstrip_to_save("auto"), None);
+        assert_eq!(filmstrip_to_save(""), None);
+        assert_eq!(filmstrip_to_save("sideways"), None);
     }
 
     #[test]

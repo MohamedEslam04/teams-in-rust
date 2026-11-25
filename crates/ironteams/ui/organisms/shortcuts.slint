@@ -111,6 +111,13 @@ export component ShortcutsDialog inherits Rectangle {
                     Row { keys: "Alt+Shift+A"; what: "Audio call (1:1 chat)"; }
                     Row { keys: "Alt+Shift+V"; what: "Video call (1:1 chat)"; }
                     Row { keys: "Ctrl+Shift+E"; what: "Share screen (1:1 chat)"; }
+                    Heading { variant: HeadingVariant.group; text: "During a call"; height: 28px; vertical-alignment: bottom; }
+                    Row { keys: "Ctrl+Shift+M"; what: "Mute or unmute"; }
+                    Row { keys: "Ctrl+Shift+O"; what: "Turn the camera on or off"; }
+                    Row { keys: "Ctrl+Shift+K"; what: "Raise or lower your hand"; }
+                    Row { keys: "Ctrl+Shift+E"; what: "Start or stop sharing your screen"; }
+                    Row { keys: "Ctrl+Shift+H / Ctrl+Shift+B"; what: "Leave the call"; }
+                    Row { keys: "Esc"; what: "Leave full screen"; }
                     Heading { variant: HeadingVariant.group; text: "Formatting"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Ctrl+B / I / U"; what: "Bold, italic, underline"; }
                     Row { keys: "Ctrl+Alt+X"; what: "Strikethrough"; }
