@@ -369,6 +369,38 @@ fn the_new_messages_button_shows_while_the_divider_is_above_and_scrolls_back_to_
     );
 }
 
+#[test]
+fn the_buttons_never_cover_the_newest_message() {
+    let mut msgs: Vec<Msg> = (0..80)
+        .map(|i| msg(&format!("m{i}"), &format!("message {i}"), false))
+        .collect();
+    msgs[5].new_above = true;
+    let app = app_with_messages(msgs);
+    app.set_unread_index(5);
+    app.set_unread_count(75);
+    app.set_scroll_tick(app.get_scroll_tick() + 1);
+    settle();
+    let pill = find_label(&app, "↑ New messages · 75");
+    assert_eq!(pill.len(), 1, "the divider is far above the newest message");
+    // The list ends at the newest message: it must end above the button, not under it. The
+    // room the list keeps under it (`MessageRow::room`) is no part of the message.
+    let all = rows(&app);
+    let last = all
+        .iter()
+        .max_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y))
+        .expect("rows");
+    let room = ElementHandle::find_by_element_id(&app, "MessageRow::room").next();
+    let newest_bottom = match room {
+        Some(room) => room.absolute_position().y,
+        None => last.absolute_position().y + last.size().height,
+    };
+    let top = pill[0].absolute_position().y;
+    assert!(
+        newest_bottom <= top,
+        "the newest message ends at y={newest_bottom}, under the button at y={top}"
+    );
+}
+
 // ---- Ctrl+F ------------------------------------------------------------------------
 
 #[test]
