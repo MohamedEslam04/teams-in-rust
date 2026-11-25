@@ -503,3 +503,47 @@ fn the_wheel_scrolls_the_list_while_a_rows_hover_bar_shows() {
         }
     }
 }
+/// Wheeling with the pointer resting on each part of the hover bar (every button, the upper part
+/// above the row and the lower part inside it), notch after notch, keeps scrolling the list.
+#[test]
+fn successive_wheel_notches_scroll_the_list_over_every_button_of_the_hover_bar() {
+    for (k, dy) in [
+        (0, 4.),
+        (1, 4.),
+        (2, 4.),
+        (3, 4.),
+        (4, 4.),
+        (5, 4.),
+        (6, 4.),
+        (2, 28.),
+    ] {
+        let app = app_with_messages(many_short(60));
+        app.set_scroll_tick(app.get_scroll_tick() + 1);
+        settle(&app);
+        let all = rows(&app);
+        let row = &all[all.len() / 2];
+        hover(&app, row);
+        let bar = ElementHandle::find_by_element_id(&app, "MessageRow::bar")
+            .next()
+            .expect("the bar shows on the hovered row");
+        let bp = bar.absolute_position();
+        let at = LogicalPosition::new(bp.x + 4. + 15. + 30. * k as f32, bp.y + dy);
+        app.window()
+            .dispatch_event(WindowEvent::PointerMoved { position: at });
+        for notch in 0..4 {
+            let before = app.get_msg_view_y();
+            app.window().dispatch_event(WindowEvent::PointerScrolled {
+                position: at,
+                delta_x: 0.,
+                delta_y: 60.,
+            });
+            settle(&app);
+            assert!(
+                app.get_msg_view_y() > before + 1.,
+                "notch {notch} on button {k} (y + {dy}) did not scroll the list (view at {before}, \
+                 now {})",
+                app.get_msg_view_y()
+            );
+        }
+    }
+}
