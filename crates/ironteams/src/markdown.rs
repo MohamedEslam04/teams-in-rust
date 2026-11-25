@@ -888,6 +888,19 @@ mod tests {
     const FWD: &str = r#"<blockquote itemtype="http://schema.skype.com/Forward">"#;
 
     #[test]
+    fn a_forwarded_gif_is_an_image_without_a_card() {
+        let html = format!(
+            "{FWD}<div><img src=\"https://media4.giphy.com/x/giphy.gif\" alt=\"GIF\" \
+             itemtype=\"http://schema.skype.com/Giphy\" style=\"width:480px; height:320px\"></div></blockquote>"
+        );
+        let x = r(&html);
+        assert!(x.quotes.is_empty(), "no empty card");
+        assert_eq!(x.images.len(), 1);
+        assert_eq!(x.images[0].0, "https://media4.giphy.com/x/giphy.gif");
+        assert_eq!(x.plain, "");
+    }
+
+    #[test]
     fn every_forwarded_message_is_a_quote_card() {
         let html = format!(
             "{FWD}<p>سطر واحد</p><p>سطر اثنان</p></blockquote>\

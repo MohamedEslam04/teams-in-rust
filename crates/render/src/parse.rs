@@ -411,6 +411,9 @@ impl Walker {
         let mut author_mri = None;
         let mut author = None;
         let mut time_ms = None;
+        // A forwarded picture or GIF is not quote text: it leaves the card as a block of its own
+        // right after it, where a top-level image would be.
+        let mut images = Vec::new();
         let preview = if is_reply {
             message_id = non_empty(attr(&el, "itemid"));
             let find = |prop: &str| {
@@ -427,9 +430,18 @@ impl Walker {
                 Some(p) => quote_lines(p, false),
                 None => quote_lines(el, true),
             }
+        } else if forwarded {
+            let (text, imgs) = quote_content(el);
+            images = imgs;
+            text
         } else {
             quote_lines(el, false)
         };
+        // A forward of only a picture has nothing to put in a card: the picture stands alone.
+        if forwarded && preview.is_empty() && !images.is_empty() {
+            self.blocks.extend(images);
+            return;
+        }
         let dir = base_direction(&preview);
         self.blocks.push(Block::Quote {
             message_id,
@@ -440,6 +452,7 @@ impl Walker {
             preview,
             dir,
         });
+        self.blocks.extend(images);
     }
 }
 
@@ -469,6 +482,24 @@ fn quote_lines(el: ElementRef, skip_quote_meta: bool) -> String {
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// [`quote_lines`] of a forwarded message, with its images taken out of the text.
+fn quote_content(el: ElementRef) -> (String, Vec<Block>) {
+    let mut w = Walker::default();
+    w.walk_children(el, &Ctx::default(), 0);
+    let (images, rest): (Vec<_>, Vec<_>) = w
+        .finish()
+        .blocks
+        .into_iter()
+        .partition(|b| matches!(b, Block::Image { .. }));
+    let text = plain_text(&RichText { blocks: rest })
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (text, images)
 }
 
 /// Verbatim descendant text (for `<pre>`), `<br>` as newline.
@@ -1065,6 +1096,40 @@ mod tests {
             blocks,
             vec![quote("one\ntwo", Dir::Ltr), quote("مرحبا", Dir::Rtl)]
         );
+    }
+
+    #[test]
+    fn forwarded_gif_is_a_lone_image_without_an_empty_card() {
+        let html = r#"<blockquote itemtype="http://schema.skype.com/Forward"><div><img src="https://media4.giphy.com/media/v1.Y2lkPWZjZGU1NDk1ZGgzaTI4cnd1N21mMWkwZHV5eDgyN3UwNGN3bDF4NnR1ZWNhbDFlaSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/QtkaYLHzBgh0WUCgjC/giphy.gif" alt="Pack It Up Its Over GIF" itemscope="" itemtype="http://schema.skype.com/Giphy" style="width:480px; height:320px"></div></blockquote>"#;
+        assert_eq!(
+            parse(html),
+            vec![
+                Block::Image {
+                    url: "https://media4.giphy.com/media/v1.Y2lkPWZjZGU1NDk1ZGgzaTI4cnd1N21mMWkwZHV5eDgyN3UwNGN3bDF4NnR1ZWNhbDFlaSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/QtkaYLHzBgh0WUCgjC/giphy.gif".into(),
+                    width: None,
+                    height: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn forwarded_text_with_an_image_keeps_its_text_in_the_card() {
+        let html = r#"<blockquote itemtype="http://schema.skype.com/Forward"><p>look</p><img src="https://x/y.png"></blockquote>"#;
+        let blocks = parse(html);
+        assert!(
+            matches!(&blocks[0], Block::Quote { preview, forwarded: true, .. } if preview == "look")
+        );
+        assert!(matches!(&blocks[1], Block::Image { url, .. } if url == "https://x/y.png"));
+        assert_eq!(blocks.len(), 2);
+    }
+
+    #[test]
+    fn reply_quote_image_stays_in_its_preview() {
+        let html = r#"<blockquote itemscope="" itemtype="http://schema.skype.com/Reply" itemid="1"><strong itemprop="mri" itemid="8:orgid:a">Ann</strong><p itemprop="preview"><img src="https://x/y.png"></p></blockquote>"#;
+        let blocks = parse(html);
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(&blocks[0], Block::Quote { preview, .. } if preview == "[image]"));
     }
 
     // ---- unknown / hostile / malformed ----
