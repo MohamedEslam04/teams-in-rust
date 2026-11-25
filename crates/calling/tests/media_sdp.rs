@@ -238,6 +238,38 @@ fn to_teams_offer_uses_the_service_profile_and_bundle_transport() {
     assert!(l.contains(&"a=msid-semantic: WMS *"));
 }
 
+// RFC 8445 §5.1.4: the default candidate (the m-line port and `c=`) SHOULD be the relayed one,
+// then the server reflexive one, then a host. Live 2026-11-25 our offer and answer put a docker
+// bridge host (172.17.0.1) there; the native client's offer puts its relay there.
+
+#[test]
+fn to_teams_offer_puts_the_relay_candidate_on_the_m_line() {
+    let offer = LOCAL_OFFER.replace(
+        "a=end-of-candidates",
+        "a=candidate:3 1 udp 1694498815 203.0.113.5 41000 typ srflx raddr 192.0.2.30 rport 40000\r\n\
+         a=candidate:4 1 udp 16777215 198.51.100.7 52000 typ relay raddr 192.0.2.30 rport 40000\r\n\
+         a=end-of-candidates",
+    );
+    let out = to_teams_offer(&offer);
+    let l = lines(&out);
+    assert!(l.contains(&"m=audio 52000 RTP/SAVP 111"), "{out}");
+    assert!(l.contains(&"c=IN IP4 198.51.100.7"), "{out}");
+    assert!(l.contains(&"a=rtcp:52000"), "{out}");
+}
+
+#[test]
+fn to_teams_offer_puts_a_server_reflexive_candidate_before_a_host() {
+    let offer = LOCAL_OFFER.replace(
+        "a=end-of-candidates",
+        "a=candidate:3 1 udp 1694498815 203.0.113.5 41000 typ srflx raddr 192.0.2.30 rport 40000\r\n\
+         a=end-of-candidates",
+    );
+    let out = to_teams_offer(&offer);
+    let l = lines(&out);
+    assert!(l.contains(&"m=audio 41000 RTP/SAVP 111"), "{out}");
+    assert!(l.contains(&"c=IN IP4 203.0.113.5"), "{out}");
+}
+
 #[test]
 fn to_teams_offer_adds_label_ssrc_range_and_section_fingerprint() {
     let out = to_teams_offer(LOCAL_OFFER);
