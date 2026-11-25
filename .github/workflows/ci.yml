@@ -26,10 +26,12 @@ on:
         type: boolean
         default: false
 
-# A newer push to the same branch cancels the older run.
+# A newer run for the same branch cancels the older one. The group is the branch name, not
+# `github.ref`: a push to a PR's branch starts a push run (refs/heads/<b>) and a pull_request run
+# (refs/pull/<n>/merge) for the same commit, and keyed on the branch only the newest of them goes on.
 concurrency:
   # Called from release.yml, `github.workflow` is "Release": its own group.
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
