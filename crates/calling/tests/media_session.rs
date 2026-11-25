@@ -60,7 +60,10 @@ async fn answers_a_native_teams_p2p_offer() {
     assert_eq!(audio.split(' ').nth(3), Some("102"), "{answer}");
     assert!(l.contains(&"a=rtpmap:102 opus/48000/2"), "{answer}");
     assert!(l.contains(&"a=mid:audio_0"));
-    assert!(l.contains(&"a=setup:active"));
+    // The offer states no `a=setup`, so the native offerer is `active` (RFC 4145 §4.1) and we
+    // are the DTLS server. An `active` answer was refused live (406/4122 `FinalAnswerError`).
+    assert!(l.contains(&"a=setup:passive"), "{answer}");
+    assert!(!l.contains(&"a=setup:active"), "{answer}");
     assert!(l.iter().any(|x| x.starts_with("a=candidate:")));
     // The video line is declined: port 0.
     assert!(l.iter().any(|x| x.starts_with("m=video 0 ")), "{answer}");

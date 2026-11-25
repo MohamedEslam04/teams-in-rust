@@ -20,6 +20,7 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
 ## Invariants
 - Opus is registered at payload type 111, 48 kHz, 2 channels, fmtp `minptime=10;useinbandfec=1`; each packet is one 20 ms sample [mod.rs:OPUS_FMTP, FRAME, AudioSender::send].
 - Keying is DTLS-SRTP only; mDNS is disabled and a fingerprint is written per section. A remote SDP with no `a=fingerprint` is rejected [mod.rs:with_options, sdp.rs:from_teams_with_data].
+- A remote SDP that states no `a=setup` (a native client's 1:1 offer) takes the RFC 4145 default role: `active` in an offer, `passive` in an answer. We answer such an offer `a=setup:passive` and are the DTLS server [sdp.rs:OFFER_DEFAULT_SETUP, from_teams_with_data, to_teams].
 - ICE is not trickled: offers and answers wait up to 10 s for gathering, then continue with the candidates found [mod.rs:GATHER_TIMEOUT, set_local].
 - H.264 codecs are registered only when video roles or receive slots exist; the line order is audio, then video, with the ApplicationSharing line after the receive slots under `VideoLayout::WebClient` [mod.rs:with_options].
 - An offer whose audio mid or ICE ufrag differs from the remote description in force is a restart; `accept_offer` rejects it with `Error::Media` [mod.rs:offer_restarts, accept_offer].
@@ -31,6 +32,7 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
 - `from_teams_with_data` adds a synthetic `a=ssrc:<n> cname:<n>` to every non-declined section that has no `a=ssrc` and whose `a=x-ssrc-range` is a single `N-N` (not the placeholder `1-1`), because webrtc-rs drops the other side's audio otherwise when a video line shares the session [sdp.rs:from_teams_with_data, single_ssrc].
 - Offers carry `b=CT:4000`, `a=msid-semantic: WMS *`, one `a=label` per section and `a=x-ssrc-range` from the first `a=ssrc` [sdp.rs:SESSION_BANDWIDTH, to_teams].
 - Sections with a different ice-ufrag are folded onto the first section's transport lines [sdp.rs:BundleTransport].
+- The m-line port and `c=` of every live section (offer and answer) are the first section's default candidate: its first UDP relay candidate, else server reflexive, else host (RFC 8445 §5.1.4) [sdp.rs:bundle_transport].
 
 ## Side Effects
 - Binds UDP sockets for `udp_addrs`, uses STUN/TURN servers from `IceServer`, and registers the default interceptors [mod.rs:with_options].

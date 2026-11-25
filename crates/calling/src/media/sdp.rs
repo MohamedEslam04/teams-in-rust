@@ -53,6 +53,12 @@ pub const CONTENT_TYPE_NGC: &str = "application/sdp-ngc-1.0";
 const MS_PROFILE: &str = "RTP/SAVP";
 const DTLS_PROFILE: &str = "UDP/TLS/RTP/SAVPF";
 const SESSION_BANDWIDTH: &str = "b=CT:4000";
+/// The DTLS roles of SDP that states no `a=setup`, as a native Teams client's 1:1 offer does (it
+/// offers SDES and a fingerprint): RFC 4145 §4.1, "active" in an offer and "passive" in an
+/// answer. Live 2026-11-25, a native caller ended the call (406/4122 `FinalAnswerError`) 0.3 s
+/// after our `a=setup:active` answer, before ICE could finish.
+const OFFER_DEFAULT_SETUP: &str = "a=setup:active";
+const ANSWER_DEFAULT_SETUP: &str = "a=setup:passive";
 /// What every video line of the web client's offer (and mautrix-teams') declares; the media
 /// servers answer theirs with `send:src,csrc,vc recv:src` (mautrix-teams openapi `TeamsSdp`).
 const VIDEO_SIGNALING_FB: &str = "a=x-signaling-fb:* x-message app send:src recv:src,vc";
@@ -290,6 +296,13 @@ pub fn from_teams_with_data(
             "remote SDP has no DTLS fingerprint (SDES-only keying); webrtc-rs supports DTLS-SRTP only",
         ));
     }
+    // A native client states no `a=setup`; webrtc-rs would read that as `actpass`. Say the
+    // role RFC 4145 gives it, so webrtc-rs takes the other one ([`to_teams_answer`] then says so).
+    let default_setup = (!has_setup(&parsed)).then_some(if offer {
+        OFFER_DEFAULT_SETUP
+    } else {
+        ANSWER_DEFAULT_SETUP
+    });
     // Sections webrtc-rs is not given go, mids and all; `to_teams_answer` writes them back as
     // stubs from the offer.
     let keep = kept_sections(&parsed, roles, data);
@@ -348,6 +361,9 @@ pub fn from_teams_with_data(
         if !directed && m.port != "0" {
             out.push("a=sendrecv".to_owned());
         }
+        if let Some(setup) = default_setup.filter(|_| m.port != "0") {
+            out.push(setup.to_owned());
+        }
         // webrtc-rs routes an SSRC that no `a=ssrc` declares only while the session has a single
         // RTP line; with the camera or sharing line next to audio it dropped every packet of the
         // other side's audio. Teams declares the SSRC as a one-SSRC range instead.
@@ -356,6 +372,15 @@ pub fn from_teams_with_data(
         }
     }
     Ok(join(out))
+}
+
+/// Whether any line of `parsed` states the DTLS role (`a=setup`).
+fn has_setup(parsed: &Parsed) -> bool {
+    parsed
+        .session
+        .iter()
+        .chain(parsed.sections.iter().flatten())
+        .any(|l| attr(l, "setup").is_some())
 }
 
 /// The SSRC a section sends from when it declares no `a=ssrc` of its own and its
@@ -942,8 +967,10 @@ fn default_label(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// The port and `c=` value of the bundle: the first section's first UDP host candidate (else its
-/// first UDP candidate), which the web client writes on the m-line in place of `9`/`0.0.0.0`.
+/// The port and `c=` value of the bundle, written on the m-line in place of `9`/`0.0.0.0`: the
+/// first section's default candidate, its first UDP relay candidate, else server reflexive, else
+/// host (RFC 8445 §5.1.4; a native client's offer names its relay there). A host first put a
+/// docker bridge address there live (2026-11-25).
 fn bundle_transport(sections: &[Vec<String>]) -> Option<(String, String)> {
     let section = sections
         .iter()
@@ -954,7 +981,10 @@ fn bundle_transport(sections: &[Vec<String>]) -> Option<(String, String)> {
         .map(|c| c.split_whitespace().collect::<Vec<_>>())
         .filter(|f| f.len() >= 8 && f[1] == "1" && f[2].eq_ignore_ascii_case("udp"))
         .collect();
-    let best = udp.iter().find(|f| f[7] == "host").or(udp.first())?;
+    let best = ["relay", "srflx", "host"]
+        .into_iter()
+        .find_map(|kind| udp.iter().find(|f| f[7] == kind))
+        .or(udp.first())?;
     let family = if best[4].contains(':') { "IP6" } else { "IP4" };
     Some((best[5].to_owned(), format!("IN {family} {}", best[4])))
 }
@@ -967,6 +997,9 @@ fn to_teams(
     data: bool,
 ) -> String {
     let offer = remote_offer.is_none();
+    // webrtc-rs answers `active` whatever the offer says. To an offer with no `a=setup` (the
+    // offerer is `active`, and `from_teams` made webrtc-rs the DTLS server) we are `passive`.
+    let passive = remote_offer.is_some_and(|o| !has_setup(&Parsed::new(o)));
     let mut parsed = Parsed::new(sdp);
     for section in &mut parsed.sections {
         sctp_to_teams(section);
@@ -1077,6 +1110,8 @@ fn to_teams(
                 }
             } else if line.starts_with("a=extmap:") {
                 out.push(extmap_to_teams(line));
+            } else if passive && attr(line, "setup").is_some() {
+                out.push(ANSWER_DEFAULT_SETUP.to_owned());
             } else {
                 out.push(line.clone());
             }
