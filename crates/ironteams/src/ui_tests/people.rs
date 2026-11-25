@@ -1667,13 +1667,25 @@ fn a_group_receipt_names_who_has_seen_it() {
         vec![horizon(&mri(3), &mine), horizon(&mri(4), &mine)],
     );
     h.runner()(Cmd::People(PeopleCmd::Receipts(true)));
-    assert_eq!(receipts(&h.app), vec![(mine, "seen".to_string())]);
+    // The demo chat has an older message of mine too: both were read, so it is seen as well,
+    // but only the newest carries the full line.
+    let seen = receipts(&h.app);
+    assert_eq!(seen.last(), Some(&(mine.clone(), "seen".to_string())));
     let row = h
         .app
         .get_messages()
         .iter()
-        .find(|m| m.receipt == "seen")
+        .find(|m| m.id.as_str() == mine)
         .unwrap();
+    assert!(!row.receipt_compact, "the newest keeps the full line");
+    assert!(
+        h.app
+            .get_messages()
+            .iter()
+            .filter(|m| m.receipt == "seen" && m.id.as_str() != mine)
+            .all(|m| m.receipt_compact),
+        "older read messages are compact"
+    );
     assert_eq!(row.receipt_names, "Sara Hassan, Omar Khaled");
     let listed: Vec<String> = row.reader_list.iter().map(|r| r.name.to_string()).collect();
     assert_eq!(
