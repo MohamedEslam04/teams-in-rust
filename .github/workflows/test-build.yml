@@ -51,3 +51,11 @@ jobs:
           name: ironteams-bin
           path: target/debug/ironteams
           retention-days: 3
+      # The command-line companion, for spikes and scripted checks (e.g. `spike personal-login`).
+      - run: cargo build -p ironteams-cli --bin ironteams-cli
+      - run: strip target/debug/ironteams-cli
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ironteams-cli-bin
+          path: target/debug/ironteams-cli
+          retention-days: 3
