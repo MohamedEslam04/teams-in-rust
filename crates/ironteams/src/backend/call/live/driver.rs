@@ -69,6 +69,11 @@ impl CallHandle for LiveHandle {
     fn control(&self, c: Control) {
         let _ = self.0.send(c);
     }
+
+    /// The call's task owns the receiver and drops it after its leave request.
+    fn finished(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(self.0.closed())
+    }
 }
 
 impl CallDriver for LiveDriver {

@@ -91,7 +91,8 @@ impl IncomingState {
         use IncomingState as S;
         match (self, ev) {
             (S::Ringing, E::Accept) => S::Accepting,
-            (S::Ringing, E::Decline) => S::Declined,
+            // Decline is also how quitting abandons a call that is being answered.
+            (S::Ringing | S::Accepting, E::Decline) => S::Declined,
             (S::Ringing, E::RingTimeout) => S::Missed,
             (S::Ringing | S::Accepting, E::CallerCancelled) => S::CallerCancelled,
             (S::Accepting, E::Connected) => S::Connected,
@@ -367,6 +368,8 @@ struct Inner {
     ringtone: Option<Ringtone>,
     /// The soft tone pair our own call plays while it rings.
     ringback: Option<super::sounds::Loop>,
+    /// The tasks placing and answering calls, so quitting can wait for their hang-ups.
+    flows: Vec<tokio::task::JoinHandle<()>>,
     /// What the fake backend was asked to do, oldest first.
     log: Vec<String>,
 }
@@ -393,6 +396,46 @@ fn later(f: impl Future<Output = ()> + Send + 'static) {
     }
     if let Ok(rt) = tokio::runtime::Handle::try_current() {
         rt.spawn(f);
+    }
+}
+
+impl Engine {
+    /// Like [`later`], and the task is remembered for [`Self::quit_direct`].
+    fn flow(&self, f: impl Future<Output = ()> + Send + 'static) {
+        if cfg!(test) {
+            return;
+        }
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            let task = rt.spawn(f);
+            let mut c = self.direct();
+            c.flows.retain(|t| !t.is_finished());
+            c.flows.push(task);
+        }
+    }
+
+    /// IronTeams is quitting: a call still ringing out or being answered is given up (the
+    /// tasks that place and answer calls hang up on the service). Whether there was one, and
+    /// those tasks, to wait for.
+    pub(crate) fn quit_direct(self: &Arc<Self>) -> (bool, Vec<tokio::task::JoinHandle<()>>) {
+        let outgoing = self
+            .direct()
+            .outgoing
+            .as_ref()
+            .is_some_and(|o| o.state.is_live());
+        if outgoing {
+            self.cancel_outgoing();
+        }
+        let answering = self
+            .direct()
+            .incoming
+            .as_ref()
+            .filter(|i| i.state == IncomingState::Accepting)
+            .map(|i| i.id);
+        if let Some(id) = answering {
+            self.incoming_event(id, IncomingEvent::Decline);
+        }
+        let flows = std::mem::take(&mut self.direct().flows);
+        (outgoing || answering.is_some(), flows)
     }
 }
 
@@ -789,7 +832,7 @@ impl Engine {
             return Ok(());
         };
         let e = self.clone();
-        later(async move {
+        self.flow(async move {
             let r = e.accept_live(id, &inv, name, current).await;
             if let Err(err) = r {
                 tracing::warn!(%err, "answering a call failed");
@@ -1135,7 +1178,7 @@ impl Engine {
             return Ok(());
         }
         let e = self.clone();
-        later(async move {
+        self.flow(async move {
             if let Err(err) = e.dial_live(id, mri, name, with, cancel_rx, ev_rx).await {
                 tracing::warn!(%err, "placing a call failed");
                 e.outgoing_event(id, OutgoingEvent::Failed(err.to_string()));
@@ -1665,6 +1708,12 @@ mod tests {
         assert_eq!(
             IncomingState::Ringing.on(IncomingEvent::RingTimeout),
             IncomingState::Missed
+        );
+        // Quitting while the answer is on its way gives the call up (the answering task then
+        // hangs up instead of adopting it).
+        assert_eq!(
+            IncomingState::Accepting.on(IncomingEvent::Decline),
+            IncomingState::Declined
         );
         // A timeout while answering does not drop the call.
         assert_eq!(

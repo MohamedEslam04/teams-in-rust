@@ -68,6 +68,7 @@ mod people_live;
 pub(crate) mod people_presence;
 mod photo;
 mod picture_window;
+mod quit;
 mod remind;
 mod render;
 pub(crate) mod ringtone;
@@ -123,6 +124,7 @@ pub use media::MediaCmd;
 #[cfg(test)]
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
+pub use quit::{QUIT_WITHIN, QuitDone};
 pub use remind::{RemindCmd, ReminderData, SnoozedData};
 pub use scheduled::ScheduledCmd;
 #[cfg(test)]
@@ -226,8 +228,9 @@ pub enum Cmd {
     ClearAllCache,
     /// The composer text changed.
     DraftEdited(String),
-    /// The window is closing: write what is pending.
-    Flush,
+    /// IronTeams is quitting: write what is pending, end every live call (a connected one, one
+    /// ringing out or being answered) and leave presence, then say so through the token.
+    Quit(QuitDone),
     /// An emoji was inserted from the panel or the `:name` popup.
     EmojiUsed(String),
     SetSkinTone(u8),
@@ -729,10 +732,10 @@ impl Engine {
     pub fn dispatch(self: &Arc<Self>, cmd: Cmd) {
         match cmd {
             Cmd::DraftEdited(text) => self.draft_edited(text),
-            Cmd::Flush => {
-                self.flush_draft();
-                // IronTeams is closing: this device stops counting for presence.
-                self.stop_my_presence();
+            // Its own task: it waits on the calls' hang-ups.
+            Cmd::Quit(done) => {
+                let e = self.clone();
+                tokio::spawn(async move { e.quit(done).await });
             }
             // In order with the Send that follows it.
             Cmd::SetImportant(on) => self.set_importance(on, Importance::Important),
@@ -1006,7 +1009,7 @@ impl Engine {
             Cmd::AddFile(path) => self.add_file(path).await?,
             Cmd::RemoveAttachment(i) => self.remove_attachment(i),
             Cmd::DraftEdited(text) => self.draft_edited(text),
-            Cmd::Flush => self.flush_draft(),
+            Cmd::Quit(done) => self.quit(done).await,
             Cmd::SetEnterSends(on) => {
                 self.cfg.lock().unwrap().enter_sends = on;
                 self.save_cfg();

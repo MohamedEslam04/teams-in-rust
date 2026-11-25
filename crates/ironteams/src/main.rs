@@ -51,12 +51,15 @@ mod window_watch;
 
 slint::include_modules!();
 
-use backend::{ActivityCmd, Cmd, Engine};
+use backend::{ActivityCmd, Cmd, Engine, QUIT_WITHIN, QuitDone};
 use slint::ComponentHandle;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use teams_proto::Client;
 use ui_api::UiHandle;
+
+/// The engine runs and answers commands (so quitting has something to wait for).
+static ENGINE_UP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Signs in (stored session or device code), then runs the engine until the app quits.
 async fn app_main(
@@ -67,6 +70,7 @@ async fn app_main(
     if compat::var_os("IRONTEAMS_DEMO").is_some() {
         let engine = demo_engine(&ui).expect("demo setup");
         engine.start_offline();
+        ENGINE_UP.store(true, Ordering::SeqCst);
         if let Ok(id) = compat::var("IRONTEAMS_DEMO_OPEN") {
             tokio::spawn(engine.clone().handle(Cmd::SelectChat(id)));
         }
@@ -89,6 +93,7 @@ async fn app_main(
             }
         }
     };
+    ENGINE_UP.store(true, Ordering::SeqCst);
     // The window's focus and visibility, as they change (`window_watch`).
     let e = engine.clone();
     tokio::spawn(async move {
@@ -903,10 +908,22 @@ fn main() -> anyhow::Result<()> {
     window_state::finish(&window);
     // A downloaded update is installed once this process has exited.
     ui::settings::apply_update_on_quit();
-    // Give the engine a moment to write a draft typed just before closing and to take this
-    // device out of presence.
-    let _ = tx.send(Cmd::Flush);
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // The engine ends a live call (the service keeps a call that was only dropped for its keepAlive,
+    // 45 minutes), writes a draft typed just before closing and takes this device out of
+    // presence. Waiting is bounded: a request that hangs does not hold the exit.
+    if ENGINE_UP.load(Ordering::SeqCst) {
+        let (done, finished) = QuitDone::new();
+        if tx.send(Cmd::Quit(done)).is_ok() {
+            // The timer is made inside the runtime.
+            let waited = rt.block_on(async { tokio::time::timeout(QUIT_WITHIN, finished).await });
+            if waited.is_err() {
+                tracing::warn!("quitting: the engine did not finish in time");
+            }
+        }
+    } else {
+        // Still signing in: there is no call.
+        tracing::info!(call_ended = false, "quitting");
+    }
     rt.shutdown_timeout(std::time::Duration::from_millis(500));
     Ok(())
 }

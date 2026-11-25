@@ -88,6 +88,12 @@ pub type Preview = Box<dyn std::any::Any + Send>;
 /// A running call's control side. Dropping it is the same as [`Control::Leave`].
 pub trait CallHandle: Send + Sync {
     fn control(&self, c: Control);
+
+    /// Resolves once the call's own task has ended, so a [`Control::Leave`] has been sent to the
+    /// service. Quitting waits on it (`Engine::end_calls`). The default does not wait.
+    fn finished(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(async {})
+    }
 }
 
 /// What the call window shows.
