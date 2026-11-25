@@ -1,4 +1,4 @@
-//! Microphone/speaker I/O and the Opus codec.
+//! Microphone/speaker I/O, the Opus codec and G.711 companding.
 //!
 //! Everything speaks the crate's PCM contract: 48 kHz, mono, `i16`, 20 ms frames of
 //! [`FRAME_SAMPLES`](crate::FRAME_SAMPLES). The media layer exchanges
@@ -24,6 +24,7 @@ mod aec;
 mod codec;
 #[cfg(feature = "devices")]
 mod device;
+mod g711;
 mod jitter;
 mod latency;
 mod pipeline;
@@ -36,6 +37,7 @@ pub use aec::{AudioProcessor, EchoCancelled, EchoReference, ProcessingOptions, e
 pub use codec::{OPUS_SILENCE, OpusDecoder, OpusEncoder};
 #[cfg(feature = "devices")]
 pub use device::{Capture, DeviceInfo, Playback, list_input_devices, list_output_devices};
+pub use g711::{alaw_decode, alaw_encode, ulaw_decode, ulaw_encode};
 pub use jitter::JitterBuffer;
 pub use latency::{
     DEFAULT_STREAM_DELAY_MS, DelayEstimator, DelaySample, DeviceLatency, device_latency,
