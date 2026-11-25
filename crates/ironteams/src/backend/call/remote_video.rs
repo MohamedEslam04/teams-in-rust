@@ -291,6 +291,14 @@ impl RemoteVideo {
         );
     }
 
+    /// Whether a media server routes this session's video: its SDP gave a gallery slot or the
+    /// sharing line an `x-source-streamid`, so nothing comes on them until subscribed. A meeting,
+    /// and a 1:1 call whose media the server took over (a media restart with `x-plaza-msi-range`,
+    /// live 2026-11-25); never a person-to-person call, whose browser SDP names no stream ids.
+    pub fn subscribes(&self) -> bool {
+        !self.table.is_empty() || self.share_line.is_some()
+    }
+
     /// The gallery slot showing `mri`'s camera.
     pub fn slot_of(&self, mri: &str) -> Option<usize> {
         self.held
@@ -352,7 +360,8 @@ impl RemoteVideo {
         out
     }
 
-    /// Follows a roster change in a meeting: sends the subscriptions it calls for.
+    /// Follows a roster change where a media server routes the video ([`Self::subscribes`]):
+    /// sends the subscriptions it calls for.
     pub fn reselect(
         &mut self,
         ngc: &NgcClient,

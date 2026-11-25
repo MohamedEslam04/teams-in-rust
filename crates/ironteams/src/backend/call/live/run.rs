@@ -345,7 +345,9 @@ impl Call {
             // Our own share changes who the stage may show (never our own screen).
             let own_share_changed = self.video.set_own_share(self.share.sharing());
             if roster_changed || own_share_changed {
-                if self.meeting {
+                // A meeting, or a 1:1 call whose media a server took over: its lines carry
+                // only what we subscribe to.
+                if self.video.subscribes() {
                     let spoke = |m: &str| talk.last.get(m).copied().unwrap_or(0);
                     self.video.reselect(
                         &self.ngc,

@@ -370,9 +370,10 @@ pub fn from_teams_with_data(
             out.push(setup.to_owned());
         }
         // webrtc-rs routes an SSRC that no `a=ssrc` declares only while the session has a single
-        // RTP line; with the camera or sharing line next to audio it dropped every packet of the
-        // other side's audio. Teams declares the SSRC as a one-SSRC range instead.
-        if let Some(ssrc) = single_ssrc(section).filter(|_| m.port != "0") {
+        // RTP line (or by a `rid` Teams never sends); with the camera or sharing line next to
+        // audio it dropped every packet of the other side's audio, and of a share or camera on a
+        // video line. Teams declares the SSRCs as a range instead.
+        if let Some(ssrc) = range_ssrc(section).filter(|_| m.port != "0") {
             out.push(format!("a=ssrc:{ssrc} cname:{ssrc}"));
         }
     }
@@ -490,10 +491,11 @@ fn has_setup(parsed: &Parsed) -> bool {
         .any(|l| attr(l, "setup").is_some())
 }
 
-/// The SSRC a section sends from when it declares no `a=ssrc` of its own and its
-/// `a=x-ssrc-range` names exactly one (the audio line's `N-N`). A wider range (a video line's
-/// hundred) and the placeholder `1-1` of a line that sends nothing name none.
-fn single_ssrc(section: &[String]) -> Option<u32> {
+/// The SSRC a section sends from when it declares no `a=ssrc` of its own: the first of its
+/// `a=x-ssrc-range` (the audio line's one `N-N`; a video line's hundred, whose stream starts at
+/// the first as rusty-teams declares it, the rest UNVERIFIED). The placeholder `1-1` of a line
+/// that sends nothing names none. webrtc-rs keeps one declared SSRC per line, so only the first.
+fn range_ssrc(section: &[String]) -> Option<u32> {
     if section.iter().any(|l| attr(l, "ssrc").is_some()) {
         return None;
     }
@@ -503,7 +505,7 @@ fn single_ssrc(section: &[String]) -> Option<u32> {
     }
     let (first, last) = range.split_once('-')?;
     let first: u32 = first.trim().parse().ok()?;
-    (last.trim().parse::<u32>().ok()? == first).then_some(first)
+    (last.trim().parse::<u32>().ok()? >= first).then_some(first)
 }
 
 /// A Teams `x-data` section as the WebRTC SCTP section webrtc-rs reads: its transport lines
