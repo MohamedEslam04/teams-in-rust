@@ -176,6 +176,9 @@ component PostBlocks inherits Rectangle {
 
 export component MessageRow inherits TouchArea {
     in property <Msg> m;
+    // Empty room under the row, for the list's floating buttons: the newest message must be
+    // able to scroll above them.
+    in property <length> bottom-room: 0px;
     in property <length> max-bubble: 600px;
     // Top of the list's visible area in window coordinates: a hover bar with no room above the
     // bubble under it sits inside the bubble's top edge.
@@ -817,6 +820,7 @@ export component MessageRow inherits TouchArea {
                 }
             }
         }
+        if root.bottom-room > 0px: room := Rectangle { height: root.bottom-room; }
     }
 
     if root.select-mode && !root.m.system && !root.m.deleted: Rectangle {
