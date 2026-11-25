@@ -176,7 +176,9 @@ export component MessagePane inherits Rectangle {
             // The estimate used the content height of the rows the list had laid out before the
             // ones that came with the tick (none in a chat just opened: the view stayed at the
             // top of the history, far above the divider, whose row was never built to correct
-            // it). It is made again once the new rows are laid out.
+            // it). It is made again once the new rows are laid out. (`restart` alone only restarts
+            // a running timer.)
+            divider-timer.running = true;
             divider-timer.restart();
         }
         // The content height the last `changed content-height` saw. A content-y change
