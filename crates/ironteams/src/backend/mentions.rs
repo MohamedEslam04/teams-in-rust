@@ -85,14 +85,16 @@ pub(super) fn prepare(text: &str, entries: &[Entry]) -> Prepared {
     }
 }
 
-/// Swaps the placeholders in `html` (built from `Prepared::text`) for mention spans.
+/// Swaps the placeholders in `html` (built from `Prepared::text`) for mention spans. The
+/// encoders leave a message with placeholders alone, because the mention name decides which
+/// direction a reader meets first, so the leading right-to-left mark for Teams mobile is added here.
 pub(super) fn finish(html: &str, p: &Prepared) -> String {
     let mut out = html.to_string();
     for m in &p.mentions {
         let placeholder = format!("{OPEN}{}{CLOSE}", m.item_id);
         out = out.replace(&placeholder, &mention_html(m.item_id, &m.display_name));
     }
-    out
+    render::with_rtl_mark(out)
 }
 
 /// The value of `properties.mentions` for a queued message; `None` when nothing is mentioned.
@@ -187,6 +189,26 @@ mod tests {
         let prop = property(&p).unwrap();
         assert_eq!(from_property(&prop)[0].mri, "8:orgid:a");
         assert!(property(&prepare("plain", &entries)).is_none());
+    }
+
+    #[test]
+    fn finish_adds_the_mark_once_the_mention_names_are_known() {
+        let entries = [person("8:orgid:a", "Abdullah Fouad")];
+        let p = prepare(
+            "@Abdullah Fouad\nامبارح دخلت على الموقع وشفت الحاجة",
+            &entries,
+        );
+        // The encoder cannot tell which direction the mention name reads in.
+        assert!(!render::markdown_to_composer_html(&p.text).contains('\u{200F}'));
+        let html = finish(&render::markdown_to_composer_html(&p.text), &p);
+        assert!(
+            html.starts_with("<p") && html.contains(">\u{200F}<readonly"),
+            "{html}"
+        );
+        // An Arabic name first: the message already starts right-to-left.
+        let entries = [person("8:orgid:b", "سارة")];
+        let p = prepare("@سارة hello شكرا", &entries);
+        assert!(!finish(&render::text_to_teams_html(&p.text), &p).contains('\u{200F}'));
     }
 
     #[test]

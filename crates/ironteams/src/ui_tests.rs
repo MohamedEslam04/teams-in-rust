@@ -1135,10 +1135,11 @@ fn arabic_cursor_selection_copy_paste() {
     composer(&app).mock_single_click(PointerEventButton::Left);
     type_text(&app, "مرحبا بكم");
 
-    // Arrow keys step one character in logical order: two steps back from the end, then insert.
+    // Arrow keys step one character: two steps back from the end, then insert. In an Arabic line
+    // that is Right (Left is a step forward there, as it looks on screen).
     for _ in 0..2 {
-        key(&app, Key::LeftArrow, true);
-        key(&app, Key::LeftArrow, false);
+        key(&app, Key::RightArrow, true);
+        key(&app, Key::RightArrow, false);
     }
     type_text(&app, "ـ");
     assert_eq!(app.get_draft(), "مرحبا بـكم");

@@ -7,8 +7,8 @@ use super::{
     TableCell, clean_language, is_http_url, is_safe_link, parse_css_color,
 };
 use crate::parse::{
-    MAX_DEPTH, attr, attr_lower, collapse_ws, has_markup, is_emoji_img, non_empty, parse_dim,
-    raw_text, trim_spans,
+    MAX_DEPTH, attr, attr_lower, collapse_ws, has_markup, is_emoji_img, non_empty, own_mark_free,
+    parse_dim, raw_text, trim_spans,
 };
 use crate::{FontSize, Span, Style, parse_teams_html};
 
@@ -156,9 +156,11 @@ impl Walker {
         if depth > MAX_DEPTH {
             return;
         }
-        for child in el.children() {
+        for (i, child) in el.children().enumerate() {
             match child.value() {
-                Node::Text(t) => self.push_text(t, ctx),
+                Node::Text(t) => {
+                    self.push_text(if i == 0 { own_mark_free(&el, t) } else { t }, ctx)
+                }
                 Node::Element(_) => {
                     if let Some(e) = ElementRef::wrap(child) {
                         self.element(e, ctx, depth + 1);

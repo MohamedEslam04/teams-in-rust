@@ -40,6 +40,16 @@ pub fn wire(window: &AppWindow) {
         let delta = if delta < 0 { -1 } else { 1 };
         lines::vertical(&text, index(offset), delta).map_or(-1, int)
     });
+    api.on_step(|text: SharedString, offset, delta, by_word| {
+        let delta = if delta < 0 { -1 } else { 1 };
+        int(lines::step(&text, index(offset), delta, by_word))
+    });
+    api.on_printable(|text: SharedString| {
+        !text.is_empty()
+            && text
+                .chars()
+                .all(|c| !c.is_control() && !('\u{f700}'..='\u{f7ff}').contains(&c))
+    });
     api.on_direction(
         |text: SharedString, line| match lines::line_direction(&text, index(line)) {
             Some(Dir::Rtl) => 1,
