@@ -20,6 +20,7 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
 ## Invariants
 - Opus is registered at payload type 111, 48 kHz, 2 channels, fmtp `minptime=10;useinbandfec=1`; each packet is one 20 ms sample [mod.rs:OPUS_FMTP, FRAME, AudioSender::send].
 - Keying is DTLS-SRTP only; mDNS is disabled and a fingerprint is written per section. A remote SDP with no `a=fingerprint` is rejected [mod.rs:with_options, sdp.rs:from_teams_with_data].
+- A remote SDP that states no `a=setup` (a native client's 1:1 offer) takes the RFC 4145 default role: `active` in an offer, `passive` in an answer. We answer such an offer `a=setup:passive` and are the DTLS server [sdp.rs:OFFER_DEFAULT_SETUP, from_teams_with_data, to_teams].
 - ICE is not trickled: offers and answers wait up to 10 s for gathering, then continue with the candidates found [mod.rs:GATHER_TIMEOUT, set_local].
 - H.264 codecs are registered only when video roles or receive slots exist; the line order is audio, then video, with the ApplicationSharing line after the receive slots under `VideoLayout::WebClient` [mod.rs:with_options].
 - An offer whose audio mid or ICE ufrag differs from the remote description in force is a restart; `accept_offer` rejects it with `Error::Media` [mod.rs:offer_restarts, accept_offer].
