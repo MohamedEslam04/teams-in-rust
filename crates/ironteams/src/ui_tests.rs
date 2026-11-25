@@ -107,7 +107,7 @@ fn init_platform() {
 thread_local!(static PLATFORM_SET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) });
 
 /// A window with the composer's Rust side attached, like `main` builds it.
-fn new_window() -> AppWindow {
+pub(crate) fn new_window() -> AppWindow {
     init_platform();
     let app = AppWindow::new().unwrap();
     crate::ui::install_local(&app);

@@ -392,9 +392,8 @@ mod tests {
     fn an_in_window_card_for_a_new_message_does_not_deadlock_on_the_store() {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            i_slint_backend_testing::init_no_event_loop();
-            let window = crate::AppWindow::new().unwrap();
-            crate::ui::message_toast::install_local(&window);
+            // The window as `main` builds it, the message cards' stack included.
+            let window = crate::ui_tests::new_window();
             let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
             let store = store::Store::open_in_memory().unwrap();
             store
