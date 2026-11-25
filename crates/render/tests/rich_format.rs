@@ -1030,3 +1030,53 @@ fn deeply_nested_markup_does_not_overflow() {
     let lists = format!("{}x{}", "<ul><li>".repeat(2000), "</li></ul>".repeat(2000));
     let _ = parse_rich_html(&lists).to_html();
 }
+
+#[test]
+fn rich_encoder_marks_an_arabic_majority_message_that_starts_left_to_right() {
+    let mention = Span {
+        mention: Some("0".into()),
+        ..sp("Abdullah Fouad")
+    };
+    let html = doc(vec![
+        para(vec![mention]),
+        para(vec![link(
+            "https://claude.ai/artifact/abc",
+            "https://claude.ai/artifact/abc",
+        )]),
+        p("امبارح دخلت على الموقع وشفت الحاجة"),
+    ])
+    .to_html();
+    assert_eq!(
+        html,
+        concat!(
+            "<p dir=\"ltr\">\u{200F}",
+            r#"<span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Abdullah Fouad</span></p>"#,
+            r#"<p dir="ltr"><a href="https://claude.ai/artifact/abc">https://claude.ai/artifact/abc</a></p>"#,
+            r#"<p dir="rtl">امبارح دخلت على الموقع وشفت الحاجة</p>"#
+        )
+    );
+    // Link text is not counted: one Arabic word beats a long English link label.
+    assert_eq!(
+        markdown_to_composer_html("[Documentation](https://x.io) شكرا"),
+        "<p>\u{200F}<a href=\"https://x.io\">Documentation</a> شكرا</p>"
+    );
+    // Arabic first, English majority and ties are not touched.
+    assert_eq!(
+        markdown_to_composer_html("شكرا Documentation"),
+        "<p dir=\"rtl\">شكرا Documentation</p>"
+    );
+    assert_eq!(
+        markdown_to_composer_html("Hello team how are you doing\nشكرا"),
+        "<p dir=\"ltr\">Hello team how are you doing</p><p dir=\"rtl\">شكرا</p>"
+    );
+}
+
+#[test]
+fn decoding_drops_our_mark_of_a_left_to_right_block() {
+    let html = markdown_to_composer_html("Abdullah\nامبارح دخلت على الموقع وشفت الحاجة");
+    assert!(html.contains('\u{200F}'));
+    assert_eq!(
+        parse_rich_html(&html),
+        doc(vec![p("Abdullah"), p("امبارح دخلت على الموقع وشفت الحاجة")])
+    );
+}
