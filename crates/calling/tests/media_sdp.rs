@@ -7,7 +7,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use calling::SdpBlob;
 use calling::media::sdp::{
-    CONTENT_TYPE_NGC, CONTENT_TYPE_SDP, from_teams, to_teams_answer, to_teams_offer,
+    CONTENT_TYPE_NGC, CONTENT_TYPE_SDP, from_teams, from_teams_with, to_teams_answer,
+    to_teams_offer,
 };
 use flate2::Compression;
 use flate2::write::DeflateEncoder;
@@ -160,6 +161,41 @@ fn from_teams_refuses_sdes_only_sdp() {
     assert!(err.contains("DTLS"), "{err}");
 }
 
+// A native Teams client's offer has a fingerprint but no `a=setup` (live 2026-11-25: 406/4122
+// `FinalAnswerError` 0.3 s after our `a=setup:active` answer). RFC 4145 §4.1: with no `setup`
+// the offerer is `active` and the answerer `passive`.
+
+#[test]
+fn from_teams_states_the_default_active_role_of_an_offer_without_setup() {
+    let out = from_teams_with(P2P_OFFER, &[], true).unwrap();
+    let l = lines(&out);
+    let m = l.iter().position(|x| x.starts_with("m=audio")).unwrap();
+    assert!(l[m..].contains(&"a=setup:active"), "{out}");
+    assert!(
+        !l.iter()
+            .any(|x| *x == "a=setup:actpass" || *x == "a=setup:passive")
+    );
+}
+
+#[test]
+fn from_teams_states_the_default_passive_role_of_an_answer_without_setup() {
+    let answer = MEETING_ANSWER.replace("a=setup:passive\n", "");
+    assert!(!answer.contains("a=setup:"));
+    let out = from_teams(&answer).unwrap();
+    assert!(lines(&out).contains(&"a=setup:passive"), "{out}");
+    assert!(!out.contains("a=setup:active"), "{out}");
+}
+
+#[test]
+fn from_teams_keeps_a_stated_setup_as_it_is() {
+    let out = from_teams_with(WEB_OFFER, &[], true).unwrap();
+    let setups: Vec<_> = lines(&out)
+        .into_iter()
+        .filter(|l| l.starts_with("a=setup:"))
+        .collect();
+    assert_eq!(setups, ["a=setup:actpass"], "{out}");
+}
+
 // --- outbound: webrtc-rs -> Teams ---
 
 /// What webrtc-rs writes for an audio-only offer after gathering (shape, not byte-for-byte).
@@ -238,6 +274,26 @@ fn to_teams_answer_keeps_the_answer_shape() {
     // Offer-only additions are not made on an answer (SdpParsingFailure, teams-lite §2.5).
     assert!(!l.contains(&"b=CT:4000"));
     assert!(!l.iter().any(|x| x.starts_with("a=rtcp:")));
+}
+
+#[test]
+fn to_teams_answer_is_passive_to_an_offer_without_setup() {
+    // webrtc-rs answers `active` whatever the offer says; the native offerer is `active` by
+    // default, so the answer must be `passive` (from_teams told webrtc-rs it is the DTLS server).
+    let answer = LOCAL_OFFER.replace("a=setup:actpass", "a=setup:active");
+    let out = to_teams_answer(&answer, P2P_OFFER);
+    let l = lines(&out);
+    assert!(l.contains(&"a=setup:passive"), "{out}");
+    assert!(!l.contains(&"a=setup:active"), "{out}");
+}
+
+#[test]
+fn to_teams_answer_keeps_its_role_when_the_offer_states_setup() {
+    let answer = LOCAL_OFFER.replace("a=setup:actpass", "a=setup:active");
+    let out = to_teams_answer(&answer, WEB_OFFER);
+    let l = lines(&out);
+    assert!(l.contains(&"a=setup:active"), "{out}");
+    assert!(!l.contains(&"a=setup:passive"), "{out}");
 }
 
 #[test]
