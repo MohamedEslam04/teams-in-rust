@@ -79,6 +79,7 @@ pub fn install(
         lists: None,
         listing: false,
         mic: None,
+        mic_probe: Default::default(),
         checking: false,
         update_auto_done: false,
         update_url: None,

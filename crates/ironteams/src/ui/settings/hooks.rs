@@ -169,7 +169,7 @@ impl SettingsEnv {
                         .add_filter("Sound files", &["wav", "mp3", "m4a", "aac"])
                         .pick_file()
                 }),
-                mic_level: Box::new(|input| {
+                mic_level: Arc::new(|input| {
                     let s = devices::mic_level(input).map_err(|e| e.to_string())?;
                     Ok(Box::new(move || s.latest().map(|l| l.peak)) as MicPoll)
                 }),

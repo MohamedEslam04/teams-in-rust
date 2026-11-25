@@ -126,40 +126,44 @@ pub(super) fn list_devices(w: &AppWindow, shared: &Shared) {
 
 pub(super) fn stop_mic(w: &AppWindow, c: &mut Ctl) {
     c.mic = None;
+    c.mic_probe.stop();
     let g = w.global::<SettingsStore>();
     g.set_mic_testing(false);
     g.set_mic_level(0.0);
 }
 
+/// Starts the microphone test. The microphone is opened by the meter's worker thread (the sound
+/// server can be slow to answer); the timer only collects what it has read, and reports a
+/// microphone that could not be opened.
 pub(super) fn start_mic(w: &AppWindow, c: &mut Ctl) {
     let input = c.local.devices.microphone.clone();
-    match (c.env.hooks.mic_level)(input.as_deref()) {
-        Ok(mut poll) => {
-            let weak = w.as_weak();
-            let started = Instant::now();
-            let timer = slint::Timer::default();
-            timer.start(
-                slint::TimerMode::Repeated,
-                Duration::from_millis(50),
-                move || {
-                    let Some(w) = weak.upgrade() else { return };
-                    if started.elapsed() > Duration::from_secs(15) {
-                        if let Some(shared) = ctl() {
-                            stop_mic(&w, &mut shared.borrow_mut());
-                        }
-                        return;
-                    }
-                    if let Some(level) = poll() {
-                        w.global::<SettingsStore>().set_mic_level(level);
-                    }
-                },
-            );
-            c.mic = Some(timer);
-            w.global::<SettingsStore>().set_mic_testing(true);
-            notice(w, "Speak: the bar shows what the microphone hears.");
-        }
-        Err(e) => notice(w, format!("Could not open the microphone: {e}")),
-    }
+    let weak = w.as_weak();
+    let started = Instant::now();
+    let timer = slint::Timer::default();
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(50),
+        move || {
+            let Some(w) = weak.upgrade() else { return };
+            let Some(shared) = ctl() else { return };
+            let mut c = shared.borrow_mut();
+            if started.elapsed() > Duration::from_secs(15) {
+                stop_mic(&w, &mut c);
+                return;
+            }
+            let open = c.env.hooks.mic_level.clone();
+            let reading = c.mic_probe.poll(input.as_deref(), move |m| open(m));
+            if let Some(e) = reading.failed {
+                stop_mic(&w, &mut c);
+                notice(&w, format!("Could not open the microphone: {e}"));
+            } else if let Some(level) = reading.level {
+                w.global::<SettingsStore>().set_mic_level(level);
+            }
+        },
+    );
+    c.mic = Some(timer);
+    w.global::<SettingsStore>().set_mic_testing(true);
+    notice(w, "Speak: the bar shows what the microphone hears.");
 }
 
 pub(super) fn with_server_note(c: &Ctl) -> Option<(String, NotificationSettings)> {

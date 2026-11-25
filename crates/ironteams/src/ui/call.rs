@@ -7,6 +7,7 @@ use crate::backend::call::{
 use crate::backend::call_feedback::{self, Ask};
 use crate::backend::outsider::Outsider;
 use crate::data::{Pixels, initials};
+use crate::support::meter::{Probe, Reader};
 use crate::{
     AppWindow, CallAbsent, CallCaption, CallFound, CallPerson, CallReaction, CallStore,
     SettingsStore, VideoFxStore,
@@ -482,8 +483,9 @@ pub fn wire(window: &AppWindow) {
 const WATCH_EVERY: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// Reads what the chosen microphone hears, 0 to 1 (peak), or `None` until it has a reading.
-pub(crate) type MeterPoll = Box<dyn FnMut() -> Option<f32>>;
-/// Opens a level meter on a microphone (`None`: the system default).
+pub(crate) type MeterPoll = Reader;
+/// Opens a level meter on a microphone (`None`: the system default). Blocking (it asks the sound
+/// server): it runs on the meter's worker thread, never on the UI thread (see `support::meter`).
 pub(crate) type MeterOpen = fn(Option<&str>) -> Option<MeterPoll>;
 
 fn open_meter(mic: Option<&str>) -> Option<MeterPoll> {
@@ -494,8 +496,8 @@ fn open_meter(mic: Option<&str>) -> Option<MeterPoll> {
 struct Watch {
     /// The camera menu was open at the last look (its self-preview runs).
     camera_menu: bool,
-    /// The mic menu's meter: the microphone it listens to, and its reading.
-    meter: Option<(Option<String>, MeterPoll)>,
+    /// The mic menu's meter: its worker listens to the microphone, off the UI thread.
+    meter: Probe,
     /// The microphone whose meter could not be opened (not tried again until the menu closes).
     failed: Option<Option<String>>,
     open: MeterOpen,
@@ -505,7 +507,7 @@ struct Watch {
 thread_local! {
     static WATCH: RefCell<Watch> = RefCell::new(Watch {
         camera_menu: false,
-        meter: None,
+        meter: Probe::default(),
         failed: None,
         open: open_meter,
         timer: None,
@@ -549,7 +551,7 @@ pub(crate) fn watch(w: &AppWindow) {
     if menu != "devices" {
         WATCH.with(|x| {
             let mut x = x.borrow_mut();
-            x.meter = None;
+            x.meter.stop();
             x.failed = None;
         });
         if s.get_mic_level() != 0.0 {
@@ -560,13 +562,17 @@ pub(crate) fn watch(w: &AppWindow) {
     let mic = MIC_ID.with(|m| m.borrow().clone());
     let reading = WATCH.with(|x| {
         let mut x = x.borrow_mut();
-        if x.meter.as_ref().map(|(id, _)| id) != Some(&mic) && x.failed.as_ref() != Some(&mic) {
-            x.meter = (x.open)(mic.as_deref()).map(|poll| (mic.clone(), poll));
-            if x.meter.is_none() {
-                x.failed = Some(mic.clone());
-            }
+        if x.failed.as_ref() == Some(&mic) {
+            return None;
         }
-        x.meter.as_mut().and_then(|(_, poll)| poll())
+        let open = x.open;
+        let got = x.meter.poll(mic.as_deref(), move |m| {
+            open(m).ok_or_else(|| "the microphone could not be opened".to_string())
+        });
+        if got.failed.is_some() {
+            x.failed = Some(mic.clone());
+        }
+        got.level
     });
     if let Some(peak) = reading {
         s.set_mic_level(meter_level(peak));
