@@ -1032,51 +1032,18 @@ fn deeply_nested_markup_does_not_overflow() {
 }
 
 #[test]
-fn rich_encoder_marks_an_arabic_majority_message_that_starts_left_to_right() {
-    let mention = Span {
-        mention: Some("0".into()),
-        ..sp("Abdullah Fouad")
-    };
-    let html = doc(vec![
-        para(vec![mention]),
-        para(vec![link(
-            "https://claude.ai/artifact/abc",
-            "https://claude.ai/artifact/abc",
-        )]),
-        p("امبارح دخلت على الموقع وشفت الحاجة"),
-    ])
-    .to_html();
+fn encoding_adds_no_mark_but_decoding_drops_one_from_an_older_build() {
+    let text = "Abdullah\nامبارح دخلت على الموقع وشفت الحاجة";
+    let html = markdown_to_composer_html(text);
+    assert!(!html.contains('\u{200F}'), "{html}");
     assert_eq!(
         html,
-        concat!(
-            "<p dir=\"ltr\">\u{200F}",
-            r#"<span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Abdullah Fouad</span></p>"#,
-            r#"<p dir="ltr"><a href="https://claude.ai/artifact/abc">https://claude.ai/artifact/abc</a></p>"#,
-            r#"<p dir="rtl">امبارح دخلت على الموقع وشفت الحاجة</p>"#
-        )
+        "<p dir=\"ltr\">Abdullah</p><p dir=\"rtl\">امبارح دخلت على الموقع وشفت الحاجة</p>"
     );
-    // Link text is not counted: one Arabic word beats a long English link label.
+    // Older builds put a U+200F at the start of such a message.
+    let old = html.replacen("<p dir=\"ltr\">", "<p dir=\"ltr\">\u{200F}", 1);
     assert_eq!(
-        markdown_to_composer_html("[Documentation](https://x.io) شكرا"),
-        "<p>\u{200F}<a href=\"https://x.io\">Documentation</a> شكرا</p>"
-    );
-    // Arabic first, English majority and ties are not touched.
-    assert_eq!(
-        markdown_to_composer_html("شكرا Documentation"),
-        "<p dir=\"rtl\">شكرا Documentation</p>"
-    );
-    assert_eq!(
-        markdown_to_composer_html("Hello team how are you doing\nشكرا"),
-        "<p dir=\"ltr\">Hello team how are you doing</p><p dir=\"rtl\">شكرا</p>"
-    );
-}
-
-#[test]
-fn decoding_drops_our_mark_of_a_left_to_right_block() {
-    let html = markdown_to_composer_html("Abdullah\nامبارح دخلت على الموقع وشفت الحاجة");
-    assert!(html.contains('\u{200F}'));
-    assert_eq!(
-        parse_rich_html(&html),
+        parse_rich_html(&old),
         doc(vec![p("Abdullah"), p("امبارح دخلت على الموقع وشفت الحاجة")])
     );
 }

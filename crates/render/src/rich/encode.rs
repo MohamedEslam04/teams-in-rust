@@ -11,22 +11,20 @@ use super::{
     HIGHLIGHT_ITEMTYPE, HIGHLIGHT_PALETTE, ListItem, RichBlock, RichDoc, RichList, RichTable,
     TableCell, clean_language, is_http_url, is_safe_link, parse_css_color,
 };
-use crate::compose::{dir_attr, escape, with_rtl_mark};
+use crate::compose::{dir_attr, escape};
 use crate::{Dir, FontSize, Span, spans_text, text_direction};
 
 impl RichDoc {
     /// Teams message HTML for this document. When a block is right-to-left,
     /// every paragraph, heading, quote and list item with a strong character
-    /// says its own direction (`dir="rtl"` or `dir="ltr"`); a mostly right-to-left message that
-    /// does not start right-to-left also gets a leading U+200F for Teams mobile
-    /// (see [`with_rtl_mark`]).
+    /// says its own direction (`dir="rtl"` or `dir="ltr"`).
     pub fn to_html(&self) -> String {
         let mixed = self.blocks.iter().any(block_is_rtl);
         let mut out = String::new();
         for block in &self.blocks {
             block_html(block, mixed, &mut out);
         }
-        with_rtl_mark(out)
+        out
     }
 }
 

@@ -1,7 +1,5 @@
 //! Composer text -> Teams HTML.
 
-use unicode_bidi::BidiClass;
-
 use crate::{Dir, text_direction};
 
 pub(crate) fn escape(s: &str, out: &mut String) {
@@ -50,109 +48,7 @@ pub fn text_to_teams_html(text: &str) -> String {
         }
         out.push_str("</p>");
     }
-    with_rtl_mark(out)
-}
-
-/// Right-to-left mark. Official Teams clients start a right-to-left message with one.
-const RLM: char = '\u{200F}';
-
-/// Teams mobile ignores `dir` and lays the whole message out in the direction of its first
-/// strong character, so an Arabic message that starts with a name, a mention or a link comes
-/// out left-to-right. When the message has more right-to-left than left-to-right letters and
-/// its first strong character is not right-to-left, a leading U+200F is put at the start of
-/// the first block, before any mention. Letters of links (`<a>` and `http(s)://` text) and of
-/// mention names are not counted. Every other message, including one that already starts
-/// right-to-left, and the quote block of a reply, are left byte for byte as they are. The
-/// per-block `dir` attributes stay; desktop clients use them.
-///
-/// Text with a mention placeholder (private-use `U+E000`) is left alone: the caller swaps the
-/// placeholders for the real mention spans and calls this again (see `finish` of the mentions).
-pub fn with_rtl_mark(mut html: String) -> String {
-    if html.contains('\u{E000}') {
-        return html;
-    }
-    let (mut ltr, mut rtl) = (0usize, 0usize);
-    let mut first: Option<Dir> = None;
-    let mut insert_at: Option<usize> = None;
-    let (mut in_quote, mut in_link, mut in_mention, mut in_url) = (false, false, false, false);
-    let mut i = 0;
-    while i < html.len() {
-        let rest = &html[i..];
-        if rest.starts_with('<') {
-            let Some(end) = rest.find('>') else { break };
-            let tag = &rest[1..end];
-            let closing = tag.starts_with('/');
-            let name = tag
-                .trim_start_matches('/')
-                .split(|c: char| c.is_whitespace() || c == '/')
-                .next()
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            match (closing, name.as_str()) {
-                (false, "blockquote") if tag.contains("schema.skype.com/Reply") => in_quote = true,
-                (true, "blockquote") => in_quote = false,
-                (false, "a") => in_link = true,
-                (true, "a") => in_link = false,
-                (false, "span") if tag.contains("schema.skype.com/Mention") => in_mention = true,
-                (true, "span") => in_mention = false,
-                _ => {}
-            }
-            let block = !closing
-                && matches!(
-                    name.as_str(),
-                    "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "li" | "blockquote"
-                );
-            if block && !in_quote && insert_at.is_none() {
-                insert_at = Some(i + end + 1);
-            }
-            in_url = false;
-            i += end + 1;
-            continue;
-        }
-        let Some(c) = rest.chars().next() else { break };
-        i += c.len_utf8();
-        if in_quote {
-            continue;
-        }
-        if c == '&' {
-            // An entity is never a letter.
-            if let Some(semi) = html[i..].find(';').filter(|&n| n <= 8) {
-                i += semi + 1;
-            }
-            continue;
-        }
-        if c.is_whitespace() {
-            in_url = false;
-            continue;
-        }
-        if insert_at.is_none() {
-            // Text before any block (a bare code block): nothing to put the mark in.
-            return html;
-        }
-        if !in_url && html[i - c.len_utf8()..].starts_with("http") {
-            let url = &html[i - c.len_utf8()..];
-            in_url = url.starts_with("http://") || url.starts_with("https://");
-        }
-        let class = unicode_bidi::bidi_class(c);
-        let dir = match class {
-            BidiClass::L => Dir::Ltr,
-            BidiClass::R | BidiClass::AL => Dir::Rtl,
-            _ => continue,
-        };
-        first.get_or_insert(dir);
-        if !(in_link || in_mention || in_url) {
-            match dir {
-                Dir::Ltr => ltr += 1,
-                Dir::Rtl => rtl += 1,
-            }
-        }
-    }
-    if let (Some(at), Some(Dir::Ltr)) = (insert_at, first)
-        && rtl > ltr
-    {
-        html.insert(at, RLM);
-    }
-    html
+    out
 }
 
 /// Teams reply: a quote block of the original message followed by the reply
@@ -252,107 +148,25 @@ mod tests {
     const ARABIC_LINE: &str = "امبارح دخلت على الموقع وشفت الحاجة";
 
     #[test]
-    fn arabic_majority_message_that_starts_left_to_right_gets_a_mark() {
-        // Name and link first, Arabic after: Teams mobile would show it all left-to-right.
+    fn an_arabic_majority_message_that_starts_left_to_right_gets_no_mark() {
         let text = format!("Abdullah Fouad\nhttps://claude.ai/artifact/abc\n{ARABIC_LINE}");
+        let html = text_to_teams_html(&text);
+        assert!(!html.contains('\u{200F}'), "{html}");
         assert_eq!(
-            text_to_teams_html(&text),
+            html,
             format!(
-                "<p dir=\"ltr\">{RLM}Abdullah Fouad</p><p dir=\"ltr\">https://claude.ai/artifact/abc</p><p dir=\"rtl\">{ARABIC_LINE}</p>"
+                "<p dir=\"ltr\">Abdullah Fouad</p><p dir=\"ltr\">https://claude.ai/artifact/abc</p><p dir=\"rtl\">{ARABIC_LINE}</p>"
             )
         );
     }
 
     #[test]
-    fn a_message_that_starts_right_to_left_has_no_mark() {
-        assert_eq!(
-            text_to_teams_html("مرحبا Abdullah\nhello"),
-            "<p dir=\"rtl\">مرحبا Abdullah</p><p dir=\"ltr\">hello</p>"
+    fn a_mark_from_an_older_build_does_not_flip_the_first_line_when_parsed() {
+        // Older builds put a U+200F at the start of such a message.
+        let mark = '\u{200F}';
+        let html = format!(
+            "<p dir=\"ltr\">{mark}Abdullah Fouad</p><p dir=\"ltr\">https://claude.ai/artifact/abc</p><p dir=\"rtl\">{ARABIC_LINE}</p>"
         );
-        assert_eq!(
-            text_to_teams_html("123 حاضر"),
-            "<p dir=\"rtl\">123 حاضر</p>"
-        );
-    }
-
-    #[test]
-    fn a_left_to_right_majority_message_has_no_mark() {
-        assert_eq!(
-            text_to_teams_html("Hello team how are you doing\nشكرا"),
-            "<p dir=\"ltr\">Hello team how are you doing</p><p dir=\"rtl\">شكرا</p>"
-        );
-        // Equal counts are not a majority.
-        assert_eq!(
-            text_to_teams_html("abcde\nمرحبا"),
-            "<p dir=\"ltr\">abcde</p><p dir=\"rtl\">مرحبا</p>"
-        );
-    }
-
-    #[test]
-    fn link_text_does_not_count_but_it_is_read_first() {
-        // The URL has many Latin letters; without it the one Arabic word is the majority.
-        assert_eq!(
-            text_to_teams_html("https://example.com/a/very/long/path\nشكرا"),
-            "<p dir=\"ltr\">\u{200F}https://example.com/a/very/long/path</p><p dir=\"rtl\">شكرا</p>"
-        );
-        // A URL after the Arabic text changes nothing: the message starts right-to-left.
-        assert_eq!(
-            text_to_teams_html("شكرا\nhttps://example.com/a/very/long/path"),
-            "<p dir=\"rtl\">شكرا</p><p dir=\"ltr\">https://example.com/a/very/long/path</p>"
-        );
-    }
-
-    #[test]
-    fn the_mark_goes_before_a_mention_and_names_are_not_counted() {
-        let mention = concat!(
-            r#"<p dir="ltr"><span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">"#,
-            "Abdullah Fouad Abdelrahman</span></p>"
-        );
-        let html = format!("{mention}<p dir=\"rtl\">شكرا جزيلا</p>");
-        let marked = with_rtl_mark(html.clone());
-        assert_eq!(
-            marked,
-            html.replacen("<p dir=\"ltr\">", "<p dir=\"ltr\">\u{200F}", 1)
-        );
-        // An Arabic first block (or none to put the mark in) is left alone.
-        assert_eq!(
-            with_rtl_mark("<p dir=\"rtl\">شكرا</p>".into()),
-            "<p dir=\"rtl\">شكرا</p>"
-        );
-        assert_eq!(with_rtl_mark("شكرا hi".into()), "شكرا hi");
-        // Marking twice is the same as marking once.
-        assert_eq!(with_rtl_mark(marked.clone()), marked);
-        // A placeholder means the mention name is not known yet.
-        let pending = "<p dir=\"ltr\">\u{E000}0\u{E001}</p><p dir=\"rtl\">شكرا جزيلا</p>";
-        assert_eq!(with_rtl_mark(pending.into()), pending);
-    }
-
-    #[test]
-    fn a_reply_body_is_marked_but_the_quote_block_is_not() {
-        let html = reply_html(
-            "1",
-            "8:o",
-            "Sara",
-            5,
-            "شكرا جزيلا لك جدا",
-            "Thanks\nشكرا جزيلا لك",
-        );
-        let (quote, body) = html.split_once("</blockquote>").unwrap();
-        assert!(!quote.contains('\u{200F}'), "{quote}");
-        assert_eq!(
-            body,
-            "<p dir=\"ltr\">\u{200F}Thanks</p><p dir=\"rtl\">شكرا جزيلا لك</p>"
-        );
-        // An Arabic quote does not count towards the body.
-        let html = reply_html("1", "8:o", "Sara", 5, "شكرا جزيلا لك جدا", "ok");
-        assert!(!html.contains('\u{200F}'), "{html}");
-    }
-
-    #[test]
-    fn our_own_mark_does_not_flip_the_first_line_when_parsed() {
-        let text = format!("Abdullah Fouad\nhttps://claude.ai/artifact/abc\n{ARABIC_LINE}");
-        let html = text_to_teams_html(&text);
-        assert!(html.contains('\u{200F}'));
         let rt = parse_teams_html(&html);
         assert!(matches!(
             rt.blocks[0],
@@ -362,6 +176,7 @@ mod tests {
             rt.blocks[2],
             Block::Paragraph { dir: Dir::Rtl, .. }
         ));
+        let text = format!("Abdullah Fouad\nhttps://claude.ai/artifact/abc\n{ARABIC_LINE}");
         assert_eq!(crate::plain_text(&rt), text);
         // The mark of another client, on a paragraph without a `dir`, still sets its direction.
         let rt = parse_teams_html("<p>\u{200F}Hello</p>");
