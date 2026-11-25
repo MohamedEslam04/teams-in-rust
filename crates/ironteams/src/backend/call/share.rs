@@ -451,14 +451,15 @@ pub async fn tell_meeting(
 }
 
 /// A 1:1 re-offer (`offer`, as the media session made it) for the share: the sharing line
-/// `sendonly` (or `inactive`), and the camera line, when there is one (`camera_on` is `Some`),
-/// as the camera is ([`super::camera::direct_direction`]): webrtc-rs leaves it `sendonly` from
+/// `sendonly` while we send and `recvonly` otherwise (never `inactive`: the peer could not then
+/// present to us without a renegotiation it does not start), and the camera line, when there is
+/// one (`camera_on` is `Some`), as the camera is ([`super::camera::direct_direction`]): webrtc-rs leaves it `sendonly` from
 /// the answer to a caller who offered it `recvonly`, which said our camera sends while it was off.
 pub fn direct_offer(offer: &str, sending: bool, camera_on: Option<bool>) -> String {
     let mut offer = calling::media::sdp::with_role_direction(
         offer,
         ROLE,
-        if sending { "sendonly" } else { "inactive" },
+        if sending { "sendonly" } else { "recvonly" },
     );
     if let Some(on) = camera_on {
         offer = calling::media::sdp::with_role_direction(
@@ -470,7 +471,7 @@ pub fn direct_offer(offer: &str, sending: bool, camera_on: Option<bool>) -> Stri
     offer
 }
 
-/// Re-offers a 1:1 call's media with the sharing line `sendonly` (or `inactive`) and the camera
+/// Re-offers a 1:1 call's media with the sharing line `sendonly` (or `recvonly`) and the camera
 /// line as the camera is (`camera_on`). Returns the answer when it came inline; otherwise it
 /// arrives on `call/mediaAnswer/`.
 pub async fn reoffer_direct(
