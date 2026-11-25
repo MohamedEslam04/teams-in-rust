@@ -280,7 +280,11 @@ fn to_teams_answer_keeps_the_answer_shape() {
 fn to_teams_answer_is_passive_to_an_offer_without_setup() {
     // webrtc-rs answers `active` whatever the offer says; the native offerer is `active` by
     // default, so the answer must be `passive` (from_teams told webrtc-rs it is the DTLS server).
-    let answer = LOCAL_OFFER.replace("a=setup:actpass", "a=setup:active");
+    // The native offer names its audio mid `audio_0`; a section on another mid is stubbed.
+    let answer = LOCAL_OFFER
+        .replace("a=setup:actpass", "a=setup:active")
+        .replace("a=mid:0", "a=mid:audio_0")
+        .replace("BUNDLE 0", "BUNDLE audio_0");
     let out = to_teams_answer(&answer, P2P_OFFER);
     let l = lines(&out);
     assert!(l.contains(&"a=setup:passive"), "{out}");
