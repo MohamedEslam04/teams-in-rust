@@ -653,8 +653,13 @@ What IronTeams does (`calling::signaling::{roster, video}`, `calling::media`,
 - Every remote video packet carries the mid of its line (webrtc-rs's receiver for the track,
   looked up in the peer connection's transceivers). One OpenH264 decoder per line: the sharing
   line draws on the stage (`VideoSlot::Content`), a gallery line in the tile of whom it is
-  subscribed to (`VideoSlot::Gallery`), anything else in the other person's tile as before. A
-  line quiet for 10 s is cleared.
+  subscribed to (`VideoSlot::Gallery`), anything else (`VideoSlot::Remote`) in the other
+  person's tile: in a 1:1 call the other side, in a meeting only when there is one other person.
+  With more, that picture is a stream the media server sent unasked, and nothing maps it to a
+  person yet (the video packets' CSRCs are not read), so no tile shows it: live 2026-11-25 in a
+  meeting of five it showed in the tile of whoever spoke, under that person's name, whoever sent
+  it. Not showing it was chosen over an unnamed tile on the stage, which would be a picture of
+  nobody in particular next to everyone's avatars. A line quiet for 10 s is cleared.
 - A meeting join offers nine receive-only `main-video` lines after the video lines when
   `IRONTEAMS_CAMERA` not `0` (`MediaOptions::receive_slots`); `from_teams_with` keeps that many main-video
   sections of the answer. A media restart (lobby admission: a full new offer) is answered on a

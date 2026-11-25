@@ -130,6 +130,7 @@ Files:
 - `[message_toast.rs:NEXT_ID]` AtomicI32 starting at 1 gives unique, increasing card ids (Relaxed)
 - `[people.rs:card_details]` fill only if card or profile open and get_card().id equals c.person.id
 - `[call.rs:set]` has_remote_video and has_content cleared unless phase is connected or reconnecting
+- `[call.rs:video_owner]` the one remote picture (VideoSlot::Remote) goes to one person's tile (CallPerson.video): in a direct call the speaker, else the first other person; in a meeting (CallData.kind "meeting") only the one other person in the call, nobody's when there are more (its sender is unknown); gallery-slot pictures always show in their own person's tile
 - `[engage.rs:int]` i32 conversion saturates to i32::MAX; unknown storyline counts map to -1
 - `[people.rs:pinned]` pinned_index reset to 0 when out of range
 - `[call.rs:shared]` someone else's share = !sharing && (presenter set || has_content); view switches to content on start, back to gallery on end only if mode was content
