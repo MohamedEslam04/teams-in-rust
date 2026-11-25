@@ -96,6 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      # nextest runs each test in its own process and kills one that runs past the limit in
+      # .config/nextest.toml (profile ci), naming it in the log.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       # The GUI crate's test build can outgrow the runner's memory too (exit 143), as clippy does.
       - name: More swap
         run: |
@@ -103,17 +108,54 @@ jobs:
           sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
           free -h
+      # Some runs hung until the job limit and lost their whole log: the timeout around cargo
+      # never fired and the job ended 10 minutes after the limit, so the runner itself had
+      # stopped answering, starved of memory. The build and the tests run in this cgroup: past
+      # its limit they swap, and past the swap the kernel kills a test or rustc in it, never the
+      # runner, so the log survives and names what grew.
+      - name: Memory fence
+        run: |
+          echo +memory | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+          sudo mkdir /sys/fs/cgroup/ci-tests
+          echo 13G | sudo tee /sys/fs/cgroup/ci-tests/memory.max >/dev/null
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold
       - uses: Swatinem/rust-cache@v2
         with:
           # Feature branches restore the dev cache; only dev saves, so the 10 GB limit holds.
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-      # A hung test used to run into the job timeout, and a cancelled job keeps no log. Stopping
-      # cargo first fails the step instead, and the log keeps libtest's "has been running for
-      # over 60 seconds" line naming the test.
-      - run: timeout --signal=INT --kill-after=60 22m cargo test --workspace
-      - run: cargo test -p ironteams-cli --features mcp
+      # Build and run are separate steps with their own limits, so the log says which stalled.
+      # Each step first moves its shell into the memory fence.
+      - name: Build the tests
+        timeout-minutes: 35
+        run: |
+          echo $$ | sudo tee /sys/fs/cgroup/ci-tests/cgroup.procs >/dev/null
+          cargo test --workspace --no-run
+      - name: Run the tests
+        timeout-minutes: 15
+        run: |
+          echo $$ | sudo tee /sys/fs/cgroup/ci-tests/cgroup.procs >/dev/null
+          cargo nextest run --workspace --profile ci
+      # nextest does not run doctests.
+      - name: Doctests
+        timeout-minutes: 10
+        run: |
+          echo $$ | sudo tee /sys/fs/cgroup/ci-tests/cgroup.procs >/dev/null
+          cargo test --workspace --doc
+      - name: MCP tests
+        timeout-minutes: 15
+        run: |
+          echo $$ | sudo tee /sys/fs/cgroup/ci-tests/cgroup.procs >/dev/null
+          cargo nextest run -p ironteams-cli --features mcp --profile ci
+      # How close the build and the tests came to the fence, and whether the kernel killed
+      # anything in it (oom_kill).
+      - name: Memory used
+        if: always()
+        run: |
+          cd /sys/fs/cgroup/ci-tests || exit 0
+          echo "peak RAM $(numfmt --to=iec < memory.peak), peak swap $(numfmt --to=iec < memory.swap.peak)"
+          cat memory.events
+          free -h
 
   # The tests on Windows and macOS (Apple Silicon and Intel). Formatting and clippy run once, on
   # Linux: a second full compile of the GUI crate for clippy doubled these jobs (about 40 min on

@@ -210,6 +210,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_request_says_why_it_failed() {
+        crate::client::install_crypto_provider();
         let err = reqwest::Client::new()
             .get("http://127.0.0.1:1/")
             .send()
