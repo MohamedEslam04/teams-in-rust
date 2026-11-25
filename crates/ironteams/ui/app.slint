@@ -236,6 +236,11 @@ export component AppWindow inherits Window {
     in property <string> unavailable-id;
     in property <string> unavailable-text;
     property <bool> unavailable: root.unavailable-text != "" && root.unavailable-id == root.current-id && root.thread-root == "";
+    // The chat the user chose in the search box, shown at once while the engine switches to it
+    // (the header and a loading state): its composer waits for the engine, so nothing typed in
+    // the meantime lands in the previous chat's draft. The engine's header for it clears this.
+    in-out property <string> opening-id;
+    property <bool> opening: root.opening-id != "" && root.opening-id == root.current-id;
     in-out property <string> reply-author;
     in-out property <string> reply-preview;
     in-out property <string> editing-id;
@@ -865,7 +870,7 @@ export component AppWindow inherits Window {
                                 if root.posts-mode && ChannelStore.compose-open: AnnouncementBar { }
 
                                 // Composer
-                                if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable: Composer {
+                                if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable && !root.opening: Composer {
                                     vertical-stretch: 0;
                                     window-width: root.width;
                                     current-is-channel: root.current-is-channel;
