@@ -1,0 +1,29 @@
+name: Cancel runs of a closed PR
+
+# A merged or closed pull request needs no more CI on its branch: its push and pull_request runs
+# still in the queue or running only hold runners the next branch is waiting for.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel the branch's unfinished CI runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          for status in queued in_progress waiting pending; do
+            gh run list --workflow CI --branch "$BRANCH" --status "$status" \
+              --json databaseId --jq '.[].databaseId'
+          done | sort -u | while read -r id; do
+            echo "cancelling run $id on $BRANCH"
+            gh run cancel "$id" || true
+          done
