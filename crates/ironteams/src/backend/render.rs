@@ -1084,8 +1084,11 @@ impl Engine {
         let failed = marks.failed.unwrap_or(&none);
         let divider = marks.divider;
         // One lookup for the whole build: a group can mark many of my messages.
-        let receipt: HashMap<&str, &super::people::ReceiptMark> =
-            marks.receipt.iter().map(|x| (x.msg_id.as_str(), x)).collect();
+        let receipt: HashMap<&str, &super::people::ReceiptMark> = marks
+            .receipt
+            .iter()
+            .map(|x| (x.msg_id.as_str(), x))
+            .collect();
         let receipt_side = marks.receipt_side;
         let fresh = marks.fresh;
         let near = marks.near;
