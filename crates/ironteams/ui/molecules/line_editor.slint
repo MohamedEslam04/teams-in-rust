@@ -9,8 +9,20 @@
 // and keeps the focused input, so a key typed right after works. Anything that has to move the
 // cursor into another input (a joined line, a new line) is done when that input exists.
 //
-// What it does not do: a selection stays inside one line (no Shift+Up/Down, no Ctrl+A over all lines),
-// and an input's own undo only knows its own line.
+// Arrow keys: a TextInput moves the cursor in logical order (Left is always backward), but in a
+// right to left line Left is visually forward: there the editor handles Left and Right itself, with
+// the meaning swapped (Left = forward in the text, Right = backward; Shift extends the selection,
+// Ctrl moves by word, and at the end or the start of the line the cursor crosses to the next or the
+// previous line). An English word inside an Arabic line still moves in logical order.
+//
+// Ctrl+A selects the whole text, over all lines (`whole`): every input shows its line selected, and
+// `caret` and `anchor` are the whole text's ends. While it holds, Ctrl+C and Ctrl+X copy (cut) the
+// whole text, Backspace and Delete clear it, a typed character or a paste replaces it, and an arrow
+// key (Left or Up the start, Right or Down the end, Left and Right swapped in a right to left line),
+// a click or an edit by the input itself ends it.
+//
+// What it does not do: any other selection stays inside one line (no Shift+Up/Down), and an
+// input's own undo only knows its own line.
 import { Theme } from "../tokens/theme.slint";
 
 // Rust side: src/composer_lines.rs. Offsets are byte offsets into the whole text.
@@ -33,6 +45,14 @@ export global LineApi {
     pure callback vertical(string, int, int) -> int;
     // text, line -> 1 right to left, -1 left to right, 0 not known yet
     pure callback direction(string, int) -> int;
+    // text, offset, -1 or 1, by word -> offset one character (a letter with its marks) or one word
+    // back or forward in the line of the offset; the offset itself at the end of the line
+    pure callback step(string, int, int, bool) -> int;
+    // Whether a key's text is a typed character (not a special key)
+    pure callback printable(string) -> bool;
+    // The system clipboard
+    callback copy-text(string);
+    callback clipboard-text() -> string;
 }
 
 export component LineEditor inherits Rectangle {
@@ -54,6 +74,10 @@ export component LineEditor inherits Rectangle {
     property <int> caret;
     property <int> anchor;
     property <int> focus-line: -1;
+    // Ctrl+A: the whole text is selected (`caret` and `anchor` are its ends); `selecting` is set
+    // while the editor itself puts the selection in the inputs.
+    property <bool> whole;
+    property <bool> selecting;
     // A request to put the cursor in a line: a new input takes it in `init`, an old one when `poke`
     // changes or at its next key.
     property <bool> want-active;
@@ -69,6 +93,7 @@ export component LineEditor inherits Rectangle {
     function sync() {
         if root.text != root.own {
             let had-focus = root.focus-line >= 0;
+            root.whole = false;
             root.own = root.text;
             LineApi.update(root.lines, root.text);
             if had-focus && root.focus-line >= LineApi.line-count(root.text) {
@@ -78,6 +103,7 @@ export component LineEditor inherits Rectangle {
     }
 
     function request(a: int, c: int, now: bool) {
+        root.whole = false;
         root.want-line = LineApi.line-of(root.own, c);
         root.want-column = LineApi.column-of(root.own, c);
         root.want-anchor-column = LineApi.line-of(root.own, a) == root.want-line ? LineApi.column-of(root.own, a) : root.want-column;
@@ -102,6 +128,26 @@ export component LineEditor inherits Rectangle {
         root.text = root.own;
         LineApi.update(root.lines, root.own);
         root.request(at, at, true);
+        root.edited();
+    }
+
+    // Ctrl+A: every line shows as selected, the selection is the whole text.
+    function select-all() {
+        let total = LineApi.offset-of(root.own, 2000000000, 0);
+        if total > 0 {
+            root.whole = true;
+            root.anchor = 0;
+            root.caret = total;
+        }
+    }
+
+    // The whole text is replaced (typed character, paste, cut, Backspace): one line to type in.
+    function replace-all(t: string) {
+        root.whole = false;
+        root.own = t;
+        root.text = t;
+        LineApi.update(root.lines, t);
+        root.request(2000000000, 2000000000, true);
         root.edited();
     }
 
@@ -145,6 +191,9 @@ export component LineEditor inherits Rectangle {
         content-height: lines-box.height;
 
         lines-box := VerticalLayout {
+            // The cursor at the start of a right aligned line is drawn at the right edge of its
+            // text, past the width of the input: this room keeps it from being cut off.
+            padding-right: 3px;
             width: flick.width;
             height: max(flick.height, self.preferred-height);
             for line[i] in root.lines: ti := TextInput {
@@ -158,6 +207,7 @@ export component LineEditor inherits Rectangle {
                 horizontal-alignment: LineApi.direction(root.text, i) > 0 ? TextHorizontalAlignment.right : LineApi.direction(root.text, i) < 0 ? TextHorizontalAlignment.left : Theme.start-align;
                 property <length> caret-y;
                 property <int> wanted: root.poke;
+                property <bool> whole-selected: root.whole;
 
                 function take() {
                     if root.want-active && root.want-line == i {
@@ -176,26 +226,43 @@ export component LineEditor inherits Rectangle {
                         root.focus-line = i;
                     } else if root.focus-line == i {
                         root.focus-line = -1;
+                        root.whole = false;
                     }
+                }
+                // Ctrl+A shows every line selected, and ends it.
+                changed whole-selected => {
+                    root.selecting = true;
+                    if root.whole {
+                        self.set-selection-offsets(0, LineApi.line-length(root.own, i));
+                    } else {
+                        self.clear-selection();
+                    }
+                    root.selecting = false;
                 }
 
                 cursor-position-changed(pos) => {
-                    self.caret-y = pos.y;
-                    // Keep the cursor in view when the lines are taller than the box.
-                    let top = self.y + pos.y;
-                    if top < -flick.content-y {
-                        flick.content-y = -top;
-                    } else if top + root.row-height > -flick.content-y + flick.height {
-                        flick.content-y = flick.height - top - root.row-height;
-                    }
-                    if self.has-focus {
-                        let start = LineApi.offset-of(root.own, i, 0);
-                        root.caret = start + self.cursor-position-byte-offset;
-                        root.anchor = start + self.anchor-position-byte-offset;
+                    // Not when the editor itself selects the line (`whole-selected` above).
+                    if !root.selecting {
+                        self.caret-y = pos.y;
+                        // Keep the cursor in view when the lines are taller than the box.
+                        let top = self.y + pos.y;
+                        if top < -flick.content-y {
+                            flick.content-y = -top;
+                        } else if top + root.row-height > -flick.content-y + flick.height {
+                            flick.content-y = flick.height - top - root.row-height;
+                        }
+                        if self.has-focus {
+                            // A click or a drag: every key is dealt with in `key-pressed`.
+                            root.whole = false;
+                            let start = LineApi.offset-of(root.own, i, 0);
+                            root.caret = start + self.cursor-position-byte-offset;
+                            root.anchor = start + self.anchor-position-byte-offset;
+                        }
                     }
                 }
 
                 edited => {
+                    root.whole = false;
                     let start = LineApi.offset-of(root.own, i, 0);
                     let t = LineApi.join(root.lines);
                     root.own = t;
@@ -213,7 +280,7 @@ export component LineEditor inherits Rectangle {
                 // A selection made by a key (Ctrl+A, Shift+arrows) changes no cursor position the
                 // callback above would hear of: read it when the key is released.
                 key-released(event) => {
-                    if self.has-focus {
+                    if self.has-focus && !root.whole {
                         let start = LineApi.offset-of(root.own, i, 0);
                         root.caret = start + self.cursor-position-byte-offset;
                         root.anchor = start + self.anchor-position-byte-offset;
@@ -231,6 +298,70 @@ export component LineEditor inherits Rectangle {
                     let at-start = collapsed && self.cursor-position-byte-offset == 0;
                     let at-end = collapsed && self.cursor-position-byte-offset == LineApi.line-length(root.own, i);
                     let normal = LineApi.line-count(root.own) == root.lines.length;
+                    let rtl = LineApi.direction(root.own, i) > 0;
+                    let ctrl-only = event.modifiers.control && !event.modifiers.shift && !event.modifiers.alt && !event.modifiers.meta;
+                    let is-a = event.text == "a" || event.text == "A";
+                    if ctrl-only && is-a && normal {
+                        root.select-all();
+                        return accept;
+                    }
+                    if root.whole && normal {
+                        let is-c = event.text == "c" || event.text == "C";
+                        let is-x = event.text == "x" || event.text == "X";
+                        let is-v = event.text == "v" || event.text == "V";
+                        let to-start = event.text == Key.UpArrow || event.text == Key.Home || event.text == (rtl ? Key.RightArrow : Key.LeftArrow);
+                        let to-end = event.text == Key.DownArrow || event.text == Key.End || event.text == (rtl ? Key.LeftArrow : Key.RightArrow);
+                        if ctrl-only && is-c {
+                            LineApi.copy-text(root.own);
+                            return accept;
+                        }
+                        if ctrl-only && is-x {
+                            LineApi.copy-text(root.own);
+                            root.replace-all("");
+                            return accept;
+                        }
+                        if ctrl-only && is-v {
+                            if LineApi.clipboard-text() != "" {
+                                root.replace-all(LineApi.clipboard-text());
+                            }
+                            return accept;
+                        }
+                        if event.text == Key.Backspace || event.text == Key.Delete {
+                            root.replace-all("");
+                            return accept;
+                        }
+                        if to-start || to-end {
+                            let to = to-start ? 0 : LineApi.offset-of(root.own, 2000000000, 0);
+                            root.request(to, to, true);
+                            return accept;
+                        }
+                        if LineApi.printable(event.text) && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta {
+                            root.replace-all(event.text);
+                            return accept;
+                        }
+                    }
+                    // Left and Right in a right to left line: Left is forward in the text.
+                    if rtl && (event.text == Key.LeftArrow || event.text == Key.RightArrow) && !event.modifiers.alt && !event.modifiers.meta {
+                        let forward = event.text == Key.LeftArrow;
+                        let line-start = LineApi.offset-of(root.own, i, 0);
+                        let cur = line-start + self.cursor-position-byte-offset;
+                        let anc = line-start + self.anchor-position-byte-offset;
+                        if plain && forward && at-end && normal && i < root.lines.length - 1 {
+                            root.request(LineApi.offset-of(root.own, i + 1, 0), LineApi.offset-of(root.own, i + 1, 0), true);
+                            return accept;
+                        }
+                        if plain && !forward && at-start && normal && i > 0 {
+                            root.request(line-start - 1, line-start - 1, true);
+                            return accept;
+                        }
+                        // A selection that is not extended collapses to the end the arrow points to.
+                        let collapse = !event.modifiers.shift && !event.modifiers.control && anc != cur;
+                        let to = collapse ? (forward ? max(anc, cur) : min(anc, cur)) : LineApi.step(root.own, cur, forward ? 1 : -1, event.modifiers.control);
+                        self.set-selection-offsets(event.modifiers.shift ? self.anchor-position-byte-offset : to - line-start, to - line-start);
+                        root.caret = to;
+                        root.anchor = event.modifiers.shift ? anc : to;
+                        return accept;
+                    }
                     if event.text == Key.Backspace && at-start && normal && i > 0 && !event.modifiers.control {
                         root.join(i);
                         return accept;

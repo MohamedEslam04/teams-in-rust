@@ -5980,6 +5980,7 @@ version = "0.0.0"
 dependencies = [
  "scraper",
  "unicode-bidi",
+ "unicode-segmentation",
 ]
 
 [[package]]
