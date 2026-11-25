@@ -7,6 +7,8 @@ pub struct FakeDriver {
     /// Everything asked of it, as `join <target> mic=on|off`, `mute on`, `hand up`, `leave`, ...
     pub log: Arc<Mutex<Vec<String>>>,
     pub(super) sink: Arc<Mutex<Option<EventSink>>>,
+    /// The handles' leave never finishes (a hung request, for the quit tests).
+    pub(super) hang_leave: Arc<AtomicBool>,
     /// Demo script: `Some(delayed)` plays connecting, lobby (when delayed) and connected.
     pub(super) script: Option<bool>,
     /// The pre-join preview: `on <camera>` and `off`, and where its pictures go while it runs.
@@ -48,7 +50,14 @@ impl FakeDriver {
             log: self.log.clone(),
             sink,
             demo: false,
+            hang_leave: self.hang_leave.clone(),
         })
+    }
+
+    /// A leave sent to a running call never finishes ([`CallHandle::finished`] waits for ever).
+    #[cfg(test)]
+    pub fn hang_when_leaving(&self) {
+        self.hang_leave.store(true, Ordering::SeqCst);
     }
 
     #[cfg(test)]
@@ -125,6 +134,7 @@ pub(super) struct FakeHandle {
     pub(super) sink: EventSink,
     /// The demo answers recording, transcription and captions as the service would.
     pub(super) demo: bool,
+    pub(super) hang_leave: Arc<AtomicBool>,
 }
 
 pub(super) fn start_stop(on: bool) -> &'static str {
@@ -132,6 +142,14 @@ pub(super) fn start_stop(on: bool) -> &'static str {
 }
 
 impl CallHandle for FakeHandle {
+    fn finished(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        if self.hang_leave.load(Ordering::SeqCst) {
+            Box::pin(std::future::pending())
+        } else {
+            Box::pin(async {})
+        }
+    }
+
     fn control(&self, c: Control) {
         let line = match &c {
             Control::Mute(m) => format!("mute {}", if *m { "on" } else { "off" }),
@@ -253,6 +271,7 @@ impl CallDriver for FakeDriver {
             log: self.log.clone(),
             sink,
             demo: self.script.is_some(),
+            hang_leave: self.hang_leave.clone(),
         })
     }
 }

@@ -63,6 +63,8 @@ mod page_switch;
 mod palette;
 mod people;
 mod picture_window;
+#[cfg(feature = "calls")]
+mod quit;
 mod quote_author;
 mod reaction_card;
 pub(crate) mod responsive;

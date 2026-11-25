@@ -66,17 +66,14 @@ impl Engine {
         tokio::spawn(async move { run(client).await });
     }
 
-    /// IronTeams is closing: removes this device from presence, in the moment main waits before the
-    /// runtime shuts down.
-    pub(super) fn stop_my_presence(self: &Arc<Self>) {
+    /// IronTeams is closing: removes this device from presence (500 ms at most), while main waits
+    /// before the runtime shuts down.
+    pub(super) async fn stop_my_presence(self: &Arc<Self>) {
         if !STARTED.swap(false, Ordering::SeqCst) {
             return;
         }
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            let _ =
-                tokio::time::timeout(Duration::from_millis(500), client.remove_endpoint()).await;
-        });
+        let _ =
+            tokio::time::timeout(Duration::from_millis(500), self.client.remove_endpoint()).await;
     }
 }
 

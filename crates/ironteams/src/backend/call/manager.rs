@@ -460,6 +460,22 @@ impl CallManager {
         self.shared.push();
     }
 
+    /// IronTeams is quitting: leaves the shown call and then the one that was on hold. The
+    /// handles come back so the caller can wait for each leave request to go out
+    /// ([`CallHandle::finished`]).
+    pub fn leave_all(&self) -> Vec<Arc<dyn CallHandle>> {
+        let mut handles = Vec::new();
+        // A call on hold comes forward once the shown one has left: at most two rounds.
+        for _ in 0..2 {
+            if !self.shared.model.lock().unwrap().phase.active() {
+                break;
+            }
+            handles.extend(self.shared.handle.lock().unwrap().clone());
+            self.command(CallCmd::Leave);
+        }
+        handles
+    }
+
     /// A people search starts; pass its number to [`Self::found`].
     pub fn find_started(&self) -> u64 {
         self.shared.model.lock().unwrap().find_started()
