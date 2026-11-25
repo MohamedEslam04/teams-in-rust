@@ -291,6 +291,14 @@ impl RemoteVideo {
         );
     }
 
+    /// Whether a media server routes this session's video: its SDP gave a gallery slot or the
+    /// sharing line an `x-source-streamid`, so nothing comes on them until subscribed. A meeting,
+    /// and a 1:1 call whose media the server took over (a media restart with `x-plaza-msi-range`,
+    /// live 2026-11-25); never a person-to-person call, whose browser SDP names no stream ids.
+    pub fn subscribes(&self) -> bool {
+        !self.table.is_empty() || self.share_line.is_some()
+    }
+
     /// The gallery slot showing `mri`'s camera.
     pub fn slot_of(&self, mri: &str) -> Option<usize> {
         self.held
@@ -352,7 +360,8 @@ impl RemoteVideo {
         out
     }
 
-    /// Follows a roster change in a meeting: sends the subscriptions it calls for.
+    /// Follows a roster change where a media server routes the video ([`Self::subscribes`]):
+    /// sends the subscriptions it calls for.
     pub fn reselect(
         &mut self,
         ngc: &NgcClient,
@@ -610,6 +619,41 @@ mod tests {
         assert_eq!(v.presenter_changed(&r, "8:me"), None);
         let nobody = roster(json!({"8:me": person("Me", None, None)}));
         assert_eq!(v.presenter_changed(&nobody, "8:me").as_deref(), Some(""));
+    }
+
+    /// A 1:1 call the media server took over (live 2026-11-25, scrubbed): its answer gave our
+    /// sharing line (mid 3) stream id 854, and the other side's roster entry then showed its share
+    /// `sendonly` with MSI 212. Nothing was subscribed and the share never came.
+    #[test]
+    fn a_one_to_one_call_on_a_media_server_subscribes_the_other_side_s_share() {
+        let mut v = RemoteVideo {
+            share_line: Some(("3".to_owned(), 854)),
+            ..Default::default()
+        };
+        assert!(v.subscribes());
+        let r = roster(json!({
+            "8:me": person("Me", None, None),
+            "8:peer": {"version": 1, "state": "active", "details": {"displayName": "Peer"},
+                "endpoints": {"ep": {"call": {"mediaStreams": [
+                    {"type": "audio", "label": "main-audio", "sourceId": 201, "direction": "sendrecv"},
+                    {"type": "video", "label": "main-video", "sourceId": 202, "direction": "recvonly"},
+                    {"type": "applicationsharing-video", "label": "applicationsharing-video",
+                     "sourceId": 212, "direction": "sendonly"}]}}}},
+        }));
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked.len(), 1);
+        assert_eq!(
+            (asked[0].mid.as_str(), asked[0].stream_msid, asked[0].source),
+            ("3", 854, Some(212))
+        );
+        assert_eq!(asked[0].limits, SCREEN_LIMITS);
+    }
+
+    #[test]
+    fn a_person_to_person_call_subscribes_nothing() {
+        // Its browser SDP names no stream ids: no line can be subscribed.
+        assert!(!RemoteVideo::default().subscribes());
+        assert!(with_lines(1, false).subscribes(), "a meeting's gallery");
     }
 
     #[test]

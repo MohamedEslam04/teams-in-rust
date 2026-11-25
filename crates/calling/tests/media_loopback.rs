@@ -293,6 +293,72 @@ async fn a_session_with_video_lines_hears_a_peer_that_names_its_ssrcs_by_range_o
     service.close().await.unwrap();
 }
 
+/// [`without_ssrc_lines`], and each video line's one-SSRC range widened to the hundred a media
+/// server names (its stream sends from the first).
+fn with_wide_video_ranges(sdp: &str) -> String {
+    let mut video = false;
+    without_ssrc_lines(sdp)
+        .split("\r\n")
+        .map(|l| {
+            if l.starts_with("m=") {
+                video = l.starts_with("m=video");
+            }
+            match l.strip_prefix("a=x-ssrc-range:") {
+                Some(range) if video => {
+                    let first: u32 = range.split('-').next().unwrap().parse().unwrap();
+                    format!("a=x-ssrc-range:{first}-{}", first + 99)
+                }
+                _ => l.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+/// A 1:1 call whose media a media server took over: the other side's share comes on our sharing
+/// line, its SSRCs named only by the line's `a=x-ssrc-range:89104-89203` (live 2026-11-25, the
+/// share never showed). It must reach the video packets, with the sharing line's mid.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_share_whose_ssrcs_only_a_wide_range_names_reaches_the_video_packets() {
+    let with_share = || MediaOptions {
+        video: vec![VideoRole::MainVideo, VideoRole::ApplicationSharing],
+        ..local()
+    };
+    let (ironteams, mut ironteams_events) = MediaSession::with_options(vec![], with_share())
+        .await
+        .unwrap();
+    let (service, mut service_events) = MediaSession::with_options(vec![], with_share())
+        .await
+        .unwrap();
+    let offer = ironteams.create_offer().await.unwrap();
+    let answer = with_wide_video_ranges(&service.accept_offer(&offer).await.unwrap());
+    assert!(!answer.contains("a=ssrc:"), "{answer}");
+    ironteams.set_answer(&answer).await.unwrap();
+    wait_for(&mut ironteams_events, MediaState::Connected).await;
+    wait_for(&mut service_events, MediaState::Connected).await;
+
+    let sender = service.video_sender(VideoRole::ApplicationSharing).unwrap();
+    let send = async move {
+        for i in 0..45u8 {
+            let idr = vec![0, 0, 0, 1, 0x65, 0x88, i, i, i, i];
+            sender.send(idr, Duration::from_millis(66)).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(66)).await;
+        }
+    };
+    let recv = async {
+        timeout(Duration::from_secs(3), ironteams_events.video.recv())
+            .await
+            .ok()
+            .flatten()
+    };
+    let (_, got) = tokio::join!(send, recv);
+    let got = got.expect("no packet of the other side's share");
+    let share_mid = ironteams.video_mid(VideoRole::ApplicationSharing).await;
+    assert_eq!(got.mid.as_deref(), share_mid.as_deref());
+    ironteams.close().await.unwrap();
+    service.close().await.unwrap();
+}
+
 /// Our offer as a G.711-only endpoint (Teams voicemail) sees it once Opus is taken out: PCMU,
 /// PCMA and telephone-event.
 fn without_opus(offer: &str) -> String {

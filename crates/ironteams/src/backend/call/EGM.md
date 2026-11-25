@@ -148,6 +148,7 @@ Files:
 - `[share.rs:wanted]` reads env IRONTEAMS_SCREEN_SHARE via compat::var_os
 - `[camera.rs:preview]` spawns tokio task owning camera capture; pushes VideoSlot::Preview frames and status text through sink
 - `[manager.rs:CallManager::add_background]` VideoFx::add_background writes the picture into effects config; UI info on failure
+- `[remote_video.rs:RemoteVideo::subscribes]` pub fn(&self) -> bool; true when the negotiated SDP gave a gallery slot or the sharing line an `x-source-streamid` (a media server routes the video: a meeting, or a 1:1 call after the server's media restart); `live/run.rs` sends roster subscriptions (`reselect`) only then, in meetings and 1:1 calls alike
 - `[remote_video.rs:RemoteVideo::reselect]` spawns a task sending applyChannelParameters HTTP requests via NgcClient, in order; logs INFO `video subscription sent` per request, then `video subscribed` (INFO) or `video subscription refused` (WARN) with mid, source, stream and sequence
 - `[remote_video.rs:RemoteVideo::show]` logs INFO `remote video line started` with the mid and VideoSlot once per line
 - `[sink.rs:Shared::publish_presence]` updates global call_presence state (in a call / meeting)

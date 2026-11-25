@@ -646,6 +646,16 @@ nothing here ran against a live call yet.
    `max-fs=8160`, `max-fps=1500`); a gallery tile with `max-fs=920` (640x360).
 4. **1:1 calls** need no subscription: the other side's camera comes on the main-video line and
    its share on the sharing line after its re-offer with `ScreenSharer`.
+   Not when a media server took the call's media over (live 2026-11-25, a Teams web user in
+   the same tenant called IronTeams): its media restart offer has `a=x-plaza-msi-range`, ten
+   `main-video` lines and `a=x-source-streamid` on each line, the server's answers give our lines
+   their own SSRC ranges, the roster names the other side's share by `sourceId`, and while
+   IronTeams shared, `controlVideoStreaming` asked it for that share's MSI: the receiver
+   subscribes. IronTeams now subscribes in any call whose lines carry stream ids
+   (`RemoteVideo::subscribes`), and declares the first SSRC of each `a=x-ssrc-range` so
+   webrtc-rs (rtc 0.21.1) keeps the packets (it binds an undeclared SSRC only with a single RTP
+   line, or by a `rid`). UNVERIFIED live: that the server answers the subscription and sends from
+   the range's first SSRC.
 
 What IronTeams does (`calling::signaling::{roster, video}`, `calling::media`,
 `ironteams/src/backend/call/remote_video.rs`):
