@@ -654,8 +654,28 @@ mod tests {
         );
         assert_eq!(
             directions(&direct_offer(offer, false, None)),
-            ["a=sendonly", "a=inactive"]
+            ["a=sendonly", "a=recvonly"]
         );
+    }
+
+    /// Live 2026-11-25: after we stopped sharing, the re-offer said the sharing line `inactive`;
+    /// the peer answered `inactive` and its later presentation had no line to arrive on ("Waiting
+    /// for the shared screen..." for good). Stopping keeps the line `recvonly`, as our first
+    /// answer had it, so the peer can still present to us.
+    #[test]
+    fn stopping_a_direct_share_keeps_the_sharing_line_receiving() {
+        let sharing = "v=0\r\n\
+            m=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n\
+            m=video 9 RTP/SAVP 107\r\na=mid:2\r\na=recvonly\r\na=label:main-video\r\n\
+            m=video 9 RTP/SAVP 107\r\na=mid:3\r\na=sendonly\r\n\
+            a=label:applicationsharing-video\r\n";
+        let stopped = direct_offer(sharing, false, Some(false));
+        let share_line = stopped
+            .split("m=video")
+            .find(|m| m.contains("a=label:applicationsharing-video"))
+            .unwrap();
+        assert!(share_line.contains("a=recvonly"), "{stopped}");
+        assert!(!stopped.contains("a=inactive"), "{stopped}");
     }
 
     const FULL_REOFFER: &str =
