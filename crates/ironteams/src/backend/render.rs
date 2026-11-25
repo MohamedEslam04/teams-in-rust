@@ -20,6 +20,9 @@ use store::{ConvFilter, ConvKind, MessageRow, OutboxState, UserRow};
 
 /// The biggest inline image that is downloaded.
 const INLINE_MAX_BYTES: usize = 10 * 1024 * 1024;
+
+/// What Teams writes as the author of a reply quote that was sent without one.
+const QUOTE_NAME_PLACEHOLDER: &str = "Display Name";
 /// How long the render loop waits after a mark, gathering the marks that follow it.
 const RENDER_DEBOUNCE: Duration = Duration::from_millis(120);
 /// Tries at one inline image, the first included, before the message keeps its fallback.
@@ -387,6 +390,37 @@ impl Engine {
         }
         self.images.lock().unwrap().clear();
         self.mark(|d| d.messages = true);
+    }
+
+    /// Who wrote a quoted message, as a reply quote shows it. Teams writes "Display Name" in a
+    /// quote it was sent without a name (IronTeams sent such quotes before 0.1.9, and every
+    /// client shows them so): the name of the quoted message's sender is shown instead, from
+    /// the stored message or else the quote's MRI.
+    pub(super) fn quote_author(&self, q: &crate::markdown::QuoteCard) -> String {
+        if !q.author.is_empty() && q.author != QUOTE_NAME_PLACEHOLDER {
+            return q.author.clone();
+        }
+        let quoted = (!q.id.is_empty())
+            .then(|| self.store.lock().unwrap().message(&q.id).ok().flatten())
+            .flatten();
+        let name = match quoted {
+            Some(row) => self.sender_display_name(&row),
+            None if !q.author_mri.is_empty() => self
+                .store
+                .lock()
+                .unwrap()
+                .user(&q.author_mri)
+                .ok()
+                .flatten()
+                .map(|u| u.display_name)
+                .unwrap_or_default(),
+            None => String::new(),
+        };
+        if name.is_empty() {
+            q.author.clone()
+        } else {
+            name
+        }
     }
 
     /// The size of an inline picture decoded before (at any scale: its shape is what counts).
@@ -1253,7 +1287,7 @@ impl Engine {
                     .quotes
                     .into_iter()
                     .map(|q| QuoteData {
-                        author: q.author,
+                        author: self.quote_author(&q),
                         text: q.text,
                         id: q.id,
                         time: q.time_ms.map(quote_time).unwrap_or_default(),

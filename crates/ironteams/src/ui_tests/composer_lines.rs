@@ -84,9 +84,12 @@ fn backspace_at_the_start_of_a_line_joins_it_to_the_line_before() {
     type_text(&app, "cd");
     settle();
     assert_eq!(line_inputs(&app), 2);
-    // Home, then Backspace at the start of "cd".
-    key(&app, Key::Home, true);
-    key(&app, Key::Home, false);
+    // Two steps left, then Backspace at the start of "cd". (Not Home: on macOS Slint's Home
+    // scrolls and leaves the cursor where it is.)
+    for _ in 0..2 {
+        key(&app, Key::LeftArrow, true);
+        key(&app, Key::LeftArrow, false);
+    }
     key(&app, Key::Backspace, true);
     key(&app, Key::Backspace, false);
     settle();
