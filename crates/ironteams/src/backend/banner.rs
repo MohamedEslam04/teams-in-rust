@@ -118,6 +118,25 @@ pub struct Banner {
     pub body: String,
 }
 
+/// The most of a message the card in the window keeps: it scrolls past seven lines, so it gets the
+/// whole text, bounded only so a huge message costs no memory or card IPC.
+pub const CARD_TEXT_MAX: usize = 4000;
+
+/// The most of a message the desktop notification shows: it is a glance, not a reader.
+pub const NOTIFICATION_TEXT_MAX: usize = 200;
+
+/// The first `max` characters of `text`.
+fn clip(text: &str, max: usize) -> String {
+    text.chars().take(max).collect()
+}
+
+/// What a message notification carries as its text, for the cards (the notification clips it
+/// further, see [`compose`]): [`friendly`], up to [`CARD_TEXT_MAX`] characters, and "New message"
+/// instead of the text when previews are off.
+pub fn message_line(full: &str, preview: bool) -> String {
+    super::settings::banner_body(preview, friendly(&clip(full, CARD_TEXT_MAX)))
+}
+
 /// The message as one notification line: pictures as "📷 Image", nothing as "New message".
 pub fn friendly(text: &str) -> String {
     let lines: Vec<&str> = text
@@ -159,8 +178,11 @@ pub fn is_meeting(conversation: &str, kind_meeting: bool) -> bool {
 }
 
 /// Builds the notification. `title` is the chat's name (empty or the sender's name for a 1:1),
-/// `line` the message as [`friendly`] made it (or "New message" when previews are off).
+/// `line` the message as [`message_line`] made it (or "New message" when previews are off); the
+/// notification shows its first [`NOTIFICATION_TEXT_MAX`] characters.
 pub fn compose(sender: &str, title: &str, line: &str, markup: bool) -> Banner {
+    let line = clip(line, NOTIFICATION_TEXT_MAX);
+    let line = line.as_str();
     let group = is_group(sender, title);
     let summary = if group { title } else { sender }.to_string();
     let body = match (group, markup) {
@@ -455,6 +477,34 @@ mod tests {
         assert_eq!(b.summary, "Sara");
         assert_eq!(b.body, "a &lt;b&gt; &amp; c");
         assert_eq!(compose("Sara", "", "x", true).summary, "Sara");
+    }
+
+    #[test]
+    fn the_card_gets_the_whole_message_and_the_notification_its_first_200_characters() {
+        let long = "word ".repeat(100);
+        assert_eq!(long.chars().count(), 500);
+        let line = message_line(&long, true);
+        assert_eq!(line, long.trim_end());
+        // The card in the window and on the desktop shows all of it.
+        assert_eq!(card_lines("Sara", "Sara", &line).2, long.trim_end());
+        // The system notification stays a glance.
+        let b = compose("Sara", "Sara", &line, false);
+        assert_eq!(b.body.chars().count(), NOTIFICATION_TEXT_MAX);
+        assert!(long.starts_with(&b.body));
+        let group = compose("Sara", "Tech Team", &line, false);
+        assert_eq!(
+            group.body.chars().count(),
+            "Sara: ".len() + NOTIFICATION_TEXT_MAX
+        );
+    }
+
+    #[test]
+    fn a_huge_message_is_bounded_and_hidden_previews_hide_it_everywhere() {
+        let huge = "x".repeat(CARD_TEXT_MAX + 500);
+        assert_eq!(message_line(&huge, true).chars().count(), CARD_TEXT_MAX);
+        let hidden = message_line(&huge, false);
+        assert_eq!(hidden, "New message");
+        assert_eq!(compose("Sara", "Sara", &hidden, true).body, "New message");
     }
 
     fn caps(inline_reply: bool) -> Caps {

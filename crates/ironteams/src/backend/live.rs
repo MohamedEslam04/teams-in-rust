@@ -304,8 +304,7 @@ impl Engine {
             ),
             None => chat,
         };
-        let text: String = full.chars().take(200).collect();
-        let line = super::settings::banner_body(preview, super::banner::friendly(&text));
+        let line = super::banner::message_line(&full, preview);
         let photo = st.user(&m.sender_mri).ok().flatten().and_then(|u| u.avatar);
         tracing::info!(conversation = %m.conversation_id, ?route, "message notification");
         let thread_root = m.parent_id.as_deref().unwrap_or(&m.id);
