@@ -928,6 +928,18 @@ pub fn mid_of_role(sdp: &str, role: VideoRole) -> Option<String> {
         .map(str::to_owned)
 }
 
+/// [`mid_of_role`] of the first section that is not declined (port 0): a line a re-offer declined
+/// (the peer stopped sharing) names no share, and the share that follows may come on a new mid.
+pub fn live_mid_of_role(sdp: &str, role: VideoRole) -> Option<String> {
+    Parsed::new(sdp)
+        .sections
+        .iter()
+        .filter(|s| MediaLine::parse(&s[0]).is_some_and(|m| m.port != "0"))
+        .find(|s| role_of(s) == Some(role))
+        .and_then(|s| s.iter().find_map(|l| attr(l, "mid")))
+        .map(str::to_owned)
+}
+
 fn direction_of(section: &[String]) -> &str {
     section
         .iter()
