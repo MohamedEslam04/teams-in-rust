@@ -1,5 +1,6 @@
-//! A conversation opens at its newest message and stays there while rows grow after their first
-//! layout (cards, images, voice bubbles), and sending a message always scrolls to it.
+//! A conversation opens at its newest message (or at its "New messages" divider) and stays there
+//! while rows grow after their first layout (cards, images, voice bubbles), and sending a message
+//! always scrolls to it.
 
 use super::*;
 use crate::data::HeaderData;
@@ -123,6 +124,94 @@ fn opening_a_long_chat_lands_at_its_newest_message() {
     settle(&h.app);
     assert!(h.app.get_at_bottom());
     assert!(find_label(&h.app, "↓ Jump to newest").is_empty());
+}
+
+/// A chat with `count` messages from Sara (three lines each), read up to the one at `read`.
+fn unread_chat(count: i64, read: i64) -> Harness {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    let now = teams_proto::time::now_ms();
+    let at = |i: i64| now - 3_600_000 + i * 1000;
+    for i in 0..count {
+        store
+            .upsert_message(&MessageRow {
+                id: format!("{}", 6000 + i),
+                conversation_id: NOTES.into(),
+                parent_id: None,
+                sender_mri: "8:orgid:sara".into(),
+                sender_name: "Sara".into(),
+                compose_ms: at(i),
+                edited_ms: None,
+                deleted: false,
+                message_type: "RichText/Html".into(),
+                content_html: format!(
+                    "<p>from Sara {i}</p><p>a second line</p><p>a third line</p>"
+                ),
+                client_message_id: None,
+                reactions_json: "{}".into(),
+            })
+            .unwrap();
+    }
+    store.mark_unread(NOTES, at(read)).unwrap();
+    let h = Harness::with_store(store);
+    let run = h.runner();
+    h.app.on_at_bottom_changed(move |b| run(Cmd::AtBottom(b)));
+    h
+}
+
+/// The "New messages" divider is drawn inside the list's bounds.
+fn assert_divider_shown(app: &AppWindow, what: &str) {
+    let l = list(app);
+    let top = l.absolute_position().y;
+    let bottom = top + l.size().height;
+    let divider = find_label(app, "New messages");
+    assert_eq!(
+        divider.len(),
+        1,
+        "{what}: the divider row is not drawn (view at {}, at bottom {})",
+        app.get_msg_view_y(),
+        app.get_at_bottom()
+    );
+    let y = divider[0].absolute_position().y;
+    assert!(
+        y >= top && y < bottom,
+        "{what}: the divider is at {y}, the list spans {top}..{bottom}"
+    );
+}
+
+/// A chat with new messages opens at its "New messages" divider, not at the top of the loaded
+/// history: the list still had the content height of the chat shown before (or none) when it was
+/// told where the divider is. A row below the divider that grows afterwards (a picture getting its
+/// size) does not pull the view to the newest message.
+#[test]
+fn opening_a_chat_with_new_messages_lands_at_the_divider() {
+    let h = unread_chat(60, 29);
+    // Another chat first, as when switching chats: the message pane exists already (a pane
+    // created by the open itself never sees the divider tick change).
+    h.select(BACKEND);
+    settle(&h.app);
+    let ticks = h.app.get_divider_tick();
+    h.select(NOTES);
+    assert!(
+        h.app.get_divider_tick() > ticks,
+        "the chat opens at its divider"
+    );
+    let at = h.app.get_unread_index();
+    let rows = h.app.get_messages().row_count() as i32;
+    assert!(
+        at >= 20 && at + 20 <= rows,
+        "the divider ({at} of {rows}) is more than a screen from both ends"
+    );
+    settle(&h.app);
+    assert_divider_shown(&h.app, "opened");
+    assert!(!h.app.get_at_bottom(), "unread rows follow below the view");
+
+    let model = h.app.get_messages();
+    let below = (at + 2) as usize;
+    let id = model.row_data(below).unwrap().id;
+    model.set_row_data(below, tall(&id, "a card"));
+    settle(&h.app);
+    assert_divider_shown(&h.app, "a row below grew");
 }
 
 /// Sending scrolls to the sent message, also when the list was scrolled up and the message is a

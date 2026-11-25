@@ -87,9 +87,13 @@ export component MessagePane inherits Rectangle {
     property <bool> unread-above: root.unread-index >= 0 && root.unread-index < root.messages.length && !root.posts-mode
         && msg-list.content-y + msg-list.content-height * root.unread-index / max(1, root.messages.length) + 48px < 0px;
     // Puts row `i` of the list near the top. Its place is estimated; the divider or flashed row
-    // there corrects it once it is laid out (`aligning`).
+    // there corrects it once it is laid out (`aligning`). The list is no longer pinned to the
+    // newest message: the content height changes in the same layouts that move the view, so the
+    // view's move alone does not tell it, and a row growing later (a picture getting its size)
+    // pulled the view down to the newest message. It is pinned again if it lands at the bottom.
     function show-row(i: int) {
         msg-list.aligning = true;
+        msg-list.pinned = false;
         msg-list.content-y = min(0px, 24px - msg-list.content-height * i / max(1, root.messages.length));
     }
     // Sees every pointer move over the list and passes it on. The list rebuilds
@@ -167,7 +171,16 @@ export component MessagePane inherits Rectangle {
                 self.ensure-row-visible(root.anchor-index, ScrollBehavior.instant);
             }
         }
-        changed d-tick => { root.show-row(root.divider-index); }
+        changed d-tick => {
+            root.show-row(root.divider-index);
+            // The estimate used the content height of the rows the list had laid out before the
+            // ones that came with the tick (none in a chat just opened: the view stayed at the
+            // top of the history, far above the divider, whose row was never built to correct
+            // it). It is made again once the new rows are laid out. (`restart` alone only restarts
+            // a running timer.)
+            divider-timer.running = true;
+            divider-timer.restart();
+        }
         // The content height the last `changed content-height` saw. A content-y change
         // that arrives with a different height is the content growing under the
         // view (a card, an image or a voice bubble got its real height), not the
@@ -399,6 +412,16 @@ export component MessagePane inherits Rectangle {
             }
         }
     }
+    // The rows that came with a jump to the divider (or to a found row) are laid out by now: the
+    // estimate again, with their content height; the row there corrects it (`aligning`).
+    divider-timer := Timer {
+        interval: 30ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.show-row(root.divider-index);
+        }
+    }
     // The anchor row is at the view's top by now: move down to where the user was inside it. The
     // view must have left the bottom the first timer put it at, or there is nothing to adjust.
     offset-timer := Timer {
@@ -439,6 +462,9 @@ export component MessagePane inherits Rectangle {
         triggered => {
             msg-list.aligning = false;
             msg-list.apply-off = false;
+            // Where the view landed: at the bottom (all the new messages fit) it follows the
+            // newest message again.
+            msg-list.recheck();
         }
     }
     // The bottom buttons, side by side: "↑ New messages" (back to the divider) and Jump to newest.
