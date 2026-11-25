@@ -45,6 +45,9 @@
 //! ironteams-cli appearance [show|watch]  saved appearance, general and accessibility prefs, the desktop portal values and the resolved result (read-only)
 //! ironteams-cli tray-demo [--step S|autostart <enable|disable|status>]  show the tray icon, unread badge and launcher badge for a few seconds; autostart writes the login entry
 //! ironteams-cli logout                remove the stored refresh token
+//! ironteams-cli spike personal-login [--client office|azcli] [--out FILE]
+//!                                 Gate 0 spike: personal-account sign-in, skypetoken and chat list;
+//!                                 prints a redacted summary, stores no token (docs/spikes/personal-auth.md)
 //! ```
 
 mod accounts;
@@ -63,6 +66,7 @@ mod mcp;
 mod preview_file;
 mod search;
 mod settings;
+mod spike;
 mod store;
 mod team;
 mod tester;
@@ -557,6 +561,7 @@ async fn main() -> Result<()> {
         Some("devices") => devices::run(&args[1..])?,
         Some("appearance") => appearance::run(&args[1..]).await?,
         Some("tray-demo") => tray::run(&args[1..])?,
+        Some("spike") => spike::run(&args[1..]).await?,
         Some("logout") => {
             let cfg = paths.load_config()?;
             session::delete_refresh_token(&cfg.account)?;
@@ -1312,6 +1317,7 @@ async fn main() -> Result<()> {
                    settings set <notify|pause|sound|meeting-chat|meeting-rsvp|privacy|block|unblock|priority-add|priority-remove> ... --dry-run\n\
                    preview-file <path>|--find <ext>|--local <file> [--page N] [--width W] [--out F]\n\
                    store <bar|more|home|search|app|mine|org|settings|install|uninstall|update|pin|unpin|move|probe|bots|extensions|ext-query>\n\
+                   spike personal-login [--client office|azcli] [--out FILE]\n\
                    tail"
             );
         }

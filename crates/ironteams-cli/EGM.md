@@ -27,6 +27,7 @@ Top-level commands handled in `[src/main.rs:main]`:
   - `[src/appcard.rs]` `appcard`, `[src/delivery.rs]` `deliver`, `[src/images.rs]` `images`, `[src/preview_file.rs]` `preview-file`.
   - `[src/apps.rs]` `tasks`, `flows`, `onenote`, `lists`.
   - `[src/appearance.rs]` `appearance [show|watch]`, `[src/tray.rs]` `tray-demo`, `[src/tester.rs]` `calendar tester ...`.
+  - `[src/spike.rs]` `spike personal-login [--client office|azcli] [--out FILE]`: the Gate 0 personal-account spike (device code on `/consumers`, `authz/consumer`, five consumer conversations); no session, keyring or config access (docs/spikes/personal-auth.md).
 - `mcp` subcommand: `mcp::run` with the feature; without it `[src/main.rs]` bails with a "built without the MCP server" message.
 - Environment: `IRONTEAMS_LOG` (tracing filter directive, read via `compat::var`), `IRONTEAMS_SANDBOX_FILE` (sandbox ids file used by `team` and `find`), `IRONTEAMS_SHOW` (extra JSON keys whose string values `team`/`store` shape printing may show).
 - Unknown or missing commands print a usage text to stdout and exit successfully; that fallback usage is a subset of the real command list.
@@ -37,6 +38,7 @@ Top-level commands handled in `[src/main.rs:main]`:
 - `[src/main.rs:main]` `settings` and `preview-file`/`drive` offline variants (`is_offline`) are matched before the connecting arms and run without a session.
 - Live write commands are scoped to the user's own data: `[src/appcard.rs:notes_only]` allows `appcard send` only to `48:notes`; `[src/delivery.rs:require_channel]` limits `deliver announce` to channel ids (`@thread.tacv2`); `[src/team.rs:raw]` refuses paths that name no sandbox id; `[src/team.rs:run]` `storyline` always refuses; `[src/drive.rs:purge]` only accepts `ironteams-test-*` folders; `[src/tester.rs]` only touches the meeting subject `ironteams test meeting`.
 - `[src/settings.rs:plan_set]` and `[src/store.rs:run]`: `settings set` needs `--dry-run` or `--apply` (sends only with `--apply`); store install/uninstall/update/pin/unpin/move only print the request.
+- `[src/spike.rs]` never prints or writes a token: output goes through `scrub`, the skypetoken is sent only to hosts passing `chat_host_allowed` (exact `msgapi.teams.live.com` or `teams.live.com/api/chatsvc/consumer`), its HTTP client follows no redirects, and each request is sent once.
 - `[src/call.rs:dial]` refuses emergency numbers (`calling::emergency::is_emergency_number`) before placing a call.
 - `[src/find.rs]`, `[src/team.rs:shape]`, `[src/drive.rs:shape]`, `[src/store.rs:shape]` print counts, keys and enum-like values only; other strings are shown as lengths or redacted.
 - `[src/accounts.rs:run]` `add` saves the config only after sign-in succeeds; `remove` forgets keyring tokens before editing the config.
