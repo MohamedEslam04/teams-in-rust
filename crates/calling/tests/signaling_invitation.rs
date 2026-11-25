@@ -312,9 +312,15 @@ fn call_event_summaries_name_the_kind_codes_and_links_but_no_urls() {
         "rejection code=480 sub=10037 phrase=Unavailable"
     );
     let answer = summary("call/mediaAnswer/", fixture("cb_media_answer"));
-    assert!(answer.starts_with("mediaAnswer answer=yes links=["), "{answer}");
+    assert!(
+        answer.starts_with("mediaAnswer answer=yes links=["),
+        "{answer}"
+    );
     assert!(answer.contains("mediaAcknowledgement"), "{answer}");
-    assert!(!answer.contains("meeting-answer"), "no SDP in the log: {answer}");
+    assert!(
+        !answer.contains("meeting-answer"),
+        "no SDP in the log: {answer}"
+    );
     // An unknown callback names its top-level keys, not their values.
     assert_eq!(
         summary(
@@ -323,12 +329,18 @@ fn call_event_summaries_name_the_kind_codes_and_links_but_no_urls() {
         ),
         "call/redirection keys=[callRedirection,debugContent]"
     );
-    assert_eq!(summary("conversation/rosterUpdate/", json!({})), "rosterUpdate");
+    assert_eq!(
+        summary("conversation/rosterUpdate/", json!({})),
+        "rosterUpdate"
+    );
 }
 
 #[test]
 fn an_mri_kind_drops_the_id() {
-    assert_eq!(mri_kind("8:orgid:00000000-0000-0000-0000-0000000000a1"), "8:orgid");
+    assert_eq!(
+        mri_kind("8:orgid:00000000-0000-0000-0000-0000000000a1"),
+        "8:orgid"
+    );
     assert_eq!(mri_kind("8:live:.cid.0123abcd"), "8:live");
     assert_eq!(mri_kind("8:teamsvisitor:abc"), "8:teamsvisitor");
     assert_eq!(mri_kind("28:bot-id"), "28");
@@ -351,7 +363,10 @@ fn a_ring_summary_tells_the_caller_kind_tenants_offer_and_links() {
     body["callNotification"]["from"]["tenantId"] = json!("t-1");
     body["callNotification"]["to"]["tenantId"] = json!("t-2");
     let s = ring_summary(&parse_invitation(&body).unwrap());
-    assert!(s.starts_with("from=8:live tenants=different offer=none "), "{s}");
+    assert!(
+        s.starts_with("from=8:live tenants=different offer=none "),
+        "{s}"
+    );
     body["callNotification"]["to"]["tenantId"] = json!("t-1");
     let s = ring_summary(&parse_invitation(&body).unwrap());
     assert!(s.contains(" tenants=same "), "{s}");

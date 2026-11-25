@@ -269,6 +269,93 @@ pub enum CallEvent {
     },
 }
 
+/// The kind of an MRI without its id: `8:orgid`, `8:live`, `8:teamsvisitor`, `28` (a bot), or
+/// `-` for none. Tells a work account from a personal or guest one in the log.
+pub fn mri_kind(mri: &str) -> &str {
+    mri.rsplit_once(':').map_or("-", |(kind, _)| kind)
+}
+
+/// The names of `links`, comma-separated (never the URLs).
+fn link_names(links: &Links) -> String {
+    links.0.keys().cloned().collect::<Vec<_>>().join(",")
+}
+
+/// The top-level keys of `body`, comma-separated (never the values).
+fn body_keys(body: &Value) -> String {
+    body.as_object()
+        .map(|m| m.keys().cloned().collect::<Vec<_>>().join(","))
+        .unwrap_or_default()
+}
+
+impl EndReason {
+    fn summary(&self) -> String {
+        format!(
+            "code={} sub={} phrase={}",
+            self.code, self.sub_code, self.phrase
+        )
+    }
+}
+
+impl CallEvent {
+    /// One line for the log: the callback's kind and what it says (a status, an end's code and
+    /// phrase, whether it carries an SDP, the names of the links it hands over). Never an URL, an
+    /// SDP or an id, so it is safe to log at info.
+    pub fn summary(&self) -> String {
+        match self {
+            CallEvent::Progress { status } => format!("progress status={status}"),
+            CallEvent::Accepted {
+                answer,
+                links,
+                accepted_by,
+                keep_alive_interval_s,
+            } => format!(
+                "acceptance answer={} by={} keepAlive={} links=[{}]",
+                if answer.is_some() { "yes" } else { "no" },
+                accepted_by.as_ref().map_or("-", |p| mri_kind(&p.mri)),
+                keep_alive_interval_s.map_or_else(|| "-".to_owned(), |s| s.to_string()),
+                link_names(links)
+            ),
+            CallEvent::MediaAnswer { links, .. } => {
+                format!("mediaAnswer answer=yes links=[{}]", link_names(links))
+            }
+            CallEvent::MediaAcknowledgement { links } => {
+                format!("mediaAcknowledgement links=[{}]", link_names(links))
+            }
+            CallEvent::MediaRenegotiation { links, .. } => {
+                format!("mediaRenegotiation offer=yes links=[{}]", link_names(links))
+            }
+            CallEvent::Rejected(r) => format!("rejection {}", r.summary()),
+            CallEvent::Ended(r) => format!("end {}", r.summary()),
+            CallEvent::RosterUpdate(_) => "rosterUpdate".to_owned(),
+            CallEvent::ConversationUpdate(_) => "conversationUpdate".to_owned(),
+            CallEvent::Other { scope, event, body } => {
+                format!("{scope}/{event} keys=[{}]", body_keys(body))
+            }
+        }
+    }
+}
+
+/// An incoming ring in one line for the log: the caller's kind of MRI, whether caller and callee
+/// are in the same tenant (`?` when the ring does not say), the offer's content type (`none`
+/// without one), the modalities and the link names. No ids, URLs or SDP.
+pub fn ring_summary(inv: &CallInvitation) -> String {
+    let tenant = |side: &str| text(&inv.raw, &format!("/callNotification/{side}/tenantId"));
+    let tenants = match (tenant("from"), tenant("to")) {
+        (Some(a), Some(b)) if a == b => "same",
+        (Some(_), Some(_)) => "different",
+        _ => "?",
+    };
+    format!(
+        "from={} tenants={tenants} offer={} modalities={:?} links=[{}]",
+        mri_kind(&inv.from.mri),
+        inv.offer
+            .as_ref()
+            .map_or("none", |o| o.content_type.as_str()),
+        inv.modalities,
+        link_names(&inv.links)
+    )
+}
+
 /// The object holding `mediaContent`: the body itself or one of its top-level values.
 fn media_holder(body: &Value) -> Option<&Value> {
     if body.get("mediaContent").is_some() {

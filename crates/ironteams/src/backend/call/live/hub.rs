@@ -51,7 +51,9 @@ impl Hub {
                 let Some(h) = hub.upgrade() else { return };
                 match ev {
                     NgcEvent::Push(p) => h.route(p),
-                    NgcEvent::Connected { .. } => tracing::debug!("calling trouter registered"),
+                    // At info: a reconnect changes the surl, so a call placed or answered just
+                    // before it gets none of its callbacks.
+                    NgcEvent::Connected { .. } => tracing::info!("calling trouter registered"),
                     // A reconnect changes the surl, which a running call's links were built on.
                     NgcEvent::Disconnected(r) => tracing::warn!(%r, "calling trouter disconnected"),
                 }

@@ -402,6 +402,11 @@ Where the links come from (live 1:1 dump, names only):
 
 - **TURN over TCP/TLS.** webrtc-rs 0.21.1 only relays over UDP. A network that blocks UDP 3478 needs a TLS shim to `turns:<gateway>:443`.
 - **1:1 calls.** An outgoing 1:1 call to a Teams web guest worked both ways (2026-11-19, `call dial` and the GUI). Accepting a ring without an offer is built (above) but not verified; declining is not verified.
+- **1:1 calls, live 2026-11-25 (0.1.9).** Placed and answered calls both failed; on 2026-11-24 (0.1.8, same 1:1 code) both worked.
+  - Placed twice: no callback was logged and the screen stayed "Calling…" until it closed in under 60 s. The second call could be placed, so the first was over: the service ended it before any `progress`, or Cancel was pressed. The loop logged neither then.
+  - Answered (a ring with no offer, so `fetch`): the attach answer's offer had two lines with named mids (`audio_0`, `video_1`) and a 100-SSRC video range. The 2026-11-24 offers had `0/1/2`. Our answer went in the acceptance, and 1.4 s later the call ended with 406, 4122 `FinalAnswerError`.
+  - The bursts of TURN `CreatePermission` 403 come in working calls too (2026-11-24, both directions), so they are not the cause.
+  - Every 1:1 callback is now logged at info as one line: its kind, status or end code, whether it had an SDP, and its link names. Also logged: the outgoing screen's state changes and why its loop ended, the ring's caller kind and tenants, each side's transport and BUNDLE in the answer, and callbacks that came while answering. A callback that came during the acceptance POST never reaches the adopted call.
 - **AEC delay.** The stream delay starts at a fixed 40 ms (AEC3 estimates the rest). It is not yet taken from cpal's measured latency.
 - **Disconnected.** One short `Disconnected` → `Connected` blip was seen before leaving.
 

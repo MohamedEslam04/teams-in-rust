@@ -847,6 +847,11 @@ impl Engine {
                 return Err(e.into());
             }
         };
+        // Callbacks that came while the acceptance was on its way: the answer did not need them
+        // and the adopted call never sees them (it only gets what comes after `adopt`).
+        while let Ok(ev) = events.try_recv() {
+            tracing::info!(event = %ev.summary(), "callback during the answer, not passed on to the call");
+        }
         // The caller may have given up while we answered.
         if self.incoming_event(id, IncomingEvent::Connected) != Some(IncomingState::Connected) {
             let _ = ngc.hang_up(&s, &links).await;
@@ -912,6 +917,19 @@ impl Engine {
     pub(crate) fn on_unmatched(self: &Arc<Self>, push: &CallPush) {
         if let NgcPush::Call { session_id, event } = classify(&push.url, &push.body) {
             let c = self.direct();
+            let ours = |s: &Option<String>| s.as_deref() == Some(session_id.as_str());
+            let answering = c.incoming.as_ref().is_some_and(|i| ours(&i.session));
+            let placing = c.outgoing.as_ref().is_some_and(|o| ours(&o.session));
+            // A placed call's callbacks are logged by its loop; the rest here, so a callback that
+            // reaches no call shows too.
+            if !placing {
+                let to = if answering {
+                    "the call being answered"
+                } else {
+                    "no call"
+                };
+                tracing::info!(event = %event.summary(), to, "calling callback");
+            }
             // The call we are answering: it waits for the caller's media answer. An end still
             // falls through to the cancel check below.
             if let Some(i) = c
@@ -1164,7 +1182,13 @@ impl Engine {
         if with == DialWith::Video && !video {
             self.ui.banner(AUDIO_ONLY.into());
         }
-        tracing::info!(ours = %calling::media::sdp::directions(&offer), ?modalities, "1:1 call offered");
+        tracing::info!(
+            ours = %calling::media::sdp::directions(&offer),
+            ours_transport = %calling::media::sdp::transport_summary(&offer),
+            ?modalities,
+            callee = calling::invitation::mri_kind(&mri),
+            "1:1 call offered"
+        );
         let s = CallSession::new(&surl, &self.me, &self.my_name);
         // Callbacks under our session come to this call from now on.
         if let Some(o) = self.direct().outgoing.as_mut().filter(|o| o.id == id) {
@@ -1180,31 +1204,44 @@ impl Engine {
             .place_call(&s, &[callee], None, &SdpBlob::ngc(offer), &modalities)
             .await?;
         let mut links = conv.links.clone();
+        tracing::info!(
+            links = %links.0.keys().cloned().collect::<Vec<_>>().join(","),
+            "1:1 call placed; waiting for the callee's callbacks"
+        );
         let ring = tokio::time::sleep(OUTGOING_RING);
         tokio::pin!(ring);
         let mut answered = false;
         loop {
             if !self.outgoing_live(id) {
                 // Cancelled while the call was being placed.
+                tracing::info!(
+                    "1:1 outgoing call over: not live any more (cancelled while placing)"
+                );
                 hang_up_placed(&ngc, &s, &links, &conv.controller).await;
                 let _ = media.close().await;
                 return Ok(());
             }
             tokio::select! {
                 _ = &mut cancel => {
+                    tracing::info!("1:1 outgoing call over: cancelled here");
                     hang_up_placed(&ngc, &s, &links, &conv.controller).await;
                     let _ = media.close().await;
                     return Ok(());
                 }
                 _ = &mut ring => {
+                    tracing::info!(after = ?OUTGOING_RING, "1:1 outgoing call over: no answer");
                     self.outgoing_event(id, OutgoingEvent::RingTimeout);
                     hang_up_placed(&ngc, &s, &links, &conv.controller).await;
                     let _ = media.close().await;
                     return Ok(());
                 }
                 ev = events.recv() => {
+                    if let Some(ev) = &ev {
+                        tracing::info!(event = %ev.summary(), "1:1 outgoing call: callback");
+                    }
                     let Some(ev) = ev else {
                         // The call was dropped here (cancelled): end it on the service too.
+                        tracing::info!("1:1 outgoing call over: its callback channel closed");
                         hang_up_placed(&ngc, &s, &links, &conv.controller).await;
                         let _ = media.close().await;
                         return Ok(());
@@ -1246,6 +1283,7 @@ impl Engine {
                             return Ok(());
                         }
                         Some(st) if !st.is_live() => {
+                            tracing::info!(state = %st.label(), event = %ev.summary(), "1:1 outgoing call over");
                             let _ = media.close().await;
                             return Ok(());
                         }
@@ -1281,11 +1319,14 @@ impl Engine {
         let mut c = self.direct();
         let o = c.outgoing.as_mut().filter(|o| o.id == id)?;
         let before = o.state.clone();
-        o.state = o.state.on(ev);
+        o.state = o.state.on(ev.clone());
         let state = o.state.clone();
         if state == before {
             return Some(state);
         }
+        // Why the ringing screen says what it says, or closes (Connected and Cancelled close it
+        // at once, the other ends after `OVER_SCREEN`).
+        tracing::info!(?ev, from = %before.label(), to = %state.label(), "1:1 outgoing call state");
         if matches!(state, OutgoingState::Connected | OutgoingState::Cancelled) {
             if let Some(cancel) = o.cancel.take()
                 && state == OutgoingState::Cancelled
