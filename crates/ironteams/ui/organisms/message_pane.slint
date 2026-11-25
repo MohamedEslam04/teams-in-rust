@@ -87,9 +87,13 @@ export component MessagePane inherits Rectangle {
     property <bool> unread-above: root.unread-index >= 0 && root.unread-index < root.messages.length && !root.posts-mode
         && msg-list.content-y + msg-list.content-height * root.unread-index / max(1, root.messages.length) + 48px < 0px;
     // Puts row `i` of the list near the top. Its place is estimated; the divider or flashed row
-    // there corrects it once it is laid out (`aligning`).
+    // there corrects it once it is laid out (`aligning`). The list is no longer pinned to the
+    // newest message: the content height changes in the same layouts that move the view, so the
+    // view's move alone does not tell it, and a row growing later (a picture getting its size)
+    // pulled the view down to the newest message. It is pinned again if it lands at the bottom.
     function show-row(i: int) {
         msg-list.aligning = true;
+        msg-list.pinned = false;
         msg-list.content-y = min(0px, 24px - msg-list.content-height * i / max(1, root.messages.length));
     }
     // Sees every pointer move over the list and passes it on. The list rebuilds
@@ -456,6 +460,9 @@ export component MessagePane inherits Rectangle {
         triggered => {
             msg-list.aligning = false;
             msg-list.apply-off = false;
+            // Where the view landed: at the bottom (all the new messages fit) it follows the
+            // newest message again.
+            msg-list.recheck();
         }
     }
     // The bottom buttons, side by side: "↑ New messages" (back to the divider) and Jump to newest.
