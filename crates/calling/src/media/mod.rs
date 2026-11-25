@@ -11,13 +11,17 @@
 //! Keying is DTLS-SRTP only, as the Teams web client (a browser) does it; webrtc-rs has no
 //! SDES. Audio is Opus 48 kHz/2 at payload type 111 with `minptime=10;useinbandfec=1`, as the
 //! web client offers it (teams-lite `NATIVE-CALLING.md` §2.5); an offer naming Opus under
-//! another payload type (a desktop client's 102) is answered with that one. Encoding and decoding
-//! belong to [`crate::audio`]; this module moves [`OpusPacket`]s.
+//! another payload type (a desktop client's 102) is answered with that one. G.711 (PCMU 0, PCMA 8)
+//! and telephone-event follow Opus in our offer for the endpoints that take nothing else (Teams
+//! voicemail); Opus is taken whenever the other side has it ([`codec`]). Encoding and decoding
+//! belong to [`crate::audio`]; this module moves [`OpusPacket`]s, and transcodes them at its edge
+//! when G.711 was negotiated.
 //!
 //! With [`MediaOptions::data_channel`] the session also opens the meeting's SCTP data channel
 //! (Teams' `x-data` line, [`crate::captions::DATA_CHANNEL_LABEL`]) and hands every message on it
 //! to [`MediaEvents::data`], still in Teams' framing ([`crate::captions::Depacketizer`]).
 
+pub mod codec;
 pub mod sdp;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,16 +34,18 @@ use rtc::interceptor::Registry;
 use rtc::media::Sample;
 use rtc::media_stream::MediaStreamTrack;
 use rtc::peer_connection::configuration::interceptor_registry::register_default_interceptors;
-use rtc::peer_connection::configuration::media_engine::{MIME_TYPE_H264, MIME_TYPE_OPUS};
+use rtc::peer_connection::configuration::media_engine::MIME_TYPE_H264;
 use rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+use rtc::rtp;
 use rtc::rtp_transceiver::rtp_sender::{
     RTCPFeedback, RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters,
     RTCRtpEncodingParameters, RtpCodecKind,
 };
 use rtc::rtp_transceiver::{RTCRtpTransceiverDirection, RTCRtpTransceiverInit};
-use tokio::sync::{OnceCell, mpsc, watch};
+use tokio::sync::{mpsc, watch};
 use webrtc::data_channel::{DataChannel, DataChannelEvent, RTCDataChannelInit};
 use webrtc::media_stream::track_local::TrackLocal;
+use webrtc::media_stream::track_local::static_rtp::TrackLocalStaticRTP;
 use webrtc::media_stream::track_local::static_sample::TrackLocalStaticSample;
 use webrtc::media_stream::track_remote::{TrackRemote, TrackRemoteEvent};
 use webrtc::peer_connection::{
@@ -49,14 +55,14 @@ use webrtc::peer_connection::{
 };
 use webrtc::rtp_transceiver::{RtpSender, RtpTransceiver};
 
+use self::codec::{AudioCodec, AudioFormat, FromG711, RtpClock, ToG711, incoming_codec};
 use crate::video::receive::{KeyframeRequest, VideoPacket};
 use crate::video::{VideoRole, h264};
 use crate::{Error, IceServer, OpusPacket, Result};
 
-/// The Opus payload type the web client offers.
-pub const OPUS_PAYLOAD_TYPE: u8 = 111;
-const OPUS_FMTP: &str = "minptime=10;useinbandfec=1";
-const FRAME: Duration = Duration::from_millis(20);
+pub use self::codec::OPUS_PAYLOAD_TYPE;
+/// Our audio track's id, by which its line is found among the transceivers.
+const AUDIO_TRACK_ID: &str = "ironteams-audio";
 /// How long an offer or answer waits for ICE gathering (a TURN allocation that never answers must
 /// not hold up a ringing call); after it, the candidates gathered so far go out.
 const GATHER_TIMEOUT: Duration = Duration::from_secs(10);
@@ -133,8 +139,9 @@ pub enum MediaState {
 /// What a session reports: its state changes and the Opus packets the other side sends.
 pub struct MediaEvents {
     pub state: mpsc::UnboundedReceiver<MediaState>,
-    /// The payload of each incoming Opus RTP packet, in arrival order. Packets are dropped,
-    /// not queued without bound, when the reader falls behind.
+    /// The payload of each incoming Opus RTP packet, in arrival order (incoming G.711 arrives
+    /// here as Opus, see [`codec`]). Packets are dropped, not queued without bound, when the
+    /// reader falls behind.
     pub audio: mpsc::Receiver<OpusPacket>,
     /// Who is heard right now: the CSRCs of the latest audio packet (the meeting mixer names each
     /// speaker's `sourceId`), or its SSRC when it names none (one sender). Updated on change only.
@@ -164,6 +171,22 @@ pub struct MediaSession {
     /// The Teams SDP that last settled the session (our answer, or the answer to our offer):
     /// the m-lines a re-offer keeps ([`sdp::to_teams_reoffer`]).
     negotiated: Mutex<Option<String>>,
+    /// The audio formats that negotiation settled on.
+    formats: Formats,
+    /// Our audio line's sender, and the codec its track states (see [`Self::set_formats`]).
+    audio_rtp_sender: Arc<dyn RtpSender>,
+    audio_track_codec: Mutex<AudioCodec>,
+}
+
+/// The negotiated audio formats ([`sdp::audio_formats`] of the SDP in force), shared by the
+/// session, its [`AudioSender`] and the tasks reading the other side's audio. Empty until the
+/// first negotiation.
+type Formats = Arc<Mutex<Vec<AudioFormat>>>;
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Sends whole messages on the session's data channel. Cheap to clone.
@@ -182,13 +205,21 @@ impl DataSender {
     }
 }
 
-/// Sends our Opus packets, one 20 ms frame each. Cheap to clone into the audio task.
+/// Sends our Opus packets, one 20 ms frame each, in the negotiated codec. Cheap to clone into
+/// the audio task.
 #[derive(Clone)]
 pub struct AudioSender {
-    track: Arc<TrackLocalStaticSample>,
-    rtp_sender: Arc<dyn RtpSender>,
+    track: Arc<TrackLocalStaticRTP>,
     ssrc: u32,
-    payload_type: Arc<OnceCell<u8>>,
+    formats: Formats,
+    outgoing: Arc<Mutex<Outgoing>>,
+}
+
+/// Our outgoing audio stream: its RTP clock, and the Opus-to-G.711 transcoder once G.711 is
+/// negotiated.
+struct Outgoing {
+    clock: RtpClock,
+    g711: Option<ToG711>,
 }
 
 /// Sends encoded video (Annex-B H.264 access units) on the session's line for one [`VideoRole`].
@@ -229,23 +260,12 @@ impl MediaSession {
         ice_servers: Vec<IceServer>,
         options: MediaOptions,
     ) -> Result<(Self, MediaEvents)> {
-        let opus = RTCRtpCodec {
-            mime_type: MIME_TYPE_OPUS.to_owned(),
-            clock_rate: crate::SAMPLE_RATE,
-            channels: 2,
-            sdp_fmtp_line: OPUS_FMTP.to_owned(),
-            rtcp_feedback: vec![],
-        };
         let mut media_engine = MediaEngine::default();
-        media_engine
-            .register_codec(
-                RTCRtpCodecParameters {
-                    rtp_codec: opus.clone(),
-                    payload_type: OPUS_PAYLOAD_TYPE,
-                },
-                RtpCodecKind::Audio,
-            )
-            .map_err(media_err("register Opus"))?;
+        for audio_codec in codec::offered() {
+            media_engine
+                .register_codec(audio_codec, RtpCodecKind::Audio)
+                .map_err(media_err("register audio codec"))?;
+        }
         if !options.video.is_empty() || options.receive_slots > 0 {
             for (payload_type, profile) in h264::PAYLOADS {
                 media_engine
@@ -285,6 +305,7 @@ impl MediaSession {
         let (speakers_tx, speakers_rx) = watch::channel(Vec::new());
         let (data_tx, data_rx) = mpsc::channel(DATA_QUEUE);
         let (video_tx, video_rx) = mpsc::channel(VIDEO_QUEUE);
+        let formats = Formats::default();
         let pc_cell: Arc<OnceLock<Weak<dyn PeerConnection>>> = Arc::new(OnceLock::new());
         let handler = Handler {
             pc: Arc::clone(&pc_cell),
@@ -294,6 +315,7 @@ impl MediaSession {
             gathered: gathered_tx,
             speakers: Arc::new(speakers_tx),
             data: options.data_channel.then(|| data_tx.clone()),
+            formats: Arc::clone(&formats),
         };
         let pc = PeerConnectionBuilder::new()
             .with_configuration(configuration)
@@ -309,35 +331,30 @@ impl MediaSession {
         let _ = pc_cell.set(Arc::downgrade(&pc));
 
         let ssrc = rand::random::<u32>();
-        let track = Arc::new(
-            TrackLocalStaticSample::new(
-                Instant::now(),
-                MediaStreamTrack::new(
-                    format!("ironteams-{ssrc:08x}"),
-                    "ironteams-audio".to_owned(),
-                    "main-audio".to_owned(),
-                    RtpCodecKind::Audio,
-                    vec![RTCRtpEncodingParameters {
-                        rtp_coding_parameters: RTCRtpCodingParameters {
-                            ssrc: Some(ssrc),
-                            ..Default::default()
-                        },
-                        codec: opus,
-                        ..Default::default()
-                    }],
-                ),
-            )
-            .map_err(media_err("audio track"))?,
-        );
-        let rtp_sender = pc
+        let track = audio_track(ssrc, AudioCodec::Opus);
+        let audio_rtp_sender = pc
             .add_track(Arc::clone(&track) as Arc<dyn TrackLocal>)
             .await
             .map_err(media_err("add audio track"))?;
+        // `add_track` gives the line its track's one codec, Opus; offer G.711 and DTMF after it.
+        for t in pc.get_transceivers().await {
+            let Ok(Some(s)) = t.sender().await else {
+                continue;
+            };
+            if s.track().track_id().await == AUDIO_TRACK_ID {
+                t.set_codec_preferences(codec::offered())
+                    .await
+                    .map_err(media_err("audio codecs"))?;
+            }
+        }
         let sender = AudioSender {
             track,
-            rtp_sender,
             ssrc,
-            payload_type: Arc::new(OnceCell::new()),
+            formats: Arc::clone(&formats),
+            outgoing: Arc::new(Mutex::new(Outgoing {
+                clock: RtpClock::random(),
+                g711: None,
+            })),
         };
         // The web client's join puts the sharing line after the gallery (see `VideoLayout`).
         let sharing_last = options.receive_slots > 0 && options.layout == VideoLayout::WebClient;
@@ -388,6 +405,9 @@ impl MediaSession {
                 data: options.data_channel,
                 data_channel,
                 negotiated: Mutex::new(None),
+                formats,
+                audio_rtp_sender,
+                audio_track_codec: Mutex::new(AudioCodec::Opus),
             },
             MediaEvents {
                 state: state_rx,
@@ -438,6 +458,33 @@ impl MediaSession {
         }
     }
 
+    /// Takes the audio formats of `sdp`, the answer now in force. One that names none we speak
+    /// (a declined audio line) leaves the ones before it.
+    async fn set_formats(&self, sdp: &str) {
+        let formats = sdp::audio_formats(sdp);
+        let Some(chosen) = AudioFormat::preferred(&formats) else {
+            return;
+        };
+        tracing::info!(codec = ?chosen.codec, payload_type = chosen.payload_type, "audio codec");
+        *lock(&self.formats) = formats;
+        // webrtc-rs binds the sender's RTCP (sender reports) to the negotiated codec that matches
+        // the codec its track states: with G.711 alone, an Opus track would get none. Only the
+        // track's description changes (before the transport starts, on a first negotiation);
+        // our packets keep going out through the same track.
+        let stated = std::mem::replace(&mut *lock(&self.audio_track_codec), chosen.codec);
+        if stated != chosen.codec {
+            let track = audio_track(self.sender.ssrc, chosen.codec) as Arc<dyn TrackLocal>;
+            if let Err(e) = self.audio_rtp_sender.replace_track(track).await {
+                tracing::warn!(%e, "audio track codec not updated");
+            }
+        }
+    }
+
+    /// The format our audio goes out in ([`AudioFormat::preferred`]), once negotiated.
+    pub fn audio_format(&self) -> Option<AudioFormat> {
+        AudioFormat::preferred(&lock(&self.formats))
+    }
+
     /// The video roles this session has lines for.
     pub fn video_roles(&self) -> Vec<VideoRole> {
         self.video.iter().map(|v| v.role).collect()
@@ -475,6 +522,7 @@ impl MediaSession {
             .await
             .map_err(media_err("set answer"))?;
         self.set_negotiated(answer);
+        self.set_formats(answer).await;
         Ok(())
     }
 
@@ -523,6 +571,7 @@ impl MediaSession {
         let local = self.set_local(answer).await?;
         let answer = sdp::to_teams_answer_with_data(&local, offer, &roles, self.data);
         self.set_negotiated(&answer);
+        self.set_formats(&answer).await;
         Ok(answer)
     }
 
@@ -607,35 +656,74 @@ impl MediaSession {
     }
 }
 
+/// Our audio track (stream `ironteams-<ssrc>`, track [`AUDIO_TRACK_ID`], label `main-audio`)
+/// stating `codec`. RTP, not samples: a sample track's packetizer counts time at its codec's
+/// clock, and the codec is only known once negotiated (`AudioSender::packetize`).
+fn audio_track(ssrc: u32, codec: AudioCodec) -> Arc<TrackLocalStaticRTP> {
+    Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
+        format!("ironteams-{ssrc:08x}"),
+        AUDIO_TRACK_ID.to_owned(),
+        "main-audio".to_owned(),
+        RtpCodecKind::Audio,
+        vec![RTCRtpEncodingParameters {
+            rtp_coding_parameters: RTCRtpCodingParameters {
+                ssrc: Some(ssrc),
+                ..Default::default()
+            },
+            codec: codec.rtp_codec(),
+            ..Default::default()
+        }],
+    )))
+}
+
 impl AudioSender {
-    /// Sends one Opus packet as one 20 ms frame. Before the connection is up the packet goes
-    /// nowhere; that is not an error.
+    /// Sends one Opus packet as one 20 ms frame, transcoded when G.711 was negotiated. Before
+    /// the session is negotiated this is an error; before the connection is up the packet goes
+    /// nowhere.
     pub async fn send(&self, packet: OpusPacket) -> Result<()> {
-        let payload_type = *self
-            .payload_type
-            .get_or_try_init(|| async {
-                let params = self
-                    .rtp_sender
-                    .get_parameters()
-                    .await
-                    .map_err(media_err("sender parameters"))?;
-                params
-                    .rtp_parameters
-                    .codecs
-                    .first()
-                    .map(|c| c.payload_type)
-                    .ok_or_else(|| Error::Media("audio is not negotiated yet".into()))
-            })
-            .await?;
-        let sample = Sample {
-            data: Bytes::from(packet),
-            duration: FRAME,
-            ..Sample::new(Instant::now())
+        let Some(rtp) = self.packetize(packet)? else {
+            return Ok(());
         };
         self.track
-            .write_sample(self.ssrc, payload_type, &sample, &[])
+            .write_rtp_with_extensions(rtp, &[])
             .await
             .map_err(media_err("send audio"))
+    }
+
+    /// The RTP packet that carries `packet` in the negotiated format, as a sample track's
+    /// packetizer makes it for Opus (one packet per frame, marker set); `None` for an empty frame,
+    /// whose time passes unsent.
+    fn packetize(&self, packet: OpusPacket) -> Result<Option<rtp::Packet>> {
+        let format = AudioFormat::preferred(&lock(&self.formats))
+            .ok_or_else(|| Error::Media("audio is not negotiated yet".into()))?;
+        let mut out = lock(&self.outgoing);
+        let payload = match format.codec {
+            AudioCodec::Opus => packet,
+            law => {
+                let to = match out.g711.take().filter(|t| t.codec() == law) {
+                    Some(t) => out.g711.insert(t),
+                    None => out.g711.insert(ToG711::new(law)?),
+                };
+                to.transcode(&packet)?
+            }
+        };
+        if payload.is_empty() {
+            out.clock.skip(format.codec);
+            return Ok(None);
+        }
+        let (sequence_number, timestamp) = out.clock.next(format.codec);
+        Ok(Some(rtp::Packet {
+            header: rtp::Header {
+                version: 2,
+                marker: true,
+                payload_type: format.payload_type,
+                sequence_number,
+                timestamp,
+                ssrc: self.ssrc,
+                ..Default::default()
+            },
+            payload: Bytes::from(payload),
+        }))
     }
 }
 
@@ -799,6 +887,8 @@ struct Handler {
     speakers: Arc<watch::Sender<Vec<u32>>>,
     /// Where data-channel messages go, when the session has the data channel.
     data: Option<mpsc::Sender<Vec<u8>>>,
+    /// What the incoming audio is, by payload type.
+    formats: Formats,
 }
 
 #[async_trait::async_trait]
@@ -856,7 +946,9 @@ impl PeerConnectionEventHandler for Handler {
         }
         let audio = self.audio.clone();
         let speakers = Arc::clone(&self.speakers);
+        let formats = Arc::clone(&self.formats);
         tokio::spawn(async move {
+            let mut from_g711: Option<FromG711> = None;
             while let Some(event) = track.poll().await {
                 match event {
                     TrackRemoteEvent::OnRtpPacket(packet) if !packet.payload.is_empty() => {
@@ -868,10 +960,24 @@ impl PeerConnectionEventHandler for Handler {
                             }
                             changed
                         });
+                        let codec = incoming_codec(&lock(&formats), packet.header.payload_type);
+                        let packets = match codec {
+                            Some(AudioCodec::Opus) => vec![packet.payload.to_vec()],
+                            Some(law) => match to_opus(&mut from_g711, law, &packet.payload) {
+                                Ok(packets) => packets,
+                                Err(e) => {
+                                    tracing::debug!(%e, "G.711 packet dropped");
+                                    continue;
+                                }
+                            },
+                            // telephone-event, comfort noise: nothing to play.
+                            None => continue,
+                        };
                         // A full queue drops the packet: late audio is worth nothing.
-                        if let Err(mpsc::error::TrySendError::Closed(_)) =
-                            audio.try_send(packet.payload.to_vec())
-                        {
+                        let closed = packets.into_iter().any(|p| {
+                            matches!(audio.try_send(p), Err(mpsc::error::TrySendError::Closed(_)))
+                        });
+                        if closed {
                             break;
                         }
                     }
@@ -881,6 +987,20 @@ impl PeerConnectionEventHandler for Handler {
             }
         });
     }
+}
+
+/// Incoming G.711 of `codec` as Opus packets, through the track's transcoder (made at its first
+/// G.711 packet).
+fn to_opus(
+    slot: &mut Option<FromG711>,
+    codec: AudioCodec,
+    payload: &[u8],
+) -> Result<Vec<OpusPacket>> {
+    let from = match slot.take() {
+        Some(from) => slot.insert(from),
+        None => slot.insert(FromG711::new()?),
+    };
+    from.transcode(codec, payload)
 }
 
 /// The mid of the line (transceiver) whose receiver carries `track`: the same track, else the

@@ -484,7 +484,8 @@ fn from_teams_keeps_only_audio_and_its_ice_credentials() {
     assert_eq!(
         m_lines(&out),
         [
-            "m=audio 3478 UDP/TLS/RTP/SAVPF 96 113 109 108 104 102 9 103 111 18 0 8 97 101 13 118 120"
+            // G.711 and telephone-event are hidden next to Opus (`media_codec.rs`).
+            "m=audio 3478 UDP/TLS/RTP/SAVPF 96 113 109 108 104 102 9 103 111 18 97 13 118 120"
         ],
         "RTP/AVP with a fingerprint is DTLS too"
     );

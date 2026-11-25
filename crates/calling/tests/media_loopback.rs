@@ -292,3 +292,130 @@ async fn a_session_with_video_lines_hears_a_peer_that_names_its_ssrcs_by_range_o
     ironteams.close().await.unwrap();
     service.close().await.unwrap();
 }
+
+/// Our offer as a G.711-only endpoint (Teams voicemail) sees it once Opus is taken out: PCMU,
+/// PCMA and telephone-event.
+fn without_opus(offer: &str) -> String {
+    let mut out = String::new();
+    for line in offer.split("\r\n").filter(|l| !l.is_empty()) {
+        if ["a=rtpmap:111 ", "a=fmtp:111 ", "a=rtcp-fb:111 "]
+            .iter()
+            .any(|p| line.starts_with(p))
+        {
+            continue;
+        }
+        if line.starts_with("m=audio ") {
+            let kept: Vec<&str> = line.split(' ').filter(|f| *f != "111").collect();
+            out.push_str(&kept.join(" "));
+        } else {
+            out.push_str(line);
+        }
+        out.push_str("\r\n");
+    }
+    out
+}
+
+/// 20 ms Opus packets of a `freq` tone, as our microphone path makes them.
+fn tone_packets(freq: f64, frames: usize) -> Vec<OpusPacket> {
+    let mut enc = calling::audio::OpusEncoder::new().unwrap();
+    (0..frames)
+        .map(|i| {
+            let frame: Vec<i16> = (0..calling::FRAME_SAMPLES)
+                .map(|n| {
+                    let t = (i * calling::FRAME_SAMPLES + n) as f64 / 48_000.0;
+                    (0.5 * f64::from(i16::MAX) * (2.0 * std::f64::consts::PI * freq * t).sin())
+                        as i16
+                })
+                .collect();
+            enc.encode(&frame).unwrap()
+        })
+        .collect()
+}
+
+/// Sends `packets` 20 ms apart while collecting what `events` hears, then decodes it.
+async fn pump_tone(
+    session: &MediaSession,
+    events: &mut MediaEvents,
+    packets: Vec<OpusPacket>,
+) -> Vec<i16> {
+    let sender = session.audio_sender();
+    let send = async move {
+        for p in packets {
+            sender.send(p).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    let mut got = Vec::new();
+    let recv = async {
+        while got.len() < 30 {
+            match timeout(Duration::from_secs(5), events.audio.recv()).await {
+                Ok(Some(p)) => got.push(p),
+                _ => break,
+            }
+        }
+    };
+    tokio::join!(send, recv);
+    let mut dec = calling::audio::OpusDecoder::new().unwrap();
+    got.iter().flat_map(|p| dec.decode(p).unwrap()).collect()
+}
+
+/// Goertzel power of `freq` in `pcm` at 48 kHz.
+fn power(pcm: &[i16], freq: f64) -> f64 {
+    let w = 2.0 * std::f64::consts::PI * freq / 48_000.0;
+    let coeff = 2.0 * w.cos();
+    let (mut s1, mut s2) = (0.0, 0.0);
+    for &x in pcm {
+        let s0 = f64::from(x) + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+    }
+    s1 * s1 + s2 * s2 - coeff * s1 * s2
+}
+
+/// An endpoint that takes G.711 only: both sides settle on PCMU, our Opus goes out as PCMU and
+/// what comes back reaches the speaker as Opus, the tone intact both ways.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_g711_only_peer_negotiates_pcmu_and_carries_audio_both_ways() {
+    use calling::media::codec::{AudioCodec, AudioFormat};
+
+    let (caller, mut caller_events) = MediaSession::with_options(vec![], local()).await.unwrap();
+    let (callee, mut callee_events) = MediaSession::with_options(vec![], local()).await.unwrap();
+
+    let offer = without_opus(&caller.create_offer().await.unwrap());
+    let answer = callee.accept_offer(&offer).await.unwrap();
+    let audio = answer
+        .split("\r\n")
+        .find(|l| l.starts_with("m=audio "))
+        .unwrap();
+    assert!(audio.ends_with(" 0 8 101"), "{answer}");
+    caller.set_answer(&answer).await.unwrap();
+    let pcmu = Some(AudioFormat {
+        codec: AudioCodec::Pcmu,
+        payload_type: 0,
+    });
+    assert_eq!(caller.audio_format(), pcmu);
+    assert_eq!(callee.audio_format(), pcmu);
+
+    wait_for(&mut caller_events, MediaState::Connected).await;
+    wait_for(&mut callee_events, MediaState::Connected).await;
+
+    let (to_callee, to_caller) = tokio::join!(
+        pump_tone(&caller, &mut callee_events, tone_packets(1000.0, 50)),
+        pump_tone(&callee, &mut caller_events, tone_packets(600.0, 50)),
+    );
+    for (heard, want, other) in [(&to_callee, 1000.0, 600.0), (&to_caller, 600.0, 1000.0)] {
+        assert!(
+            heard.len() >= 20 * calling::FRAME_SAMPLES,
+            "heard {}",
+            heard.len()
+        );
+        let steady = &heard[10 * calling::FRAME_SAMPLES..];
+        assert!(
+            power(steady, want) > 50.0 * power(steady, other),
+            "{want} Hz not heard"
+        );
+    }
+
+    caller.close().await.unwrap();
+    callee.close().await.unwrap();
+}

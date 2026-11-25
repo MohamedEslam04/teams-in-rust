@@ -1,6 +1,7 @@
 //! A `MediaSession` negotiating against Teams-shaped SDP, offline (host candidates only, nothing
 //! is ever dialled).
 
+use calling::media::codec::{AudioCodec, AudioFormat};
 use calling::media::{MediaOptions, MediaSession};
 
 const P2P_OFFER: &str = include_str!("fixtures/media/teams_p2p_offer.sdp");
@@ -31,8 +32,15 @@ async fn offer_is_complete_and_in_the_teams_dialect() {
         .expect("audio line");
     assert!(m.contains(" RTP/SAVP "), "{m}");
     assert!(m.split(' ').nth(3).is_some_and(|pt| pt == "111"), "{m}");
+    // Opus first, then G.711 for the endpoints that take nothing else (Teams voicemail), and
+    // DTMF.
+    assert_eq!(m.splitn(4, ' ').nth(3), Some("111 0 8 101"), "{m}");
     assert!(l.contains(&"a=rtpmap:111 opus/48000/2"));
     assert!(l.contains(&"a=fmtp:111 minptime=10;useinbandfec=1"));
+    assert!(l.contains(&"a=rtpmap:0 PCMU/8000"), "{offer}");
+    assert!(l.contains(&"a=rtpmap:8 PCMA/8000"), "{offer}");
+    assert!(l.contains(&"a=rtpmap:101 telephone-event/8000"), "{offer}");
+    assert!(l.contains(&"a=fmtp:101 0-16"), "{offer}");
     assert!(l.contains(&"a=setup:actpass"));
     assert!(l.iter().any(|x| x.starts_with("a=fingerprint:sha-256 ")));
     assert!(l.contains(&"a=label:main-audio"));
@@ -58,6 +66,15 @@ async fn answers_a_native_teams_p2p_offer() {
     assert!(audio.contains(" RTP/SAVP "), "{audio}");
     // Opus is 102 in a desktop client's offer (111 is SIREN there): the answer follows it.
     assert_eq!(audio.split(' ').nth(3), Some("102"), "{answer}");
+    // Opus only, as before G.711 was registered: the offer's PCMU/PCMA are not answered.
+    assert_eq!(audio.splitn(4, ' ').nth(3), Some("102"), "{answer}");
+    assert_eq!(
+        session.audio_format(),
+        Some(AudioFormat {
+            codec: AudioCodec::Opus,
+            payload_type: 102
+        })
+    );
     assert!(l.contains(&"a=rtpmap:102 opus/48000/2"), "{answer}");
     assert!(l.contains(&"a=mid:audio_0"));
     // The offer states no `a=setup`, so the native offerer is `active` (RFC 4145 §4.1) and we
@@ -77,6 +94,7 @@ async fn answers_a_teams_web_offer() {
     let l = section_lines(&answer);
     let audio = l.iter().find(|x| x.starts_with("m=audio ")).unwrap();
     assert_eq!(audio.split(' ').nth(3), Some("111"), "{answer}");
+    assert_eq!(audio.splitn(4, ' ').nth(3), Some("111"), "{answer}");
     assert!(l.contains(&"a=label:main-audio"));
     session.close().await.unwrap();
 }
@@ -85,7 +103,16 @@ async fn answers_a_teams_web_offer() {
 async fn takes_a_teams_media_server_answer() {
     let (session, _events) = MediaSession::with_options(vec![], local()).await.unwrap();
     session.create_offer().await.unwrap();
+    assert_eq!(session.audio_format(), None, "nothing negotiated yet");
     session.set_answer(MEETING_ANSWER).await.unwrap();
+    // The answer lists G.711 too, after Opus: Opus it is.
+    assert_eq!(
+        session.audio_format(),
+        Some(AudioFormat {
+            codec: AudioCodec::Opus,
+            payload_type: 111
+        })
+    );
     session.close().await.unwrap();
 }
 

@@ -42,6 +42,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use flate2::{Decompress, FlushDecompress, Status};
 
+use super::codec::{AudioCodec, AudioFormat};
 use crate::video::VideoRole;
 use crate::{Error, Result, SdpBlob};
 
@@ -103,6 +104,9 @@ const SCTP_FORMAT: &str = "webrtc-datachannel";
 const SCTP_PORT: &str = "5000";
 const SCTP_MAX_MESSAGE_SIZE: &str = "262144";
 const DATA_PAYLOADS: &str = "127 126";
+/// What webrtc-rs is not shown on an audio line that offers Opus: G.711 and DTMF were registered
+/// for the endpoints that take nothing else, and an Opus call answers and sends as before them.
+const SHADOWED_BY_OPUS: [&str; 3] = ["PCMU", "PCMA", "telephone-event"];
 const DATA_LINES: [&str; 4] = [
     "a=x-data-protocol:sctp",
     "a=rtpmap:127 x-data/90000",
@@ -328,6 +332,7 @@ pub fn from_teams_with_data(
         }
     }
     for (index, section) in parsed.sections.iter().enumerate().filter(|(i, _)| keep[*i]) {
+        let section = &without_shadowed_codecs(section);
         let m = MediaLine::parse(&section[0]).ok_or_else(|| media("malformed m= line"))?;
         let rebundled = bundle.as_ref().filter(|b| b.rewrites(index, section));
         if m.kind == DATA_KIND {
@@ -372,6 +377,108 @@ pub fn from_teams_with_data(
         }
     }
     Ok(join(out))
+}
+
+/// Each `a=rtpmap` payload type of `section` with its encoding name.
+fn rtpmap_names(section: &[String]) -> HashMap<&str, &str> {
+    section
+        .iter()
+        .filter_map(|l| attr(l, "rtpmap"))
+        .filter_map(|v| {
+            let (pt, encoding) = v.split_once(' ')?;
+            Some((pt, encoding.split('/').next()?))
+        })
+        .collect()
+}
+
+/// An audio `section` that offers Opus without the [`SHADOWED_BY_OPUS`] formats (m-line,
+/// `a=rtpmap`, `a=fmtp`, `a=rtcp-fb`); any other section as it is.
+fn without_shadowed_codecs(section: &[String]) -> Vec<String> {
+    let Some(m) = MediaLine::parse(&section[0]).filter(|m| m.kind == "audio") else {
+        return section.to_vec();
+    };
+    let names = rtpmap_names(section);
+    if !names
+        .values()
+        .any(|n| AudioCodec::from_name(n) == Some(AudioCodec::Opus))
+    {
+        return section.to_vec();
+    }
+    let shadowed = |pt: &str| match names.get(pt) {
+        Some(name) => SHADOWED_BY_OPUS
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(name)),
+        None => pt
+            .parse()
+            .ok()
+            .and_then(AudioCodec::static_payload)
+            .is_some(),
+    };
+    let hidden: Vec<&str> = m
+        .formats
+        .split_whitespace()
+        .filter(|&pt| shadowed(pt))
+        .collect();
+    if hidden.is_empty() {
+        return section.to_vec();
+    }
+    let formats: Vec<&str> = m
+        .formats
+        .split_whitespace()
+        .filter(|pt| !hidden.contains(pt))
+        .collect();
+    let head: Vec<&str> = section[0].splitn(4, ' ').take(3).collect();
+    let mut out = vec![format!("{} {}", head.join(" "), formats.join(" "))];
+    out.extend(
+        section[1..]
+            .iter()
+            .filter(|l| {
+                let pt = ["rtpmap", "fmtp", "rtcp-fb"]
+                    .iter()
+                    .find_map(|name| attr(l, name))
+                    .and_then(|v| v.split(' ').next());
+                !pt.is_some_and(|pt| hidden.contains(&pt))
+            })
+            .cloned(),
+    );
+    out
+}
+
+/// The formats IronTeams speaks among those of `sdp`'s first live audio line, in its order: by
+/// each format's `a=rtpmap` name, or for 0 and 8 without one their static assignment.
+pub fn audio_formats(sdp: &str) -> Vec<AudioFormat> {
+    let parsed = Parsed::new(sdp);
+    let Some(section) = parsed
+        .sections
+        .iter()
+        .find(|s| MediaLine::parse(&s[0]).is_some_and(|m| m.kind == "audio" && m.port != "0"))
+    else {
+        return Vec::new();
+    };
+    let names = rtpmap_names(section);
+    let Some(m) = MediaLine::parse(&section[0]) else {
+        return Vec::new();
+    };
+    m.formats
+        .split_whitespace()
+        .filter_map(|pt| {
+            let payload_type: u8 = pt.parse().ok()?;
+            let codec = match names.get(pt) {
+                Some(name) => AudioCodec::from_name(name),
+                None => AudioCodec::static_payload(payload_type),
+            }?;
+            Some(AudioFormat {
+                codec,
+                payload_type,
+            })
+        })
+        .collect()
+}
+
+/// The format we send with on `sdp`'s audio line ([`AudioFormat::preferred`]): Opus whenever it
+/// is there, else the first G.711.
+pub fn audio_format(sdp: &str) -> Option<AudioFormat> {
+    AudioFormat::preferred(&audio_formats(sdp))
 }
 
 /// Whether any line of `parsed` states the DTLS role (`a=setup`).
