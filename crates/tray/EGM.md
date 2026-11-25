@@ -21,7 +21,8 @@ IronTeams tray and desktop integration: a StatusNotifierItem (SNI) tray icon wit
 - `shutdown`, `Drop` and `Inner::stop` send `Shutdown` and join the thread once; the worker clears the launcher badge (count 0) on exit [lib.rs:Inner::stop, worker].
 - Non-Linux: no thread is spawned, `tray_error = UNSUPPORTED`, `launcher_ready = false` [lib.rs:Tray::start].
 - Inside Flatpak (`/.flatpak-info` exists) the SNI well-known D-Bus name is disabled (`disable_dbus_name`); `assume_sni_available(true)` is applied in every case, not only in Flatpak [lib.rs:worker].
-- `idle_for` on Linux tries `org.freedesktop.ScreenSaver.GetSessionIdleTime` first, then `org.gnome.Mutter.IdleMonitor.GetIdletime`; `None` if neither answers [idle.rs:idle_for].
+- `idle_for` on Linux tries the Wayland `ext_idle_notifier_v1` watcher first (only when `WAYLAND_DISPLAY` is set; KDE on Wayland refuses the D-Bus query), then `org.freedesktop.ScreenSaver.GetSessionIdleTime`, then `org.gnome.Mutter.IdleMonitor.GetIdletime`; `None` if none answers [idle.rs:idle_for].
+- Wayland watcher: started once on the first `idle_for` call, on its own thread `idle-wayland` with its own `wayland_client` connection; it asks for one notification with a 30 s timeout (`get_input_idle_notification` on notifier v2, so idle inhibitors such as a playing video do not count as input; `get_idle_notification` on v1). `idled` records the idle start as now minus 30 s, `resumed` means active (idle 0). Until it has bound the notifier, without the protocol, or after the connection ends it says nothing (`Input::Unknown`) and D-Bus is asked instead [idle.rs:wayland].
 - Badge label: 0 is hidden, 1..=99 is the number, more than 99 is `99+` [icon.rs:badge_label]. Pixmaps are straight-alpha ARGB; `Pixmap::pixel` panics out of range [icon.rs].
 - Launcher: count 0 means `count_visible = false`; count is an `i64` [launcher.rs:launcher_update].
 - Menu is fixed: Open, Mute (checked), Focus (checked), separator, Quit [menu.rs:menu_model].
@@ -31,12 +32,13 @@ IronTeams tray and desktop integration: a StatusNotifierItem (SNI) tray icon wit
 - Windows: Run value `ironteams` holds the quoted executable plus an optional flag; macOS: plist has `Label`, `ProgramArguments`, `RunAtLoad`, `ProcessType` [autostart.rs].
 
 ## Side Effects
-- D-Bus (Linux): session bus connection; SNI registration via `ksni`; broadcast of `com.canonical.Unity.LauncherEntry.Update`; `org.freedesktop.ScreenSaver.GetActive` call on every `screen_locked`; on every `idle_for` call a session bus connection and the `GetSessionIdleTime` call, then `GetIdletime` if that fails [lib.rs:worker, launcher.rs, screen.rs, idle.rs].
+- D-Bus (Linux): session bus connection; SNI registration via `ksni`; broadcast of `com.canonical.Unity.LauncherEntry.Update`; `org.freedesktop.ScreenSaver.GetActive` call on every `screen_locked`; on every `idle_for` call the Wayland watcher cannot answer, a session bus connection and the `GetSessionIdleTime` call, then `GetIdletime` if that fails [lib.rs:worker, launcher.rs, screen.rs, idle.rs].
 - Threads and channels created per `Tray::start` [lib.rs].
+- Wayland (Linux): one long-lived compositor connection and thread `idle-wayland` for the idle notification [idle.rs:wayland].
 - Disk: writes or removes the autostart desktop entry and the macOS LaunchAgent plist (no `launchctl` call in code) [autostart.rs].
 - Windows registry: HKCU `...\Run` values written, deleted and read via `windows_sys` FFI [autostart.rs]. `idle_for` calls `GetLastInputInfo` and `GetTickCount` via `windows_sys` (Cargo enables `Win32_System_SystemInformation` and `Win32_UI_Input_KeyboardAndMouse` for it); on macOS it calls `CGEventSourceSecondsSinceLastEventType` from the CoreGraphics framework through `extern "C"` [idle.rs].
-- Reads env vars `XDG_CONFIG_HOME` and `HOME`; probes `/.flatpak-info`; embeds `packaging/io.github.mohamedeslam04.ironteams.desktop` at compile time [autostart.rs, lib.rs].
-- No global state and no logging.
+- Reads env vars `XDG_CONFIG_HOME`, `HOME` and `WAYLAND_DISPLAY`; probes `/.flatpak-info`; embeds `packaging/io.github.mohamedeslam04.ironteams.desktop` at compile time [autostart.rs, lib.rs].
+- No logging. One global: the Wayland watcher's last idle state (`static INPUT`, a `Mutex`) and its start-once guard [idle.rs:wayland].
 
 ## Verification
 - Run: `cargo test -p tray`

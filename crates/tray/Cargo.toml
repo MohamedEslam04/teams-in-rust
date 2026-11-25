@@ -22,6 +22,10 @@ ksni = { version = "0.3.7", default-features = false, features = ["async-io"] }
 # async-io, not tokio: ksni drives zbus from its own async-io executor, and the tokio feature makes
 # zbus panic there ("no reactor running"). async-io has its own reactor, so it also works inside tokio.
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
+# Idle time on Wayland (`ext_idle_notifier_v1`, a staging protocol), where KDE refuses the D-Bus
+# idle query. The versions Slint's winit already builds, so no second copy.
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 
 # Autostart: the per-user Run key. Idle time: the last input tick.
 [target.'cfg(windows)'.dependencies]
