@@ -86,6 +86,10 @@ export component MessagePane inherits Rectangle {
     // estimated place (as for the jump to the divider), so it must be a row's height above.
     property <bool> unread-above: root.unread-index >= 0 && root.unread-index < root.messages.length && !root.posts-mode
         && msg-list.content-y + msg-list.content-height * root.unread-index / max(1, root.messages.length) + 48px < 0px;
+    // Room kept under the newest message while the "New messages" button shows, so the message
+    // can scroll above the buttons instead of ending under them (32px high, 12px from the
+    // bottom, and a gap). Jump to newest needs none: the list's end is where it goes away.
+    property <length> buttons-room: root.unread-above ? 48px : 0px;
     // Puts row `i` of the list near the top. Its place is estimated; the divider or flashed row
     // there corrects it once it is laid out (`aligning`). The list is no longer pinned to the
     // newest message: the content height changes in the same layouts that move the view, so the
@@ -224,8 +228,9 @@ export component MessagePane inherits Rectangle {
                 root.load-older();
             }
         }
-            for m in root.messages: MessageRow {
+            for m[i] in root.messages: MessageRow {
                 m: m;
+                bottom-room: i == root.messages.length - 1 ? root.buttons-room : 0px;
                 // A wheel notch scrolls by the wheel speed, smoothly (`WheelGlide`).
                 scroll-event(e) => { return msg-glide.take(e); }
                 max-bubble: min(720px, msg-list.width * 0.75);
