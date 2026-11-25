@@ -2650,13 +2650,24 @@ fn in_call_keyboard_shortcuts_drive_the_call() {
 
 #[test]
 fn call_chords_fire_even_while_controlling_a_shared_screen() {
-    // The shared-screen FocusScope forwards keys to the presenter; the call window's capture
-    // handler must still take the Ctrl+Shift chords first.
+    // The shared-screen FocusScope forwards keys to the presenter, but only the Ctrl+Shift chords
+    // are taken for the call; a plain key still reaches the presenter.
     let c = CallHarness::new();
     controlling_a_shrunk_share(&c);
+
+    // A plain key goes to the presenter and does not touch the call controls.
+    call_chord(&c, &[], "a");
+    assert!(!cs(&c.h.app).get_muted(), "a plain key does not mute");
+    assert!(
+        c.sent().iter().any(|l| l == "control-input key-down a"),
+        "the plain key reached the presenter: {:?}",
+        c.sent()
+    );
+
+    // Ctrl+Shift+M still toggles mute while the shared-screen scope has the keys.
     call_chord(&c, &[Key::Control, Key::Shift], "m");
     assert!(
         cs(&c.h.app).get_muted(),
-        "mute toggled although the remote-control scope had the keys"
+        "the chord mutes even while controlling"
     );
 }

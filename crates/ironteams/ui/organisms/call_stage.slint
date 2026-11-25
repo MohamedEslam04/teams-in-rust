@@ -349,10 +349,19 @@ component ContentStage inherits Rectangle {
                 init => { self.focus(); }
                 key-pressed(e) => {
                     // Esc leaves immersive full screen first; otherwise every key goes to the
-                    // presenter (the call window's capture handler normally catches it first).
+                    // presenter. This scope holds the focus while controlling, so the in-call
+                    // chords are handled here too (the call window's capture does not reach a key
+                    // a focused child FocusScope takes) — the chords win over the presenter.
                     if e.text == Key.Escape && CallStore.fullscreen {
                         CallStore.fullscreen = false;
                         return accept;
+                    }
+                    if e.modifiers.control && e.modifiers.shift {
+                        if e.text == "M" || e.text == "m" { CallStore.command("mute", ""); return accept; }
+                        if (e.text == "O" || e.text == "o") { if CallStore.can-camera || CallStore.camera { CallStore.command("camera", ""); } return accept; }
+                        if e.text == "K" || e.text == "k" { CallStore.command("hand", ""); return accept; }
+                        if e.text == "H" || e.text == "h" || e.text == "B" || e.text == "b" { CallStore.command("leave", ""); return accept; }
+                        if (e.text == "E" || e.text == "e") { if CallStore.can-share || CallStore.sharing { CallStore.command("share", ""); } return accept; }
                     }
                     CallStore.command("control-input", "key-down " + e.text);
                     accept
