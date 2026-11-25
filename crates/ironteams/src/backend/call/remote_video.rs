@@ -612,6 +612,41 @@ mod tests {
         assert_eq!(v.presenter_changed(&nobody, "8:me").as_deref(), Some(""));
     }
 
+    /// A 1:1 call the media server took over (live 2026-11-25, scrubbed): its answer gave our
+    /// sharing line (mid 3) stream id 854, and the other side's roster entry then showed its share
+    /// `sendonly` with MSI 212. Nothing was subscribed and the share never came.
+    #[test]
+    fn a_one_to_one_call_on_a_media_server_subscribes_the_other_side_s_share() {
+        let mut v = RemoteVideo {
+            share_line: Some(("3".to_owned(), 854)),
+            ..Default::default()
+        };
+        assert!(v.subscribes());
+        let r = roster(json!({
+            "8:me": person("Me", None, None),
+            "8:peer": {"version": 1, "state": "active", "details": {"displayName": "Peer"},
+                "endpoints": {"ep": {"call": {"mediaStreams": [
+                    {"type": "audio", "label": "main-audio", "sourceId": 201, "direction": "sendrecv"},
+                    {"type": "video", "label": "main-video", "sourceId": 202, "direction": "recvonly"},
+                    {"type": "applicationsharing-video", "label": "applicationsharing-video",
+                     "sourceId": 212, "direction": "sendonly"}]}}}},
+        }));
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked.len(), 1);
+        assert_eq!(
+            (asked[0].mid.as_str(), asked[0].stream_msid, asked[0].source),
+            ("3", 854, Some(212))
+        );
+        assert_eq!(asked[0].limits, SCREEN_LIMITS);
+    }
+
+    #[test]
+    fn a_person_to_person_call_subscribes_nothing() {
+        // Its browser SDP names no stream ids: no line can be subscribed.
+        assert!(!RemoteVideo::default().subscribes());
+        assert!(with_lines(1, false).subscribes(), "a meeting's gallery");
+    }
+
     #[test]
     fn the_content_sharing_presenter_is_named_before_their_stream_sends() {
         let mut v = with_lines(0, true);

@@ -26,3 +26,9 @@ credentials, SDES keys, fingerprints and TURN ids are dummies.
 - `teams_web_video_offer.sdp`: a browser's (Teams web) 1:1 offer with video, the shape a live ironteams
   run answered: audio (mid 0), `main-video` `recvonly` (mid 1), `applicationsharing-video`
   `inactive` (mid 2) and `x-data` (mid 3), all on one bundled transport. Every value invented.
+- `teams_direct_media_server_answer.sdp`: the media server's answer to IronTeams's resume re-offer
+  in a 1:1 call whose media the server had taken over (live 2026-11-25): `a=x-plaza-msi-range`,
+  `a=x-source-streamid` per line, audio (mid 1, `1102-1102`), `main-video` (mid 2,
+  `89004-89103`), nine declined `main-video` lines, `applicationsharing-video` (mid 3,
+  `89104-89203`, stream id 854) and a declined `x-data`. Scrubbed: addresses, ICE credentials,
+  fingerprint and TURN id replaced.

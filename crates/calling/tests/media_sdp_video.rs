@@ -100,7 +100,7 @@ fn ssrc_lines(section: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn a_one_ssrc_range_is_declared_as_that_ssrc_and_a_wider_one_is_not() {
+fn a_range_is_declared_as_its_first_ssrc() {
     // webrtc-rs routes an undeclared SSRC only with a single RTP line: next to the camera line
     // the audio line's SSRC must be declared, or every packet of it is dropped.
     let browser = from_teams_with(FULL_REOFFER, &[VideoRole::MainVideo], false).unwrap();
@@ -111,8 +111,12 @@ fn a_one_ssrc_range_is_declared_as_that_ssrc_and_a_wider_one_is_not() {
         ["a=ssrc:1000 cname:1000"],
         "{browser}"
     );
-    // The camera line's range is 2200-2299: no one SSRC to name.
-    assert!(ssrc_lines(&kept[1]).is_empty(), "{browser}");
+    // The camera line's range is 2200-2299: the stream starts at its first SSRC.
+    assert_eq!(
+        ssrc_lines(&kept[1]),
+        ["a=ssrc:2200 cname:2200"],
+        "{browser}"
+    );
     // A section that declares its own SSRC keeps just that one.
     let own = FULL_REOFFER.replace(
         "a=x-ssrc-range:1000-1000",
@@ -123,6 +127,35 @@ fn a_one_ssrc_range_is_declared_as_that_ssrc_and_a_wider_one_is_not() {
         ssrc_lines(&sections(&browser)[0]),
         ["a=ssrc:1000 cname:own"]
     );
+}
+
+/// The media server's answer in a 1:1 call whose media it took over (`x-plaza-msi-range`,
+/// `x-source-streamid` on each line, its own SSRC ranges), after a resume (live 2026-11-25,
+/// scrubbed).
+const DIRECT_SERVER_ANSWER: &str =
+    include_str!("fixtures/media/teams_direct_media_server_answer.sdp");
+
+#[test]
+fn a_media_server_s_one_to_one_answer_declares_each_line_s_first_ssrc() {
+    // The other side's share came on the sharing line's 89104-89203; with nothing declared,
+    // webrtc-rs dropped it (live 2026-11-25: "Waiting for the shared screen" forever).
+    let roles = [VideoRole::MainVideo, VideoRole::ApplicationSharing];
+    let browser = from_teams_with(DIRECT_SERVER_ANSWER, &roles, false).unwrap();
+    let kept = sections(&browser);
+    assert_eq!(kept.len(), 3, "{browser}");
+    assert_eq!(ssrc_lines(&kept[0]), ["a=ssrc:1102 cname:1102"]);
+    assert_eq!(value(&kept[1], "mid"), Some("2"));
+    assert_eq!(ssrc_lines(&kept[1]), ["a=ssrc:89004 cname:89004"]);
+    assert_eq!(value(&kept[2], "mid"), Some("3"));
+    assert_eq!(ssrc_lines(&kept[2]), ["a=ssrc:89104 cname:89104"]);
+    assert_eq!(source_stream_ids(DIRECT_SERVER_ANSWER).get("3"), Some(&854));
+}
+
+#[test]
+fn the_placeholder_range_of_a_line_that_sends_nothing_declares_no_ssrc() {
+    let quiet = DIRECT_SERVER_ANSWER.replace("89104-89203", "1-1");
+    let browser = from_teams_with(&quiet, SHARE, false).unwrap();
+    assert!(ssrc_lines(&sections(&browser)[1]).is_empty(), "{browser}");
 }
 
 #[test]
