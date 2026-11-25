@@ -223,12 +223,10 @@ export component SectionHead inherits Rectangle {
         padding-right: 8px;
         spacing: 4px;
         Icon {
-            source: @image-url("../icons/chevron-right.svg");
+            source: root.section.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg");
             width: 14px;
             height: 14px;
             y: 8px;
-            transform-rotation: root.section.expanded ? 90deg : 0deg;
-            animate transform-rotation { duration: Motion.normal; easing: ease-out; }
         }
         Text { text: root.section.name; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
         if !root.section.expanded && root.section.unread > 0: Rectangle {
