@@ -870,14 +870,15 @@ export component ViewMenu inherits Rectangle {
         }
         Rectangle { height: 1px; background: Theme.border; }
         // Where the filmstrip of people goes while someone shares (persisted).
-        Text {
-            text: "Filmstrip";
-            color: Theme.fg-subtle;
-            font-size: 12px * Theme.font-scale;
+        HorizontalLayout {
+            padding-left: 8px;
             height: 24px;
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            x: 8px;
+            Text {
+                text: "Filmstrip";
+                color: Theme.fg-subtle;
+                font-size: 12px * Theme.font-scale;
+                vertical-alignment: center;
+            }
         }
         for strip[j] in [
             { pos: "right", label: "Right", aria: "Filmstrip on the right" },
