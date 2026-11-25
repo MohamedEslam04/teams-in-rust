@@ -276,9 +276,20 @@ fn button(code: u32) -> PointerEventButton {
     }
 }
 
-/// A wheel turn or a touchpad swipe as Slint's scroll, logical pixels.
-fn scroll_delta(_horizontal: AxisScroll, _vertical: AxisScroll) -> (f32, f32) {
-    (0.0, 0.0)
+/// A wheel turn or a touchpad swipe as Slint's scroll, logical pixels. A wheel notch (120 in
+/// `value120`, 1 in `discrete` from older compositors) is 60 px, as in Slint's winit window; a
+/// touchpad scrolls by its own pixels. Wayland counts down as positive, Slint up.
+fn scroll_delta(horizontal: AxisScroll, vertical: AxisScroll) -> (f32, f32) {
+    let delta = |a: AxisScroll| {
+        if a.value120 != 0 {
+            -(a.value120 as f32) / 2.0
+        } else if a.discrete != 0 {
+            -(a.discrete as f32) * 60.0
+        } else {
+            -(a.absolute as f32)
+        }
+    };
+    (delta(horizontal), delta(vertical))
 }
 
 impl CompositorHandler for State {
