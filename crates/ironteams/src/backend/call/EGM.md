@@ -31,6 +31,9 @@ Files:
 - `[manager.rs:CallManager]` pub struct (Clone); fields shared: Arc<Shared> (pub(super)), hub: Arc<live::Hub> (calls feature)
 - `[remote_control.rs:wanted]` pub fn() -> bool; whether calls offer remote control (delegates to super::remote_control_wanted)
 - `[share.rs:ROLE]` pub const VideoRole::ApplicationSharing
+- `[remote_video.rs:RemoteVideo::negotiated]` pub async fn(&mut self, &MediaSession, sdp: &str, Phase); reads the gallery slots and sharing line with their x-source-streamid; Phase::Reoffer (same session) keeps the stream ids the re-offer leaves out, any other phase reads only its own SDP; logs INFO `remote video lines phase=join|reoffer|restart|direct slots slot_lines share share_mid`
+- `[remote_video.rs:Phase]` pub enum Join|Reoffer|Restart|Direct
+- `[remote_video.rs:offered_slots]` pub fn(offer: &str, camera: usize) -> usize; live main-video lines of a restart offer beyond the camera's
 - `[bots.rs:Bots::ask]` pub(super) fn(&mut self, &Control) -> bool; queues Captions/Recording/Transcription, false for other controls
 - `[manager.rs:CallManager::new]` pub fn(ui: UiHandle, client: teams_proto::Client, my_name: String) -> Self
 - `[remote_control.rs:Mode]` pub enum Off|Requested|Incoming|Controlling|Controlled {mri,name}; Mode::view() -> (&'static str, String) for CallStore.control-mode
@@ -145,7 +148,8 @@ Files:
 - `[share.rs:wanted]` reads env IRONTEAMS_SCREEN_SHARE via compat::var_os
 - `[camera.rs:preview]` spawns tokio task owning camera capture; pushes VideoSlot::Preview frames and status text through sink
 - `[manager.rs:CallManager::add_background]` VideoFx::add_background writes the picture into effects config; UI info on failure
-- `[remote_video.rs:RemoteVideo::reselect]` spawns a task sending applyChannelParameters HTTP requests via NgcClient, in order
+- `[remote_video.rs:RemoteVideo::reselect]` spawns a task sending applyChannelParameters HTTP requests via NgcClient, in order; logs INFO `video subscription sent` per request, then `video subscribed` (INFO) or `video subscription refused` (WARN) with mid, source, stream and sequence
+- `[remote_video.rs:RemoteVideo::show]` logs INFO `remote video line started` with the mid and VideoSlot once per line
 - `[sink.rs:Shared::publish_presence]` updates global call_presence state (in a call / meeting)
 - `[camera.rs:v4l2_device/saved_camera]` reads env IRONTEAMS_CAMERA_DEVICE/IRONTEAMS_CAMERA via compat::var_os; reads settings from config dir on disk; enumerates devices::cameras()
 - `[manager.rs:CallManager::command/join_now]` driver.join / handle.control(Leave) / shared.control trigger network call actions; shared.push()/tick()/publish_presence() update UI and presence

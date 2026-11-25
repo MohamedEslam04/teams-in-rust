@@ -499,3 +499,48 @@ fn off_linux_the_picker_lists_the_devices_with_the_default_selected() {
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[selected].name, "Headset");
 }
+
+/// Live 2026-11-25 (v0.1.9, a meeting of five): `remote video lines slots=0 share=false`, no
+/// gallery. The join built its session with the gallery's receive-only lines; a media restart's
+/// fresh session (lobby admission) with `media_options` alone, so it had no slot to subscribe.
+#[test]
+fn a_meeting_s_media_options_have_the_gallery_slots_its_join_offers() {
+    let meeting = media_options(true, true);
+    assert_eq!(meeting.receive_slots, remote_video::wanted_slots());
+    assert_eq!(meeting.layout, remote_video::wanted_layout());
+    // A 1:1 call and the audio-only rejoin have none.
+    assert_eq!(media_options(false, true).receive_slots, 0);
+    assert_eq!(media_options(true, false).receive_slots, 0);
+}
+
+/// A media server's restart offer: audio, `main_video` `main-video` lines and the sharing line
+/// (the shape of the lobby admission's, `calling` fixture `teams_meeting_full_reoffer.sdp`).
+fn restart_offer(main_video: usize) -> String {
+    let mut sdp = String::from("v=0\r\nm=audio 3478 RTP/AVP 111\r\na=mid:1\r\n");
+    for i in 0..main_video {
+        let mid = if i == 0 { 2 } else { i + 4 };
+        sdp += &format!("m=video 3478 RTP/AVP 107\r\na=label:main-video\r\na=mid:{mid}\r\n");
+    }
+    sdp += "m=video 3481 RTP/AVP 107\r\na=label:applicationsharing-video\r\na=mid:3\r\n";
+    sdp
+}
+
+#[test]
+fn a_meeting_s_restarted_session_keeps_the_gallery_slots_the_offer_has_room_for() {
+    let slots = remote_video::wanted_slots();
+    // Ten main-video lines: the camera's and the nine slots.
+    let admission = restart_offer(10);
+    let restarted = restart_options(true, true, &admission);
+    assert_eq!(restarted, media_options(true, true));
+    assert_eq!(restarted.receive_slots, slots);
+    // Fewer: no spare slot to take the sharing line.
+    assert_eq!(
+        restart_options(true, true, &restart_offer(4)).receive_slots,
+        slots.min(3)
+    );
+    // A 1:1 call's restart (moved to a media server) is answered as before.
+    assert_eq!(
+        restart_options(false, true, &admission),
+        media_options(false, true)
+    );
+}

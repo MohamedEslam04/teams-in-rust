@@ -35,16 +35,38 @@ impl Talk {
 }
 
 /// A call's media options: [`share::media_options`] (no video lines when `video` is off), plus in
-/// a meeting the data channel that carries live captions.
+/// a meeting the data channel that carries live captions and, with video, the gallery's
+/// receive-only lines ([`remote_video::wanted_slots`], laid out as
+/// [`remote_video::wanted_layout`]). The join and a media restart's fresh session (lobby
+/// admission) both build theirs here: a restart built without the gallery lines had no slot to
+/// subscribe (`slots=0`).
 pub(super) fn media_options(meeting: bool, video: bool) -> MediaOptions {
-    MediaOptions {
+    let mut options = MediaOptions {
         data_channel: meeting,
         ..if video {
             share::media_options()
         } else {
             MediaOptions::default()
         }
+    };
+    if meeting && video {
+        options.receive_slots = remote_video::wanted_slots();
+        options.layout = remote_video::wanted_layout();
     }
+    options
+}
+
+/// [`media_options`] for a fresh session answering the media server's restart `offer`: no more
+/// gallery lines than the offer has `main-video` lines beyond our camera's. webrtc-rs gives an
+/// offered line to a line of ours not placed yet, a receive-only one first, so a spare slot would
+/// take the sharing line.
+pub(super) fn restart_options(meeting: bool, video: bool, offer: &str) -> MediaOptions {
+    let mut options = media_options(meeting, video);
+    let camera = options.video.iter().filter(|r| **r == camera::ROLE).count();
+    options.receive_slots = options
+        .receive_slots
+        .min(remote_video::offered_slots(offer, camera));
+    options
 }
 
 /// The captions in one whole data-channel message (none for another data id). A caption without

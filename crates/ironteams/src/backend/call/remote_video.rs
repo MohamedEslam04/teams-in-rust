@@ -12,7 +12,7 @@
 //! line unless `IRONTEAMS_SCREEN_SHARE=0`. Everything here is UNVERIFIED live.
 
 use super::{EventSink, VideoSlot};
-use calling::media::sdp::source_stream_ids;
+use calling::media::sdp::{mid_of_role, source_stream_ids, video_mids};
 use calling::media::{MediaSession, VideoLayout};
 use calling::signaling::roster::Roster;
 use calling::signaling::video::{SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive};
@@ -47,6 +47,57 @@ pub fn wanted_slots() -> usize {
     } else {
         0
     }
+}
+
+/// How many gallery slots a session answering the media server's `offer` (a media restart) can
+/// place: the offer's live `main-video` lines beyond the `camera` lines ours sends on.
+pub fn offered_slots(offer: &str, camera: usize) -> usize {
+    let sharing = mid_of_role(offer, VideoRole::ApplicationSharing);
+    video_mids(offer)
+        .into_iter()
+        .filter(|mid| Some(mid) != sharing.as_ref())
+        .count()
+        .saturating_sub(camera)
+}
+
+/// Which negotiation [`RemoteVideo::negotiated`] reads: the join's answer, a re-offer on the
+/// same session, a media restart's fresh session taking over, or a direct (1:1) call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Join,
+    Reoffer,
+    Restart,
+    Direct,
+}
+
+impl Phase {
+    fn name(self) -> &'static str {
+        match self {
+            Phase::Join => "join",
+            Phase::Reoffer => "reoffer",
+            Phase::Restart => "restart",
+            Phase::Direct => "direct",
+        }
+    }
+}
+
+/// The gallery slots of `mids` that can be subscribed: each with its `x-source-streamid` in `ids`,
+/// else the one `known` for it before (a re-offer on the same session that leaves the line out
+/// does not take its slot away).
+fn slot_table(
+    mids: Vec<String>,
+    ids: &HashMap<String, u32>,
+    known: &[(String, u32)],
+) -> Vec<(String, u32)> {
+    mids.into_iter()
+        .filter_map(|mid| {
+            let id = ids
+                .get(&mid)
+                .copied()
+                .or_else(|| known.iter().find(|(m, _)| *m == mid).map(|(_, id)| *id))?;
+            Some((mid, id))
+        })
+        .collect()
 }
 
 /// The order of a meeting join's video lines: the web client's (camera, gallery, then the
@@ -168,6 +219,8 @@ impl RemoteVideo {
             while let Some(mut p) = packets.recv().await {
                 let tx = lines.entry(p.mid.clone()).or_insert_with(|| {
                     let slot = lock(&routes).slot_for(p.mid.as_deref());
+                    // Which line carries what (a meeting's unasked stream comes as `Remote`).
+                    tracing::info!(mid = ?p.mid, ?slot, "remote video line started");
                     let (tx, rx) = mpsc::channel(LINE_QUEUE);
                     let frames = spawn_decoder(rx, width_for(slot));
                     tokio::spawn(forward_frames(
@@ -201,32 +254,39 @@ impl RemoteVideo {
     }
 
     /// Reads the lines of a negotiated session: its gallery slots' and sharing line's mids, and
-    /// their `x-source-streamid`s in the media server's SDP (`sdp`, an answer or its offer).
-    /// Every subscription starts over.
-    pub async fn negotiated(&mut self, media: &MediaSession, sdp: &str) {
+    /// their `x-source-streamid`s in the media server's SDP (`sdp`, an answer or its offer). A
+    /// re-offer on the same session keeps the stream ids it does not name; a fresh session
+    /// ([`Phase::Restart`]) reads its own. Every subscription starts over.
+    pub async fn negotiated(&mut self, media: &MediaSession, sdp: &str, phase: Phase) {
         let ids = source_stream_ids(sdp);
         let share = media.video_mid(VideoRole::ApplicationSharing).await;
-        self.table = media
-            .slot_mids()
-            .await
-            .into_iter()
-            .filter_map(|mid| {
-                let id = *ids.get(&mid)?;
-                Some((mid, id))
-            })
-            .collect();
-        self.share_line = share
-            .as_ref()
-            .and_then(|mid| Some((mid.clone(), *ids.get(mid)?)));
+        let mids = media.slot_mids().await;
+        let slot_lines = mids.len();
+        let same_session = phase == Phase::Reoffer;
+        let known = if same_session { &self.table[..] } else { &[] };
+        self.table = slot_table(mids, &ids, known);
+        let known_share = self.share_line.take().filter(|_| same_session);
+        self.share_line = share.as_ref().and_then(|mid| {
+            let id = ids
+                .get(mid)
+                .copied()
+                .or_else(|| known_share.filter(|(m, _)| m == mid).map(|(_, id)| id))?;
+            Some((mid.clone(), id))
+        });
         *lock(&self.routes) = Routes {
-            share,
+            share: share.clone(),
             slots: self.table.iter().map(|(mid, _)| mid.clone()).collect(),
         };
         self.held = vec![None; self.table.len()];
         self.share_held = None;
+        // `slots`: the gallery lines that can be subscribed (placed, with a stream id);
+        // `slot_lines`: the gallery lines the negotiation placed at all.
         tracing::info!(
+            phase = %phase.name(),
             slots = self.table.len(),
+            slot_lines,
             share = self.share_line.is_some(),
+            share_mid = ?share,
             "remote video lines"
         );
     }
@@ -319,10 +379,21 @@ impl RemoteVideo {
             tokio::spawn(async move {
                 while let Some((url, r, n)) = rx.recv().await {
                     match ngc.apply_channel_parameters(&s, &url, &r, n).await {
-                        Ok(()) => {
-                            tracing::info!(mid = %r.mid, source = ?r.source, "video subscribed")
-                        }
-                        Err(e) => tracing::warn!(%e, mid = %r.mid, "video subscription refused"),
+                        Ok(()) => tracing::info!(
+                            mid = %r.mid,
+                            source = ?r.source,
+                            stream = r.stream_msid,
+                            sequence = n,
+                            "video subscribed"
+                        ),
+                        Err(e) => tracing::warn!(
+                            %e,
+                            mid = %r.mid,
+                            source = ?r.source,
+                            stream = r.stream_msid,
+                            sequence = n,
+                            "video subscription refused"
+                        ),
                     }
                 }
             });
@@ -330,6 +401,12 @@ impl RemoteVideo {
         });
         for r in requests {
             self.sequence += 1;
+            tracing::info!(
+                mid = %r.mid,
+                source = ?r.source,
+                sequence = self.sequence,
+                "video subscription sent"
+            );
             let _ = queue.send((url.clone(), r, self.sequence));
         }
     }
@@ -597,6 +674,37 @@ mod tests {
         let asked = v.plan(&r, "8:me", |_| 0, |_| {});
         assert_eq!((asked.len(), asked[0].source), (1, None));
         assert_eq!(v.presenter_changed(&r, "8:me").as_deref(), Some(""));
+    }
+
+    #[test]
+    fn a_restart_offer_has_room_for_its_live_main_video_lines_beyond_the_camera() {
+        let line = |port: u16, label: &str, mid: u16| {
+            format!("m=video {port} RTP/AVP 107\r\na=label:{label}\r\na=mid:{mid}\r\n")
+        };
+        let offer = format!(
+            "v=0\r\nm=audio 3478 RTP/AVP 111\r\na=mid:1\r\n{}{}{}{}",
+            line(3478, "main-video", 2),
+            line(3478, "main-video", 5),
+            line(0, "main-video", 6),
+            line(3481, "applicationsharing-video", 3),
+        );
+        // The declined line and the sharing line are no slot's.
+        assert_eq!(offered_slots(&offer, 1), 1);
+        assert_eq!(offered_slots(&offer, 0), 2);
+        assert_eq!(offered_slots("", 1), 0);
+    }
+
+    #[test]
+    fn a_re_offer_that_leaves_a_slot_out_keeps_its_stream_id() {
+        let mids = || ["2", "5", "6"].map(String::from).to_vec();
+        let ids = HashMap::from([("5".to_owned(), 5005)]);
+        let known = [("2".to_owned(), 4002), ("5".to_owned(), 4005)];
+        assert_eq!(
+            slot_table(mids(), &ids, &known),
+            [("2".to_owned(), 4002), ("5".to_owned(), 5005)]
+        );
+        // A fresh session (a restart) knows nothing from before.
+        assert_eq!(slot_table(mids(), &ids, &[]), [("5".to_owned(), 5005)]);
     }
 
     #[test]

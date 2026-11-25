@@ -413,6 +413,35 @@ async fn a_line_the_media_server_offered_and_we_answered_is_live() {
     session.close().await.unwrap();
 }
 
+/// The media restart after lobby admission is answered on a fresh session built as the join's
+/// (live 2026-11-25: one built without the gallery lines logged `slots=0`, nothing subscribed).
+/// webrtc-rs gives the offer's `main-video` lines to the receive-only slots first, in order, the
+/// last one to the camera; the sharing line stays the sharing line.
+#[tokio::test]
+async fn a_fresh_meeting_session_places_its_gallery_lines_on_the_restart_offer() {
+    let (session, _events) =
+        MediaSession::with_options(vec![], join_options(VideoLayout::WebClient))
+            .await
+            .unwrap();
+    session.accept_offer(FULL_REOFFER).await.unwrap();
+    assert_eq!(
+        session.slot_mids().await,
+        ["2", "5", "6", "7", "8", "9", "10", "11", "12"]
+    );
+    assert_eq!(
+        session
+            .video_mid(VideoRole::ApplicationSharing)
+            .await
+            .as_deref(),
+        Some("3")
+    );
+    assert_eq!(
+        session.video_mid(VideoRole::MainVideo).await.as_deref(),
+        Some("13")
+    );
+    session.close().await.unwrap();
+}
+
 #[test]
 fn an_update_names_every_live_line_and_only_live_ones() {
     use calling::signaling::video::meeting_descriptions;
