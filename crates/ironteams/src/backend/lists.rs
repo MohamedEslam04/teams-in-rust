@@ -408,36 +408,36 @@ pub(super) fn clean_name(name: &str) -> Option<String> {
 impl Engine {
     /// Loads the saved state once, and tells the UI the options.
     fn lists_load(&self) {
+        if self.lists.lock().unwrap().loaded {
+            return;
+        }
+        // Read before taking the lists' lock: the sync and the Teams view take the lists' lock
+        // while they hold the store's, so taking them the other way round could deadlock both.
+        let (saved, last) = {
+            let store = self.store.lock().unwrap();
+            let read = |key: &str| {
+                store
+                    .get_kv(key)
+                    .ok()
+                    .flatten()
+                    .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            };
+            (read(KV_KEY), read(KV_SERVER))
+        };
         let fresh = {
             let mut st = self.lists.lock().unwrap();
             if st.loaded {
                 return;
             }
             st.loaded = true;
-            let saved = self
-                .store
-                .lock()
-                .unwrap()
-                .get_kv(KV_KEY)
-                .ok()
-                .flatten()
-                .and_then(|t| serde_json::from_str::<Value>(&t).ok());
             if let Some(v) = saved {
                 st.local = Local::from_json(&v);
             }
             // The sections Teams had last time show at once; the refresh replaces them.
-            if !st.server_known {
-                let last = self
-                    .store
-                    .lock()
-                    .unwrap()
-                    .get_kv(KV_SERVER)
-                    .ok()
-                    .flatten()
-                    .and_then(|t| serde_json::from_str::<Value>(&t).ok());
-                if let Some(v) = last {
-                    (st.server, st.server_favs) = server_from_json(&v);
-                }
+            if !st.server_known
+                && let Some(v) = last
+            {
+                (st.server, st.server_favs) = server_from_json(&v);
             }
             st.local.opts
         };
@@ -1480,5 +1480,43 @@ mod tests {
             assert_eq!(level_name(notify_level(n).unwrap()), n);
         }
         assert_eq!(notify_level("loud"), None);
+    }
+
+    /// The sync and the Teams view take the lists' lock while they hold the store's (a channel's
+    /// name, its team's picture). The first load of the lists read the store while it held the
+    /// lists' lock, the other way round: the two could deadlock each other, and with them every
+    /// task and the window waiting on the store. Waiting for the store, it must hold nothing.
+    #[test]
+    fn loading_the_lists_holds_no_lock_while_it_waits_for_the_store() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let e = Engine::new(
+            teams_proto::Client::offline("test").unwrap(),
+            store::Store::open_in_memory().unwrap(),
+            session::Config::default(),
+            ui,
+            "8:me".into(),
+            "Me".into(),
+        );
+        assert!(!e.lists.lock().unwrap().loaded, "not loaded yet");
+        // Something else (the sync) holds the store.
+        let store = e.store.lock().unwrap();
+        let loading = {
+            let e = e.clone();
+            std::thread::spawn(move || e.lists_load())
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let lists_free = e.lists.try_lock().is_ok();
+        drop(store);
+        loading.join().unwrap();
+        assert!(
+            lists_free,
+            "the lists' lock was held while waiting for the store's"
+        );
+        assert!(
+            e.lists.lock().unwrap().loaded,
+            "loaded once the store is free"
+        );
     }
 }

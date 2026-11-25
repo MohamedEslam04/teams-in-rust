@@ -306,7 +306,10 @@ impl Engine {
                 }
             }
             CalCmd::CopyMeetLink => {
-                if let Some(link) = self.cal.lock().meet_link.clone() {
+                // Not in the `if let`: its guard would stay held over the clipboard, which talks
+                // to the display server (and may wait for a clipboard manager on drop).
+                let link = self.cal.lock().meet_link.clone();
+                if let Some(link) = link {
                     let _ = arboard::Clipboard::new().and_then(|mut c| c.set_text(link));
                 }
             }

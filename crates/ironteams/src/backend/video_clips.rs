@@ -415,17 +415,15 @@ impl Engine {
                 if key.is_empty() {
                     return None;
                 }
-                let cached = {
+                // The file is read and decoded without the recorder's lock held.
+                let known = self.clips.lock().unwrap().thumbs.get(&key).cloned();
+                let cached = known.unwrap_or_else(|| {
+                    let px = thumb_path(&key)
+                        .and_then(|p| std::fs::read(p).ok())
+                        .and_then(|b| super::util::decode_image(&b, 480, 270));
                     let mut st = self.clips.lock().unwrap();
-                    st.thumbs
-                        .entry(key.clone())
-                        .or_insert_with(|| {
-                            thumb_path(&key)
-                                .and_then(|p| std::fs::read(p).ok())
-                                .and_then(|b| super::util::decode_image(&b, 480, 270))
-                        })
-                        .clone()
-                };
+                    st.thumbs.entry(key.clone()).or_insert(px).clone()
+                });
                 let thumb = cached.or_else(|| {
                     let online = !self.offline.load(std::sync::atomic::Ordering::Relaxed);
                     clip::thumbnail_url(&c.url)

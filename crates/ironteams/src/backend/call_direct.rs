@@ -698,21 +698,30 @@ impl Engine {
     }
 
     fn refresh_incoming(self: &Arc<Self>, id: u64) {
-        let c = self.direct();
-        let Some(i) = c
-            .incoming
-            .as_ref()
-            .filter(|i| i.id == id && !i.state.is_over())
-        else {
-            return;
+        // Copied out first: the photo lookup takes the avatar cache and the store, and may decode.
+        let (mri, name, video, waiting, accepting) = {
+            let c = self.direct();
+            let Some(i) = c
+                .incoming
+                .as_ref()
+                .filter(|i| i.id == id && !i.state.is_over())
+            else {
+                return;
+            };
+            (
+                i.mri.clone(),
+                i.name.clone(),
+                i.video,
+                i.waiting,
+                i.state == IncomingState::Accepting,
+            )
         };
-        let mut view = self.call_view(&i.mri, &i.name);
-        view.video = i.video;
-        view.waiting = i.waiting;
-        if i.state == IncomingState::Accepting {
+        let mut view = self.call_view(&mri, &name);
+        view.video = video;
+        view.waiting = waiting;
+        if accepting {
             view.status = "Connecting…".into();
         }
-        drop(c);
         self.ui.call_incoming(view);
     }
 
@@ -1345,14 +1354,22 @@ impl Engine {
     }
 
     fn push_outgoing(self: &Arc<Self>, id: u64) {
-        let c = self.direct();
-        let Some(o) = c.outgoing.as_ref().filter(|o| o.id == id) else {
-            return;
+        // Copied out first: the photo lookup takes the avatar cache and the store, and may decode.
+        let (mri, name, status, over) = {
+            let c = self.direct();
+            let Some(o) = c.outgoing.as_ref().filter(|o| o.id == id) else {
+                return;
+            };
+            (
+                o.mri.clone(),
+                o.name.clone(),
+                o.state.label(),
+                !o.state.is_live(),
+            )
         };
-        let mut view = self.call_view(&o.mri, &o.name);
-        view.status = o.state.label();
-        view.over = !o.state.is_live();
-        drop(c);
+        let mut view = self.call_view(&mri, &name);
+        view.status = status;
+        view.over = over;
         self.ui.call_outgoing(view);
     }
 
@@ -1677,6 +1694,81 @@ mod tests {
             answer_failure_text(&anyhow::anyhow!("the calling connection is down")),
             "the calling connection is down"
         );
+    }
+
+    /// An offline engine (kept with its window) with a 1:1 call ringing from `PEER`.
+    fn ringing() -> (Arc<Engine>, crate::AppWindow, u64) {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let e = Engine::new(
+            teams_proto::Client::offline("test").unwrap(),
+            store::Store::open_in_memory().unwrap(),
+            session::Config::default(),
+            ui,
+            "8:orgid:me".into(),
+            "Me".into(),
+        );
+        e.offline.store(true, Ordering::Relaxed);
+        e.fake_incoming_call(PEER, "Sara Example", false);
+        let id = e.direct().incoming.as_ref().map(|i| i.id).expect("ringing");
+        (e, window, id)
+    }
+
+    const PEER: &str = "8:orgid:00000000-0000-0000-0000-000000000002";
+
+    /// Runs `f` while another thread holds the avatar cache (as a photo being decoded into it
+    /// does), and tells whether the 1:1 calls' lock was free while `f` waited for the photo.
+    fn calls_lock_free_during_photo_lookup(e: &Arc<Engine>, f: fn(&Arc<Engine>)) -> bool {
+        let photos = e.avatars.lock().unwrap();
+        let looking = {
+            let e = e.clone();
+            std::thread::spawn(move || f(&e))
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let free = e.direct_calls.inner.try_lock().is_ok();
+        drop(photos);
+        looking.join().unwrap();
+        free
+    }
+
+    /// The ringing toast's refresh looks the caller's photo up (the avatar cache, then the store
+    /// and a decode on a miss). The 1:1 calls' lock, which every call event takes, must not be
+    /// held meanwhile.
+    #[test]
+    fn refreshing_the_ringing_toast_holds_no_calls_lock_over_the_photo_lookup() {
+        let (e, _window, _) = ringing();
+        let free = calls_lock_free_during_photo_lookup(&e, |e| {
+            let id = e.direct().incoming.as_ref().map(|i| i.id).unwrap();
+            e.refresh_incoming(id);
+        });
+        assert!(free, "the calls' lock was held over the photo lookup");
+    }
+
+    /// The same for the ringing screen of a call I place.
+    #[test]
+    fn pushing_the_outgoing_screen_holds_no_calls_lock_over_the_photo_lookup() {
+        let (e, _window, _) = ringing();
+        {
+            let mut c = e.direct();
+            c.incoming = None;
+            c.next_id += 1;
+            let id = c.next_id;
+            c.outgoing = Some(OutgoingCall {
+                id,
+                mri: PEER.into(),
+                name: "Sara Example".into(),
+                state: OutgoingState::Placing,
+                session: None,
+                events: None,
+                cancel: None,
+            });
+        }
+        let free = calls_lock_free_during_photo_lookup(&e, |e| {
+            let id = e.direct().outgoing.as_ref().map(|o| o.id).unwrap();
+            e.push_outgoing(id);
+        });
+        assert!(free, "the calls' lock was held over the photo lookup");
     }
 
     #[test]
