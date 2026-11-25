@@ -86,6 +86,17 @@ pub(crate) fn attr_lower(el: &ElementRef, name: &str) -> String {
     attr(el, name).unwrap_or("").to_ascii_lowercase()
 }
 
+/// `text`, the first text of `el`, without the right-to-left mark we put in front of a block that
+/// says `dir="ltr"` (see [`crate::with_rtl_mark`]): the mark is for Teams mobile, and here it
+/// would turn an English first line into a right-to-left paragraph.
+pub(crate) fn own_mark_free<'a>(el: &ElementRef, text: &'a str) -> &'a str {
+    if attr_lower(el, "dir") == "ltr" {
+        text.trim_start_matches('\u{200F}')
+    } else {
+        text
+    }
+}
+
 pub(crate) fn non_empty(s: Option<&str>) -> Option<String> {
     s.map(str::trim)
         .filter(|s| !s.is_empty())
@@ -244,9 +255,11 @@ impl Walker {
         if depth > MAX_DEPTH {
             return;
         }
-        for child in el.children() {
+        for (i, child) in el.children().enumerate() {
             match child.value() {
-                Node::Text(t) => self.push_text(t, ctx),
+                Node::Text(t) => {
+                    self.push_text(if i == 0 { own_mark_free(&el, t) } else { t }, ctx)
+                }
                 Node::Element(_) => {
                     if let Some(e) = ElementRef::wrap(child) {
                         self.element(e, ctx, depth + 1);
