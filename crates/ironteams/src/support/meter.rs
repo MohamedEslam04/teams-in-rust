@@ -267,7 +267,7 @@ mod tests {
             let mic = Mic(held);
             Ok(Box::new(move || {
                 let _ = &mic;
-                Some(0.3)
+                Some(0.3_f32)
             }) as Reader)
         });
         probe.stop();
