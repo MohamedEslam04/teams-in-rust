@@ -31,7 +31,7 @@ Files:
 - `[manager.rs:CallManager]` pub struct (Clone); fields shared: Arc<Shared> (pub(super)), hub: Arc<live::Hub> (calls feature)
 - `[remote_control.rs:wanted]` pub fn() -> bool; whether calls offer remote control (delegates to super::remote_control_wanted)
 - `[share.rs:ROLE]` pub const VideoRole::ApplicationSharing
-- `[remote_video.rs:RemoteVideo::negotiated]` pub async fn(&mut self, &MediaSession, sdp: &str, Phase); reads the gallery slots and sharing line with their x-source-streamid; Phase::Reoffer (same session) keeps the stream ids the re-offer leaves out, any other phase reads only its own SDP; logs INFO `remote video lines phase=join|reoffer|restart|direct slots slot_lines share share_mid`
+- `[remote_video.rs:RemoteVideo::negotiated]` pub async fn(&mut self, &MediaSession, sdp: &str, Phase); reads the gallery slots and sharing line with their x-source-streamid; the sharing line's mid is the first live (not port 0) applicationsharing section of `sdp` on every phase, so a share that returns on a new mid is Content and a declined/absent line is no share (only an empty `sdp`, the direct call's start, takes our sharing transceiver's mid); Phase::Reoffer (same session) keeps the stream ids the re-offer leaves out, any other phase reads only its own SDP; logs INFO `remote video lines phase=join|reoffer|restart|direct slots slot_lines share share_mid`
 - `[remote_video.rs:Phase]` pub enum Join|Reoffer|Restart|Direct
 - `[remote_video.rs:offered_slots]` pub fn(offer: &str, camera: usize) -> usize; live main-video lines of a restart offer beyond the camera's
 - `[bots.rs:Bots::ask]` pub(super) fn(&mut self, &Control) -> bool; queues Captions/Recording/Transcription, false for other controls

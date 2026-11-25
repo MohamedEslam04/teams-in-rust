@@ -12,7 +12,7 @@
 //! line unless `IRONTEAMS_SCREEN_SHARE=0`. Everything here is UNVERIFIED live.
 
 use super::{EventSink, VideoSlot};
-use calling::media::sdp::{mid_of_role, source_stream_ids, video_mids};
+use calling::media::sdp::{live_mid_of_role, mid_of_role, source_stream_ids, video_mids};
 use calling::media::{MediaSession, VideoLayout};
 use calling::signaling::roster::Roster;
 use calling::signaling::video::{SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive};
@@ -39,6 +39,8 @@ const LINE_QUEUE: usize = 512;
 /// A line that sends no picture for this long is cleared (a share that stopped, a camera that
 /// went off without a renegotiation).
 const IDLE: Duration = Duration::from_secs(10);
+/// How often a drawn line checks that its route is still the one it drew on.
+const ROUTE_CHECK: Duration = Duration::from_millis(500);
 
 /// The gallery slots a meeting join offers: [`RECEIVE_SLOTS`], none with `IRONTEAMS_CAMERA=0`.
 pub fn wanted_slots() -> usize {
@@ -264,10 +266,17 @@ impl RemoteVideo {
     }
 
     /// [`Self::negotiated`] with what the session says: `own`, the mid of our sharing
-    /// transceiver, and `mids`, the gallery lines it placed.
+    /// transceiver (the share's line only while there is no `sdp` to read it from: a direct call's
+    /// start), and `mids`, the gallery lines it placed. The sharing line is read from `sdp` every
+    /// time: the peer's share that stopped and starts again comes on a new mid, our transceiver
+    /// keeps the old one.
     fn place(&mut self, sdp: &str, own: Option<String>, mids: Vec<String>, phase: Phase) {
         let ids = source_stream_ids(sdp);
-        let share = own;
+        let share = if sdp.is_empty() {
+            own
+        } else {
+            live_mid_of_role(sdp, VideoRole::ApplicationSharing)
+        };
         let slot_lines = mids.len();
         let same_session = phase == Phase::Reoffer;
         let known = if same_session { &self.table[..] } else { &[] };
@@ -472,7 +481,8 @@ fn lock(routes: &Mutex<Routes>) -> std::sync::MutexGuard<'_, Routes> {
 }
 
 /// Draws one line's pictures where the line's route says, until its decoder ends; a line idle
-/// for [`IDLE`] is cleared until it sends again.
+/// for [`IDLE`] is cleared until it sends again, and so is one whose route moved on (a share's
+/// line a re-offer declined: its last picture must not stay on the stage).
 async fn forward_frames(
     mut frames: mpsc::Receiver<RgbFrame>,
     mid: Option<Arc<str>>,
@@ -480,9 +490,13 @@ async fn forward_frames(
     sink: EventSink,
 ) {
     let mut drawn: Option<VideoSlot> = None;
+    let mut last = tokio::time::Instant::now();
+    let mut check = tokio::time::interval(ROUTE_CHECK);
     loop {
-        match tokio::time::timeout(IDLE, frames.recv()).await {
-            Ok(Some(f)) => {
+        tokio::select! {
+            f = frames.recv() => {
+                let Some(f) = f else { break };
+                last = tokio::time::Instant::now();
                 let slot = lock(&routes).slot_for(mid.as_deref());
                 if let Some(old) = drawn.filter(|old| *old != slot) {
                     sink.video(old, None);
@@ -490,9 +504,11 @@ async fn forward_frames(
                 drawn = Some(slot);
                 sink.video(slot, Some(f));
             }
-            Ok(None) => break,
-            Err(_) => {
-                if let Some(old) = drawn.take() {
+            _ = check.tick() => {
+                let slot = lock(&routes).slot_for(mid.as_deref());
+                if (drawn.is_some_and(|old| old != slot) || last.elapsed() >= IDLE)
+                    && let Some(old) = drawn.take()
+                {
                     sink.video(old, None);
                 }
             }
@@ -759,7 +775,13 @@ mod tests {
     }
 
     /// One m-line of a 1:1 re-offer the way the web client writes it (live 2026-11-25, scrubbed).
-    fn line(port: u16, mid: Option<&str>, label: &str, direction: &str, stream: Option<u32>) -> String {
+    fn line(
+        port: u16,
+        mid: Option<&str>,
+        label: &str,
+        direction: &str,
+        stream: Option<u32>,
+    ) -> String {
         let mut l = format!("m=video {port} RTP/SAVP 102\r\n");
         if let Some(mid) = mid {
             l += &format!("a=mid:{mid}\r\n");
@@ -772,7 +794,10 @@ mod tests {
     }
 
     fn reoffer(lines: &[String]) -> String {
-        format!("v=0\r\nm=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n{}", lines.concat())
+        format!(
+            "v=0\r\nm=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n{}",
+            lines.concat()
+        )
     }
 
     fn stage(v: &RemoteVideo, mid: &str) -> VideoSlot {
@@ -787,13 +812,22 @@ mod tests {
         let mut v = RemoteVideo::default();
         let first = reoffer(&[
             camera.clone(),
-            line(9, Some("2"), "applicationsharing-video", "sendonly", Some(3000)),
+            line(
+                9,
+                Some("2"),
+                "applicationsharing-video",
+                "sendonly",
+                Some(3000),
+            ),
         ]);
         v.place(&first, Some("2".into()), vec![], Phase::Reoffer);
         assert_eq!(stage(&v, "2"), VideoSlot::Content);
         assert_eq!(v.share_line, Some(("2".to_owned(), 3000)));
 
-        let stopped = reoffer(&[camera.clone(), line(0, None, "applicationsharing-video", "sendonly", None)]);
+        let stopped = reoffer(&[
+            camera.clone(),
+            line(0, None, "applicationsharing-video", "sendonly", None),
+        ]);
         // Our own sharing transceiver still reports mid 2 (it was never renegotiated).
         v.place(&stopped, Some("2".into()), vec![], Phase::Reoffer);
 
@@ -803,15 +837,28 @@ mod tests {
         ]);
         v.place(&again, Some("2".into()), vec![], Phase::Reoffer);
         assert_eq!(stage(&v, "4"), VideoSlot::Content);
-        assert_eq!(stage(&v, "2"), VideoSlot::Remote, "the old line is no share");
+        assert_eq!(
+            stage(&v, "2"),
+            VideoSlot::Remote,
+            "the old line is no share"
+        );
         assert_eq!(stage(&v, "1"), VideoSlot::Remote);
-        assert_eq!(v.share_line, None, "the old stream id is not the new line's");
+        assert_eq!(
+            v.share_line, None,
+            "the old stream id is not the new line's"
+        );
     }
 
     #[test]
     fn a_declined_sharing_line_is_no_share() {
         let mut v = RemoteVideo::default();
-        let on = reoffer(&[line(9, Some("2"), "applicationsharing-video", "sendonly", Some(3000))]);
+        let on = reoffer(&[line(
+            9,
+            Some("2"),
+            "applicationsharing-video",
+            "sendonly",
+            Some(3000),
+        )]);
         v.place(&on, Some("2".into()), vec![], Phase::Reoffer);
         assert!(v.subscribes());
         // Declined with its mid kept, and declined without one.
@@ -819,7 +866,12 @@ mod tests {
             line(0, Some("2"), "applicationsharing-video", "sendonly", None),
             line(0, None, "applicationsharing-video", "sendonly", None),
         ] {
-            v.place(&reoffer(&[declined]), Some("2".into()), vec![], Phase::Reoffer);
+            v.place(
+                &reoffer(&[declined]),
+                Some("2".into()),
+                vec![],
+                Phase::Reoffer,
+            );
             assert_eq!(stage(&v, "2"), VideoSlot::Remote);
             assert_eq!(lock(&v.routes).share, None);
             assert_eq!(v.share_line, None);
