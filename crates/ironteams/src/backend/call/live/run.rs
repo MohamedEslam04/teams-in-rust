@@ -144,7 +144,7 @@ impl Call {
                             // So was the camera: it comes back on the new session's line.
                             camera_wanted |= self.camera.stop(&sink).await;
                             let _ = old.close().await;
-                            self.video.negotiated(&self.media, &offer).await;
+                            self.video.negotiated(&self.media, &offer, remote_video::Phase::Restart).await;
                             self.video.show(ev.video, &sink);
                             state_rx = ev.state;
                             state_open = true;

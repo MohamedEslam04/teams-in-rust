@@ -73,15 +73,7 @@ pub(super) async fn join_meeting(
     let ice = hub.ice_servers(&ngc.endpoints().region).await;
     // A meeting join also offers the gallery's receive-only lines (UNVERIFIED), unless `with_video`
     // is off: the audio-only rejoin after the media servers refused the video lines.
-    let options = MediaOptions {
-        receive_slots: if with_video {
-            remote_video::wanted_slots()
-        } else {
-            0
-        },
-        layout: remote_video::wanted_layout(),
-        ..media_options(true, with_video)
-    };
+    let options = media_options(true, with_video);
     let (media, events) = MediaSession::with_options(ice.clone(), options).await?;
     let offer = media.create_offer().await?;
     let modalities = remote_video::join_modalities(with_video);
@@ -115,7 +107,9 @@ pub(super) async fn join_meeting(
             Ok(sdp) => match media.set_answer(&sdp).await {
                 Ok(()) => {
                     answered = true;
-                    video.negotiated(&media, &sdp).await;
+                    video
+                        .negotiated(&media, &sdp, remote_video::Phase::Join)
+                        .await;
                 }
                 Err(e) => tracing::warn!(%e, "inline media answer refused"),
             },
@@ -209,7 +203,9 @@ pub fn adopt(
             control: RemoteControl::default(),
         };
         // A direct call's sharing line shows the other side's screen (no subscription).
-        call.video.negotiated(&call.media, "").await;
+        call.video
+            .negotiated(&call.media, "", remote_video::Phase::Direct)
+            .await;
         call.start_keep_alive(None);
         let mut rx = rx;
         call.run(events, pushes, opts, sink, &mut rx, vec![]).await;

@@ -144,8 +144,9 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     let live = live_reactions(&d.reactions);
     let call_person =
         |p, images: &HashMap<String, Image>, video| reacting(call_person(p, images, video), &live);
+    let meeting = d.kind == "meeting";
     let (mini, more) = mini_people(&d.people);
-    let mini_owner = video_owner(&mini);
+    let mini_owner = video_owner(&mini, meeting);
     s.set_mini_people(model(
         mini.into_iter()
             .enumerate()
@@ -161,10 +162,11 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
         people: d.people.clone(),
         images: images.clone(),
         live: live.clone(),
+        meeting,
     };
     fill_speakers(&s, &last);
     LAST.with(|l| *l.borrow_mut() = Some(last));
-    let owner = video_owner(&d.people);
+    let owner = video_owner(&d.people, meeting);
     // The People panel hides the rows its search box does not match; the stage keeps everyone.
     let filter = d.people_filter;
     s.set_people(model(
@@ -351,11 +353,21 @@ fn call_person(p: Person, images: &HashMap<String, Image>, video: bool) -> CallP
     }
 }
 
-/// Whose tile shows the other side's video: in a 1:1 call the other person; in a meeting the
-/// person heard now (UNVERIFIED: the main-video line is assumed to carry the active speaker
-/// until sources are mapped to people), else the first other person in the call.
-fn video_owner(people: &[Person]) -> Option<usize> {
+/// Whose tile shows the call's one remote picture (`VideoSlot::Remote`: a line no gallery slot or
+/// share names). In a 1:1 call the other side's: the person heard now, else the first other
+/// person. In a `meeting` only when its sender is known, the one other person in the call: with
+/// more, it is the media server's unasked stream and nothing maps it to a person yet, so no tile
+/// shows it rather than one person's camera under another's name (live 2026-11-25, five people:
+/// one picture, in whoever spoke). Subscribed pictures (gallery slots) show in their own tiles.
+fn video_owner(people: &[Person], meeting: bool) -> Option<usize> {
     let others = || people.iter().enumerate().filter(|(_, p)| !p.me && !p.lobby);
+    if meeting {
+        let mut it = others();
+        return match (it.next(), it.next()) {
+            (Some((i, _)), None) => Some(i),
+            _ => None,
+        };
+    }
     others()
         .find(|(_, p)| p.speaking)
         .or_else(|| others().next())
@@ -368,6 +380,7 @@ struct Last {
     people: Vec<Person>,
     images: HashMap<String, Image>,
     live: HashMap<String, &'static str>,
+    meeting: bool,
 }
 
 thread_local! {
@@ -377,7 +390,7 @@ thread_local! {
 /// Fills the speaker view's people: the pinned person first, else the latest speaker.
 fn fill_speakers(s: &CallStore, last: &Last) {
     let speakers = speaker_order(&last.people, &s.get_pinned());
-    let owner = video_owner(&speakers);
+    let owner = video_owner(&speakers, last.meeting);
     s.set_speaker_people(model(
         speakers
             .into_iter()
@@ -809,10 +822,35 @@ mod tests {
             p("Ada", false, false, 0),
             p("Bo", false, false, 0),
         ];
-        assert_eq!(video_owner(&people), Some(2), "not us, not the lobby");
+        assert_eq!(
+            video_owner(&people, false),
+            Some(2),
+            "not us, not the lobby"
+        );
         people[3].speaking = true;
-        assert_eq!(video_owner(&people), Some(3));
-        assert_eq!(video_owner(&people[..2]), None);
+        assert_eq!(video_owner(&people, false), Some(3));
+        assert_eq!(video_owner(&people[..2], false), None);
+    }
+
+    /// Live 2026-11-25 (a meeting of five): the one picture no gallery slot names showed in the
+    /// tile of whoever spoke, under the wrong name. Nothing tells its sender in a meeting, so it
+    /// shows only when there is one other person to be its sender.
+    #[test]
+    fn a_meeting_shows_the_unasked_picture_only_in_a_known_sender_s_tile() {
+        let mut people = [
+            p("Me", true, false, 0),
+            p("Cy", false, true, 0),
+            p("Ada", false, false, 0),
+            p("Bo", false, false, 0),
+        ];
+        people[3].speaking = true;
+        assert_eq!(video_owner(&people, true), None, "Ada or Bo: unknown");
+        assert_eq!(
+            video_owner(&people[..3], true),
+            Some(2),
+            "Ada alone (Cy waits in the lobby)"
+        );
+        assert_eq!(video_owner(&people[..2], true), None, "nobody else");
     }
 
     #[test]

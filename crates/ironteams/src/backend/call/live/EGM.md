@@ -23,7 +23,8 @@ Files:
 - `[audio.rs:aec_wanted_by]` pub(super) fn(Option<&OsStr>) -> bool; true when unset/empty/"0"
 - `[talk.rs:Talk::heard]` pub(super) fn heard(&mut self, roster: &Roster, sources: &[u32]) -> bool; maps audio source ids to participant MRIs, true when the speaking set changed
 - `[audio.rs:conversation_controller]` pub(super) fn(&Value) -> Option<String>; https-only conversationController URL
-- `[talk.rs:media_options]` pub(super) fn media_options(meeting: bool, video: bool) -> MediaOptions; data_channel = meeting, video lines from share::media_options() or default
+- `[talk.rs:media_options]` pub(super) fn media_options(meeting: bool, video: bool) -> MediaOptions; data_channel = meeting, video lines from share::media_options() or default; a meeting with video also gets receive_slots = remote_video::wanted_slots() and layout = remote_video::wanted_layout(). The one builder of a meeting's options: the join and a media restart use it
+- `[talk.rs:restart_options]` pub(super) fn restart_options(meeting: bool, video: bool, offer: &str) -> MediaOptions; media_options with receive_slots capped at remote_video::offered_slots(offer, camera lines), for the fresh session renegotiate.rs answers a restart offer on (lobby admission)
 - `[audio.rs:mic_chain]` pub(super) fn(S: FrameSource, ProcessingOptions) -> (Receiver<OpusPacket>, Option<EchoReference>)
 - `[talk.rs:captions_of]` pub(super) fn captions_of(msg: DataMessage, roster: &Roster) -> Vec<Caption>; empty unless msg.data_id == CAPTIONS_DATA_ID, fills missing speaker from roster
 - `[audio.rs:Audio]` pub(super) struct {sender: watch::Receiver<AudioSender>, muted, held: Arc<AtomicBool>, play: watch::Sender<Option<mpsc::Sender<OpusPacket>>>, send_task, playback}
@@ -59,6 +60,7 @@ Files:
 
 ## Invariants
 - `[audio.rs:outgoing]` held => nothing sent; muted => OPUS_SILENCE replaces captured packet so RTP keeps flowing (no RTP => service ends call with MediaConnectivityFailure)
+- `[join.rs:join_meeting, renegotiate.rs:accept_or_restart, run.rs:takeover]` a meeting's session has the gallery slots whether built for the join or for a media restart; the restarted session's lines are read (`RemoteVideo::negotiated`, Phase::Restart) from its own offer when it takes over, and roster_changed then re-sends every subscription
 - `[run.rs:Call::run loop]` single tokio::select! loop owns all call state; per-iteration flags roster_changed/standing_changed drive the post-select refresh of roster, presenter, share, remote control, camera and phase events
 - `[audio.rs:Audio::start]` always stop() first; if mic fails the speaker still starts, then returns the mic error
 - `[run.rs:Call::run phase]` Event::Lobby/Connected/Reconnecting/Connecting are sent only when live_phase(link, in_lobby && meeting, was_in_call) differs from the last shown phase
@@ -103,7 +105,7 @@ Files:
 - `[lifecycle.rs:Call::start_keep_alive]` spawns keepAlive task via ngc.run_keep_alive
 - `[run.rs:Call::run]` starts/stops screen share, camera, remote control and bot interactions through self.share/self.camera/self.control/self.bots; tracing logs (warn/info/debug incl. conversation message bodies and summaries of SDP directions/transport for 1:1 hold/answer and media state; the join-failed warning goes through `teams_proto::logsafe::text`)
 - `[lifecycle.rs:Call::control, controls.rs:tell_share, renegotiate.rs:tell_camera]` network calls to the call service (mute, hand, reaction, add/admit/transfer, hold, UpdateMediaDescriptions, re-offer, media answer/ack)
-- `[talk.rs:media_options]` None (pure)
+- `[talk.rs:media_options/restart_options]` read env via camera::wanted, share::wanted and remote_video::wanted_slots/wanted_layout; nothing else
 - `[controls.rs:Call::control_action/apply_control]` shows desktop input-consent prompt, injects remote input, sends control over NGC/data channel; screen capture picker/camera portal
 - `[driver.rs:LiveDriver::join / join.rs:adopt]` tokio::spawn the call task; events sent to EventSink
 

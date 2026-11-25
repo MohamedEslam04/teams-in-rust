@@ -653,11 +653,31 @@ What IronTeams does (`calling::signaling::{roster, video}`, `calling::media`,
 - Every remote video packet carries the mid of its line (webrtc-rs's receiver for the track,
   looked up in the peer connection's transceivers). One OpenH264 decoder per line: the sharing
   line draws on the stage (`VideoSlot::Content`), a gallery line in the tile of whom it is
-  subscribed to (`VideoSlot::Gallery`), anything else in the other person's tile as before. A
-  line quiet for 10 s is cleared.
+  subscribed to (`VideoSlot::Gallery`), anything else (`VideoSlot::Remote`) in the other
+  person's tile: in a 1:1 call the other side, in a meeting only when there is one other person.
+  With more, that picture is a stream the media server sent unasked, and nothing maps it to a
+  person yet (the video packets' CSRCs are not read), so no tile shows it: live 2026-11-25 in a
+  meeting of five it showed in the tile of whoever spoke, under that person's name, whoever sent
+  it. Not showing it was chosen over an unnamed tile on the stage, which would be a picture of
+  nobody in particular next to everyone's avatars. A line quiet for 10 s is cleared.
 - A meeting join offers nine receive-only `main-video` lines after the video lines when
   `IRONTEAMS_CAMERA` not `0` (`MediaOptions::receive_slots`); `from_teams_with` keeps that many main-video
-  sections of the answer. A media server's re-offer (lobby admission) is answered without them.
+  sections of the answer. A media restart (lobby admission: a full new offer) is answered on a
+  fresh session built as the join's (`talk::media_options`), with the slots capped at the offer's
+  `main-video` lines beyond the camera's: webrtc-rs gives each offered line to a line of ours not
+  placed yet, a receive-only one first, in order, so on the admission offer the slots take mids
+  2 and 5-12, the camera 13 and the sharing line stays 3 (`calling` test
+  `a_fresh_meeting_session_places_its_gallery_lines_on_the_restart_offer`). Until 2026-11-25 the
+  fresh session had no slots: `remote video lines slots=0 share=false`, nothing subscribed. Its
+  lines' stream ids are read from that offer once it takes over, and every subscription is sent
+  again. A re-offer on the same session keeps the stream ids it leaves out. UNVERIFIED: that the
+  admission offer carries `a=x-source-streamid` on its lines (the running meeting's re-offer
+  does; the captured admission offer's shape in `teams_meeting_full_reoffer.sdp` has none).
+- The log says what each negotiation left (INFO): `remote video lines phase=join|reoffer|restart|direct
+  slots=N slot_lines=N share=bool share_mid=…` (`slots`: gallery lines that can be subscribed,
+  placed and with a stream id; `slot_lines`: placed at all), then per line `remote video line
+  started mid=… slot=…`, and per subscription `video subscription sent`, then `video subscribed`
+  or (WARN) `video subscription refused`, each with mid, source, stream and sequence.
 - A join that offers video lines is laid out as the web client's (camera mid 1, gallery 2-10,
   sharing mid 11; `IRONTEAMS_MEETING_VIDEO_LAYOUT=sharing-second` puts the sharing line at mid 2,
   IronTeams's first layout), every video line states `a=x-signaling-fb:* x-message app send:src

@@ -26,7 +26,9 @@ impl Call {
                         tracing::info!(%theirs, "1:1 media answer applied");
                     }
                     self.answered = true;
-                    self.video.negotiated(&self.media, &sdp).await;
+                    self.video
+                        .negotiated(&self.media, &sdp, remote_video::Phase::Join)
+                        .await;
                     return true;
                 }
                 Err(e) => tracing::warn!(%e, "media answer refused"),

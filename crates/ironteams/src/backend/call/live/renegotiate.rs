@@ -180,7 +180,11 @@ impl Call {
                 // are read when it takes over).
                 match self.next.as_mut().filter(|_| to_next) {
                     Some(n) => n.offer = sdp.clone(),
-                    None => self.video.negotiated(&self.media, &sdp).await,
+                    None => {
+                        self.video
+                            .negotiated(&self.media, &sdp, remote_video::Phase::Reoffer)
+                            .await
+                    }
                 }
                 let mut leg = links.clone();
                 if let Some(url) = links.get("mediaAnswer") {
@@ -243,9 +247,10 @@ impl Call {
                 }
                 // None: host and server-reflexive candidates only, no relay to fall back on.
                 tracing::info!(ice_servers = self.ice.len(), "new media session's TURN");
+                // A meeting's fresh session has the gallery lines too, as its join had.
                 match MediaSession::with_options(
                     self.ice.clone(),
-                    media_options(self.meeting, self.video_lines),
+                    restart_options(self.meeting, self.video_lines, sdp),
                 )
                 .await
                 {
