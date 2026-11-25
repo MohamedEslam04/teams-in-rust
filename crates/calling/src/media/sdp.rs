@@ -967,8 +967,10 @@ fn default_label(kind: &str) -> Option<&'static str> {
     }
 }
 
-/// The port and `c=` value of the bundle: the first section's first UDP host candidate (else its
-/// first UDP candidate), which the web client writes on the m-line in place of `9`/`0.0.0.0`.
+/// The port and `c=` value of the bundle, written on the m-line in place of `9`/`0.0.0.0`: the
+/// first section's default candidate, its first UDP relay candidate, else server reflexive, else
+/// host (RFC 8445 §5.1.4; a native client's offer names its relay there). A host first put a
+/// docker bridge address there live (2026-11-25).
 fn bundle_transport(sections: &[Vec<String>]) -> Option<(String, String)> {
     let section = sections
         .iter()
@@ -979,7 +981,10 @@ fn bundle_transport(sections: &[Vec<String>]) -> Option<(String, String)> {
         .map(|c| c.split_whitespace().collect::<Vec<_>>())
         .filter(|f| f.len() >= 8 && f[1] == "1" && f[2].eq_ignore_ascii_case("udp"))
         .collect();
-    let best = udp.iter().find(|f| f[7] == "host").or(udp.first())?;
+    let best = ["relay", "srflx", "host"]
+        .into_iter()
+        .find_map(|kind| udp.iter().find(|f| f[7] == kind))
+        .or(udp.first())?;
     let family = if best[4].contains(':') { "IP6" } else { "IP4" };
     Some((best[5].to_owned(), format!("IN {family} {}", best[4])))
 }

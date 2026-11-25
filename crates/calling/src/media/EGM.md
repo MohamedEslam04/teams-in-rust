@@ -32,6 +32,7 @@ One WebRTC peer per call, built on webrtc-rs. `MediaSession` speaks Opus audio, 
 - `from_teams_with_data` adds a synthetic `a=ssrc:<n> cname:<n>` to every non-declined section that has no `a=ssrc` and whose `a=x-ssrc-range` is a single `N-N` (not the placeholder `1-1`), because webrtc-rs drops the other side's audio otherwise when a video line shares the session [sdp.rs:from_teams_with_data, single_ssrc].
 - Offers carry `b=CT:4000`, `a=msid-semantic: WMS *`, one `a=label` per section and `a=x-ssrc-range` from the first `a=ssrc` [sdp.rs:SESSION_BANDWIDTH, to_teams].
 - Sections with a different ice-ufrag are folded onto the first section's transport lines [sdp.rs:BundleTransport].
+- The m-line port and `c=` of every live section (offer and answer) are the first section's default candidate: its first UDP relay candidate, else server reflexive, else host (RFC 8445 §5.1.4) [sdp.rs:bundle_transport].
 
 ## Side Effects
 - Binds UDP sockets for `udp_addrs`, uses STUN/TURN servers from `IceServer`, and registers the default interceptors [mod.rs:with_options].
