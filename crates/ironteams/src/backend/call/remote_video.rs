@@ -538,7 +538,9 @@ fn video_feedback_summary(sdp: &str) -> Vec<String> {
         } else if let Some(b) = line.strip_prefix("b=") {
             bw.push(b.to_owned());
         } else if let Some(fmtp) = line.strip_prefix("a=fmtp:") {
-            for part in fmtp.split(';').map(str::trim) {
+            // "<pt> key=val;key=val;…" — drop the payload type, keep the caps.
+            let params = fmtp.split_once(' ').map_or(fmtp, |(_, p)| p);
+            for part in params.split(';').map(str::trim) {
                 if ["max-fs=", "max-br=", "max-fps=", "max-mbps="]
                     .iter()
                     .any(|k| part.starts_with(k))
