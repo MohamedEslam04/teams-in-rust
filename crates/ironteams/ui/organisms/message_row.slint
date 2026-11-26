@@ -13,6 +13,7 @@ import { MeetingCardView } from "meeting_card.slint";
 import { DeliveryMark } from "../molecules/delivery_mark.slint";
 import { FadeImage, Motion, PopIn } from "../tokens/motion.slint";
 import { PostBlock, ReaderItem } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // Right clicks the window saw (`main.rs` counts them). The words of a message are selectable
 // text, which takes the press, as do its links and buttons, so the row's own `pointer-event`
@@ -252,9 +253,9 @@ export component MessageRow inherits TouchArea {
         if root.has-hover { root.open-menu-here(); }
     }
 
-    if root.m.selected: Rectangle { background: #7f85f526; }
+    if root.m.selected: Rectangle { background: Theme.accent-wash; }
     // The row a jump from the pinned banner landed on.
-    if root.m.flash: Rectangle { background: #7f85f540; }
+    if root.m.flash: Rectangle { background: Theme.accent-tint; }
 
     content := VerticalLayout {
         width: root.width;
@@ -345,7 +346,7 @@ export component MessageRow inherits TouchArea {
                 // A post fills its card; a bubble is as wide as its content (`alignment` above).
                 horizontal-stretch: root.post-style ? 1 : 0;
                 border-radius: Theme.radius;
-                background: root.post-style ? transparent : (root.m.mentions-me ? #3a3a63 : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other));
+                background: root.post-style ? transparent : (root.m.mentions-me ? Theme.bubble-mention : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other));
                 opacity: root.m.pending ? 0.6 : 1.0;
                 border-width: root.m.failed || (root.m.mentions-me && !root.post-style) ? 1px : 0px;
                 border-color: root.m.failed ? Theme.danger : Theme.accent;
@@ -409,7 +410,7 @@ export component MessageRow inherits TouchArea {
 
                     for q in root.m.quotes: quote-box := Rectangle {
                         property <bool> hover: false;
-                        background: self.hover ? Theme.surface-hover : Theme.sidebar;
+                        background: self.hover ? Theme.surface-hover : Theme.panel;
                         border-radius: 4px;
                         HorizontalLayout {
                             Rectangle { width: 3px; background: Theme.accent; }
@@ -491,13 +492,13 @@ export component MessageRow inherits TouchArea {
                             width: im.w * root.grid-scale;
                             height: im.h * root.grid-scale;
                             border-radius: 4px;
-                            background: Theme.sidebar;
+                            background: Theme.panel;
                             clip: true;
                             // A soft placeholder, then the picture fades in.
                             FadeImage { source: im.img; loaded: im.loaded; width: parent.width; height: parent.height; accessible-role: image; accessible-label: im.loaded ? "" : @tr("Loading image…"); }
                             if im.overflow > 0: Rectangle {
-                                background: #000000a0;
-                                Text { text: "+" + im.overflow; color: #ffffff; font-size: 22px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                background: Fixed.black-a0;
+                                Text { text: "+" + im.overflow; color: Fixed.white; font-size: 22px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                             }
                             TouchArea {
                                 mouse-cursor: pointer;
@@ -836,7 +837,7 @@ export component MessageRow inherits TouchArea {
         accessible-label: @tr("Select message");
         accessible-checkable: true;
         accessible-checked: root.m.selected;
-        Text { text: root.m.selected ? "✓" : ""; color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+        Text { text: root.m.selected ? "✓" : ""; color: Theme.on-accent; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
     }
     if root.select-mode && !root.m.system && !root.m.deleted: TouchArea {
         mouse-cursor: pointer;

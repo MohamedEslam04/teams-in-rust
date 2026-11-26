@@ -193,7 +193,7 @@ export component PromptDialog inherits Scrim {
             if CalStore.prompt-label1 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label1; text <=> CalStore.prompt-text1; accepted => { CalStore.command(CalStore.prompt-kind, CalStore.prompt-text1 + "|" + CalStore.prompt-text2 + "|" + (CalStore.prompt-check ? "1" : "0")); } }
             if CalStore.prompt-label2 != "": Field { variant: FieldVariant.bare; placeholder: CalStore.prompt-label2; text <=> CalStore.prompt-text2; }
             if CalStore.prompt-check-label != "": Check { variant: CheckVariant.toolbar; label: CalStore.prompt-check-label; checked <=> CalStore.prompt-check; }
-            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: Theme.danger-text; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             HorizontalLayout {
                 spacing: 8px;
                 alignment: end;
@@ -306,7 +306,7 @@ export component SettingsDialog inherits Scrim {
                     }
                 }
             }
-            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: #ff8a8d; font-size: 13px * Theme.font-scale; }
+            if CalStore.prompt-error != "": Text { text: CalStore.prompt-error; color: Theme.danger-text; font-size: 13px * Theme.font-scale; }
             Rectangle { vertical-stretch: 1; }
             HorizontalLayout {
                 spacing: 8px;
@@ -345,7 +345,7 @@ export component CalendarShareDialog inherits Scrim {
                 Text { text: "Share your calendar"; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
                 IconButton { icon: @image-url("../icons/close.svg"); size: 28px; tooltip: "Close"; clicked => { CalStore.modal = ""; } }
             }
-            if CalStore.share-note != "": Text { text: CalStore.share-note; color: #ffb900; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+            if CalStore.share-note != "": Text { text: CalStore.share-note; color: Theme.warning; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
             ScrollView {
                 vertical-stretch: 1;
                 VerticalLayout {

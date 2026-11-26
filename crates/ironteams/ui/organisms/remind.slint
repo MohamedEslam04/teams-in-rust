@@ -4,6 +4,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export struct ReminderRow {
     id: string,
@@ -37,7 +38,7 @@ export component RemindPanel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: @tr("Reminders");
 
@@ -71,7 +72,7 @@ export component RemindPanel inherits Rectangle {
                 for r in RemindStore.reminders: Rectangle {
                     height: 56px;
                     border-radius: 4px;
-                    background: Theme.sidebar;
+                    background: Theme.panel;
                     HorizontalLayout {
                         padding: 8px;
                         spacing: 8px;
@@ -94,7 +95,7 @@ export component RemindPanel inherits Rectangle {
                 for c in RemindStore.snoozed: Rectangle {
                     height: 50px;
                     border-radius: 4px;
-                    background: Theme.sidebar;
+                    background: Theme.panel;
                     HorizontalLayout {
                         padding: 8px;
                         spacing: 8px;

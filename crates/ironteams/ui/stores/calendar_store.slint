@@ -3,6 +3,7 @@
 // peek, form and dialog files can import it without an import cycle.
 
 import { Theme } from "../tokens/theme.slint";
+import { Fixed } from "../tokens/fixed.slint";
 export struct CalDay { iso: string, label: string, number: int, today: bool, weekend: bool, pin: string }
 
 export struct CalBlock {
@@ -288,7 +289,7 @@ export global CalFmt {
         return Theme.h24 ? (h < 10 ? "0" : "") + h + ":00" : (Math.mod(h + 11, 12) + 1) + " " + (h < 12 ? @tr("AM") : @tr("PM"));
     }
     public pure function slot-color(state: int) -> color {
-        return state == 2 ? #5b5fc7 : (state == 1 ? #5b5fc780 : (state == 3 ? #b146c2 : (state == 4 ? #5b5fc740 : (state == 5 ? #3a3a3a : #1c1c1c))));
+        return state == 2 ? Fixed.slot-busy : (state == 1 ? Fixed.slot-tentative : (state == 3 ? Fixed.slot-oof : (state == 4 ? Fixed.slot-elsewhere : (state == 5 ? Fixed.slot-unknown : Fixed.slot-free))));
     }
     public pure function slot-name(state: int) -> string {
         return state == 2 ? "busy" : (state == 1 ? "tentative" : (state == 3 ? "out of office" : (state == 4 ? "working elsewhere" : (state == 5 ? "unknown" : "free"))));
@@ -297,7 +298,7 @@ export global CalFmt {
         return k == "freebusy" ? "Free/busy" : (k == "limited" ? "Titles" : (k == "read" ? "All details" : (k == "write" ? "Edit" : "Delegate")));
     }
     public pure function response-color(r: string) -> color {
-        return r == "accepted" || r == "organizer" ? #6bd69b : (r == "declined" ? #ff8a8d : (r == "tentative" ? #ffd666 : #8a8a8a));
+        return r == "accepted" || r == "organizer" ? Fixed.response-accepted : (r == "declined" ? Fixed.response-declined : (r == "tentative" ? Fixed.response-tentative : Fixed.response-none));
     }
     public pure function show-as-label(k: string) -> string {
         return k == "tentative" ? "Tentative" : (k == "free" ? "Free" : (k == "oof" ? "Out of office" : (k == "elsewhere" ? "Working elsewhere" : "Busy")));

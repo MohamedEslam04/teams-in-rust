@@ -14,6 +14,7 @@ import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The Teams changes that were only planned, so the user sees exactly what was not sent.
 component DryRuns inherits SettingsSection {
@@ -666,7 +667,21 @@ export component AppearancePage inherits SettingsSections {
             HorizontalLayout {
                 spacing: Space.s;
                 alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
-                for a in [{v: "", l: @tr("Desktop accent"), c: Theme.accent}, {v: "#5b5fc7", l: @tr("Purple"), c: #5b5fc7}, {v: "#0f6cbd", l: @tr("Blue"), c: #0f6cbd}, {v: "#038387", l: @tr("Teal"), c: #038387}, {v: "#107c10", l: @tr("Green"), c: #107c10}, {v: "#ca5010", l: @tr("Orange"), c: #ca5010}, {v: "#c239b3", l: @tr("Pink"), c: #c239b3}]: Rectangle {
+                for a in [{v: "", l: @tr("Desktop accent"), c: Theme.accent}]: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    border-width: SettingsStore.accent == a.v ? 3px : 1px;
+                    border-color: SettingsStore.accent == a.v ? Theme.fg : Theme.border;
+                    background: a.v == "" ? transparent : a.c;
+                    accessible-role: radio-button;
+                    accessible-label: @tr("Accent colour: {}", a.l);
+                    accessible-checked: SettingsStore.accent == a.v;
+                    accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
+                    if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
+                }
+                for a in Fixed.accent-choices: Rectangle {
                     width: 32px;
                     height: 32px;
                     border-radius: 16px;

@@ -11,6 +11,7 @@ import { PersonHover } from "../molecules/people.slint";
 import { ZoomRow } from "../molecules/settings_widgets.slint";
 import { SkeletonRow } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // One row of the dropdown. `kind`: command | person | chat | channel | message | search | recent
 // | clear. A message hit has `title` (its sender), `subtitle` (its chat), a one-line `snippet` with
@@ -127,7 +128,7 @@ export component TopSearch inherits Rectangle {
     max-width: 640px;
     horizontal-stretch: 2;
     border-radius: 4px;
-    background: input.has-focus ? Theme.sidebar : Theme.surface;
+    background: input.has-focus ? Theme.panel : Theme.surface;
     border-width: 1px;
     border-color: input.has-focus ? Theme.accent : Theme.border;
     changed width => { TopBarStore.box-x = self.absolute-position.x; TopBarStore.box-w = self.width; }
@@ -404,7 +405,7 @@ export component SearchDropdown inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Fixed.black-80;
     accessible-role: list;
     accessible-label: @tr("Search suggestions");
     // Keeps clicks on the list from closing it.
@@ -483,7 +484,7 @@ export component MoreMenu inherits Rectangle {
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 8px;
-        drop-shadow-color: #00000080;
+        drop-shadow-color: Fixed.black-80;
         accessible-role: groupbox;
         accessible-label: @tr("Settings and more");
         TouchArea { }

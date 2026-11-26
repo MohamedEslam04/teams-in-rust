@@ -6,6 +6,7 @@ import { SectionRow } from "lists.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { ScrollView } from "std-widgets.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global ShortcutApi {
     // key text, control, alt, shift -> the action of a window-level chord, or ""
@@ -41,7 +42,7 @@ component Row inherits Rectangle {
 export component ShortcutsDialog inherits Rectangle {
     callback close();
     callback open-palette();
-    background: #000000b0;
+    background: Fixed.black-b0;
     accessible-role: groupbox;
     accessible-label: "Keyboard shortcuts";
     // A click on the dim area closes the dialog.

@@ -10,6 +10,7 @@ import { MenuItem, MenuItemVariant, MenuColumn } from "../atoms/menu.slint";
 import { Pill, PillVariant, Badge, BadgeVariant } from "../atoms/chip.slint";
 import { SearchBox } from "../atoms/search_box.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // Cards in as many columns as fit.
 component CardGrid inherits Rectangle {
@@ -104,7 +105,7 @@ component AppPageView inherits ScrollView {
             Rectangle {
                 width: 360px;
                 border-radius: 6px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.border;
                 clip: true;
@@ -152,7 +153,7 @@ component ManageView inherits ScrollView {
         for a in AppsStore.manage: Rectangle {
             height: 56px;
             border-radius: 6px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             accessible-role: list-item;
             accessible-label: a.name;
             accessible-description: a.update ? "Update available" : "Up to date";
@@ -204,14 +205,14 @@ component SettingsView inherits ScrollView {
                 spacing: 12px;
                 Text { text: p.app-name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; width: 200px; overflow: elide; }
                 Text { text: p.label; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 1; }
-                Text { text: p.allowed ? "Allowed" : "Blocked"; color: p.allowed ? #6bd69b : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
+                Text { text: p.allowed ? "Allowed" : "Blocked"; color: p.allowed ? Theme.success : Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                 Rectangle {
                     width: 36px;
                     height: 20px;
                     y: 10px;
                     border-radius: 10px;
-                    background: p.allowed ? Theme.accent-strong : #4a4a4a;
-                    Rectangle { x: p.allowed ? 18px : 2px; y: 2px; width: 16px; height: 16px; border-radius: 8px; background: #ffffff; }
+                    background: p.allowed ? Theme.accent-strong : Fixed.toggle-off;
+                    Rectangle { x: p.allowed ? 18px : 2px; y: 2px; width: 16px; height: 16px; border-radius: 8px; background: Fixed.white; }
                 }
             }
             touch := TouchArea {

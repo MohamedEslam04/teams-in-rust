@@ -65,7 +65,7 @@ export component ChatPaneHeader inherits Rectangle {
     // A call goes on in this conversation: the live-call strip shows.
     property <bool> call-strip: OngoingCallStore.live && OngoingCallStore.chat-id == root.current-id && root.current-id != "";
     height: 60px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     HorizontalLayout {
         padding-left: 20px;
         padding-right: 16px;
@@ -126,7 +126,7 @@ export component ChatPaneHeader inherits Rectangle {
             width: 260px;
             horizontal-stretch: 0;
             border-radius: 4px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             border-width: 1px;
             border-color: Theme.accent;
             FocusScope {

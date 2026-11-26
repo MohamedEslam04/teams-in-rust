@@ -1,4 +1,5 @@
 import { Theme } from "../tokens/theme.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The logo from packaging/io.github.mohamedeslam04.ironteams.svg as shapes, so the parts can move:
 // the back tile slides in, the front tile pops, the I draws in, then the dots pulse like a typing
@@ -39,7 +40,7 @@ component SplashLogo inherits Rectangle {
         width: 78 * root.u;
         height: 78 * root.u;
         border-radius: 20 * root.u;
-        background: @linear-gradient(135deg, #b4b8ff 0%, #7b83eb 100%);
+        background: @linear-gradient(135deg, Fixed.login-from 0%, Fixed.login-mid 100%);
         opacity: root.entered ? 1 : 0;
         animate x, y { duration: 350ms * root.k; easing: ease-out; }
         animate opacity { duration: 350ms * root.k; easing: ease-out; }
@@ -49,7 +50,7 @@ component SplashLogo inherits Rectangle {
             width: 10 * root.u;
             height: 10 * root.u;
             border-radius: 5 * root.u;
-            background: #ffffff;
+            background: Fixed.white;
             opacity: root.pulse(i);
         }
     }
@@ -60,8 +61,8 @@ component SplashLogo inherits Rectangle {
         width: 84 * root.u;
         height: 84 * root.u;
         border-radius: 22 * root.u;
-        background: @linear-gradient(135deg, #7b83eb 0%, #4b53bc 100%);
-        drop-shadow-color: #3b42a859;
+        background: @linear-gradient(135deg, Fixed.login-mid 0%, Fixed.login-to 100%);
+        drop-shadow-color: Fixed.login-shadow;
         drop-shadow-blur: 6 * root.u;
         drop-shadow-offset-x: 2 * root.u;
         drop-shadow-offset-y: 3 * root.u;
@@ -77,7 +78,7 @@ component SplashLogo inherits Rectangle {
         width: 52 * root.u;
         height: 10 * root.u;
         border-radius: 5 * root.u;
-        background: #ffffff;
+        background: Fixed.white;
         transform-scale-x: root.entered ? 1 : 0;
         animate transform-scale-x { delay: 420ms * root.k; duration: 250ms * root.k; easing: ease-out; }
     }
@@ -86,7 +87,7 @@ component SplashLogo inherits Rectangle {
         y: 64 * root.u;
         width: 12 * root.u;
         height: 32 * root.u;
-        background: #ffffff;
+        background: Fixed.white;
         transform-scale-y: root.entered ? 1 : 0;
         animate transform-scale-y { delay: 420ms * root.k; duration: 250ms * root.k; easing: ease-out; }
     }
@@ -143,7 +144,7 @@ export component LoginView inherits Rectangle {
                     height: 56px;
                     border-radius: 6px;
                     background: ct.has-hover ? Theme.accent : Theme.accent-strong;
-                    Text { text: "Copy"; color: #ffffff; font-weight: 600; }
+                    Text { text: "Copy"; color: Theme.on-accent; font-weight: 600; }
                     ct := TouchArea { mouse-cursor: pointer; clicked => { root.copy-code(); } }
                 }
             }
@@ -159,7 +160,7 @@ export component LoginView inherits Rectangle {
                     height: 36px;
                     border-radius: 6px;
                     background: Theme.accent-strong;
-                    Text { text: "Try again"; color: #ffffff; }
+                    Text { text: "Try again"; color: Theme.on-accent; }
                     TouchArea { mouse-cursor: pointer; clicked => { root.retry(); } }
                 }
                 if root.report != "": Rectangle {

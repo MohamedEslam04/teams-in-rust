@@ -1264,7 +1264,7 @@ fn regions_default_to_the_content_colours() {
     assert_eq!(t.get_nav().bg, t.get_content().panel);
     // The flat colours are the content's.
     assert_eq!(t.get_main(), t.get_content().bg);
-    assert_eq!(t.get_sidebar(), t.get_content().panel);
+    assert_eq!(t.get_panel(), t.get_content().panel);
     assert_eq!(t.get_dark(), t.get_content().dark);
 }
 

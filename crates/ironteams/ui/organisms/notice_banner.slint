@@ -15,20 +15,20 @@ export component NoticeBanner inherits Rectangle {
     width: min(root.area-width - 40px, banner-text.preferred-width + 60px + (root.banner-action != "" ? 110px : 0px));
     height: 36px;
     border-radius: 6px;
-    background: root.banner-info ? #1f2a3b : #3b1f22;
+    background: root.banner-info ? Theme.info-soft : Theme.danger-soft;
     border-width: 1px;
     border-color: root.banner-info ? Theme.accent : Theme.danger;
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 6px;
         spacing: 8px;
-        banner-text := Text { text: root.banner; color: #ffffff; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+        banner-text := Text { text: root.banner; color: Theme.fg-strong; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
         if root.banner-action != "": Rectangle {
             width: 100px;
             accessible-role: button;
             accessible-label: root.banner-action;
             accessible-action-default => { root.banner-action-clicked(); }
-            Text { text: root.banner-action; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+            Text { text: root.banner-action; color: Theme.fg-strong; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
             TouchArea { mouse-cursor: pointer; clicked => { root.banner-action-clicked(); } }
         }
         IconButton { icon: @image-url("../icons/close.svg"); size: 24px; y: 6px; clicked => { root.dismiss-banner(); } }

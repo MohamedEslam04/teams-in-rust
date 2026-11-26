@@ -15,6 +15,7 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { CountBadge } from "../atoms/chip.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -57,7 +58,7 @@ export component SettingsPage inherits Rectangle {
             // The page list.
             Rectangle {
                 width: root.narrow ? 200px : 260px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 VerticalLayout {
                     padding: 12px;
                     spacing: 4px;
@@ -233,7 +234,7 @@ component PresenceIcon inherits Rectangle {
     // Available: a white check.
     if root.status == "Available" || root.status == "AvailableIdle": Icon {
         source: @image-url("../icons/check.svg");
-        tint: #ffffff;
+        tint: Fixed.white;
         width: root.size * 0.72;
         height: root.size * 0.72;
         x: root.size * 0.14;
@@ -254,7 +255,7 @@ component PresenceIcon inherits Rectangle {
         y: root.size * 0.43;
         width: root.size * 0.56;
         height: root.size * 0.14;
-        background: #ffffff;
+        background: Fixed.white;
     }
     // A clock: its hands.
     if root.clock: Rectangle {
@@ -262,14 +263,14 @@ component PresenceIcon inherits Rectangle {
         y: root.size * 0.22;
         width: root.size * 0.14;
         height: root.size * 0.35;
-        background: #ffffff;
+        background: Fixed.white;
     }
     if root.clock: Rectangle {
         x: root.size * 0.43;
         y: root.size * 0.43;
         width: root.size * 0.33;
         height: root.size * 0.14;
-        background: #ffffff;
+        background: Fixed.white;
     }
 }
 
@@ -342,7 +343,7 @@ component FlyPanel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 8px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Fixed.black-80;
     // Keeps clicks on the flyout from closing the menu.
     TouchArea { }
     lay := VerticalLayout {
@@ -474,7 +475,7 @@ export component ProfileMenu inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 8px;
-            drop-shadow-color: #00000080;
+            drop-shadow-color: Fixed.black-80;
             accessible-role: groupbox;
             accessible-label: @tr("Your profile");
             clip: true;
@@ -540,9 +541,9 @@ export component ProfileMenu inherits Rectangle {
                                 width: 48px;
                                 height: 48px;
                                 border-radius: 24px;
-                                background: #00000099;
+                                background: Fixed.black-99;
                                 opacity: photo-touch.has-hover || root.flyout == "photo" ? 1 : 0;
-                                Icon { source: @image-url("../icons/camera.svg"); tint: #ffffff; width: 20px; height: 20px; x: 14px; y: 14px; }
+                                Icon { source: @image-url("../icons/camera.svg"); tint: Fixed.white; width: 20px; height: 20px; x: 14px; y: 14px; }
                             }
                             photo-touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggle-flyout("photo"); } }
                         }

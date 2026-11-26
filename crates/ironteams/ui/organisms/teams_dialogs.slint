@@ -39,7 +39,7 @@ component MemberLine inherits Rectangle {
             border-color: root.p.picked ? Theme.accent : Theme.border;
             background: root.p.picked ? Theme.accent-strong : transparent;
         }
-        Rectangle { width: 26px; height: 26px; y: 6px; border-radius: 13px; background: Theme.accent-strong; Icon { source: @image-url("../icons/people.svg"); tint: #ffffff; width: 15px; height: 15px; } }
+        Rectangle { width: 26px; height: 26px; y: 6px; border-radius: 13px; background: Theme.accent-strong; Icon { source: @image-url("../icons/people.svg"); tint: Theme.on-accent; width: 15px; height: 15px; } }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
@@ -238,7 +238,7 @@ component MembersDialog inherits ModalDialog {
         }
         if TeamsStore.candidates.length > 0: Rectangle {
             height: min(TeamsStore.candidates.length * 38px, 150px);
-            background: Theme.sidebar;
+            background: Theme.panel;
             border-radius: 4px;
             ScrollView {
                 VerticalLayout {
@@ -290,7 +290,7 @@ component TagsDialog inherits ModalDialog {
                 for t in TeamsStore.tags: Rectangle {
                     height: 42px;
                     border-radius: 4px;
-                    background: t.selected ? #3b3d6b : (tt.has-hover ? Theme.surface-hover : transparent);
+                    background: t.selected ? Theme.accent-soft : (tt.has-hover ? Theme.surface-hover : transparent);
                     accessible-role: list-item;
                     accessible-label: t.name;
                     accessible-description: t.count + " people";
@@ -353,7 +353,7 @@ component EmailDialog inherits ModalDialog {
             Rectangle {
                 height: 36px;
                 border-radius: 4px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.border;
                 Text { x: 10px; text: TeamsStore.email; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: text; accessible-label: "Email address " + TeamsStore.email; }
