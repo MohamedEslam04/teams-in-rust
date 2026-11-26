@@ -57,7 +57,7 @@ export component Badge inherits Rectangle {
     in property <string> text;
     in property <string> tone;
     property <bool> tag: root.variant == BadgeVariant.tag;
-    property <color> tag-color: root.tone == "warn" ? #e0a030 : root.tone == "accent" ? Theme.accent : Theme.fg-muted;
+    property <color> tag-color: root.tone == "warn" ? Theme.warning : root.tone == "accent" ? Theme.accent : Theme.fg-muted;
     height: root.tag ? 18px : 20px;
     width: lbl.preferred-width + (root.tag ? 12px : 16px);
     border-radius: root.tag ? 9px : 10px;

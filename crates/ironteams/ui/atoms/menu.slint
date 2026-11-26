@@ -117,7 +117,7 @@ export component MenuItem inherits Rectangle {
             Text {
                 text: root.label;
                 color: root.header-like ? (!root.enabled ? Theme.fg-subtle : root.danger ? Theme.danger : Theme.fg)
-                    : root.variant == MenuItemVariant.dialog ? (root.danger ? #ff7b7e : Theme.fg)
+                    : root.variant == MenuItemVariant.dialog ? (root.danger ? Theme.danger-text : Theme.fg)
                     : root.variant == MenuItemVariant.calendar ? (root.enabled ? root.tone : Theme.fg-subtle)
                     : root.variant == MenuItemVariant.list ? (root.danger ? Theme.danger : (root.dim ? Theme.fg-subtle : Theme.fg))
                     : root.variant == MenuItemVariant.file || root.variant == MenuItemVariant.kit || root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.drive ? (root.danger ? Theme.danger : Theme.fg)

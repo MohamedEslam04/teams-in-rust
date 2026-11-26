@@ -49,7 +49,6 @@ organisms/calendar_event.slint #ffb900
 organisms/calendar_form.slint #00000080
 organisms/calendar_form.slint #3b1f22
 organisms/calendar_form.slint #6bd69b
-organisms/calendar_form.slint #7f85f522
 organisms/calendar_form.slint #ff8a8d
 organisms/calendar_form.slint #ffb900
 organisms/call_feedback.slint #00000080
@@ -87,20 +86,17 @@ organisms/channel_tabs.slint #000000a0
 organisms/channel_tabs.slint #3b3d6b
 organisms/channel_tabs.slint #ffffff
 organisms/chat_header.slint #000000a0
-organisms/chat_header.slint #e04a4f
 organisms/chat_header.slint #ffffff
 organisms/chat_list_extras.slint #00000060
 organisms/chat_list_extras.slint #ffffff
 organisms/communities_section.slint #0f7b5f
 organisms/communities_section.slint #ffffff
 organisms/composer_apps.slint #000000a0
-organisms/composer_apps.slint #2b2b2b
 organisms/composer_apps.slint #ffffff
 organisms/composer_apps.slint #ffffff10
 organisms/composer_format.slint #0078d4
 organisms/composer_format.slint #038387
 organisms/composer_format.slint #13a10e
-organisms/composer_format.slint #6c71e0
 organisms/composer_format.slint #82cda8
 organisms/composer_format.slint #8764b8
 organisms/composer_format.slint #8a8a8a
@@ -128,7 +124,6 @@ organisms/forward_dialog.slint #34365c
 organisms/forward_dialog.slint #ffffff
 organisms/lists.slint #000000a0
 organisms/lists.slint #3b3d6b
-organisms/lists.slint #e0545a
 organisms/lists.slint #ffffff
 organisms/media.slint #00000090
 organisms/media.slint #000000b0
@@ -163,7 +158,6 @@ organisms/notice_banner.slint #3b1f22
 organisms/notice_banner.slint #ffffff
 organisms/participants.slint #000000a0
 organisms/participants.slint #3b1f22
-organisms/participants.slint #e04a4f
 organisms/participants.slint #ffffff
 organisms/profile_card.slint #000000a0
 organisms/profile_modal.slint #000000a0
@@ -180,7 +174,6 @@ organisms/shortcuts.slint #000000b0
 organisms/sidebar.slint #e97a5f
 organisms/sidebar.slint #ffd335
 organisms/teams_dialogs.slint #3b3d6b
-organisms/teams_dialogs.slint #7fd49a
 organisms/teams_dialogs.slint #ffffff
 organisms/topbar.slint #00000080
 organisms/video_clip.slint #000000
@@ -197,7 +190,6 @@ organisms/video_preview.slint #ffffff
 organisms/web_parity.slint #1f2a3b
 organisms/web_parity.slint #ffffff
 pages/activity.slint #00000080
-pages/activity.slint #23253f
 pages/activity.slint #3b1f22
 pages/activity.slint #3b3d6b
 pages/activity.slint #ffffff
@@ -206,14 +198,12 @@ pages/apps_store_view.slint #4a4a4a
 pages/apps_store_view.slint #6bd69b
 pages/apps_store_view.slint #ffffff
 pages/apps_tasks.slint #6bd69b
-pages/apps_tasks.slint #ff8a8f
 pages/calendar.slint #00000030
 pages/calendar.slint #00000055
 pages/calendar.slint #00000099
 pages/calendar.slint #101010
 pages/calendar.slint #17172a
 pages/calendar.slint #181818
-pages/calendar.slint #1c1c33
 pages/calendar.slint #1d3a2a
 pages/calendar.slint #237b4b
 pages/calendar.slint #262626

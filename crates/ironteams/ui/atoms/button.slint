@@ -104,7 +104,7 @@ component ButtonBody inherits Rectangle {
     border-color: root.variant == ButtonVariant.toolbar ? (root.active ? Theme.accent : (root.danger ? Theme.danger : Theme.border))
         : root.variant == ButtonVariant.accent-outline ? (root.enabled ? Theme.accent : Theme.border)
         : Theme.border;
-    background: root.variant == ButtonVariant.dialog ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? (root.hover ? #e0474b : Theme.danger) : (root.hover ? Theme.surface-hover : Theme.surface))
+    background: root.variant == ButtonVariant.dialog ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? (root.hover ? Theme.danger-hover : Theme.danger) : (root.hover ? Theme.surface-hover : Theme.surface))
         : root.variant == ButtonVariant.settings ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? Theme.danger : (root.hover ? Theme.surface-hover : Theme.surface))
         : root.variant == ButtonVariant.toolbar ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.active ? #3b3d6b : (root.hover ? Theme.surface-hover : Theme.surface))
         : root.variant == ButtonVariant.kit ? (root.primary ? (root.hot ? Theme.accent : Theme.accent-strong) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent))
@@ -115,7 +115,7 @@ component ButtonBody inherits Rectangle {
         : root.variant == ButtonVariant.toggle ? (root.active ? Theme.accent-strong : (root.hover ? Theme.surface-hover : Theme.surface))
         : root.variant == ButtonVariant.subtle ? (root.hover ? Theme.surface-hover : transparent)
         : root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : (root.hover ? Theme.surface-hover : Theme.surface))
-        : (root.danger ? (root.hover ? #a4262c : Theme.danger) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent));
+        : (root.danger ? (root.hover ? Theme.danger-hover : Theme.danger) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent));
 
     accessible-role: button;
     accessible-label: root.label;
