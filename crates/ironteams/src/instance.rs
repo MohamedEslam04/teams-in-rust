@@ -233,7 +233,7 @@ mod sys {
         /// Connects and sends `payload` (nothing for an empty one).
         pub(super) fn connect(&self, payload: &[u8]) -> io::Result<()> {
             let mut stream = UnixStream::connect(&self.0)?;
-            stream.set_write_timeout(Some(READ_TIMEOUT))?;
+            let _ = stream.set_write_timeout(Some(READ_TIMEOUT));
             if payload.is_empty() {
                 return Ok(());
             }
@@ -286,9 +286,12 @@ mod sys {
         let mut chunk = [0u8; MAX_LINE];
         while line.len() < MAX_LINE && !line.contains(&b'\n') {
             let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() || conn.set_read_timeout(Some(left)).is_err() {
+            if left.is_zero() {
                 break;
             }
+            // macOS refuses the option (EINVAL) once the client has closed. Its data is already
+            // here and the read ends at once, so the refusal is not an error.
+            let _ = conn.set_read_timeout(Some(left));
             match conn.read(&mut chunk[..MAX_LINE - line.len()]) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => line.extend_from_slice(&chunk[..n]),
@@ -440,6 +443,20 @@ mod tests {
         (instance, rx)
     }
 
+    /// Sends one connection's data. A Windows pipe has one free instance, so a client that comes
+    /// while the server serves another gets "all pipe instances are busy": it tries again, as
+    /// `acquire` does.
+    fn send(instance: &Instance, payload: &[u8]) {
+        let give_up = Instant::now() + Duration::from_secs(5);
+        loop {
+            match instance.endpoint.connect(payload) {
+                Ok(()) => return,
+                Err(e) if Instant::now() >= give_up => panic!("could not send: {e}"),
+                Err(_) => std::thread::sleep(Duration::from_millis(10)),
+            }
+        }
+    }
+
     #[test]
     fn the_second_launch_activates_the_first_and_does_not_become_primary() {
         let dir = tempfile::tempdir().unwrap();
@@ -486,17 +503,17 @@ mod tests {
     fn a_line_other_than_activate_does_not_call_back() {
         let dir = tempfile::tempdir().unwrap();
         let (instance, activations) = listening(dir.path());
-        let _ = instance.endpoint.connect(b"hello\n");
-        let _ = instance.endpoint.connect(b"activate now\n");
-        let _ = instance.endpoint.connect(b"ACTIVATE\n");
+        send(&instance, b"hello\n");
+        send(&instance, b"activate now\n");
+        send(&instance, b"ACTIVATE\n");
         // Longer than a line may be, with `activate` first: dropped.
         let mut long = b"activate".to_vec();
         long.extend_from_slice(&[b' '; 200]);
-        let _ = instance.endpoint.connect(&long);
-        let _ = instance.endpoint.connect(b"");
+        send(&instance, &long);
+        send(&instance, b"");
         // One connection is served at a time, in order: when this one is seen, the others were
         // read before it.
-        instance.endpoint.connect(b"activate\n").unwrap();
+        send(&instance, b"activate\n");
         activations.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(activations.try_recv().is_err(), "a second activation");
     }
@@ -505,7 +522,7 @@ mod tests {
     fn a_line_without_a_newline_that_ends_the_connection_still_counts() {
         let dir = tempfile::tempdir().unwrap();
         let (instance, activations) = listening(dir.path());
-        instance.endpoint.connect(b"activate").unwrap();
+        send(&instance, b"activate");
         activations.recv_timeout(Duration::from_secs(5)).unwrap();
     }
 
