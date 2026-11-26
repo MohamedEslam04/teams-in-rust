@@ -151,6 +151,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("appearance", "Theme", "dark light mode system colour color"),
     ("appearance", "Accent colour", "color"),
     ("appearance", "Message density", "compact comfy"),
+    (
+        "appearance",
+        "Message style",
+        "bubble bubbles flat lines slack irc layout chat",
+    ),
     ("appearance", "Font size", "text zoom scale bigger smaller"),
     ("appearance", "Skin tone", "emoji"),
     ("accessibility", "High contrast", "contrast"),

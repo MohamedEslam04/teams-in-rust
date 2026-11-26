@@ -1569,6 +1569,21 @@ msgstr "مريحة"
 msgid "Compact"
 msgstr "مضغوطة"
 
+msgid "Messages"
+msgstr "الرسائل"
+
+msgid "Message style"
+msgstr "نمط الرسائل"
+
+msgid "Bubbles is the usual look. Flat and Compact draw every message, yours too, as a line with the photo and name on the left. Compact also tightens the spacing."
+msgstr "«فقاعات» هو الشكل المعتاد. أما «مسطّح» و«مضغوط» فيعرضان كل رسالة، ورسائلك أيضًا، في سطر تظهر على يساره الصورة والاسم. ويقلّل «مضغوط» المسافات كذلك."
+
+msgid "Bubbles"
+msgstr "فقاعات"
+
+msgid "Flat"
+msgstr "مسطّح"
+
 msgid "Larger text in Accessibility adds to this."
 msgstr "خيار «نص أكبر» في إمكانية الوصول يضاف إلى هذا."
 

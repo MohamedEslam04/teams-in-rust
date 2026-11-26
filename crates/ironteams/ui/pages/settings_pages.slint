@@ -819,6 +819,16 @@ export component AppearancePage inherits SettingsSections {
         }
     }
     SettingsSection {
+        title: @tr("Messages");
+        SettingsChoiceRow {
+            label: @tr("Message style");
+            description: @tr("Bubbles is the usual look. Flat and Compact draw every message, yours too, as a line with the photo and name on the left. Compact also tightens the spacing.");
+            options: [{v: "bubbles", l: @tr("Bubbles")}, {v: "flat", l: @tr("Flat")}, {v: "compact", l: @tr("Compact")}];
+            value: SettingsStore.message-style;
+            picked(v) => { SettingsStore.message-style = v; SettingsStore.command("message-style", v); }
+        }
+    }
+    SettingsSection {
         title: @tr("App bar");
         SettingsSwitchRow {
             label: @tr("Show app names");

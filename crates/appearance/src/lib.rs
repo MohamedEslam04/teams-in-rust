@@ -1,6 +1,6 @@
 //! IronTeams appearance preferences.
 //!
-//! - [`AppearancePrefs`]: theme, accent, density and font scale, kept in `appearance.json` in the
+//! - [`AppearancePrefs`]: theme, accent, density, font scale and message style, kept in `appearance.json` in the
 //!   app config dir (atomic writes; a missing or corrupt file gives the defaults).
 //! - [`portal`]: reads and watches the desktop's color scheme and accent over the XDG portal.
 //! - [`GeneralPrefs`] (language, formats, start-up) and [`AccessibilityPrefs`] (contrast, motion,
@@ -27,7 +27,9 @@ pub use general::{
     effective_language, resolve_language, system_language,
 };
 pub use portal::{PortalChange, PortalError, PortalScheme, PortalSettings, PortalStream};
-pub use prefs::{AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, Rgb, Theme};
+pub use prefs::{
+    AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, MessageStyle, Rgb, Theme,
+};
 pub use renderer::Renderer;
 pub use resolve::{
     Resolved, ResolvedTheme, resolve, resolve_accent, resolve_font_scale, resolve_theme,

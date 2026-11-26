@@ -133,6 +133,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
         Density::Compact => "compact",
     }));
     g.set_font_scale(a.font_scale);
+    g.set_message_style(s(a.message_style.slug()));
     g.set_skin_tone(w.get_skin_tone());
 
     let gp = &l.general;

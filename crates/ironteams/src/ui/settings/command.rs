@@ -49,7 +49,7 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             ));
         }
         // --- Appearance ---
-        "theme" | "accent" | "density" | "font-step" | "font-scale" => {
+        "theme" | "accent" | "density" | "font-step" | "font-scale" | "message-style" => {
             let mut c = shared.borrow_mut();
             let a = &mut c.local.appearance;
             match name {
@@ -67,6 +67,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                     } else {
                         Density::Comfy
                     }
+                }
+                "message-style" => {
+                    a.message_style = MessageStyle::from_slug(arg).unwrap_or_default();
                 }
                 "font-step" => {
                     let v = st::step_font_scale(a.font_scale, arg.parse().unwrap_or(0));

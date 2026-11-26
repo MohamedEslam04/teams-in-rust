@@ -158,6 +158,18 @@ fn find_matches_labels_pages_and_keywords() {
 }
 
 #[test]
+fn the_message_style_is_found_on_the_appearance_page() {
+    for q in ["message style", "bubble", "flat", "slack"] {
+        assert!(
+            find(q)
+                .iter()
+                .any(|f| f.page == "appearance" && f.label == "Message style"),
+            "{q}"
+        );
+    }
+}
+
+#[test]
 fn the_graphics_setting_is_found_on_the_general_page() {
     for q in ["graphics", "gpu", "cpu", "memory"] {
         assert!(
