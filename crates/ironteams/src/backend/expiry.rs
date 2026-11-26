@@ -125,9 +125,10 @@ pub fn at_label(at_ms: i64) -> String {
 
 /// [`until_text`] for an instant (ms), in the zone and the formats chosen in Settings.
 pub fn until_label(until_ms: i64) -> String {
-    match at_label(until_ms) {
-        t if t.is_empty() => t,
-        t => format!("Until {t}"),
+    use appearance::formats as f;
+    match (f::local(until_ms), f::local_now()) {
+        (Some(u), Some(n)) => until_text(u, n, f::is_h24(), f::date_pattern(false)),
+        _ => String::new(),
     }
 }
 

@@ -656,6 +656,15 @@ fn an_emoji_picked_for_the_status_message_goes_first() {
     press(app, "Profile menu");
     press(app, "Set status message");
     control(app, "New status message").set_accessible_value("Heads down");
+    let labels: Vec<_> = ElementHandle::find_by_element_type_name(app, "IconButton")
+        .map(|e| e.accessible_label().map(|l| l.to_string()))
+        .collect();
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Add emoji to status message")
+            .next()
+            .is_some(),
+        "IconButton labels: {labels:?}"
+    );
     press(app, "Add emoji to status message");
     let first = app
         .global::<crate::EmojiApi>()
