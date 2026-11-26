@@ -10,6 +10,8 @@ import { Heading, HeadingVariant } from "../atoms/heading.slint";
 export global ShortcutApi {
     // key text, control, alt, shift -> the action of a window-level chord, or ""
     pure callback action(string, bool, bool, bool) -> string;
+    // key text, control, alt, shift, meta -> whether it is a plain E (or its Arabic-layout key)
+    pure callback edit-key(string, bool, bool, bool, bool) -> bool;
     // the messages of the open chat -> the id of my newest editable one, or ""
     pure callback last-own([Msg]) -> string;
     // Catch-up (src/catch_up.rs). Both take the chat list as drawn: Favorites, sections, Chats, channels.
@@ -106,6 +108,7 @@ export component ShortcutsDialog inherits Rectangle {
                     Row { keys: "Ctrl+Shift+R"; what: "Record a voice message (Esc deletes it, Enter sends it)"; }
                     Row { keys: "Ctrl+Shift+I"; what: "Mark the next message as important"; }
                     Row { keys: "Up (empty composer)"; what: "Edit your last message"; }
+                    Row { keys: "E (pointer over your message)"; what: @tr("Edit that message"); }
                     Row { keys: "R, F, S, P, U"; what: "In a message menu: reply, forward, save, pin, mark unread"; }
                     Heading { variant: HeadingVariant.group; text: "Calls"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Alt+Shift+A"; what: "Audio call (1:1 chat)"; }

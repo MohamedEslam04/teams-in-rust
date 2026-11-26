@@ -40,6 +40,12 @@ pub fn action(key: &str, ctrl: bool, alt: bool, shift: bool) -> &'static str {
     }
 }
 
+/// A plain E (or the key in its place on the Arabic layout) with no modifier held: with the
+/// pointer over a message of mine and no text box focused, it edits that message like Teams.
+pub fn is_edit_key(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) -> bool {
+    !ctrl && !alt && !shift && !meta && matches!(key, "e" | "E" | "ث")
+}
+
 /// The newest message of mine that can be edited (sent, not deleted, not a system line).
 fn last_own(msgs: &ModelRc<Msg>) -> String {
     msgs.iter()
@@ -53,6 +59,9 @@ fn last_own(msgs: &ModelRc<Msg>) -> String {
 pub fn wire(window: &AppWindow) {
     let api = window.global::<ShortcutApi>();
     api.on_action(|key: SharedString, ctrl, alt, shift| action(&key, ctrl, alt, shift).into());
+    api.on_edit_key(|key: SharedString, ctrl, alt, shift, meta| {
+        is_edit_key(&key, ctrl, alt, shift, meta)
+    });
     api.on_last_own(|msgs| last_own(&msgs).into());
     crate::catch_up::attach(window);
 }
@@ -106,6 +115,21 @@ mod tests {
         assert_eq!(action("c", true, true, true), "");
         assert_eq!(action("b", true, false, false), "");
         assert_eq!(action("x", true, true, false), "");
+    }
+
+    #[test]
+    fn a_plain_e_is_the_edit_key_on_both_layouts() {
+        for key in ["e", "E", "ث"] {
+            assert!(is_edit_key(key, false, false, false, false), "{key}");
+        }
+        assert!(!is_edit_key("r", false, false, false, false));
+        assert!(
+            !is_edit_key("e", true, false, false, false),
+            "Ctrl+E is the search box"
+        );
+        assert!(!is_edit_key("e", false, true, false, false));
+        assert!(!is_edit_key("E", false, false, true, false));
+        assert!(!is_edit_key("e", false, false, false, true));
     }
 
     #[test]

@@ -151,6 +151,99 @@ fn up_in_an_empty_composer_edits_the_last_message_of_mine() {
     assert!(log.borrow().is_empty());
 }
 
+/// Lets the hover bookkeeping (a `changed` handler) run.
+fn settle_hover() {
+    for _ in 0..4 {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(50));
+    }
+}
+
+/// The message pane holds the keys (Alt+Shift+M), so no text box does.
+fn focus_messages(app: &AppWindow) {
+    chord(app, &[Key::Alt, Key::Shift], "m");
+}
+
+#[test]
+fn e_over_a_message_of_mine_edits_it() {
+    let app = app_with_messages(vec![
+        msg("m1", "first", true),
+        msg("m2", "theirs", false),
+        msg("m3", "latest", true),
+    ]);
+    let log = record_actions(&app);
+    focus_messages(&app);
+    let rows = rows(&app);
+
+    hover(&app, &rows[0]);
+    settle_hover();
+    press_letter(&app, "e");
+    assert_eq!(*log.borrow(), vec!["edit m1"]);
+
+    // The pointer moves on to another message of mine: that one is edited.
+    log.borrow_mut().clear();
+    hover(&app, &rows[2]);
+    settle_hover();
+    press_letter(&app, "e");
+    assert_eq!(*log.borrow(), vec!["edit m3"]);
+
+    // Shift+E is not a plain E, and the Arabic layout's E key works.
+    log.borrow_mut().clear();
+    chord(&app, &[Key::Shift], "E");
+    assert!(log.borrow().is_empty(), "Shift+E");
+    press_letter(&app, "ث");
+    assert_eq!(*log.borrow(), vec!["edit m3"]);
+}
+
+#[test]
+fn e_does_nothing_over_a_message_that_cannot_be_edited() {
+    let mut deleted = msg("m3", "gone", true);
+    deleted.deleted = true;
+    let mut system = msg("m4", "joined", true);
+    system.system = true;
+    let mut sending = msg("m5", "sending", true);
+    sending.pending = true;
+    let app = app_with_messages(vec![msg("m1", "theirs", false), deleted, system, sending]);
+    let log = record_actions(&app);
+    focus_messages(&app);
+    for row in rows(&app) {
+        hover(&app, &row);
+        settle_hover();
+        press_letter(&app, "e");
+    }
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+}
+
+#[test]
+fn e_does_nothing_once_the_pointer_left_the_message_or_with_a_modifier() {
+    let app = app_with_messages(vec![msg("m1", "mine", true)]);
+    let log = record_actions(&app);
+    focus_messages(&app);
+    press_letter(&app, "e");
+    assert!(log.borrow().is_empty(), "no message under the pointer");
+
+    hover(&app, &rows(&app)[0]);
+    settle_hover();
+    chord(&app, &[Key::Alt], "e");
+    assert!(log.borrow().is_empty(), "Alt+E");
+    app.window().dispatch_event(WindowEvent::PointerExited);
+    settle_hover();
+    press_letter(&app, "e");
+    assert!(log.borrow().is_empty(), "the pointer left the row");
+}
+
+#[test]
+fn typing_e_in_the_composer_types_the_letter_even_over_a_message_of_mine() {
+    let app = app_with_messages(vec![msg("m1", "mine", true)]);
+    let log = record_actions(&app);
+    hover(&app, &rows(&app)[0]);
+    settle_hover();
+    // Alt+Shift+R puts the focus in the composer, the pointer stays on the row.
+    chord(&app, &[Key::Alt, Key::Shift], "r");
+    type_text(&app, "e");
+    assert_eq!(app.get_draft(), "e");
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+}
+
 #[test]
 fn esc_closes_the_reply_and_the_thread() {
     let app = app_with_messages(vec![]);

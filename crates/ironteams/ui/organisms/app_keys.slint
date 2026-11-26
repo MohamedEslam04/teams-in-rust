@@ -5,6 +5,7 @@ import { ChannelStore } from "channel_posts.slint";
 import { DirectCallStore } from "call_incoming.slint";
 import { FindStore } from "../stores/find_store.slint";
 import { ListStore } from "lists.slint";
+import { MessagePointer } from "message_row.slint";
 import { PaletteStore } from "../stores/palette_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
@@ -16,6 +17,8 @@ export component AppKeys inherits FocusScope {
     callback cancel-reply;
     callback catch-up(int);
     callback close-thread;
+    // E with the pointer over a message of mine: start editing it (message id).
+    callback edit-message(string);
     in-out property <bool> composer-expanded;
     in property <bool> composer-focused;
     in property <string> current-id;
@@ -104,6 +107,12 @@ export component AppKeys inherits FocusScope {
     }
     // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
     key-pressed(event) => {
+        // E over one of my messages edits it, like Teams. Only keys no text box took get here
+        // (a text box keeps its letters), so typing "e" still types.
+        if MessagePointer.edit-id != "" && !root.menu-open && ShortcutApi.edit-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta) {
+            root.edit-message(MessagePointer.edit-id);
+            return accept;
+        }
         if event.text == Key.Escape && !event.modifiers.shift {
             if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
             if PeopleStore.jump-date-open { PeopleStore.jump-date-open = false; root.focus-tick += 1; return accept; }

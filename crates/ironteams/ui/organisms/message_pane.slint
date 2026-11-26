@@ -292,6 +292,7 @@ export component MessagePane inherits Rectangle {
                 }
                 react(k) => { root.react(m.id, k); }
                 reply => { root.reply(m.id); }
+                key-edit: true;
                 edit => { root.edit(m.id); }
                 more-reactions(x, y) => {
                     root.picker-msg-id = m.id;

@@ -231,6 +231,7 @@ component PostCard inherits TouchArea {
                     post-style: true;
                     react(k) => { root.react(root.item.post.id, k); }
                     reply => { ChannelStore.open-thread(root.item.post.id, true); }
+                    key-edit: true;
                     edit => { root.edit(root.item.post.id); }
                     more-reactions(x, y) => { root.more-reactions(root.item.post.id, x, y); }
                     menu(x, y) => { root.menu(root.item.post, x, y); }
@@ -375,6 +376,7 @@ component ThreadPanel inherits Rectangle {
                     card-style: true;
                     react(k) => { root.react(ChannelStore.thread-post.id, k); }
                     reply => { ChannelStore.thread-focus-tick += 1; }
+                    key-edit: true;
                     edit => { root.edit(ChannelStore.thread-post.id); }
                     more-reactions(x, y) => { root.more-reactions(ChannelStore.thread-post.id, x, y); }
                     menu(x, y) => { root.menu(ChannelStore.thread-post, x, y); }
@@ -398,6 +400,7 @@ component ThreadPanel inherits Rectangle {
                         card-style: true;
                         react(k) => { root.react(r.id, k); }
                         reply => { ChannelStore.thread-focus-tick += 1; }
+                        key-edit: true;
                         edit => { root.edit(r.id); }
                         more-reactions(x, y) => { root.more-reactions(r.id, x, y); }
                         menu(x, y) => { root.menu(r, x, y); }

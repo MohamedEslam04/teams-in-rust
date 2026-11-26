@@ -19,6 +19,8 @@ import { PostBlock, ReaderItem } from "../tokens/types.slint";
 // never sees a right click on them: the hovered row opens its menu from this count instead.
 export global MessagePointer {
     in-out property <int> right-clicks;
+    // The message of mine under the pointer that the E key edits (`key-edit` rows only), or "".
+    in-out property <string> edit-id;
 }
 
 // A reader's photo under my message: their initials in a small circle that slides in from the
@@ -201,6 +203,23 @@ export component MessageRow inherits TouchArea {
     callback react(string);
     callback reply();
     callback edit();
+    // The row's list wires `edit` to the window's, so E over the row (or its hover bar) edits it
+    // (`MessagePointer.edit-id`, read by `AppKeys`).
+    in property <bool> key-edit: false;
+    // The pointer is on the hover bar, which sits above the row.
+    property <bool> bar-hover: false;
+    // The same condition as the hover bar's Edit button.
+    property <string> hover-edit-id: root.key-edit && root.m.mine && !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed && (root.has-hover || root.bar-hover) ? root.m.id : "";
+    property <string> claimed-edit-id;
+    changed hover-edit-id => {
+        if self.hover-edit-id != "" {
+            MessagePointer.edit-id = self.hover-edit-id;
+            self.claimed-edit-id = self.hover-edit-id;
+        } else {
+            if MessagePointer.edit-id == self.claimed-edit-id { MessagePointer.edit-id = ""; }
+            self.claimed-edit-id = "";
+        }
+    }
     // "More reactions" and the "…" menu, anchored at window coordinates.
     callback more-reactions(length, length);
     callback menu(length, length);
@@ -643,6 +662,7 @@ export component MessageRow inherits TouchArea {
                     property <length> left-in-row: parent.absolute-position.x - root.absolute-position.x;
                     property <length> above: -(self.height - 8px);
                     enabled: root.has-hover || self.has-hover;
+                    changed has-hover => { root.bar-hover = self.has-hover; }
                     width: (root.m.mine ? 8 : 7) * 30px + 1px + 8px;
                     height: 32px;
                     x: max(8px - self.left-in-row, min(root.width - 8px - self.left-in-row - self.width, root.m.mine && !root.card-style ? parent.width - self.width - 8px : max(0px, parent.width - self.width - 8px)));
