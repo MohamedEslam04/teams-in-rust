@@ -87,4 +87,4 @@ node -e 'const R=require("./site/js/releases.js");const p=R.pick(R.normalize(req
 - The screenshots in `docs/screenshots/` are not used: they show the old name "kelma" in the window,
   and the PNGs on `dev` have a damaged text chunk from the rename.
 
-Docs synced to commit c96a9357 ("Merge pull request #56 from MohamedEslam04/feat/accounts-switch", 2026-11-26)
+Docs synced to commit 19b4adf0 ("Merge pull request #62 from MohamedEslam04/fix/cache-first-chat-service", 2026-11-26)
