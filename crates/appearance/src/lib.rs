@@ -18,6 +18,7 @@ pub mod language;
 pub mod oklch;
 pub mod portal;
 pub mod prefs;
+pub mod rail;
 pub mod renderer;
 pub mod resolve;
 pub mod share;
@@ -39,6 +40,7 @@ pub use portal::{PortalChange, PortalError, PortalScheme, PortalSettings, Portal
 pub use prefs::{
     AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, MessageStyle, Rgb, Theme,
 };
+pub use rail::{RailItem, RailPrefs};
 pub use renderer::Renderer;
 pub use resolve::{
     Fallback, Resolved, ResolvedLook, ResolvedTheme, resolve, resolve_accent, resolve_font_scale,

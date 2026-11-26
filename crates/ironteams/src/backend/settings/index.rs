@@ -170,6 +170,16 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ),
     ("appearance", "Font size", "text zoom scale bigger smaller"),
     ("appearance", "Skin tone", "emoji"),
+    (
+        "appearance",
+        "Show app names",
+        "app bar rail sidebar labels",
+    ),
+    (
+        "appearance",
+        "Auto collapse app bar",
+        "rail sidebar narrow icons",
+    ),
     ("accessibility", "High contrast", "contrast"),
     ("accessibility", "Reduce motion", "animation"),
     ("accessibility", "Larger text", "font size bigger"),

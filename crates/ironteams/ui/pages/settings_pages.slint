@@ -10,10 +10,10 @@ import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint"
 import { EmojiItem } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
-import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
+import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsOrderRow, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { ListStore } from "../organisms/lists.slint";
-import { AppsStore } from "../stores/apps_store.slint";
+import { AppsStore, RailItems } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 
@@ -856,9 +856,23 @@ export component AppearancePage inherits SettingsSections {
         }
         SettingsSwitchRow {
             label: @tr("Auto collapse app bar");
-            description: @tr("Not available in IronTeams yet.");
-            enabled: false;
-            checked: false;
+            description: @tr("Shows only the icons while the window is narrow.");
+            checked: AppsStore.auto-collapse;
+            toggled(on) => { AppsStore.auto-collapse = on; SettingsStore.command("rail-auto", on ? "1" : "0"); }
+        }
+    }
+    SettingsSection {
+        title: @tr("App bar order");
+        description: @tr("Move the app bar's icons up or down and hide the ones you do not use. Chat always stays. Apps pinned from Teams are moved with a right click on their icon.");
+        for f[i] in AppsStore.rail-fixed: SettingsOrderRow {
+            label: RailItems.label(f.key);
+            shown: f.shown;
+            can-hide: !f.locked;
+            first: i == 0;
+            last: i == AppsStore.rail-fixed.length - 1;
+            up => { SettingsStore.command("rail-move", f.key + "\u{1f}up"); }
+            down => { SettingsStore.command("rail-move", f.key + "\u{1f}down"); }
+            toggled(on) => { SettingsStore.command("rail-show", f.key + "\u{1f}" + (on ? "1" : "0")); }
         }
     }
 }

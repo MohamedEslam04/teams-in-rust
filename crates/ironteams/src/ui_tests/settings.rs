@@ -38,6 +38,11 @@ impl Home {
         }
     }
 
+    /// Where the preference files are.
+    pub(super) fn config_dir(&self) -> PathBuf {
+        self.paths().config_dir
+    }
+
     /// A config with two fake accounts; the first is active.
     pub(super) fn with_accounts(self) -> Home {
         let p = self.paths();

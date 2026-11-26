@@ -9,7 +9,7 @@
 //! Commands from `SettingsStore.command(name, argument)`:
 //! open, close, page, query, profile, theme, accent, density, message-style, show-avatars, show-timestamps, show-reactions, font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
-//! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
+//! larger-text, a11y, rail-move, rail-show, rail-auto, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
 //! message-sound-file, urgent-sound, urgent-sound-preview, teams-sounds, open-files, perm, switch-account, switch-org, switch-confirm, switch-cancel, add-account, remove-account,
@@ -34,8 +34,8 @@ use crate::backend::sounds::{self, Kind as SoundKind};
 use crate::update_check::{self, Release};
 use crate::updater::{self, Event, Phase};
 use crate::{
-    AppWindow, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg, SPerson, SToggle,
-    SettingsStore, Theme,
+    AppWindow, AppsStore, RailFixed, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg,
+    SPerson, SToggle, SettingsStore, Theme,
 };
 use app_store::DevicePermission;
 use appearance::{Density, MessageStyle, PortalChange, PortalSettings, Rgb, Theme as LegacyTheme};

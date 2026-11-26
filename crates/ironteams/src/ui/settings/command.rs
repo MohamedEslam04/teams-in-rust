@@ -143,6 +143,24 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
+        // --- App bar: `rail-move` (key, up|down, rail), `rail-show` (key, 0|1), `rail-auto` ---
+        // "rail" after the direction: a move from the rail's menu jumps over the hidden entries.
+        "rail-move" | "rail-show" | "rail-auto" => {
+            let mut c = shared.borrow_mut();
+            let key = parts[0];
+            let arg1 = parts.get(1).copied().unwrap_or("");
+            match name {
+                "rail-move" => {
+                    let from_rail = parts.get(2) == Some(&"rail");
+                    c.local.rail.move_item(key, arg1 == "up", from_rail);
+                }
+                "rail-show" => c.local.rail.set_hidden(key, !bit(arg1)),
+                _ => c.local.rail.auto_collapse = bit(arg),
+            }
+            let r = c.local.save_rail();
+            push_rail(w, &c.local.rail);
+            saved(w, r);
+        }
         // --- Accessibility ---
         "high-contrast" | "reduced-motion" | "larger-text" | "a11y" => {
             let mut c = shared.borrow_mut();

@@ -1,6 +1,6 @@
 // The app bar on the left: Activity, Chat, Teams, Calendar, Calls, OneDrive with their unread
 // badges, then the pinned apps.
-import { AppsStore } from "../stores/apps_store.slint";
+import { AppsStore, RailItems } from "../stores/apps_store.slint";
 import { CallsPageStore } from "../stores/calls_page_store.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Motion, PopIn } from "../tokens/motion.slint";
@@ -16,13 +16,17 @@ export component AppRail inherits Rectangle {
     background: Theme.rail;
     VerticalLayout {
         padding-top: 8px;
-        spacing: 4px;
-        for item in [{key: "activity", label: @tr("Activity"), icon: @image-url("../icons/activity.svg")}, {key: "chat", label: @tr("Chat"), icon: @image-url("../icons/chat.svg")}, {key: "teams", label: @tr("Teams"), icon: @image-url("../icons/teams.svg")}, {key: "calendar", label: @tr("Calendar"), icon: @image-url("../icons/calendar.svg")}, {key: "calls", label: @tr("Calls"), icon: @image-url("../icons/call-direct.svg")}, {key: "onedrive", label: "OneDrive", icon: @image-url("../icons/cloud.svg")}]: ri := Rectangle {
+        // The gap below an entry belongs to the entry (60px), so a hidden one leaves none.
+        spacing: 0px;
+        for item in AppsStore.rail-fixed: ri := Rectangle {
             property <int> badge-count: item.key == "activity" ? root.activity-unread : (item.key == "chat" ? root.chats-unread : 0);
-            // Calls shows only in a build with calls.
-            property <bool> shown: item.key != "calls" || CallsPageStore.available;
-            height: shown ? 56px : 0px;
+            // Calls shows only in a build with calls; a hidden entry takes no room.
+            property <bool> shown: item.shown && (item.key != "calls" || CallsPageStore.available);
+            height: shown ? 60px : 0px;
             visible: shown;
+            // Named here, so the entry keeps its name when the label under the icon is gone.
+            accessible-role: text;
+            accessible-label: RailItems.label(item.key);
             Rectangle {
                 x: 0;
                 width: 3px;
@@ -32,10 +36,12 @@ export component AppRail inherits Rectangle {
                 background: root.view == item.key ? Theme.accent : transparent;
             }
             VerticalLayout {
+                y: 0px;
+                height: 56px;
                 alignment: center;
                 spacing: 2px;
-                Icon { source: item.icon; tint: root.view == item.key || rt.has-hover ? Theme.accent : Theme.fg-muted; animate tint { duration: Motion.quick; } width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
-                Text { text: item.label; color: root.view == item.key ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
+                Icon { source: RailItems.icon(item.key); tint: root.view == item.key || rt.has-hover ? Theme.accent : Theme.fg-muted; animate tint { duration: Motion.quick; } width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
+                if !AppsStore.icons-only: Text { accessible-role: none; text: RailItems.label(item.key); color: root.view == item.key ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
             }
             if ri.badge-count > 0: PopIn {
                 from-scale: Theme.reduced-motion ? 1.0 : 0.3;
@@ -50,7 +56,16 @@ export component AppRail inherits Rectangle {
                 badge-text := Text { text: ri.badge-count > 99 ? "99+" : ri.badge-count; color: #ffffff; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
             rt := TouchArea {
+                y: 0px;
+                height: 56px;
                 mouse-cursor: pointer;
+                // Right click: the menu to move or hide the entry (apps_rail.slint).
+                pointer-event(e) => {
+                    if e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                        AppsStore.menu-fixed-y = ri.absolute-position.y;
+                        AppsStore.menu-fixed = item.key;
+                    }
+                }
                 clicked => { root.navigate(item.key); }
             }
         }
