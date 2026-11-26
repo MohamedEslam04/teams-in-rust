@@ -712,7 +712,7 @@ export component AppWindow inherits Window {
                                 z: 18;
                                 width: parent.width;
                                 height: parent.height;
-                                close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); }
+                                close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); root.palette-done(); }
                             }
                             if PeopleStore.new-chat-open && root.view != "activity": NewChatPane {
                                 z: 30;

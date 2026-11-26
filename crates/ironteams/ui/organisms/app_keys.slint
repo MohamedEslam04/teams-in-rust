@@ -138,6 +138,11 @@ export component AppKeys inherits FocusScope {
         if a == "filter-chats" { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); }
         if a == "filter-channels" { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); }
         if a == "filter-clear" { root.filter = "all"; root.set-filter("all"); }
+        // Alt+Shift+U: the Unreads view.
+        if a == "unreads" {
+            root.view = "chat";
+            FindStore.command("quick", "unreads");
+        }
         if a == "focus-composer" { root.focus-tick += 1; }
         if a == "focus-messages" { root.msg-focus-tick += 1; }
         if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }

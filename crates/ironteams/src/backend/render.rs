@@ -169,6 +169,7 @@ impl Engine {
         let d = std::mem::take(&mut *self.dirty.lock().unwrap());
         if d.chats {
             self.render_chats();
+            self.refresh_unreads();
         }
         if d.teams {
             self.render_teams();

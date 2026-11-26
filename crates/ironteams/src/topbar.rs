@@ -30,7 +30,7 @@ pub struct SlashCommand {
     pub what: &'static str,
 }
 
-pub const COMMANDS: [SlashCommand; 16] = [
+pub const COMMANDS: [SlashCommand; 17] = [
     SlashCommand {
         name: "available",
         args: "",
@@ -65,6 +65,11 @@ pub const COMMANDS: [SlashCommand; 16] = [
         name: "unread",
         args: "",
         what: "Show only unread chats",
+    },
+    SlashCommand {
+        name: "unreads",
+        args: "",
+        what: "Open every unread message",
     },
     SlashCommand {
         name: "saved",
@@ -119,6 +124,7 @@ pub enum Action {
     /// Force my status: the value the presence service takes (`Busy`, `DoNotDisturb`, ...).
     Status(&'static str),
     Unread,
+    Unreads,
     Saved,
     Mentions,
     Activity,
@@ -157,6 +163,7 @@ pub fn parse(input: &str) -> Option<Action> {
     }
     Some(match word.as_str() {
         "unread" => Action::Unread,
+        "unreads" => Action::Unreads,
         "saved" => Action::Saved,
         "mentions" => Action::Mentions,
         "activity" => Action::Activity,
@@ -537,6 +544,7 @@ mod tests {
     #[test]
     fn the_other_commands_parse_with_or_without_a_name() {
         assert_eq!(parse("/unread"), Some(Action::Unread));
+        assert_eq!(parse("/unreads"), Some(Action::Unreads));
         assert_eq!(parse("  /SAVED "), Some(Action::Saved));
         assert_eq!(parse("/mentions"), Some(Action::Mentions));
         assert_eq!(parse("/activity"), Some(Action::Activity));
@@ -558,7 +566,7 @@ mod tests {
 
     #[test]
     fn every_command_of_the_list_parses_and_none_is_unknown() {
-        assert_eq!(COMMANDS.len(), 16);
+        assert_eq!(COMMANDS.len(), 17);
         for c in &COMMANDS {
             let typed = if c.args.is_empty() {
                 format!("/{}", c.name)
@@ -638,6 +646,7 @@ mod tests {
             avatar: None,
             person: String::new(),
             rtl,
+            count: 0,
         }
     }
 

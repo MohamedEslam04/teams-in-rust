@@ -395,6 +395,7 @@ impl Engine {
         let kind: &'static str = match kind {
             "followed" => "followed",
             "saved" => "saved",
+            "unreads" => "unreads",
             "discover" => "discover",
             _ => "mentions",
         };
@@ -412,6 +413,7 @@ impl Engine {
         match kind {
             "mentions" => self.load_mentions(seq).await,
             "saved" => self.load_saved(seq),
+            "unreads" => self.load_unreads(seq),
             "discover" => self.load_discover(seq),
             _ => self.load_followed(seq).await,
         }
