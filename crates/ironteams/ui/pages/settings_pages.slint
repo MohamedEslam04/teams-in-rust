@@ -11,6 +11,7 @@ import { PeopleStore } from "../molecules/people.slint";
 import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
 import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
+import { ListStore } from "../organisms/lists.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
@@ -201,6 +202,35 @@ export component ChatsPage inherits SettingsSections {
     // The composer's own setting (it is also in the composer's "more" menu).
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
+    // The chat list's display options, also in the list's "... > Customize view" menu (the same
+    // `ListStore` state and commands).
+    SettingsSection {
+        title: @tr("Chat list");
+        SettingsSwitchRow {
+            label: @tr("Show message previews");
+            description: @tr("Off: each chat takes one line, with the name only.");
+            checked: ListStore.show-previews;
+            toggled(on) => { ListStore.command("option", "previews\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show time stamps");
+            description: @tr("The time of the last message at the end of each chat.");
+            checked: ListStore.show-times;
+            toggled(on) => { ListStore.command("option", "times\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Chats and channels together");
+            description: @tr("Channels are listed in the Chats section instead of their own.");
+            checked: ListStore.combined;
+            toggled(on) => { ListStore.command("option", "combined\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsButtonRow {
+            label: @tr("Sections");
+            description: @tr("Group chats in a section of your own in the chat list.");
+            button-label: @tr("New section");
+            clicked => { ListStore.open-new-section(); }
+        }
+    }
     SettingsSection {
         title: @tr("Opening a chat");
         SettingsChoiceRow {

@@ -707,6 +707,80 @@ fn list_options_hide_previews_and_time_stamps_and_combine_chats_and_channels() {
     assert_eq!(find_label(&h.app, preview).len(), 1);
 }
 
+/// The heights of every chat row in the list.
+fn row_heights(app: &AppWindow) -> Vec<f32> {
+    ElementHandle::find_by_element_type_name(app, "ChatItem")
+        .map(|r| r.size().height)
+        .collect()
+}
+
+#[test]
+fn with_the_previews_off_each_chat_row_is_one_line_tall() {
+    let h = harness();
+    wire(&h);
+    let full = row_heights(&h.app);
+    assert!(
+        !full.is_empty() && full.iter().all(|&y| y == 56.),
+        "{full:?}"
+    );
+    h.runner()(Cmd::Lists(ListsCmd::Option("previews".into(), false)));
+    let compact = row_heights(&h.app);
+    assert_eq!(compact.len(), full.len());
+    assert!(compact.iter().all(|&y| y == 40.), "{compact:?}");
+    h.runner()(Cmd::Lists(ListsCmd::Option("previews".into(), true)));
+    assert_eq!(row_heights(&h.app), full, "and they grow back");
+}
+
+/// The button or switch labelled `label` on the Settings page (the list's own menu is on the
+/// left of it).
+fn settings_control(app: &AppWindow, label: &str) -> ElementHandle {
+    find_label(app, label)
+        .into_iter()
+        .find(|e| e.absolute_position().x > 400.)
+        .unwrap_or_else(|| panic!("no {label:?} on the Settings page"))
+}
+
+#[test]
+fn settings_chats_has_the_chat_list_options_and_new_section() {
+    let h = harness();
+    let log = wire(&h);
+    let settings = h.app.global::<crate::SettingsStore>();
+    settings.set_open(true);
+    settings.set_page("chats".into());
+    let on = |label: &str| settings_control(&h.app, label).accessible_checked() == Some(true);
+    assert!(on("Show message previews"));
+    assert!(on("Show time stamps"));
+    assert!(!on("Chats and channels together"));
+
+    // The same state and commands as the list's "Customize view" menu.
+    settings_control(&h.app, "Show message previews").invoke_accessible_default_action();
+    assert!(!ls(&h.app).get_show_previews());
+    assert!(!on("Show message previews"));
+    settings_control(&h.app, "Show time stamps").invoke_accessible_default_action();
+    assert!(!ls(&h.app).get_show_times());
+    settings_control(&h.app, "Chats and channels together").invoke_accessible_default_action();
+    assert!(ls(&h.app).get_combined());
+    assert_eq!(
+        *log.borrow(),
+        vec![
+            "option previews | off",
+            "option times | off",
+            "option combined | on"
+        ]
+    );
+    assert!(row_heights(&h.app).iter().all(|&y| y == 40.));
+
+    // New section opens the name dialog for an empty section.
+    assert_eq!(ls(&h.app).get_dialog(), "");
+    settings_control(&h.app, "New section").invoke_accessible_default_action();
+    assert_eq!(ls(&h.app).get_dialog(), "new-section");
+    assert_eq!(ls(&h.app).get_dialog_target(), "");
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&h.app, "SectionDialog").count(),
+        1
+    );
+}
+
 // ---- 8.5 channel menu --------------------------------------------------------------------
 
 fn teams_json() -> teams_proto::teams::TeamEntry {
