@@ -96,26 +96,51 @@ pub fn expiry_iso(choice: &str, custom: &str) -> Result<Option<String>, String> 
     expiry(appearance::formats::time_zone(), choice, custom, Utc::now()).map(|t| t.map(iso))
 }
 
-/// "Until 3:45 PM" under the status in the profile menu: the clock time when the status ends
-/// today, else the day as well (`Until 11/21 3:45 PM`). `time_pat` and `date_pat` are the
-/// `strftime` patterns of the user's formats.
-pub fn until_text(until: NaiveDateTime, now: NaiveDateTime, h24: bool, date_pat: &str) -> String {
+/// When something ends, as the words after "Until" or "Clears at": the clock time when it ends
+/// today, else the day as well (`11/21 3:45 PM`). `date_pat` is the `strftime` pattern of the
+/// user's date format.
+pub fn at_text(until: NaiveDateTime, now: NaiveDateTime, h24: bool, date_pat: &str) -> String {
     use chrono::Timelike;
     let clock = appearance::formats::clock_in((until.hour() * 60 + until.minute()) as i32, h24);
     if until.date() == now.date() {
-        format!("Until {clock}")
+        clock
     } else {
-        format!("Until {} {clock}", until.format(date_pat))
+        format!("{} {clock}", until.format(date_pat))
+    }
+}
+
+/// "Until 3:45 PM" under the status in the profile menu: [`at_text`] after "Until".
+pub fn until_text(until: NaiveDateTime, now: NaiveDateTime, h24: bool, date_pat: &str) -> String {
+    format!("Until {}", at_text(until, now, h24, date_pat))
+}
+
+/// [`at_text`] for an instant (ms), in the zone and the formats chosen in Settings.
+pub fn at_label(at_ms: i64) -> String {
+    use appearance::formats as f;
+    match (f::local(at_ms), f::local_now()) {
+        (Some(u), Some(n)) => at_text(u, n, f::is_h24(), f::date_pattern(false)),
+        _ => String::new(),
     }
 }
 
 /// [`until_text`] for an instant (ms), in the zone and the formats chosen in Settings.
 pub fn until_label(until_ms: i64) -> String {
-    use appearance::formats as f;
-    match (f::local(until_ms), f::local_now()) {
-        (Some(u), Some(n)) => until_text(u, n, f::is_h24(), f::date_pattern(false)),
-        _ => String::new(),
+    match at_label(until_ms) {
+        t if t.is_empty() => t,
+        t => format!("Until {t}"),
     }
+}
+
+/// When a status message the service reports ends, from its UTC text, as ms. `None` when it
+/// never ends (the presence reader drops the "never" date) or the text cannot be read.
+pub fn note_ends_ms(expiry: Option<&str>) -> Option<i64> {
+    expiry.and_then(teams_proto::time::parse_iso_ms)
+}
+
+/// Whether a status message that ends at `ends_ms` is already over at `now_ms`. The service
+/// clears it itself, but what it answers can lag behind the clock.
+pub fn note_is_over(ends_ms: Option<i64>, now_ms: i64) -> bool {
+    ends_ms.is_some_and(|e| e <= now_ms)
 }
 
 #[cfg(test)]
@@ -220,6 +245,80 @@ mod tests {
         assert!(t("2026-11-20 09:00").unwrap_err().contains("future"));
         assert!(t("tomorrow noon").unwrap_err().contains("2026-12-31"));
         assert!(t("").is_err());
+    }
+
+    #[test]
+    fn today_ends_at_the_next_local_midnight_even_on_the_last_evening() {
+        let late = utc("2026-11-20T14:59:00Z"); // 23:59 Friday in Tokyo
+        let t = expiry(Some(Tz::Asia__Tokyo), "today", "", late)
+            .unwrap()
+            .map(iso);
+        assert_eq!(t.as_deref(), Some("2026-11-20T15:00:00.000Z"));
+    }
+
+    #[test]
+    fn this_week_ends_with_sunday_in_the_users_zone() {
+        let week = |now: &str| {
+            expiry(Some(Tz::Asia__Tokyo), "week", "", utc(now))
+                .unwrap()
+                .map(iso)
+        };
+        // Sunday 2026-11-22 10:00 Tokyo: the week ends tonight, at the Monday midnight.
+        assert_eq!(
+            week("2026-11-22T01:00:00Z").as_deref(),
+            Some("2026-11-22T15:00:00.000Z")
+        );
+        // Saturday 23:30 Tokyo is still the same week.
+        assert_eq!(
+            week("2026-11-21T14:30:00Z").as_deref(),
+            Some("2026-11-22T15:00:00.000Z")
+        );
+        // Sunday 23:30 UTC is already Monday in Tokyo: the next week's Sunday.
+        assert_eq!(
+            week("2026-11-22T23:30:00Z").as_deref(),
+            Some("2026-11-29T15:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn the_system_zone_reads_the_same_choices() {
+        // `None` is the system zone, whatever it is: "today" is ahead and within a day (a day
+        // with a daylight saving change has 23 or 25 hours), "week" within a week and a bit.
+        let now = utc("2026-11-20T01:00:00Z");
+        let today = expiry(None, "today", "", now).unwrap().unwrap();
+        assert!(today > now && today - now <= Duration::hours(25));
+        let week = expiry(None, "week", "", now).unwrap().unwrap();
+        assert!(week >= today && week - now <= Duration::days(7) + Duration::hours(1));
+        assert_eq!(
+            expiry(None, "30m", "", now).unwrap().map(iso).as_deref(),
+            Some("2026-11-20T01:30:00.000Z")
+        );
+    }
+
+    #[test]
+    fn at_text_drops_the_day_when_it_is_today() {
+        let now = wall("2026-11-20 14:00");
+        assert_eq!(
+            at_text(wall("2026-11-20 14:30"), now, true, "%-m/%-d"),
+            "14:30"
+        );
+        assert_eq!(
+            at_text(wall("2026-11-22 15:45"), now, false, "%-m/%-d"),
+            "11/22 3:45 PM"
+        );
+    }
+
+    #[test]
+    fn a_status_message_is_over_once_its_end_has_passed() {
+        let ends = note_ends_ms(Some("2026-11-20T01:30:00.000Z"));
+        let e = ends.expect("a readable time");
+        assert!(!note_is_over(ends, e - 1));
+        assert!(note_is_over(ends, e));
+        assert!(note_is_over(ends, e + 1));
+        // No end, or one that cannot be read: never over.
+        assert_eq!(note_ends_ms(None), None);
+        assert_eq!(note_ends_ms(Some("soon")), None);
+        assert!(!note_is_over(None, i64::MAX));
     }
 
     #[test]

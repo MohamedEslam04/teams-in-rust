@@ -627,6 +627,85 @@ fn a_status_message_clears_after_the_chosen_time_and_can_show_when_people_messag
 }
 
 #[test]
+fn a_status_message_can_clear_after_half_an_hour() {
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("note-30m").with_accounts(), Some(tx), false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    while rx.try_recv().is_ok() {}
+    control(app, "New status message").set_accessible_value("Quick call");
+    press(app, "Clear message after: 30 minutes");
+    press(app, "Save message");
+    let Ok(Cmd::Settings(SettingsCmd::SetStatusNote(text, Some(until), false))) = rx.try_recv()
+    else {
+        panic!("a message that clears");
+    };
+    assert_eq!(text, "Quick call");
+    let ms = teams_proto::time::parse_iso_ms(&until).unwrap();
+    assert!((ms - (teams_proto::time::now_ms() + 30 * 60_000)).abs() < 60_000);
+}
+
+#[test]
+fn an_emoji_picked_for_the_status_message_goes_first() {
+    let ui = window_with(Home::new("note-emoji").with_accounts(), None, false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    control(app, "New status message").set_accessible_value("Heads down");
+    press(app, "Add emoji to status message");
+    let first = app
+        .global::<crate::EmojiApi>()
+        .invoke_list(0, "".into(), 0)
+        .row_data(0)
+        .expect("an emoji")
+        .ch;
+    ids(app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
+    assert_eq!(
+        value_of(app, "New status message"),
+        format!("{first} Heads down")
+    );
+}
+
+#[test]
+fn the_status_editor_says_when_the_message_clears() {
+    let ui = window_with(Home::new("note-clears").with_accounts(), None, false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    let handle = UiHandle::new(app.as_weak());
+    let none = |app: &AppWindow| {
+        ElementHandle::find_by_accessible_label(app, "Status message clears")
+            .next()
+            .is_none()
+    };
+    // No end: nothing to say.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        ..Default::default()
+    });
+    assert!(none(app));
+    // An end ahead of us: the clock time.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        me_status_ends: Some(teams_proto::time::now_ms() + 3_600_000),
+        ..Default::default()
+    });
+    assert!(value_of(app, "Status message clears").starts_with("Clears at "));
+    // One that has passed: gone.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        me_status_ends: Some(teams_proto::time::now_ms() - 1_000),
+        ..Default::default()
+    });
+    assert!(none(app));
+}
+
+#[test]
 fn the_profile_menu_changes_and_removes_the_photo_and_shows_it() {
     use crate::backend::settings::SettingsCmd;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

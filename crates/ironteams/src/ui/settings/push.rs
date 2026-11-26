@@ -409,6 +409,13 @@ pub(super) fn push_profile(w: &AppWindow, c: &Ctl) {
     g.set_me_name(s(name));
     g.set_me_email(s(email));
     g.set_me_status(s(d.and_then(|d| d.me_status.clone()).unwrap_or_default()));
+    // "Clears at 14:30" under the message: only for a message that has an end still ahead.
+    g.set_me_status_ends(s(d
+        .filter(|d| d.me_status.is_some())
+        .and_then(|d| d.me_status_ends)
+        .filter(|end| *end > teams_proto::time::now_ms())
+        .map(expiry::at_label)
+        .unwrap_or_default()));
     let presence = d.and_then(|d| d.me_presence.clone()).unwrap_or_default();
     let activity = d.and_then(|d| d.me_activity.clone()).unwrap_or_default();
     g.set_me_presence_until(s(status_until_line(c, &presence)));

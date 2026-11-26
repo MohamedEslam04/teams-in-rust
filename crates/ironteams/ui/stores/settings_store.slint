@@ -40,6 +40,8 @@ export global SettingsStore {
     in-out property <string> me-email;
     in-out property <string> me-initials;
     in-out property <string> me-status;
+    // When the status message clears ("14:30", or "11/21 14:30"), "" when it has no end.
+    in-out property <string> me-status-ends;
     in-out property <string> me-presence;
     // What I am doing (InACall, InAMeeting, OffWork, ...), and the words Teams shows for my status
     // ("In a call", else the availability's). Both are set together with me-presence (Rust).
@@ -58,7 +60,7 @@ export global SettingsStore {
     // "Reset status after" (never | 30m | 1h | 2h | today | week | custom) and the custom time.
     in-out property <string> status-duration: "never";
     in-out property <string> status-custom;
-    // The status message's "Clear after" (never | today | 1h | 4h | week) and "Show when people
+    // The status message's "Clear after" (never | 30m | 1h | 4h | today | week) and "Show when people
     // message me".
     in-out property <string> note-clear-after: "never";
     in-out property <bool> note-show-when-messaged: false;

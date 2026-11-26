@@ -15,6 +15,7 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { CountBadge } from "../atoms/chip.slint";
+import { EmojiPanel } from "../organisms/composer_popups.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -425,6 +426,9 @@ export component ProfileMenu inherits Rectangle {
     // flyout is SettingsStore.status-open and the duration one opens from it.
     property <string> flyout: "";
     property <bool> duration-open: false;
+    // The emoji picker of the status message editor.
+    property <string> note-emoji-query;
+    property <int> note-emoji-tab;
     property <bool> any-flyout: root.flyout != "" || SettingsStore.status-open;
     // Where a flyout of height `h` starts: level with the row `row-y` that opened it, but inside
     // the window.
@@ -631,9 +635,51 @@ export component ProfileMenu inherits Rectangle {
                         padding-top: 4px;
                         spacing: 6px;
                         Text { text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message"); color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: SettingsStore.me-status; }
-                        note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; }
+                        if SettingsStore.me-status != "" && SettingsStore.me-status-ends != "": Text {
+                            text: @tr("Clears at {}", SettingsStore.me-status-ends);
+                            color: Theme.fg-subtle;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                            accessible-label: @tr("Status message clears");
+                            accessible-value: self.text;
+                        }
+                        // The emoji goes first in the text: the button opens the picker and puts the pick
+                        // at the start.
+                        HorizontalLayout {
+                            spacing: 6px;
+                            note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; horizontal-stretch: 1; }
+                            VerticalLayout {
+                                alignment: end;
+                                horizontal-stretch: 0;
+                                Rectangle {
+                                    width: 32px;
+                                    height: 32px;
+                                    IconButton {
+                                        icon: @image-url("../icons/emoji.svg");
+                                        tooltip: @tr("Add emoji to status message");
+                                        clicked => { note-emoji-query = ""; note-emoji-popup.show(); }
+                                    }
+                                    note-emoji-popup := PopupWindow {
+                                        x: parent.width - 360px;
+                                        y: parent.height + 4px;
+                                        width: 360px;
+                                        height: 380px;
+                                        close-policy: close-on-click-outside;
+                                        EmojiPanel {
+                                            emoji-query <=> note-emoji-query;
+                                            emoji-tab <=> note-emoji-tab;
+                                            skin-tone <=> SettingsStore.skin-tone;
+                                            skin-tone-changed(t) => { SettingsStore.command("skin-tone", "\{t}"); }
+                                            pick-emoji(ch) => { note.text = note.text == "" ? ch : ch + " " + note.text; }
+                                            close-popup => { note-emoji-popup.close(); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: Theme.font-small; }
-                        for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
+                        for d in [{v: "never", l: @tr("Never")}, {v: "30m", l: @tr("30 minutes")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "today", l: @tr("Today")}, {v: "week", l: @tr("This week")}]: SRadio {
                             group: @tr("Clear message after");
                             label: d.l;
                             checked: SettingsStore.note-clear-after == d.v;

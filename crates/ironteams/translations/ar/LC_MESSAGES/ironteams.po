@@ -2463,3 +2463,12 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+msgid "Add emoji to status message"
+msgstr "إضافة رمز تعبيري إلى رسالة الحالة"
+
+msgid "Clears at {}"
+msgstr "تُمسح عند {}"
+
+msgid "Status message clears"
+msgstr "وقت مسح رسالة الحالة"
