@@ -10,19 +10,31 @@
 //!
 //! The gallery slots are offered unless `IRONTEAMS_CAMERA=0` (as the camera line), the sharing
 //! line unless `IRONTEAMS_SCREEN_SHARE=0`. Everything here is UNVERIFIED live.
+//!
+//! Who the slots show follows the window ([`RemoteVideo::set_view`], from
+//! [`super::view_plan::visible_roles`]): a person on the stage is asked for at 1280x720, a gallery
+//! tile at 640x360, a strip tile at 320x180, and nobody off screen; each slot's decoder draws at
+//! its tile's width. Until the window says (and with `IRONTEAMS_VIDEO_SUBSCRIBE=static`) the
+//! latest speakers get the slots at the gallery size, as before. Should the service refuse a
+//! role-sized subscription, or a resized line stop sending, every slot goes back to the gallery
+//! size for the rest of the call ([`RemoteVideo::check_fallback`]).
 
+use super::view_plan::TileRole;
 use super::{EventSink, VideoSlot};
 use calling::media::sdp::{live_mid_of_role, mid_of_role, source_stream_ids, video_mids};
 use calling::media::{MediaSession, VideoLayout};
 use calling::signaling::roster::Roster;
-use calling::signaling::video::{SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive};
+use calling::signaling::video::{
+    ReceiveLimits, SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive,
+};
 use calling::signaling::{CallSession, NgcClient};
-use calling::video::receive::{VideoPacket, spawn_decoder};
+use calling::video::receive::{VideoPacket, spawn_decoder_sized};
 use calling::video::{RgbFrame, VideoRole};
 use calling::{Links, Modality};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -42,6 +54,9 @@ const LINE_QUEUE: usize = 512;
 const IDLE: Duration = Duration::from_secs(10);
 /// How often a drawn line checks that its route is still the one it drew on.
 const ROUTE_CHECK: Duration = Duration::from_millis(500);
+/// A line that drew pictures and then sends none for this long after its slot was asked for a
+/// role size (720p, 180p) is taken as the size refused (UNVERIFIED live).
+const RESIZE_STALL: Duration = Duration::from_secs(5);
 
 /// The gallery slots a meeting join offers: [`RECEIVE_SLOTS`], none with `IRONTEAMS_CAMERA=0`.
 pub fn wanted_slots() -> usize {
@@ -115,6 +130,29 @@ fn layout_by(v: Option<&std::ffi::OsStr>) -> VideoLayout {
         Some("sharing-second") => VideoLayout::SharingSecond,
         _ => VideoLayout::WebClient,
     }
+}
+
+/// Whether the slots follow the window: unless `IRONTEAMS_VIDEO_SUBSCRIBE=static`, which keeps
+/// the latest speakers at the gallery size whatever is on screen (the kill switch, should a live
+/// service refuse the larger or smaller sizes).
+fn follows_view() -> bool {
+    view_switch(compat::var_os("IRONTEAMS_VIDEO_SUBSCRIBE").as_deref())
+}
+
+fn view_switch(v: Option<&std::ffi::OsStr>) -> bool {
+    v.is_none_or(|v| v != "static")
+}
+
+/// What a slot asks the media server for when its tile has `role`.
+fn limits_of(role: TileRole) -> ReceiveLimits {
+    let s = role.size();
+    ReceiveLimits::for_size(s.width, s.height, s.fps)
+}
+
+/// How wide a slot's decoder draws for a tile with `role`: the width it subscribed to, so a
+/// stage tile is not shrunk to the gallery's.
+fn width_of(role: TileRole) -> usize {
+    usize::try_from(role.size().width).unwrap_or(TILE_WIDTH)
 }
 
 /// A meeting join's `callModalities`: `Audio`, plus `ScreenViewer` (which also makes the join
@@ -194,6 +232,21 @@ pub struct RemoteVideo {
     share_line: Option<(String, u32)>,
     /// Who each slot is subscribed to: (MRI, camera MSI).
     held: Vec<Option<(String, u32)>>,
+    /// The tile role each slot's subscription asked for (its size).
+    held_roles: Vec<Option<TileRole>>,
+    /// Who the window shows and how large, in priority order ([`Self::set_view`]); `None` until
+    /// it says: the latest speakers then.
+    view: Option<Vec<(String, TileRole)>>,
+    /// How wide each gallery line's decoder draws (by mid): its subscription's tile width.
+    widths: Arc<Mutex<HashMap<String, Arc<AtomicUsize>>>>,
+    /// When each line (by mid) last drew a picture.
+    frames: Arc<Mutex<HashMap<String, Instant>>>,
+    /// The service refused a role-sized subscription (set by the sending task).
+    refused: Arc<AtomicBool>,
+    /// Role sizes given up for the rest of the call: every slot asks for the gallery size.
+    sizes_off: bool,
+    /// When each slot that had drawn pictures was asked for a role size: watched for a stall.
+    resized: Vec<Option<Instant>>,
     /// The share subscribed to: (MRI, share MSI).
     share_held: Option<(String, u32)>,
     /// The `sequenceNumber` of the last subscription.
@@ -216,6 +269,8 @@ impl RemoteVideo {
             r.abort();
         }
         let routes = Arc::clone(&self.routes);
+        let widths = Arc::clone(&self.widths);
+        let drawn_at = Arc::clone(&self.frames);
         let sink = sink.clone();
         self.router = Some(tokio::spawn(async move {
             let mut lines: HashMap<Option<Arc<str>>, mpsc::Sender<VideoPacket>> = HashMap::new();
@@ -225,11 +280,18 @@ impl RemoteVideo {
                     // Which line carries what (a meeting's unasked stream comes as `Remote`).
                     tracing::info!(mid = ?p.mid, ?slot, "remote video line started");
                     let (tx, rx) = mpsc::channel(LINE_QUEUE);
-                    let frames = spawn_decoder(rx, p.mid.clone(), width_for(slot));
+                    // A gallery line draws at the width its subscription asked for, which may
+                    // change while it runs; the other lines at their fixed width.
+                    let width = match (slot, p.mid.as_deref()) {
+                        (VideoSlot::Gallery(_), Some(mid)) => line_width(&widths, mid),
+                        _ => Arc::new(AtomicUsize::new(width_for(slot))),
+                    };
+                    let frames = spawn_decoder_sized(rx, p.mid.clone(), width);
                     tokio::spawn(forward_frames(
                         frames,
                         p.mid.clone(),
                         Arc::clone(&routes),
+                        Arc::clone(&drawn_at),
                         sink.clone(),
                     ));
                     tx
@@ -295,6 +357,7 @@ impl RemoteVideo {
             slots: self.table.iter().map(|(mid, _)| mid.clone()).collect(),
         };
         self.held = vec![None; self.table.len()];
+        self.held_roles = vec![None; self.table.len()];
         self.share_held = None;
         // `slots`: the gallery lines that can be subscribed (placed, with a stream id);
         // `slot_lines`: the gallery lines the negotiation placed at all.
@@ -329,9 +392,85 @@ impl RemoteVideo {
             .position(|h| h.as_ref().is_some_and(|(m, _)| m == mri))
     }
 
-    /// The subscriptions the roster now calls for: the others' cameras into the slots (the
-    /// latest speakers first, by `spoke`), and the share someone else presents onto the sharing
-    /// line. Slots whose person changed are cleared through `cleared`.
+    /// Who the window shows and how large ([`super::view_plan::visible_roles`]); true when the
+    /// slots should follow (it changed, and `IRONTEAMS_VIDEO_SUBSCRIBE` is not `static`).
+    pub fn set_view(&mut self, view: Vec<(String, TileRole)>) -> bool {
+        if !follows_view() || self.view.as_ref() == Some(&view) {
+            return false;
+        }
+        self.view = Some(view);
+        true
+    }
+
+    /// Whether the slots must give up role sizes now: the service refused one (the sending task
+    /// says so), or a line resized while it drew has sent nothing for [`RESIZE_STALL`] since.
+    /// True once, when it gives them up for the rest of the call; the caller then re-plans
+    /// ([`Self::reselect`]), which asks every resized slot again at the gallery size.
+    pub fn check_fallback(&mut self, now: Instant) -> bool {
+        if self.sizes_off {
+            return false;
+        }
+        let refused = self.refused.load(Ordering::Relaxed);
+        let frames = lock_frames(&self.frames);
+        let stalled = self.table.iter().zip(&self.resized).any(|((mid, _), at)| {
+            at.is_some_and(|at| {
+                let drew_since = frames.get(mid).is_some_and(|f| *f >= at);
+                !drew_since && now.saturating_duration_since(at) >= RESIZE_STALL
+            })
+        });
+        drop(frames);
+        if !refused && !stalled {
+            return false;
+        }
+        tracing::warn!(
+            refused,
+            stalled,
+            "role sizes refused; falling back to static subscriptions"
+        );
+        self.sizes_off = true;
+        self.resized.iter_mut().for_each(|r| *r = None);
+        true
+    }
+
+    /// Who the slots should show, in priority order, and at which size: the window's view (the
+    /// people on screen with a camera that sends), else the latest speakers (by `spoke`) at the
+    /// gallery size.
+    fn wanted(
+        &self,
+        roster: &Roster,
+        me: &str,
+        spoke: impl Fn(&str) -> u64,
+    ) -> Vec<((String, u32), TileRole)> {
+        let mut candidates = roster.video_candidates(me);
+        match &self.view {
+            Some(view) => view
+                .iter()
+                .filter_map(|(mri, role)| {
+                    let c = candidates.iter().find(|(m, _)| m == mri)?;
+                    // Role sizes refused: who is on screen still decides, at the gallery size.
+                    let role = if self.sizes_off {
+                        TileRole::Gallery
+                    } else {
+                        *role
+                    };
+                    Some((c.clone(), role))
+                })
+                .collect(),
+            None => {
+                // Stable: people who never spoke keep the roster's order.
+                candidates.sort_by_key(|(mri, _)| std::cmp::Reverse(spoke(mri)));
+                candidates
+                    .into_iter()
+                    .map(|c| (c, TileRole::Gallery))
+                    .collect()
+            }
+        }
+    }
+
+    /// The subscriptions the roster and the window now call for: the others' cameras into the
+    /// slots ([`Self::wanted`]: who is on screen, each at their tile's size; nobody off screen),
+    /// and the share someone else presents onto the sharing line. A slot is asked again when its
+    /// person or its size changed; slots whose person changed are cleared through `cleared`.
     fn plan(
         &mut self,
         roster: &Roster,
@@ -339,10 +478,17 @@ impl RemoteVideo {
         spoke: impl Fn(&str) -> u64,
         mut cleared: impl FnMut(usize),
     ) -> Vec<SourceRequest> {
-        let mut wanted = roster.video_candidates(me);
-        // Stable: people who never spoke keep the roster's order.
-        wanted.sort_by_key(|(mri, _)| std::cmp::Reverse(spoke(mri)));
-        let next = plan_receive(&self.held, &wanted);
+        let wanted = self.wanted(roster, me, spoke);
+        let who: Vec<(String, u32)> = wanted.iter().map(|(c, _)| c.clone()).collect();
+        let next = plan_receive(&self.held, &who);
+        let role_of = |held: &Option<(String, u32)>| {
+            let held = held.as_ref()?;
+            wanted.iter().find(|(c, _)| c == held).map(|(_, r)| *r)
+        };
+        let roles: Vec<Option<TileRole>> = next.iter().map(role_of).collect();
+        self.held_roles.resize(self.table.len(), None);
+        self.resized.resize(self.table.len(), None);
+        let now = Instant::now();
         let mut out = Vec::new();
         for (i, ((mid, msid), (before, after))) in self
             .table
@@ -350,19 +496,44 @@ impl RemoteVideo {
             .zip(self.held.iter().zip(&next))
             .enumerate()
         {
-            if before == after {
+            let role = roles[i];
+            if before == after && self.held_roles[i] == role {
                 continue;
             }
-            if before.as_ref().map(|b| &b.0) != after.as_ref().map(|a| &a.0) {
+            let same_person = before.as_ref().map(|b| &b.0) == after.as_ref().map(|a| &a.0);
+            if !same_person {
                 cleared(i);
             }
+            if let Some(role) = role {
+                set_line_width(&self.widths, mid, width_of(role));
+            }
+            // The same person asked for a role size while their line draws: if it then goes
+            // quiet, the service did not take the size ([`Self::check_fallback`]).
+            let drew = lock_frames(&self.frames).contains_key(mid);
+            self.resized[i] = (same_person
+                && after.is_some()
+                && role.is_some_and(|r| r != TileRole::Gallery)
+                && drew)
+                .then_some(now);
+            let size = role.map(TileRole::size);
+            tracing::info!(
+                slot = i,
+                mid = %mid,
+                mri = after.as_ref().map_or("", |(m, _)| m.as_str()),
+                role = role.map_or("off screen", TileRole::name),
+                width = size.map_or(0, |s| s.width),
+                height = size.map_or(0, |s| s.height),
+                fps = size.map_or(0, |s| s.fps),
+                "video subscription changed"
+            );
             out.push(SourceRequest {
                 mid: mid.clone(),
                 stream_msid: *msid,
                 source: after.as_ref().map(|(_, source)| *source),
-                limits: TILE_LIMITS,
+                limits: role.map_or(TILE_LIMITS, limits_of),
             });
         }
+        self.held_roles = roles;
         self.held = next;
         if let Some((mid, msid)) = &self.share_line {
             let sharer = if self.own_share {
@@ -408,6 +579,7 @@ impl RemoteVideo {
         let queue = self.requests.get_or_insert_with(|| {
             let (tx, mut rx) = mpsc::unbounded_channel::<(String, SourceRequest, u64)>();
             let (ngc, s) = (ngc.clone(), s.clone());
+            let refused = Arc::clone(&self.refused);
             tokio::spawn(async move {
                 while let Some((url, r, n)) = rx.recv().await {
                     match ngc.apply_channel_parameters(&s, &url, &r, n).await {
@@ -418,14 +590,18 @@ impl RemoteVideo {
                             sequence = n,
                             "video subscribed"
                         ),
-                        Err(e) => tracing::warn!(
-                            %e,
-                            mid = %r.mid,
-                            source = ?r.source,
-                            stream = r.stream_msid,
-                            sequence = n,
-                            "video subscription refused"
-                        ),
+                        Err(e) => {
+                            tracing::warn!(
+                                %e,
+                                mid = %r.mid,
+                                source = ?r.source,
+                                stream = r.stream_msid,
+                                max_fs = r.limits.max_fs,
+                                sequence = n,
+                                "video subscription refused"
+                            );
+                            note_refusal(&refused, &r);
+                        }
                     }
                 }
             });
@@ -556,6 +732,38 @@ fn video_feedback_summary(sdp: &str) -> Vec<String> {
     out
 }
 
+/// A refused subscription that asked for a role size (not the gallery's or the share's) gives
+/// role sizes up ([`RemoteVideo::check_fallback`]); true when it did.
+fn note_refusal(refused: &AtomicBool, r: &SourceRequest) -> bool {
+    let role_sized = r.source.is_some() && r.limits != TILE_LIMITS && r.limits != SCREEN_LIMITS;
+    if role_sized {
+        refused.store(true, Ordering::Relaxed);
+    }
+    role_sized
+}
+
+fn lock_frames(
+    frames: &Mutex<HashMap<String, Instant>>,
+) -> std::sync::MutexGuard<'_, HashMap<String, Instant>> {
+    frames.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The width a gallery line's decoder draws at (by mid), shared with [`RemoteVideo::plan`]: the
+/// gallery size until a subscription says otherwise.
+fn line_width(widths: &Mutex<HashMap<String, Arc<AtomicUsize>>>, mid: &str) -> Arc<AtomicUsize> {
+    let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
+    Arc::clone(
+        w.entry(mid.to_owned())
+            .or_insert_with(|| Arc::new(AtomicUsize::new(TILE_WIDTH))),
+    )
+}
+
+/// The gallery line `mid` draws `width` wide from its next picture on (and from its first, when
+/// the subscription comes before it sends).
+fn set_line_width(widths: &Mutex<HashMap<String, Arc<AtomicUsize>>>, mid: &str, width: usize) {
+    line_width(widths, mid).store(width, Ordering::Relaxed);
+}
+
 fn lock(routes: &Mutex<Routes>) -> std::sync::MutexGuard<'_, Routes> {
     routes.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -567,6 +775,7 @@ async fn forward_frames(
     mut frames: mpsc::Receiver<RgbFrame>,
     mid: Option<Arc<str>>,
     routes: Arc<Mutex<Routes>>,
+    drawn_at: Arc<Mutex<HashMap<String, Instant>>>,
     sink: EventSink,
 ) {
     let mut drawn: Option<VideoSlot> = None;
@@ -577,6 +786,15 @@ async fn forward_frames(
             f = frames.recv() => {
                 let Some(f) = f else { break };
                 last = tokio::time::Instant::now();
+                if let Some(mid) = mid.as_deref() {
+                    let mut at = lock_frames(&drawn_at);
+                    match at.get_mut(mid) {
+                        Some(t) => *t = Instant::now(),
+                        None => {
+                            at.insert(mid.to_owned(), Instant::now());
+                        }
+                    }
+                }
                 let slot = lock(&routes).slot_for(mid.as_deref());
                 if let Some(old) = drawn.filter(|old| *old != slot) {
                     sink.video(old, None);
@@ -691,6 +909,208 @@ mod tests {
             "nothing changed"
         );
         assert_eq!(cleared, [0, 1]);
+    }
+
+    /// The `controlInfo` a request posts.
+    fn control_info(r: &SourceRequest) -> serde_json::Value {
+        let body = r.body(1);
+        let inner: serde_json::Value = serde_json::from_str(
+            body["applyChannelParameters"]["multiChannelParameter"]["mediaParameter"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        inner["controlVideoStreaming"]["controlInfo"].clone()
+    }
+
+    fn three_cameras() -> Roster {
+        roster(json!({
+            "8:me": person("Me", Some(10), None),
+            "8:a": person("Ada", Some(11), None),
+            "8:b": person("Bo", Some(12), None),
+            "8:c": person("Cy", Some(13), None),
+        }))
+    }
+
+    fn width(v: &RemoteVideo, mid: &str) -> usize {
+        line_width(&v.widths, mid).load(Ordering::Relaxed)
+    }
+
+    #[test]
+    fn a_stage_tile_asks_for_720p_and_a_person_off_screen_for_nothing() {
+        let mut v = with_lines(2, false);
+        let r = three_cameras();
+        // Before the window says, the latest speakers at the gallery size.
+        let first = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(first.len(), 2);
+        assert!(first.iter().all(|q| q.limits == TILE_LIMITS));
+        assert_eq!((v.slot_of("8:a"), v.slot_of("8:b")), (Some(0), Some(1)));
+
+        // Bo is pinned: on the stage, alone on screen.
+        assert!(v.set_view(vec![("8:b".into(), TileRole::Stage)]));
+        assert!(
+            !v.set_view(vec![("8:b".into(), TileRole::Stage)]),
+            "unchanged"
+        );
+        let mut cleared = Vec::new();
+        let asked = v.plan(&r, "8:me", |_| 0, |i| cleared.push(i));
+        assert_eq!(asked.len(), 2);
+        // Ada is off screen: her slot stops.
+        assert_eq!(asked[0].mid, "3");
+        assert_eq!(control_info(&asked[0])["sourceId"], -1);
+        assert_eq!(cleared, [0]);
+        // Bo keeps his slot, asked again at 720p, and his line draws 1280 wide.
+        assert_eq!((asked[1].mid.as_str(), asked[1].source), ("4", Some(12)));
+        let c = control_info(&asked[1]);
+        assert_eq!(c["fmtParams"][0]["max-fs"], 3600);
+        assert_eq!(c["fmtParams"][0]["max-fps"], 3000);
+        assert_eq!(width(&v, "4"), 1280);
+        assert!(v.plan(&r, "8:me", |_| 0, |_| {}).is_empty(), "settled");
+    }
+
+    #[test]
+    fn strip_tiles_ask_for_180p_and_a_size_change_alone_asks_again() {
+        let mut v = with_lines(2, false);
+        let r = three_cameras();
+        v.set_view(vec![
+            ("8:c".into(), TileRole::Gallery),
+            ("8:a".into(), TileRole::Gallery),
+        ]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        let who: Vec<_> = asked.iter().map(|q| (q.mid.as_str(), q.source)).collect();
+        assert_eq!(who, [("3", Some(13)), ("4", Some(11))]);
+        assert!(asked.iter().all(|q| q.limits == TILE_LIMITS));
+        assert_eq!(width(&v, "3"), 640);
+        // A share took the stage: the same people, now in the filmstrip.
+        v.set_view(vec![
+            ("8:c".into(), TileRole::Strip),
+            ("8:a".into(), TileRole::Strip),
+        ]);
+        let mut cleared = Vec::new();
+        let asked = v.plan(&r, "8:me", |_| 0, |i| cleared.push(i));
+        assert_eq!(asked.len(), 2, "both slots asked again");
+        assert!(cleared.is_empty(), "nobody changed slot");
+        for q in &asked {
+            let c = control_info(q);
+            assert_eq!(c["fmtParams"][0]["max-fs"], 240);
+            assert_eq!(c["fmtParams"][0]["max-fps"], 1500);
+        }
+        assert_eq!(width(&v, "3"), 320);
+        assert_eq!((v.slot_of("8:c"), v.slot_of("8:a")), (Some(0), Some(1)));
+    }
+
+    #[test]
+    fn people_on_screen_without_a_camera_take_no_slot() {
+        let mut v = with_lines(2, false);
+        let r = roster(json!({
+            "8:a": person("Ada", None, None),
+            "8:b": person("Bo", Some(12), None),
+        }));
+        v.set_view(vec![
+            ("8:a".into(), TileRole::Stage),
+            ("8:b".into(), TileRole::Strip),
+        ]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked.len(), 1);
+        assert_eq!((asked[0].source, asked[0].limits.max_fs), (Some(12), 240));
+    }
+
+    /// No live meeting has confirmed 720p or 180p: a refused role size puts every slot back at
+    /// the gallery size, once, for the rest of the call.
+    #[test]
+    fn a_refused_role_size_falls_back_to_the_gallery_size_for_the_rest_of_the_call() {
+        let mut v = with_lines(2, false);
+        let r = three_cameras();
+        v.set_view(vec![
+            ("8:b".into(), TileRole::Stage),
+            ("8:a".into(), TileRole::Strip),
+        ]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked.len(), 2);
+        let now = Instant::now();
+        assert!(!v.check_fallback(now), "nothing refused yet");
+        // A refused unsubscribe or gallery-size request is no reason to give sizes up.
+        let tile = SourceRequest {
+            limits: TILE_LIMITS,
+            ..asked[0].clone()
+        };
+        assert!(!note_refusal(&v.refused, &tile));
+        assert!(!note_refusal(
+            &v.refused,
+            &SourceRequest {
+                source: None,
+                ..asked[0].clone()
+            }
+        ));
+        assert!(!v.check_fallback(now));
+        // The 720p one is refused.
+        let stage = asked.iter().find(|q| q.limits.max_fs == 3600).unwrap();
+        assert!(note_refusal(&v.refused, stage));
+        assert!(v.check_fallback(now), "sizes given up");
+        assert!(!v.check_fallback(now), "once");
+        let again = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(again.len(), 2, "both slots asked again");
+        for q in &again {
+            assert!(q.source.is_some(), "the same people");
+            assert_eq!(control_info(q)["fmtParams"][0]["max-fs"], 920);
+        }
+        assert_eq!(width(&v, "3"), 640);
+        assert_eq!(width(&v, "4"), 640);
+        // A later view keeps the gallery size.
+        v.set_view(vec![("8:c".into(), TileRole::Stage)]);
+        let later = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert!(later.iter().all(|q| q.limits == TILE_LIMITS));
+        // A new negotiation (a media restart) does not bring the sizes back.
+        v.place("", None, vec!["3".into()], Phase::Restart);
+        assert!(v.sizes_off);
+    }
+
+    #[test]
+    fn a_line_that_stops_after_a_resize_falls_back_to_the_gallery_size() {
+        let mut v = with_lines(1, false);
+        let r = three_cameras();
+        v.set_view(vec![("8:a".into(), TileRole::Gallery)]);
+        v.plan(&r, "8:me", |_| 0, |_| {});
+        // Its line draws pictures, then it is put on the stage.
+        lock_frames(&v.frames).insert("3".into(), Instant::now());
+        v.set_view(vec![("8:a".into(), TileRole::Stage)]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked[0].limits.max_fs, 3600);
+        let at = v.resized[0].expect("watched");
+        assert!(!v.check_fallback(at + Duration::from_secs(4)), "not yet");
+        // A picture after the resize: the size was taken.
+        lock_frames(&v.frames).insert("3".into(), at + Duration::from_millis(1));
+        assert!(!v.check_fallback(at + Duration::from_secs(6)));
+        // Nothing since the resize for 5 s: given up.
+        lock_frames(&v.frames).insert("3".into(), at - Duration::from_millis(1));
+        assert!(v.check_fallback(at + Duration::from_secs(6)));
+        let again = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(again[0].limits, TILE_LIMITS);
+    }
+
+    #[test]
+    fn a_new_person_on_a_slot_is_not_watched_for_a_stall() {
+        let mut v = with_lines(1, false);
+        v.set_view(vec![("8:a".into(), TileRole::Stage)]);
+        v.plan(&three_cameras(), "8:me", |_| 0, |_| {});
+        assert_eq!(
+            v.resized[0], None,
+            "no pictures before: a slow start is no refusal"
+        );
+    }
+
+    #[test]
+    fn the_slots_follow_the_window_unless_switched_to_static() {
+        assert!(view_switch(None));
+        assert!(view_switch(Some("".as_ref())));
+        assert!(!view_switch(Some("static".as_ref())));
+        assert_eq!(limits_of(TileRole::Gallery), TILE_LIMITS);
+        assert_eq!(limits_of(TileRole::Stage).max_fs, 3600);
+        assert_eq!(limits_of(TileRole::Strip).max_fs, 240);
+        assert_eq!(
+            [TileRole::Stage, TileRole::Gallery, TileRole::Strip].map(width_of),
+            [1280, 640, 320]
+        );
     }
 
     #[test]

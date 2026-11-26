@@ -152,6 +152,8 @@ impl CallHandle for FakeHandle {
 
     fn control(&self, c: Control) {
         let line = match &c {
+            // The window sends it by itself, often: not a call the tests script.
+            Control::VideoView(_) => return,
             Control::Mute(m) => format!("mute {}", if *m { "on" } else { "off" }),
             Control::RaiseHand => "hand up".into(),
             Control::LowerHand => "hand down".into(),

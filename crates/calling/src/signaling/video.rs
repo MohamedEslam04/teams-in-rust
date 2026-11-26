@@ -186,6 +186,22 @@ pub struct ReceiveLimits {
     pub max_mbps: u32,
 }
 
+impl ReceiveLimits {
+    /// The limits of a `width` x `height` picture at `fps` frames a second: `max-fs` in 16x16
+    /// macroblocks (each side rounded up), `max-fps` in hundredths, `max-mbps` the macroblocks a
+    /// second. 640x360 at 30 is [`TILE_LIMITS`]; 1280x720 at 30 is 3600 (the 720p30 the media
+    /// server's answer allows); 320x180 at 15 is 240. The caller decides which size a line asks
+    /// for (this crate knows no layout).
+    pub const fn for_size(width: u32, height: u32, fps: u32) -> Self {
+        let max_fs = width.div_ceil(16) * height.div_ceil(16);
+        ReceiveLimits {
+            max_fs,
+            max_fps: fps * 100,
+            max_mbps: max_fs * fps,
+        }
+    }
+}
+
 /// A gallery tile: 640x360 at 30 fps (rusty-teams' small tile).
 pub const TILE_LIMITS: ReceiveLimits = ReceiveLimits {
     max_fs: 920,
@@ -403,6 +419,49 @@ mod tests {
             inner["controlVideoStreaming"]["controlInfo"]["sourceId"],
             -1
         );
+    }
+
+    fn fmt_params(body: &Value) -> Value {
+        let inner: Value = serde_json::from_str(
+            body["applyChannelParameters"]["multiChannelParameter"]["mediaParameter"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        inner["controlVideoStreaming"]["controlInfo"].clone()
+    }
+
+    #[test]
+    fn limits_follow_the_picture_size_in_macroblocks() {
+        assert_eq!(ReceiveLimits::for_size(640, 360, 30), TILE_LIMITS);
+        let stage = ReceiveLimits::for_size(1280, 720, 30);
+        assert_eq!(
+            (stage.max_fs, stage.max_fps, stage.max_mbps),
+            (3600, 3000, 108_000)
+        );
+        let strip = ReceiveLimits::for_size(320, 180, 15);
+        assert_eq!(
+            (strip.max_fs, strip.max_fps, strip.max_mbps),
+            (240, 1500, 3600)
+        );
+    }
+
+    /// A large (stage) tile asks for 720p; a line nobody sees asks for no source at all.
+    #[test]
+    fn a_720p_line_asks_for_3600_macroblocks_and_an_unseen_one_for_no_source() {
+        let mut r = SourceRequest {
+            mid: "4".into(),
+            stream_msid: 4002,
+            source: Some(311),
+            limits: ReceiveLimits::for_size(1280, 720, 30),
+        };
+        let c = fmt_params(&r.body(3));
+        assert_eq!(c["sourceId"], 311);
+        assert_eq!(c["fmtParams"][0]["max-fs"], 3600);
+        assert_eq!(c["fmtParams"][0]["max-fps"], 3000);
+        assert_eq!(c["fmtParams"][0]["max-mbps"], 108_000);
+        r.source = None;
+        assert_eq!(fmt_params(&r.body(4))["sourceId"], -1);
     }
 
     #[test]

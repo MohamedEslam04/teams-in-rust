@@ -94,6 +94,10 @@ impl Call {
             }
             // Share and Camera are handled by the run loop, which owns their channels.
             Control::Share(_) | Control::Camera(_) | Control::Remote(_) | Control::Leave => {}
+            // Before the call runs (an early control): kept for the first subscriptions.
+            Control::VideoView(view) => {
+                self.video.set_view(view);
+            }
             Control::Captions(_) | Control::Recording(_) | Control::Transcription(_) => {
                 self.bots.ask(&c);
                 self.step_bots(sink).await;

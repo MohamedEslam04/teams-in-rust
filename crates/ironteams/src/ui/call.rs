@@ -1,6 +1,7 @@
 //! UI-thread side of the call window: fills the `CallStore` global (`ui/stores/call_store.slint`).
 
 use super::{UiHandle, model};
+use crate::backend::call::view_plan::{self, ViewSend, ViewState, speaker_order};
 use crate::backend::call::{
     Absent, CallData, Floating, Found, Person, REACTIONS, is_meeting_chat, matches_query,
 };
@@ -442,25 +443,41 @@ fn mini_people(people: &[Person]) -> (Vec<Person>, usize) {
     (others.into_iter().take(MINI_TILES).cloned().collect(), more)
 }
 
-/// Who the speaker view shows, in-call people only: the pinned person first, else the latest
-/// speaker (somebody else rather than us until anyone speaks), then everyone else in the call's
-/// order.
-fn speaker_order(people: &[Person], pinned: &str) -> Vec<Person> {
-    let mut v: Vec<&Person> = people.iter().filter(|p| !p.lobby).collect();
-    let at = (!pinned.is_empty())
-        .then(|| v.iter().position(|p| p.mri == pinned))
-        .flatten();
-    let lead = at.or_else(|| {
-        v.iter()
-            .enumerate()
-            .max_by_key(|(i, p)| (p.spoke, !p.me, std::cmp::Reverse(*i)))
-            .map(|(i, _)| i)
-    });
-    if let Some(i) = lead {
-        let p = v.remove(i);
-        v.insert(0, p);
+thread_local! {
+    /// The view last told to the call ([`send_view`]).
+    static VIEW_SEND: RefCell<ViewSend> = RefCell::default();
+}
+
+/// Who the window shows now and how large ([`view_plan::visible_roles`]), in a live call.
+fn view_now(s: &CallStore) -> Option<Vec<(String, view_plan::TileRole)>> {
+    if !matches!(s.get_phase().as_str(), "connected" | "reconnecting") {
+        return None;
     }
-    v.into_iter().cloned().collect()
+    let (mode, pinned, filmstrip) = (s.get_view_mode(), s.get_pinned(), s.get_filmstrip_pos());
+    let view = ViewState {
+        mode: &mode,
+        pinned: &pinned,
+        filmstrip: &filmstrip,
+        page: s.get_gallery_page(),
+        per_page: s.get_gallery_per_page(),
+        fullscreen: s.get_fullscreen(),
+        others_share: shared(s),
+    };
+    LAST.with(|l| {
+        l.borrow()
+            .as_ref()
+            .map(|last| view_plan::visible_roles(&view, &last.people))
+    })
+}
+
+/// Tells the call who the window shows and how large, so a meeting's camera subscriptions follow
+/// the tiles (pin, view mode, filmstrip, page, full screen, a share, the speaker order): once
+/// the view has settled, and only when it changed.
+fn send_view(s: &CallStore) {
+    let now = view_now(s);
+    if let Some(plan) = VIEW_SEND.with(|v| v.borrow_mut().look(now)) {
+        s.invoke_command("video-view".into(), view_plan::encode(&plan).into());
+    }
 }
 
 /// Wires what the call window answers by itself: whether a conversation is a meeting chat (the
@@ -525,7 +542,7 @@ pub(crate) fn meter_level(peak: f32) -> f32 {
     peak.clamp(0.0, 1.0).sqrt()
 }
 
-/// Looks at the call window's open menus every [`WATCH_EVERY`].
+/// Looks at the call window's open menus and its view every [`WATCH_EVERY`].
 fn start_watch(window: &AppWindow) {
     let weak = window.as_weak();
     let timer = slint::Timer::default();
@@ -542,6 +559,7 @@ fn start_watch(window: &AppWindow) {
 /// listened to only while it is open).
 pub(crate) fn watch(w: &AppWindow) {
     let s = w.global::<CallStore>();
+    send_view(&s);
     let menu = s.get_menu();
 
     let camera = menu == "camera";
