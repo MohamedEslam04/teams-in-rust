@@ -32,6 +32,7 @@
           <ul>
           <li><a href="#report">Report a problem</a></li>
           <li><a href="#env">Environment variables</a></li>
+          <li><a href="#flags">Command line</a></li>
           <li><a href="#common">Common problems</a></li>
           <li><a href="#issue">Open an issue</a></li>
           </ul>
@@ -55,10 +56,21 @@
               <tr><th scope="row"><code>IRONTEAMS_LOG=ironteams=info,teams_proto=info</code></th><td>More detail in the log (and in the terminal). Tokens are never logged.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_DEMO=1</code></th><td>Offline demo with sample data: no account, no network.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_HOME=&lt;dir&gt;</code></th><td>Keep config, cache and data under <code>&lt;dir&gt;</code>.</td></tr>
+              <tr><th scope="row"><code>IRONTEAMS_VIDEO_SUBSCRIBE=static</code></th><td>In meetings, ask for video the older way (the latest speakers at one size) instead of by tile role.</td></tr>
               <tr><th scope="row"><code>IRONTEAMS_GST_LAUNCH</code></th><td>Use another <code>gst-launch-1.0</code> for camera and screen sharing.</td></tr>
             </tbody>
           </table></div>
           <p>The old <code>KELMA_*</code> names still work when the <code>IRONTEAMS_*</code> one is not set. IronTeams was called kelma before. On the first start after the rename, the old <code>kelma</code> config, data and cache folders move to <code>ironteams</code>, and a saved sign-in under the old keyring name moves to the new one when it is first read, so you stay signed in.</p>
+
+          <h2 id="flags">Command line</h2>
+          <div class="table-wrap"><table>
+            <thead><tr><th scope="col">Flag</th><th scope="col">Effect</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>--account label[@tenant]</code></th><td>Start on that account, or on an organization of it, and keep it as the active one. An unknown label falls back to the saved choice.</td></tr>
+              <tr><th scope="row"><code>--hidden</code></th><td>Start in the tray without showing the window.</td></tr>
+            </tbody>
+          </table></div>
+          <p>Switching accounts uses <code>--account</code> to start IronTeams again. A second launch with the same data folder hands over to the running instance and raises its window.</p>
 
           <h2 id="common">Common problems</h2>
           <h3>Windows SmartScreen warns about the installer</h3>
@@ -71,6 +83,10 @@
           <p>Install the <a href="https://gstreamer.freedesktop.org/download/">GStreamer runtime</a>. Both are compile-only on these systems for now. See <a href="platforms.html">Platforms and requirements</a>.</p>
           <h3>It asks me to sign in again every time (Linux)</h3>
           <p>IronTeams keeps the refresh token in the Secret Service. Check that GNOME Keyring or KWallet runs and is unlocked.</p>
+          <h3>Switching accounts restarts IronTeams</h3>
+          <p>That is how switching works: each account is a separate session, so IronTeams starts again on it and opens on its saved chats while it signs in. If a call, a voice message you are recording, queued messages or an upload would be cut short, a dialog lists it first, and Cancel keeps everything.</p>
+          <h3>The window opens at the default position on Wayland</h3>
+          <p>A Wayland client cannot read or set its own position, so only the window size and maximized state come back there. X11, Windows and macOS restore the position too.</p>
           <h3>It does not update</h3>
           <p>Only copies installed from <code>Setup.exe</code>, the <code>.pkg</code> or the AppImage update themselves. Look at Settings &rsaquo; About &rsaquo; Updates, and press <strong>Check now</strong>. If a new version failed to start three times, automatic updates pause and a banner offers to go back to the previous version.</p>
           <h3>It uses more memory than I expected</h3>
