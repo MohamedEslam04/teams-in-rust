@@ -44,6 +44,7 @@
 //
 // What it does not do: any other selection stays inside one line (no Shift+Up/Down), and an
 // input's own undo only knows its own line.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { InlineImage } from "../tokens/types.slint";
 import { Icon } from "../atoms/widgets.slint";
@@ -80,6 +81,7 @@ export global LineApi {
 }
 
 export component LineEditor inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in-out property <string> text;
     in property <length> font-size: 14px;
     // The cursor and the other end of the selection, as offsets into `text`.
@@ -249,7 +251,7 @@ export component LineEditor inherits Rectangle {
                 property <bool> is-image: root.is-image-line(i);
                 property <int> slot: LineApi.image-slot(line);
                 read-only: self.is-image;
-                color: self.is-image ? transparent : Theme.fg;
+                color: self.is-image ? transparent : root.c.fg;
                 min-height: self.is-image ? 104px : root.row-height;
                 font-size: root.font-size;
                 single-line: false;
@@ -534,7 +536,7 @@ export component LineEditor inherits Rectangle {
                         height: pic.height + 4px;
                         border-radius: 4px;
                         border-width: 2px;
-                        border-color: ti.has-focus ? Theme.accent : Theme.border;
+                        border-color: ti.has-focus ? root.c.accent : root.c.border;
                         pic := Image {
                             x: 2px;
                             y: 2px;
@@ -549,10 +551,10 @@ export component LineEditor inherits Rectangle {
                         width: 22px;
                         height: 22px;
                         border-radius: 4px;
-                        background: image-x.has-hover ? Theme.surface-hover : transparent;
+                        background: image-x.has-hover ? root.c.surface-hover : transparent;
                         accessible-role: button;
                         accessible-label: @tr("Remove image");
-                        Icon { source: @image-url("../icons/close.svg"); width: 12px; height: 12px; x: 5px; y: 5px; }
+                        Icon { c: root.c; source: @image-url("../icons/close.svg"); width: 12px; height: 12px; x: 5px; y: 5px; }
                         image-x := TouchArea {
                             mouse-cursor: pointer;
                             clicked => { root.remove-line(i, false); }

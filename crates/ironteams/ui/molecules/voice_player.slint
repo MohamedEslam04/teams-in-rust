@@ -5,7 +5,7 @@
 // One message plays at a time. What plays lives in `VoiceStore` (filled by `src/ui/voice.rs`
 // about every 50 ms while something plays); a row only knows its own `VoiceItem`.
 import { Theme } from "../tokens/theme.slint";
-import { VoiceItem } from "../tokens/types.slint";
+import { VoiceItem, Tokens } from "../tokens/types.slint";
 
 export global VoiceStore {
     // The message playing or paused ("" when none). `position-ms` and `playing` are its state.
@@ -31,10 +31,11 @@ export global VoiceStore {
 
 // The waveform bars, `progress` (0..1) of them in `played` colour.
 export component Waveform inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <[float]> peaks;
     in property <float> progress;
-    in property <color> played: Theme.accent;
-    in property <color> rest: Theme.fg-subtle;
+    in property <color> played: root.c.accent;
+    in property <color> rest: root.c.fg-subtle;
     // Fires with the fraction under the pointer while it is pressed (click or drag).
     callback scrub(float);
     min-width: 120px;
@@ -71,6 +72,7 @@ export component Waveform inherits Rectangle {
 
 // A round play / pause button. `busy` shows the button dimmed while the message is fetched.
 export component PlayButton inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <bool> playing;
     in property <bool> busy;
     in property <string> label;
@@ -78,7 +80,7 @@ export component PlayButton inherits Rectangle {
     width: 36px;
     height: 36px;
     border-radius: self.width / 2;
-    background: touch.has-hover ? Theme.accent : Theme.accent-strong;
+    background: touch.has-hover ? root.c.accent : root.c.accent-strong;
     opacity: busy ? 0.6 : 1.0;
     accessible-role: button;
     accessible-label: label;
@@ -99,6 +101,7 @@ export component PlayButton inherits Rectangle {
 
 // One voice message.
 export component VoicePlayer inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <VoiceItem> item;
     property <bool> active: VoiceStore.key == item.key && item.key != "";
     property <bool> playing: active && VoiceStore.playing;
@@ -114,6 +117,7 @@ export component VoicePlayer inherits Rectangle {
         VerticalLayout {
             alignment: center;
             PlayButton {
+                c: root.c;
                 playing: root.playing;
                 busy: VoiceStore.loading-key == root.item.key;
                 label: root.playing ? @tr("Pause voice message") : @tr("Play voice message");
@@ -125,6 +129,7 @@ export component VoicePlayer inherits Rectangle {
             spacing: 2px;
             horizontal-stretch: 1;
             Waveform {
+                c: root.c;
                 peaks: root.item.peaks;
                 progress: root.progress;
                 scrub(f) => { VoiceStore.seek(root.item.key, root.item.url, f); }
@@ -133,7 +138,7 @@ export component VoicePlayer inherits Rectangle {
                 spacing: 6px;
                 Text {
                     text: root.item.failed ? @tr("Couldn't load") : root.active ? VoiceStore.clock(VoiceStore.position-ms) : VoiceStore.clock(root.item.duration-ms);
-                    color: root.item.failed ? Theme.danger : Theme.fg-subtle;
+                    color: root.item.failed ? root.c.danger : root.c.fg-subtle;
                     font-size: 11px * Theme.font-scale;
                 }
                 if root.item.unplayed && !root.active: Rectangle {
@@ -141,7 +146,7 @@ export component VoicePlayer inherits Rectangle {
                     height: 6px;
                     y: (parent.height - self.height) / 2;
                     border-radius: 3px;
-                    background: Theme.accent;
+                    background: root.c.accent;
                     accessible-role: text;
                     accessible-label: @tr("Not played yet");
                 }
@@ -155,15 +160,15 @@ export component VoicePlayer inherits Rectangle {
                 width: 38px;
                 height: 22px;
                 border-radius: 11px;
-                background: speed-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                background: speed-touch.has-hover ? root.c.surface-hover : root.c.surface;
                 border-width: 1px;
-                border-color: Theme.border;
+                border-color: root.c.border;
                 accessible-role: button;
                 accessible-label: @tr("Playback speed {}×", VoiceStore.speed);
                 accessible-action-default => { VoiceStore.cycle-speed(); }
                 Text {
                     text: "\{VoiceStore.speed}×";
-                    color: Theme.fg;
+                    color: root.c.fg;
                     font-size: 11px * Theme.font-scale;
                     font-weight: 600;
                     horizontal-alignment: center;

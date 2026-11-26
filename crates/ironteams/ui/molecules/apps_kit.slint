@@ -1,5 +1,7 @@
 // Small pieces the app screens share: the app tile, buttons, the search box, menu rows,
 // navigation entries, status badges and the app card.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { AppCard } from "../stores/apps_store.slint";
@@ -8,19 +10,20 @@ import { Badge, BadgeVariant } from "../atoms/chip.slint";
 
 // An app's icon, or its first letter on a colored square when the icon is not loaded.
 export component AppTile inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <image> icon;
     in property <bool> has-icon;
     in property <string> letter;
-    in property <color> tone: Theme.accent-strong;
+    in property <color> tone: root.c.accent-strong;
     in property <length> size: 40px;
     width: root.size;
     height: root.size;
     border-radius: root.size * 0.2;
     clip: true;
-    background: root.has-icon ? #ffffff10 : root.tone;
+    background: root.has-icon ? Fixed.white-10 : root.tone;
     if !root.has-icon: Text {
         text: root.letter;
-        color: #ffffff;
+        color: Fixed.white;
         font-size: root.size * 0.46;
         font-weight: 700;
         horizontal-alignment: center;
@@ -35,32 +38,33 @@ export component AppTile inherits Rectangle {
 }
 
 export component KitNavRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     in property <string> hint;
     in property <bool> active;
     callback clicked();
     height: 34px;
     border-radius: 4px;
-    background: root.active ? Theme.selected : (touch.has-hover ? Theme.surface-hover : transparent);
+    background: root.active ? root.c.selected : (touch.has-hover ? root.c.surface-hover : transparent);
     accessible-role: button;
     accessible-label: root.label;
     accessible-description: root.active ? "Current" : "";
     accessible-item-selected: root.active;
-    Rectangle { x: 0; y: 7px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
+    Rectangle { x: 0; y: 7px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? root.c.accent : transparent; }
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 8px;
         spacing: 8px;
         Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             font-weight: root.active ? 700 : 400;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.hint != "": Text { text: root.hint; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; }
+        if root.hint != "": Text { text: root.hint; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; }
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -70,32 +74,35 @@ export component KitNavRow inherits Rectangle {
 
 // A group title in a navigation list.
 export component KitNavHeader inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     height: 32px;
-    Text { x: 10px; width: parent.width - 20px; text: root.label; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    Text { x: 10px; width: parent.width - 20px; text: root.label; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; }
 }
 
 // A line of explanation or status above a list.
 export component KitNote inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> text;
-    in property <color> tone: Theme.fg-subtle;
+    in property <color> tone: root.c.fg-subtle;
     in property <length> text-size: 13px;
     // Work is going on: a small spinner leads the line.
     in property <bool> busy: false;
     height: note.preferred-height + 10px;
-    if root.busy: Spinner { x: 20px; y: 5px + (note.preferred-height > 18px ? 0px : (note.preferred-height - 14px) / 2); }
+    if root.busy: Spinner { c: root.c; x: 20px; y: 5px + (note.preferred-height > 18px ? 0px : (note.preferred-height - 14px) / 2); }
     note := Text { x: root.busy ? 40px : 20px; y: 5px; width: parent.width - (root.busy ? 60px : 40px); text: root.text; color: root.tone; font-size: root.text-size; wrap: word-wrap; }
 }
 
 // A Store card: icon, name, publisher, short description and a line of facts.
 export component AppCardView inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <AppCard> app;
     callback clicked();
     height: 112px;
     border-radius: 8px;
     border-width: 1px;
-    border-color: touch.has-hover ? Theme.accent : Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    border-color: touch.has-hover ? root.c.accent : root.c.border;
+    background: touch.has-hover ? root.c.surface-hover : root.c.panel;
     accessible-role: button;
     accessible-label: root.app.name;
     accessible-description: root.app.developer + ". " + root.app.blurb;
@@ -103,20 +110,20 @@ export component AppCardView inherits Rectangle {
     HorizontalLayout {
         padding: 12px;
         spacing: 12px;
-        AppTile { icon: root.app.icon; has-icon: root.app.has-icon; letter: root.app.letter; tone: root.app.color; size: 48px; y: 0px; }
+        AppTile { c: root.c; icon: root.app.icon; has-icon: root.app.has-icon; letter: root.app.letter; tone: root.app.color; size: 48px; y: 0px; }
         VerticalLayout {
             spacing: 2px;
             horizontal-stretch: 1;
             min-width: 0px;
             HorizontalLayout {
                 spacing: 6px;
-                Text { text: root.app.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
-                if root.app.update: Badge { variant: BadgeVariant.status; text: "Update"; tone: "warn"; }
-                if root.app.installed && !root.app.update: Badge { variant: BadgeVariant.status; text: "Installed"; tone: "ok"; }
+                Text { text: root.app.name; color: root.c.fg; font-size: 14px * Theme.font-scale; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                if root.app.update: Badge { c: root.c; variant: BadgeVariant.status; text: "Update"; tone: "warn"; }
+                if root.app.installed && !root.app.update: Badge { c: root.c; variant: BadgeVariant.status; text: "Installed"; tone: "ok"; }
             }
-            Text { text: root.app.developer; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
-            Text { text: root.app.blurb; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; overflow: elide; max-height: 34px; }
-            Text { text: root.app.meta; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            Text { text: root.app.developer; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            Text { text: root.app.blurb; color: root.c.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; overflow: elide; max-height: 34px; }
+            Text { text: root.app.meta; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
         }
     }
 }
