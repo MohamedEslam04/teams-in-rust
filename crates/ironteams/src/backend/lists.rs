@@ -13,6 +13,7 @@
 use super::Engine;
 use crate::data::ChatData;
 use crate::lists_data::{ChannelMenuData, ChoiceData, ListOptions, SectionData};
+use crate::lists_sort::{SortBy, SortKey, sort_items};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -65,6 +66,8 @@ pub enum ListsCmd {
     NotifyWhenAvailable(String, bool),
     /// `previews`, `times` or `combined`, on or off.
     Option(String, bool),
+    /// "Sort by" of a section: `favorites`, `chats`, `channels` or a section id.
+    Sort(String, SortBy),
     ChannelMenu(String),
     ChannelShow(String),
     ChannelHide(String),
@@ -98,6 +101,7 @@ impl ListsCmd {
             "notify-available" => ListsCmd::NotifyWhenAvailable(a, true),
             "notify-available-off" => ListsCmd::NotifyWhenAvailable(a, false),
             "option" => ListsCmd::Option(a, b == "on"),
+            "sort" => ListsCmd::Sort(a, SortBy::parse(&b)?),
             "channel-menu" => ListsCmd::ChannelMenu(a),
             "channel-show" => ListsCmd::ChannelShow(a),
             "channel-hide" => ListsCmd::ChannelHide(a),
@@ -124,10 +128,20 @@ pub(crate) struct Local {
     /// People to notify when they turn Available (`notify_available`), by MRI.
     pub watched: BTreeSet<String>,
     pub opts: ListOptions,
+    /// How a section is ordered, by `favorites`, `chats`, `channels` or section id. A section
+    /// that is not here keeps the recent-activity order.
+    pub sort: HashMap<String, SortBy>,
 }
 
 impl Local {
     pub(super) fn to_json(&self) -> Value {
+        // Recent activity is the default, so it is not stored.
+        let sort: HashMap<&str, &str> = self
+            .sort
+            .iter()
+            .filter(|(_, by)| **by != SortBy::Recent)
+            .map(|(id, by)| (id.as_str(), by.name()))
+            .collect();
         json!({
             "sections": self.sections.iter().map(|(i, n)| json!([i, n])).collect::<Vec<_>>(),
             "assign": self.assign,
@@ -135,6 +149,7 @@ impl Local {
             "hidden": self.hidden,
             "watched": self.watched,
             "opts": {"previews": self.opts.previews, "times": self.opts.times, "combined": self.opts.combined},
+            "sort": sort,
         })
     }
 
@@ -187,6 +202,11 @@ impl Local {
                 times: flag("times", true),
                 combined: flag("combined", false),
             },
+            sort: map("sort")
+                .into_iter()
+                .filter_map(|(k, v)| Some((k, SortBy::parse(v.as_str()?)?)))
+                .filter(|(_, by)| *by != SortBy::Recent)
+                .collect(),
         }
     }
 }
@@ -310,6 +330,11 @@ impl Overlay {
         self.local.opts.combined
     }
 
+    /// How a section is ordered (`favorites`, `chats`, `channels` or a section id).
+    pub(super) fn sort_of(&self, id: &str) -> SortBy {
+        self.local.sort.get(id).copied().unwrap_or_default()
+    }
+
     /// Where `id` goes. A move made here wins; then the account's sections; then Favorites.
     pub(super) fn placement(&self, id: &str, starred: bool) -> Placement {
         let known = |s: &str| {
@@ -332,6 +357,15 @@ impl Overlay {
         }
         Placement::Default
     }
+}
+
+/// Orders the rows of one section; `activity` holds the last message time of each chat.
+pub(super) fn sort_chats(items: &mut [ChatData], by: SortBy, activity: &HashMap<String, i64>) {
+    sort_items(items, by, |c| SortKey {
+        title: c.title.clone(),
+        unread: c.unread,
+        activity_ms: activity.get(&c.id).copied().unwrap_or(0),
+    });
 }
 
 /// Percent-encodes everything but letters, digits and `-_.~`.
@@ -537,7 +571,11 @@ impl Engine {
     }
 
     /// The sections for the UI: the account's, then the ones made here, with their rows.
-    pub(super) fn push_sections(&self, mut by_section: HashMap<String, Vec<ChatData>>) {
+    pub(super) fn push_sections(
+        &self,
+        mut by_section: HashMap<String, Vec<ChatData>>,
+        activity: &HashMap<String, i64>,
+    ) {
         let st = self.lists.lock().unwrap();
         let mut sections = Vec::new();
         let mut choices = vec![ChoiceData {
@@ -566,11 +604,14 @@ impl Engine {
                         .unwrap_or(usize::MAX)
                 });
             }
+            let sort = st.local.sort.get(&id).copied().unwrap_or_default();
+            sort_chats(&mut items, sort, activity);
             choices.push(ChoiceData {
                 id: id.clone(),
                 name: name.clone(),
             });
             sections.push(SectionData {
+                sort: sort.name(),
                 expanded: st
                     .local
                     .expanded
@@ -736,6 +777,7 @@ impl Engine {
             }
             ListsCmd::NotifyWhenAvailable(person, on) => self.set_watching(&person, on),
             ListsCmd::Option(name, on) => self.set_option(&name, on),
+            ListsCmd::Sort(id, by) => self.set_sort(&id, by),
             ListsCmd::ChannelMenu(id) => self.channel_menu(&id).await,
             ListsCmd::ChannelShow(id) => self.set_channel_shown(&id, true).await,
             ListsCmd::ChannelHide(id) => self.set_channel_shown(&id, false).await,
@@ -843,6 +885,7 @@ impl Engine {
             // Its items go back to Chats and channels.
             st.local.assign.retain(|_, s| s != id);
             st.local.expanded.remove(id);
+            st.local.sort.remove(id);
         }
         self.lists_save();
         self.dirty_lists();
@@ -1039,6 +1082,24 @@ impl Engine {
         };
         self.lists_save();
         self.ui.list_options(opts);
+        self.mark(|d| d.chats = true);
+        Ok(())
+    }
+
+    /// "Sort by" in a section's menu. Saved here; the account has no such setting.
+    fn set_sort(&self, id: &str, by: SortBy) -> anyhow::Result<()> {
+        if id.is_empty() {
+            return Ok(());
+        }
+        {
+            let mut st = self.lists.lock().unwrap();
+            if by == SortBy::Recent {
+                st.local.sort.remove(id);
+            } else {
+                st.local.sort.insert(id.to_string(), by);
+            }
+        }
+        self.lists_save();
         self.mark(|d| d.chats = true);
         Ok(())
     }
@@ -1392,10 +1453,55 @@ mod tests {
         l.hidden.insert("c3".into(), 99);
         l.opts.previews = false;
         l.opts.combined = true;
+        l.sort.insert("chats".into(), SortBy::Alpha);
+        l.sort.insert("local-1".into(), SortBy::Unread);
         assert_eq!(Local::from_json(&l.to_json()), l);
         // Garbage or an empty value gives the defaults.
         assert_eq!(Local::from_json(&json!({})), Local::default());
         assert!(Local::default().opts.previews && Local::default().opts.times);
+    }
+
+    #[test]
+    fn an_old_save_without_sort_loads_with_every_section_on_recent_activity() {
+        let old = json!({
+            "sections": [["local-1", "Ops"]],
+            "opts": {"previews": false},
+        });
+        let l = Local::from_json(&old);
+        assert!(l.sort.is_empty());
+        assert_eq!(l.sections.len(), 1);
+        let mut o = overlay();
+        o.local = l;
+        assert_eq!(o.sort_of("favorites"), SortBy::Recent);
+        assert_eq!(o.sort_of("local-1"), SortBy::Recent);
+    }
+
+    #[test]
+    fn saved_sorts_drop_unknown_names_and_recent_is_not_stored() {
+        let saved = json!({"sort": {"chats": "alpha", "favorites": "newest", "channels": "recent", "s1": 7}});
+        let l = Local::from_json(&saved);
+        assert_eq!(
+            l.sort,
+            HashMap::from([("chats".to_string(), SortBy::Alpha)])
+        );
+        let mut l = Local::default();
+        l.sort.insert("a".into(), SortBy::Recent);
+        l.sort.insert("b".into(), SortBy::Unread);
+        assert_eq!(l.to_json()["sort"], json!({"b": "unread"}));
+    }
+
+    #[test]
+    fn parses_sort_with_a_known_order_only() {
+        assert_eq!(
+            ListsCmd::parse("sort", "chats\talpha"),
+            Some(ListsCmd::Sort("chats".into(), SortBy::Alpha))
+        );
+        assert_eq!(
+            ListsCmd::parse("sort", "s1\tunread"),
+            Some(ListsCmd::Sort("s1".into(), SortBy::Unread))
+        );
+        assert_eq!(ListsCmd::parse("sort", "chats\tbogus"), None);
+        assert_eq!(ListsCmd::parse("sort", "chats"), None);
     }
 
     #[test]

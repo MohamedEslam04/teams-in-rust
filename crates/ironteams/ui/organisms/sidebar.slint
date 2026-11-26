@@ -4,7 +4,7 @@ import { ChatRow, TeamRow } from "../tokens/types.slint";
 import { Icon, IconButton, SectionHeader } from "../atoms/widgets.slint";
 import { Pill } from "../atoms/chip.slint";
 import { Avatar, GlyphAvatar } from "../atoms/avatar.slint";
-import { ChannelMenu, ItemMenu, ListStore, OptionRow, SectionHead } from "lists.slint";
+import { ChannelMenu, ItemMenu, ListStore, OptionRow, SectionHead, SortHeader } from "lists.slint";
 import { CommunitiesSection } from "communities_section.slint";
 import { TeamMenuItems } from "team_menu.slint";
 import { TeamsStore } from "../stores/teams_store.slint";
@@ -476,7 +476,7 @@ export component Sidebar inherits Rectangle {
                         }
                         // The chat being started in the New chat pane, as Teams lists it.
                         if PeopleStore.new-chat-open: NewMessageRow { }
-                        if root.filter != "communities": SectionHeader { label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
+                        if root.filter != "communities": SortHeader { label: @tr("Favorites"); target: "favorites"; sort: ListStore.favorites-sort; expanded <=> ListStore.favorites-open; }
                         if ListStore.favorites-open: Reveal { for c in root.chats-favorites: ChatItem {
                             data: c;
                             selected: c.id == root.current-id;
@@ -500,7 +500,7 @@ export component Sidebar inherits Rectangle {
                                 leave => { root.leave-chat(c.id); }
                             } }
                         }
-                        if root.filter != "communities": SectionHeader { label: @tr("Chats"); expanded <=> ListStore.chats-open; }
+                        if root.filter != "communities": SortHeader { label: @tr("Chats"); target: "chats"; sort: ListStore.chats-sort; expanded <=> ListStore.chats-open; }
                         if ListStore.chats-open: Reveal { for c in root.chats-main: VerticalLayout {
                             if c.section != "meetings": ChatItem {
                                 data: c;
@@ -516,6 +516,7 @@ export component Sidebar inherits Rectangle {
                         // Meeting chats, collapsed by default: the newest five, then "See all".
                         if ListStore.meetings-count > 0: SectionHead {
                             section: { id: "meetings", name: @tr("Meetings"), expanded: ListStore.meetings-open, unread: ListStore.meetings-unread, local: false };
+                            sortable: false;
                             toggle => { Motion.toggled = true; ListStore.meetings-open = !ListStore.meetings-open; }
                         }
                         if ListStore.meetings-count > 0 && ListStore.meetings-open: Reveal { for c[i] in root.chats-main: VerticalLayout {
@@ -534,7 +535,7 @@ export component Sidebar inherits Rectangle {
                             label: ListStore.meetings-all ? @tr("Show less") : @tr("See all ({})", ListStore.meetings-count);
                             clicked => { ListStore.meetings-all = !ListStore.meetings-all; }
                         }
-                        if !ListStore.combined && root.filter != "communities": SectionHeader { label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
+                        if !ListStore.combined && root.filter != "communities": SortHeader { label: @tr("Teams and channels"); target: "channels"; sort: ListStore.channels-sort; expanded <=> ListStore.channels-open; }
                         if ListStore.channels-open && !ListStore.combined: Reveal { for c in root.chats-channels: ChatItem {
                             data: c;
                             selected: c.id == root.current-id;

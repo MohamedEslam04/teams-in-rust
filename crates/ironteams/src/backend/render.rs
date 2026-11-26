@@ -630,6 +630,8 @@ impl Engine {
         let mut meetings = vec![];
         let mut chans = vec![];
         let mut by_section: HashMap<String, Vec<ChatData>> = HashMap::new();
+        // The last message time of each chat, for the sections' sort order.
+        let mut activity: HashMap<String, i64> = HashMap::new();
         let mut partners: Vec<String> = vec![];
         for r in rows {
             if r.kind == ConvKind::Channel && r.last_activity_ms == 0 {
@@ -639,6 +641,7 @@ impl Engine {
                 continue;
             }
             let placement = ov.placement(&r.id, r.favorite);
+            activity.insert(r.id.clone(), r.last_activity_ms);
             let draft = drafts.get(&r.id);
             // Kept: a favorite or sectioned one, one with a draft, and the open one.
             if hide_empty_meetings
@@ -780,12 +783,21 @@ impl Engine {
                 _ => main.push(data),
             }
         }
+        // Each section's own "Sort by"; Meetings keeps the recent-activity order.
+        super::lists::sort_chats(&mut fav, ov.sort_of("favorites"), &activity);
+        super::lists::sort_chats(&mut main, ov.sort_of("chats"), &activity);
+        super::lists::sort_chats(&mut chans, ov.sort_of("channels"), &activity);
         // The Meetings section's rows end the main list (see `UiHandle::chats`).
         main.extend(meetings);
         let shown = fav.len() + main.len() + chans.len();
         self.ui.chats(fav, main, chans);
         self.want_standing(partners);
-        self.push_sections(by_section);
+        self.ui.fixed_sorts(
+            ov.sort_of("favorites").name(),
+            ov.sort_of("chats").name(),
+            ov.sort_of("channels").name(),
+        );
+        self.push_sections(by_section, &activity);
         // The chat list draws first after sign-in: our own photo opens our card from then on.
         self.ui.me_id(self.me.clone());
         tracing::debug!(
