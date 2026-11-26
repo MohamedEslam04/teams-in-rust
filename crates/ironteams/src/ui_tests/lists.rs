@@ -731,12 +731,12 @@ fn with_the_previews_off_each_chat_row_is_one_line_tall() {
     assert_eq!(row_heights(&h.app), full, "and they grow back");
 }
 
-/// The button or switch labelled `label` on the Settings page (the list's own menu is on the
-/// left of it).
+/// The button or switch labelled `label` on the Settings page (the list's own menu is closed, so
+/// it is the only one).
 fn settings_control(app: &AppWindow, label: &str) -> ElementHandle {
     find_label(app, label)
         .into_iter()
-        .find(|e| e.absolute_position().x > 400.)
+        .next()
         .unwrap_or_else(|| panic!("no {label:?} on the Settings page"))
 }
 
