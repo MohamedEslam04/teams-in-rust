@@ -154,8 +154,11 @@ impl Call {
                                 share::leave_session(&self.ngc, &self.s, &mut self.share).await;
                                 sink.send(Event::Error("Screen sharing stopped: the call's media restarted.".into()));
                             }
-                            // So was the camera: it comes back on the new session's line.
+                            // So was the camera: it comes back on the new session's line (and
+                            // is offered there again).
                             camera_wanted |= self.camera.stop(&sink).await;
+                            self.camera.told(false);
+                            self.camera.settled();
                             let _ = old.close().await;
                             self.video.negotiated(&self.media, &offer, remote_video::Phase::Restart).await;
                             self.video.show(ev.video, &sink);
@@ -214,11 +217,13 @@ impl Call {
                             if self.reoffer.is_none() && self.superseded.is_some() =>
                         {
                             let superseded = self.superseded.take();
+                            self.camera.settled();
                             tracing::info!(?superseded, "answer to a superseded re-offer ignored");
                             self.links.0.extend(links.0);
                         }
                         CallEvent::MediaAnswer { answer, links } => {
                             self.reoffer = None;
+                            self.camera.settled();
                             match self.pending_offer.take() {
                                 Some(ours) => self.apply_reoffer_answer(&answer, &ours, &links, &sink).await,
                                 None => roster_changed |= self.apply_answer(&answer).await,
@@ -444,6 +449,8 @@ impl Call {
             if can_camera && std::mem::take(&mut camera_wanted) {
                 self.camera.open(&camera_tx);
             }
+            // A 1:1 call learns what the camera does now, one re-offer at a time.
+            self.sync_camera(&sink).await;
             if let Some((available, on)) = self.camera.changed(can_camera) {
                 sink.send(Event::Camera { available, on });
             }

@@ -2,7 +2,8 @@ use super::*;
 
 impl Call {
     /// Camera on / off: the portal opens without blocking the call (its answer comes as a
-    /// [`CameraMsg`]); turning it off tells the service at once.
+    /// [`CameraMsg`]); turning it off tells a meeting at once. A 1:1 call is told by the run loop
+    /// ([`Call::sync_camera`]), one re-offer at a time.
     pub(super) async fn camera_control(
         &mut self,
         on: bool,
@@ -20,7 +21,7 @@ impl Call {
                 return;
             }
             self.camera.open(tx);
-        } else if self.camera.stop(sink).await {
+        } else if self.camera.stop(sink).await && self.meeting {
             self.tell_camera(false, sink).await;
         }
     }
@@ -32,9 +33,15 @@ impl Call {
         sink: &EventSink,
     ) {
         match m {
+            // Turned off again while it opened: not started.
+            CameraMsg::Opened(Ok(capture)) if !self.camera.opening() => {
+                tracing::info!("camera opened after it was turned off: not started");
+                (*capture).stop().await;
+            }
             CameraMsg::Opened(Ok(capture)) => {
                 match self.camera.start(*capture, &self.media, tx, sink) {
-                    Ok(()) => self.tell_camera(true, sink).await,
+                    Ok(()) if self.meeting => self.tell_camera(true, sink).await,
+                    Ok(()) => {}
                     Err(e) => {
                         tracing::warn!(%e, "camera not started");
                         self.camera.stop(sink).await;
@@ -45,13 +52,32 @@ impl Call {
             CameraMsg::Opened(Err(e)) => {
                 self.camera.open_failed();
                 tracing::warn!(%e, "camera not opened");
-                sink.send(Event::Error(camera::open_error_text(&e)));
+                // Another app holds it: a calm notice, the button back off, no retry.
+                let text = camera::open_error_text(&e);
+                sink.send(if camera::in_use(&e) {
+                    Event::Notice(text)
+                } else {
+                    Event::Error(text)
+                });
             }
             CameraMsg::Ended => {
-                if self.camera.stop(sink).await {
+                if self.camera.stop(sink).await && self.meeting {
                     self.tell_camera(false, sink).await;
                 }
             }
+        }
+    }
+
+    /// Tells a 1:1 call what our camera does now, when that changed since it was last told and
+    /// no re-offer of ours waits for its answer (the run loop asks after every step). One
+    /// re-offer at a time, so each answer is applied to the offer it answers.
+    pub(super) async fn sync_camera(&mut self, sink: &EventSink) {
+        if self.meeting {
+            return;
+        }
+        let waiting = self.reoffer.is_some() || self.next.is_some();
+        if let Some(on) = self.camera.reoffer_due(waiting, Instant::now()) {
+            self.tell_camera(on, sink).await;
         }
     }
 
@@ -67,6 +93,7 @@ impl Call {
         } else {
             // The answer comes inline or on `call/mediaAnswer/`, which `apply_answer` takes.
             self.answered = false;
+            self.camera.told(on);
             let sharing = self.share.sharing();
             match camera::reoffer_direct(&self.ngc, &self.s, &self.links, &self.media, on, sharing)
                 .await
@@ -77,9 +104,12 @@ impl Call {
                 }
                 Ok(None) => {
                     self.reoffer = Some(Reoffer::Camera(on));
+                    self.camera.asked(Instant::now());
                     Ok(())
                 }
                 Err(e) => {
+                    // Not retried: the camera stops below (on), or stays off.
+                    self.camera.told(false);
                     self.answered = true;
                     if let Err(e) = self.media.rollback_offer().await {
                         tracing::warn!(%e, "unsent re-offer not rolled back");
@@ -145,6 +175,7 @@ impl Call {
             }
             self.pending_offer = None;
             self.answered = true;
+            self.camera.settled();
             supersede(&mut self.reoffer, &mut self.superseded);
             tracing::info!(
                 superseded = ?self.superseded,
@@ -165,6 +196,8 @@ impl Call {
                 return (ans, to_next);
             }
             let ans = direct_reanswer(&ans, &sdp, self.camera.on(), self.share.sharing(), held);
+            // Our answer says what the camera sends: no re-offer needed for it.
+            self.camera.told(self.camera.on());
             tracing::info!(
                 held,
                 to_next,

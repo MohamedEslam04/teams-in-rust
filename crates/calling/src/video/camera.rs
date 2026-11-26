@@ -382,7 +382,7 @@ async fn open_sources(
     let flatpak = std::path::Path::new(FLATPAK_INFO).exists();
     let sources = camera_sources(flatpak, chosen, v4l2_fallback, fd.is_some());
     let count = sources.len();
-    let mut failure = String::new();
+    let mut failures = Vec::new();
     for (i, source) in sources.into_iter().enumerate() {
         let (source, stdin) = match source {
             CameraSource::Portal(_) => {
@@ -402,7 +402,7 @@ async fn open_sources(
             "camera capture",
         )?;
         let last = i + 1 == count;
-        failure = match started(&mut g).await {
+        let failure = match started(&mut g).await {
             Start::Frame => String::new(),
             // The last source is kept when it is only slow: nothing else to try.
             Start::Slow if last => {
@@ -425,8 +425,24 @@ async fn open_sources(
         tracing::info!(?source, %failure, "the camera did not start");
         g.reader.abort();
         let _ = g.child.kill().await;
+        failures.push(failure);
     }
-    Err(Error::Media(format!("camera did not start: {failure}")))
+    Err(Error::Media(format!(
+        "camera did not start: {}",
+        reported_failure(&failures)
+    )))
+}
+
+/// Why a camera that did not start did not: another app holding the device (V4L2's "Device
+/// '/dev/video0' is busy") over what the sources tried after it said (the portal's remote then
+/// fails with "target not found", live 2026-11-26), else the last source's reason.
+pub fn reported_failure(failures: &[String]) -> String {
+    failures
+        .iter()
+        .find(|f| f.contains("is busy") || f.contains("Device or resource busy"))
+        .or(failures.last())
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// The `gst-launch-1.0` arguments reading `source` as I420 frames of `size` at `fps` on fd 1.
@@ -574,6 +590,15 @@ fn split_launch(s: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_camera_another_app_holds_is_reported_as_busy() {
+        let busy = "ERROR: from element /GstPipeline:pipeline0/GstV4l2Src:v4l2src0: Device '/dev/video0' is busy".to_owned();
+        let portal = "ERROR: from element /GstPipeline:pipeline0/GstPipeWireSrc:pipewiresrc0: stream error: target not found".to_owned();
+        assert_eq!(reported_failure(&[busy.clone(), portal.clone()]), busy);
+        assert_eq!(reported_failure(std::slice::from_ref(&portal)), portal);
+        assert_eq!(reported_failure(&[]), "");
+    }
 
     #[test]
     fn the_device_monitor_listing_gives_each_camera_and_its_source() {
