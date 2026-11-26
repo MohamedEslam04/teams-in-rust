@@ -19,23 +19,49 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 
 - **Sign-in:** sign in with a device code (works with MFA); the code's address opens in the browser
   while sign-in waits. The refresh token lives in your system keyring (KWallet or GNOME Keyring),
-  never in a file. Several accounts and guest organizations.
+  never in a file. Several accounts and guest organizations. When a Conditional Access or
+  security policy blocks the sign-in (non-compliant device, approved apps only, security
+  defaults), the error says so by name instead of showing a bare code.
+- **Accounts:** the profile menu lists your accounts (photo or initials, name, sign-in name and the
+  unread count each one had when you last used it, a check on the active one); the active
+  account's organizations sit under it, and Add account and Manage accounts open Settings ›
+  Accounts. Picking another account switches by restarting IronTeams on it, which takes a moment
+  because each account is a separate session. If the switch would cut something short (a call
+  that is on or ringing, a voice message being recorded, messages still waiting in the outbox,
+  uploads in progress), a dialog lists it and Cancel keeps everything as it was; your drafts are
+  saved either way. Each account reopens on its own last chat, channel and collapsed sections and
+  keeps its own media cache; window size, sidebar width and the call filmstrip position are shared.
+  IronTeams starts from the saved chats at once and signs in in the background, and shows
+  "Offline — showing saved messages" only when Teams cannot be reached. Starting IronTeams a second
+  time raises the running window instead of opening another one. `--account label[@tenant]` starts
+  on a given account or organization (see [Command line](#command-line)).
 - **Chat:**
   - 1:1, group, meeting and self-notes chats, with custom sections, filters and list options
   - rich text both ways: a formatting toolbar (bold to tables, colors and code blocks) and Teams' shortcuts
   - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox;
     editing a message changes only your own text and keeps its forwarded or quoted part
-  - new chats and group management, profile cards, read receipts, pinned-message banner, and
-    Notify when available for the person of a 1:1 chat
-  - image grid and viewer, link previews, translation, voice messages and videos
+  - new chats and group management, profile cards, read receipts (in a group, every older message
+    of yours that someone read shows an eye mark with the reader count, and a click lists the
+    readers), pinned-message banner, and Notify when available for the person of a 1:1 chat; apps
+    and bots do not count in a chat's derived title or member count
+  - a chat with a "New messages" divider opens at the divider, and the "New messages" pill no
+    longer covers the newest message; the in-app message card shows the whole message (up to 4000
+    characters) in a box you can scroll with the wheel, also on the desktop card on Wayland, and
+    the wheel over a short card scrolls the list behind it
+  - image grid and viewer, link previews, translation, voice messages and videos; a forwarded
+    picture or GIF shows as a picture
   - a message's right-click menu also has Copy image, Open in Browser, Download and Share for its
     pictures, and Open file, Download file, Copy file link and Share file for its files
   - bot and workflow cards (Adaptive Cards), and the composer's apps: message extension search,
     action commands (their page opens in the web host) and sending the resulting cards
   - Arabic, English and mixed-direction text, each line of a message in its own direction, kept in
-    the sent message so Teams shows it the same way
+    the sent message so Teams shows it the same way; in the composer, the arrow keys move visually
+    in an Arabic line, Home and End go to the start and end of the line and Ctrl+Home and Ctrl+End
+    to the start and end of the text, the cursor shows at the start of an Arabic line, and Ctrl+A
+    selects every line. Reply quotes name the quoted author instead of "Display Name"
 - **Find:** a search page (messages, files, people, meetings), find in chat, Mentions, Followed
-  threads and Saved quick views, the Shared tab and a chat details pane.
+  threads and Saved quick views, the Shared tab and a chat details pane. Choosing a person or chat
+  in the top search opens it at once, and what you type cannot reach the previous chat's draft.
 - **Activity:** the Teams activity feed with filters, a preview pane, mark all as read and badges
   that follow what you read in other Teams clients.
 - **Teams and channels:** posts as full-width cards (a title, headings, bullet and numbered lists,
@@ -59,11 +85,33 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   scrolls to show everyone. Pre-join offers Computer audio or Don't use audio; when your account is
   also in the call on another device, a banner says so and the call's sound can be turned off or
   back on here.
+  - The call screen puts a shared screen on its own content stage and the people in a filmstrip
+    beside it, below it, or hidden (View menu; your choice is kept). A camera never takes the
+    share's place. Pin a person to keep them on the stage. Full screen is immersive: the control
+    bar gives way to a floating bar (Mute, Camera, Share, Exit, Leave) and Esc leaves it, even
+    while you control a shared screen. In a call, Ctrl+Shift+M mutes, Ctrl+Shift+O turns the
+    camera on or off, Ctrl+Shift+K raises or lowers your hand, Ctrl+Shift+E starts or stops
+    sharing and Ctrl+Shift+H or Ctrl+Shift+B leaves (listed under "During a call" in Shortcuts).
+  - Remote video is drawn sharper (area-averaged downscale, up to 1280 pixels wide) and asks for a
+    new keyframe after packet loss. In a meeting, the video IronTeams asks for follows each tile's
+    role: 720p for the stage, 360p for the gallery, 180p for the filmstrip, and nothing for
+    people who are off screen. If the service refuses a size, or a resized picture stays empty,
+    the call falls back to 360p for everyone for the rest of the call.
+    `IRONTEAMS_VIDEO_SUBSCRIBE=static` keeps the older latest-speaker selection.
+  - 1:1 calls: Opus first, then G.711 (PCMU and PCMA) and telephone events, so voicemail and
+    phone-style endpoints, which do not take Opus, are offered a codec they know; a call from a native Teams desktop client is answered
+    correctly; a peer's shared screen shows in 1:1 calls that the media server hosts and when a
+    share starts again on a new line, and stopping your own share no longer leaves the peer's
+    share waiting. Meeting gallery slots survive a media restart (lobby admission) and a camera
+    picture shows only in its sender's tile. Quitting IronTeams leaves the call on the service,
+    and the call window's microphone meter can no longer freeze the window.
 - **Settings:** theme (light, dark, system), accent, density and text size; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
-  app permissions; accounts; accessibility; updates (always on).
-- **Desktop:** your status follows your calls and goes Away after five idle minutes; tray icon
+  app permissions; accounts; storage (the active account's media and the total over all accounts,
+  with Clear media for the active account only); accessibility; updates (always on).
+- **Desktop:** your status follows your calls and goes Away after five idle minutes (also on
+  Wayland, where IronTeams watches the compositor's idle notification); tray icon
   with unread badge, close to tray, autostart, window state, desktop
   notifications, a local redacted problem report (`ironteams-cli diag`).
 - **Live:** real-time updates over Teams' push channel, automatic reconnect and catch-up.
@@ -190,10 +238,29 @@ sharing on Windows and macOS (`IRONTEAMS_GST_LAUNCH` points at another `gst-laun
 | `IRONTEAMS_LOG=ironteams=debug,teams_proto=info` | More detail in the log (`logs/` in the data folder; also printed to the terminal). The default is `ironteams=info,calling=info`, warnings from the rest, with WebRTC's duplicate-packet warnings left out. Tokens are never logged |
 | `IRONTEAMS_DEMO=1` | Offline demo with sample data: no account, no network |
 | `IRONTEAMS_HOME=<dir>` | Keep config, cache and data under `<dir>` |
+| `IRONTEAMS_VIDEO_SUBSCRIBE=static` | In meetings, ask for video the older way (the latest speakers at one size) instead of by tile role |
 
 The old `KELMA_*` names still work when the `IRONTEAMS_*` one is not set. On the first start after the
 rename, the old `kelma` config, data and cache folders are moved to `ironteams`, and a saved sign-in
 under the old keyring name is moved to the new one when it is first read, so you stay signed in.
+
+### Command line
+
+| Flag | Effect |
+|---|---|
+| `--account label[@tenant]` | Start on that account, or on an organization of it, and keep it as the active one. An unknown label falls back to the saved choice |
+| `--hidden` | Start in the tray without showing the window |
+| `--report-problem` | Write the local problem report (see below) |
+
+Switching accounts and Settings › Restart use these flags to start IronTeams again. A second launch
+of the same data folder (`IRONTEAMS_HOME` or the default) hands over to the running instance and
+raises its window. The window's position is restored on every system except Wayland, where
+a client cannot read or set it, so only the size and the maximized state come back there.
+
+Media, notification pictures, opened OneDrive files and voicemail are cached per account in
+`cache/accounts/<account>/` of the cache folder. The first start after upgrading moves the shared
+folders into the active account's folder (nothing is deleted); the 500 MB budget is shared and
+evicts the oldest files across all accounts; removing an account deletes only its own folders.
 
 ### Report a problem
 
@@ -294,4 +361,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit d124ea63 ("Merge fix/aur-stale-workspace: the AUR build rebuilds the workspace crates over a cached target", 2026-11-24)
+Docs synced to commit c96a9357 ("Merge pull request #56 from MohamedEslam04/feat/accounts-switch", 2026-11-26)
