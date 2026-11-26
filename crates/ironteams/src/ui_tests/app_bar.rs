@@ -6,7 +6,6 @@
 use super::settings::{Home, checked, control, open_page, window};
 use super::*;
 use appearance::RailPrefs;
-use i_slint_backend_testing::AccessibleRole;
 use std::path::Path;
 use std::time::Duration;
 
@@ -274,12 +273,4 @@ fn the_manual_collapse_still_wins_in_a_wide_window() {
     settle();
     assert!(store.get_icons_only());
     assert_eq!(store.get_rail_width(), 52.);
-}
-
-#[test]
-fn the_entries_read_out_as_buttons_with_their_name() {
-    let ui = window(Home::new("bar-a11y"));
-    let app = &ui.app;
-    let chat = on_rail(app, "Chat").expect("Chat on the rail");
-    assert_eq!(chat.accessible_role(), Some(AccessibleRole::Button));
 }

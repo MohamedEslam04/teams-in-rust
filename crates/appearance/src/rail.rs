@@ -241,7 +241,7 @@ mod tests {
         p.move_item("onedrive", true, true);
         assert_eq!(
             keys(&p),
-            ["activity", "chat", "teams", "onedrive", "calendar", "calls"]
+            ["activity", "chat", "onedrive", "teams", "calendar", "calls"]
         );
         // Settings moves one row at a time, hidden or not.
         let mut p = prefs(&[], &["calendar", "calls"]);

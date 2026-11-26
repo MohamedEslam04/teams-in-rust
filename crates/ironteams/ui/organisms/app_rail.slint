@@ -24,7 +24,8 @@ export component AppRail inherits Rectangle {
             property <bool> shown: item.shown && (item.key != "calls" || CallsPageStore.available);
             height: shown ? 60px : 0px;
             visible: shown;
-            accessible-role: button;
+            // Named here, so the entry keeps its name when the label under the icon is gone.
+            accessible-role: text;
             accessible-label: RailItems.label(item.key);
             Rectangle {
                 x: 0;

@@ -1304,7 +1304,9 @@ export component AppWindow inherits Window {
         view: root.view;
     }
 
+    // Above Settings (z 60): a right click on a rail icon opens its menu while Settings is open.
     if root.login-state == "ready": AppsOverlays {
+        z: 61;
         width: root.width;
         height: root.height;
     }
