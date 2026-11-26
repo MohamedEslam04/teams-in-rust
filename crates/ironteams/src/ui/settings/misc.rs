@@ -171,9 +171,12 @@ pub(super) fn with_server_note(c: &Ctl) -> Option<(String, NotificationSettings)
     Some((d.chat_service.clone(), d.notifications.clone()?))
 }
 
-/// Deletes the message cache of a removed account, unless the account that is active afterwards
-/// uses the same file (removing the only account leaves a fresh `default`).
+/// Deletes the cache folders of a removed account (`cache/accounts/<label>` and one per guest
+/// organisation), and its message cache unless the account that is active afterwards uses the
+/// same file (removing the only account leaves a fresh `default`).
 pub(super) fn remove_account_cache(paths: &session::Paths, removed: &session::Account) {
+    let active = paths.load_config().ok().map(|c| c.active_token_key());
+    crate::backend::remove_account_dirs(&paths.cache_dir, &removed.label, active.as_deref());
     let gone = session::Config {
         account: removed.label.clone(),
         tenant: removed.tenant.clone(),

@@ -92,7 +92,7 @@ pub use activity::ActivityCmd;
 #[cfg(test)]
 pub(crate) use activity::{State as ActivityState, row_data as activity_row_data};
 pub use appstore::AppsCmd;
-pub(crate) use cache::CacheSizes;
+pub(crate) use cache::{CacheSizes, migrate_shared_cache, remove_account_dirs};
 #[cfg(test)]
 pub use cal::{
     AttendeeRow, Ctx, DEFAULT_PREFS, Prefs, ProposalRow, SuggestRow, build, build_split,
@@ -488,6 +488,8 @@ impl Engine {
                 .flatten()
                 .as_deref(),
         );
+        // The helpers with no engine at hand (voice, clips, notifications, Drive) use its folder.
+        cache::set_active_key(&cfg.active_token_key());
         let upkeep = cache_ops::Upkeep::new(cfg.media_cache_mb);
         let engine = Arc::new(Engine {
             calls: call::CallManager::new(ui.clone(), client.clone(), my_name.clone()),

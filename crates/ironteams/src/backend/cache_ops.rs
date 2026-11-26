@@ -46,16 +46,16 @@ impl Upkeep {
     }
 }
 
-/// One sweep: the old temporary copies go, then the oldest media until the media cache fits the
-/// budget of the config as it is on disk now (the Settings page writes it there). Returns the
-/// budget in bytes and the size of the media cache.
+/// One sweep: the old temporary copies go, then the oldest media of all accounts together until
+/// the media cache fits the budget of the config as it is on disk now (the Settings page writes
+/// it there). Returns the budget in bytes and the size of the media cache of all accounts.
 pub(super) fn sweep(paths: &session::Paths) -> (u64, u64) {
     let mb = paths
         .load_config()
         .map_or(Some(DEFAULT_MEDIA_MB), |c| c.media_cache_mb);
     let budget = cache::budget_bytes(mb);
-    cache::clean_temp(&paths.cache_dir, TEMP_MAX_AGE);
-    cache::evict_to(&cache::media_dir(&paths.cache_dir), budget);
+    cache::clean_temp_all(&paths.cache_dir, TEMP_MAX_AGE);
+    cache::evict_all(&paths.cache_dir, budget);
     (budget, cache::media_size(&paths.cache_dir))
 }
 
@@ -70,6 +70,13 @@ impl Engine {
     #[cfg(test)]
     fn cache_paths(&self) -> Option<session::Paths> {
         self.upkeep.paths.lock().unwrap().clone()
+    }
+
+    /// This account's folder in the cache dir (`cache::account_cache_dir`): the key is the
+    /// engine's own, so it does not change if the config on disk does.
+    fn account_dir(&self, paths: &session::Paths) -> std::path::PathBuf {
+        let key = self.cfg.lock().unwrap().active_token_key();
+        cache::account_cache_dir(&paths.cache_dir, &key)
     }
 
     /// Starts the upkeep of a run: one sweep a little after the start, and the weekly store
@@ -130,9 +137,9 @@ impl Engine {
     /// The picture kept for `url` from an earlier fetch, if there is one. A hit touches the
     /// file, so eviction leaves what is in use.
     pub(super) async fn kept_img(&self, url: &str, max_bytes: usize) -> Option<Vec<u8>> {
-        let cache_dir = self.cache_paths()?.cache_dir;
+        let dir = self.account_dir(&self.cache_paths()?);
         let url = url.to_string();
-        tokio::task::spawn_blocking(move || cache::read_img(&cache_dir, &url, max_bytes))
+        tokio::task::spawn_blocking(move || cache::read_img(&dir, &url, max_bytes))
             .await
             .ok()
             .flatten()
@@ -143,10 +150,10 @@ impl Engine {
         let Some(paths) = self.cache_paths() else {
             return;
         };
+        let dir = self.account_dir(&paths);
         let (url, len) = (url.to_string(), bytes.len());
         let written =
-            tokio::task::spawn_blocking(move || cache::write_img(&paths.cache_dir, &url, &bytes))
-                .await;
+            tokio::task::spawn_blocking(move || cache::write_img(&dir, &url, &bytes)).await;
         match written {
             Ok(Ok(())) => self.media_written(len),
             Ok(Err(err)) => tracing::debug!(%err, "picture not kept"),
@@ -156,23 +163,24 @@ impl Engine {
 
     /// Drops the kept picture for `url`: it did not decode.
     pub(super) async fn forget_img(&self, url: &str) {
-        let Some(cache_dir) = self.cache_paths().map(|p| p.cache_dir) else {
+        let Some(dir) = self.cache_paths().map(|p| self.account_dir(&p)) else {
             return;
         };
         let url = url.to_string();
-        let _ = tokio::task::spawn_blocking(move || cache::remove_img(&cache_dir, &url)).await;
+        let _ = tokio::task::spawn_blocking(move || cache::remove_img(&dir, &url)).await;
     }
 
     // ---- what the Settings page calls ----------------------------------------------------
 
-    /// How much disk the message cache, the media cache, the temporary copies and the update
-    /// backups take.
+    /// How much disk the message cache, the media cache (this account's share and every
+    /// account's total), the temporary copies and the update backups take.
     pub(crate) async fn cache_sizes(self: &Arc<Self>) -> CacheSizes {
         let Some(paths) = self.cache_paths() else {
             return CacheSizes::default();
         };
         let db = paths.db_path_for(&self.cfg.lock().unwrap());
-        tokio::task::spawn_blocking(move || cache::sizes(&paths, &db))
+        let dir = self.account_dir(&paths);
+        tokio::task::spawn_blocking(move || cache::sizes(&paths, &db, &dir))
             .await
             .unwrap_or_default()
     }
@@ -233,11 +241,11 @@ impl Engine {
         result.map(|_| ())
     }
 
-    /// `Cmd::ClearMediaCache`: empties the pictures in memory, the media files on disk and the
-    /// stored profile pictures, then draws the views again (the pictures load again).
+    /// `Cmd::ClearMediaCache`: empties the pictures in memory, the active account's media files
+    /// on disk (other accounts keep theirs) and the stored profile pictures, then draws the views again (the pictures load again).
     pub(super) async fn clear_media_cache(self: &Arc<Self>) -> anyhow::Result<()> {
-        if let Some(cache_dir) = self.cache_paths().map(|p| p.cache_dir) {
-            tokio::task::spawn_blocking(move || cache::clear_media(&cache_dir)).await?;
+        if let Some(dir) = self.cache_paths().map(|p| self.account_dir(&p)) {
+            tokio::task::spawn_blocking(move || cache::clear_media(&dir)).await?;
         }
         self.upkeep.media_bytes.store(0, Ordering::Relaxed);
         let e = self.clone();
@@ -287,11 +295,17 @@ impl Engine {
         *self.upkeep.paths.lock().unwrap() = Some(paths);
     }
 
+    /// Tests: the engine's account folder in the directories `test_set_cache_paths` set.
+    #[cfg(test)]
+    pub(crate) fn test_account_dir(&self) -> std::path::PathBuf {
+        self.account_dir(&self.cache_paths().expect("test_set_cache_paths first"))
+    }
+
     /// Keeps `bytes` on disk as the picture of `url`, as a finished download does.
     #[cfg(test)]
     pub(crate) fn test_keep_img(&self, url: &str, bytes: &[u8]) {
         let paths = self.cache_paths().expect("test_set_cache_paths first");
-        cache::write_img(&paths.cache_dir, url, bytes).unwrap();
+        cache::write_img(&self.account_dir(&paths), url, bytes).unwrap();
     }
 
     /// Empties the pictures kept in memory.
@@ -339,15 +353,17 @@ mod tests {
     }
 
     #[test]
-    fn a_sweep_keeps_the_media_cache_under_the_budget_of_the_config_file() {
+    fn a_sweep_keeps_the_media_of_all_accounts_under_the_budget_of_the_config_file() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = paths_in(tmp.path());
         let mb = 1024 * 1024;
-        put(&paths.cache_dir, "media/img/old", mb / 2, 3 * DAY);
-        put(&paths.cache_dir, "media/img/mid", mb / 2, 2 * DAY);
-        put(&paths.cache_dir, "media/new.m4a", mb / 2, DAY);
-        put(&paths.cache_dir, "outbox/m/photo.png", 2 * mb, 30 * DAY);
-        put(&paths.cache_dir, "notify/x.img", 10, 8 * DAY);
+        let work = cache::account_cache_dir(&paths.cache_dir, "work");
+        let home = cache::account_cache_dir(&paths.cache_dir, "home");
+        put(&work, "media/img/old", mb / 2, 3 * DAY);
+        put(&home, "media/img/mid", mb / 2, 2 * DAY);
+        put(&work, "media/new.m4a", mb / 2, DAY);
+        put(&work, "outbox/m/photo.png", 2 * mb, 30 * DAY);
+        put(&home, "notify/x.img", 10, 8 * DAY);
         let cfg = session::Config {
             media_cache_mb: Some(1),
             ..Default::default()
@@ -355,25 +371,26 @@ mod tests {
         paths.save_config(&cfg).unwrap();
         let (budget, size) = sweep(&paths);
         assert_eq!((budget, size), (mb as u64, mb as u64));
-        assert!(!paths.cache_dir.join("media/img/old").exists());
-        assert!(paths.cache_dir.join("media/img/mid").exists());
-        assert!(paths.cache_dir.join("media/new.m4a").exists());
-        assert!(paths.cache_dir.join("outbox/m/photo.png").exists());
-        assert!(!paths.cache_dir.join("notify/x.img").exists());
+        assert!(!work.join("media/img/old").exists());
+        assert!(home.join("media/img/mid").exists());
+        assert!(work.join("media/new.m4a").exists());
+        assert!(work.join("outbox/m/photo.png").exists());
+        assert!(!home.join("notify/x.img").exists());
     }
 
     #[test]
     fn a_sweep_without_a_budget_only_cleans_the_temp_folders() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = paths_in(tmp.path());
-        put(&paths.cache_dir, "media/old", 100, 300 * DAY);
-        put(&paths.cache_dir, "voicemail/v.mp3", 100, 8 * DAY);
+        let work = cache::account_cache_dir(&paths.cache_dir, "work");
+        put(&work, "media/old", 100, 300 * DAY);
+        put(&work, "voicemail/v.mp3", 100, 8 * DAY);
         let cfg = session::Config {
             media_cache_mb: None,
             ..Default::default()
         };
         paths.save_config(&cfg).unwrap();
         assert_eq!(sweep(&paths), (u64::MAX, 100));
-        assert!(!paths.cache_dir.join("voicemail/v.mp3").exists());
+        assert!(!work.join("voicemail/v.mp3").exists());
     }
 }

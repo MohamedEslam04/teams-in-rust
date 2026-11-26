@@ -711,7 +711,9 @@ impl Engine {
 
     async fn voicemail_play(self: &Arc<Self>, id: &str) -> anyhow::Result<()> {
         let (name, data) = calling::voicemail::recording(&self.client, id).await?;
-        let dir = session::Paths::new()?.cache_dir.join("voicemail");
+        let dir = super::cache::current_account_dir()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory"))?
+            .join("voicemail");
         std::fs::create_dir_all(&dir)?;
         // The message id is not a safe file name; a hash of it is.
         let ext = std::path::Path::new(&name)

@@ -1983,6 +1983,7 @@ fn the_storage_page_shows_the_sizes_and_the_limit_choice_writes_the_config() {
     UiHandle::new(app.as_weak()).settings_storage(CacheSizes {
         db_bytes: 1_572_864,
         media_bytes: 1_073_741_824,
+        media_total_bytes: 1_073_741_824,
         temp_bytes: 2048,
         backups_bytes: 0,
     });
@@ -1994,6 +1995,18 @@ fn the_storage_page_shows_the_sizes_and_the_limit_choice_writes_the_config() {
     assert_eq!(value_of(app, "Temporary files size"), "2 KB");
     assert_eq!(value_of(app, "Update backups size"), "0 B");
     assert_eq!(value_of(app, "Total size"), "1.0 GB");
+
+    // With media of other accounts, the row shows this account's share and the total.
+    UiHandle::new(app.as_weak()).settings_storage(CacheSizes {
+        media_bytes: 1_048_576,
+        media_total_bytes: 3_145_728,
+        ..CacheSizes::default()
+    });
+    assert_eq!(
+        value_of(app, "Media (pictures, voice, video) size"),
+        "1.0 MB (all accounts: 3.0 MB)"
+    );
+    assert_eq!(value_of(app, "Total size"), "3.0 MB");
 
     // A limit is written to the config, and the engine sweeps to it.
     press(app, "Media cache limit: 250 MB");

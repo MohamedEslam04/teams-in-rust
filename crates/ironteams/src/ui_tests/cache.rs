@@ -24,7 +24,10 @@ fn put(dir: &std::path::Path, rel: &str, len: usize) -> std::path::PathBuf {
 struct Setup {
     h: Harness,
     _tmp: tempfile::TempDir,
+    /// The engine's account folder in the cache dir (`cache/accounts/<key>`).
     cache: std::path::PathBuf,
+    /// The cache dir itself, which holds the folders of every account.
+    cache_root: std::path::PathBuf,
     paths: session::Paths,
 }
 
@@ -42,9 +45,10 @@ fn setup() -> Setup {
     };
     h.engine.test_set_cache_paths(paths.clone());
     Setup {
+        cache: h.engine.test_account_dir(),
         h,
         _tmp: tmp,
-        cache,
+        cache_root: cache,
         paths,
     }
 }
@@ -196,4 +200,27 @@ fn a_new_media_limit_sweeps_the_cache_at_once() {
     let page = h.app.global::<SettingsStore>();
     assert!(page.get_storage_loaded());
     assert_eq!(page.get_storage_media(), "0 B");
+}
+
+#[test]
+fn clearing_the_media_cache_leaves_other_accounts_and_the_page_shows_both_sizes() {
+    let Setup {
+        h,
+        cache,
+        cache_root,
+        ..
+    } = setup();
+    let page = || h.app.global::<SettingsStore>();
+    let mine = put(&cache, "media/img/a", 100);
+    let other_dir = cache_root.join("accounts").join("someone-else");
+    assert_ne!(cache, other_dir);
+    let theirs = put(&other_dir, "media/img/b", 300);
+
+    run(&h, Cmd::Settings(SettingsCmd::LoadStorage));
+    assert_eq!(page().get_storage_media(), "100 B (all accounts: 400 B)");
+
+    run(&h, Cmd::ClearMediaCache);
+    assert!(!mine.exists());
+    assert!(theirs.exists(), "another account's media is not cleared");
+    assert_eq!(page().get_storage_media(), "0 B (all accounts: 300 B)");
 }
