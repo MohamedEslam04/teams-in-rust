@@ -96,6 +96,8 @@ pub struct ServerData {
     pub me_name: String,
     pub me_email: Option<String>,
     pub me_status: Option<String>,
+    /// When my status message clears (ms), `None` for never.
+    pub me_status_ends: Option<i64>,
     pub me_presence: Option<String>,
     /// What I am doing (`InACall`, `InAMeeting`, `OffWork`, …), for the words of my status.
     pub me_activity: Option<String>,

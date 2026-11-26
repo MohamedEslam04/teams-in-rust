@@ -2547,3 +2547,12 @@ msgstr "الأقسام"
 
 msgid "Group chats in a section of your own in the chat list."
 msgstr "اجمع المحادثات في قسم خاص بك في قائمة المحادثات."
+
+msgid "Add emoji to status message"
+msgstr "إضافة رمز تعبيري إلى رسالة الحالة"
+
+msgid "Clears at {}"
+msgstr "تُمسح عند {}"
+
+msgid "Status message clears"
+msgstr "وقت مسح رسالة الحالة"
