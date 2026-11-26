@@ -6,6 +6,7 @@
 use super::*;
 use crate::ListStore;
 use crate::backend::ListsCmd;
+use crate::lists_sort::SortBy;
 use serde_json::json;
 use store::{ConvKind, ConversationRow};
 use teams_proto::sections::{Folder, FolderItem, FolderKind, Folders};
@@ -1238,4 +1239,139 @@ fn each_kind_of_row_has_its_own_avatar() {
     // A channel without its team's picture shows the team's initials, not the channel's.
     let general = h.chats().into_iter().find(|c| c.id == GENERAL).unwrap();
     assert_eq!(general.initials, "CL");
+}
+
+// ---- "Sort by" of a section --------------------------------------------------------------
+
+const SARA: &str =
+    "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-000000000003@unq.gbl.spaces";
+const ADMIN: &str = "19:admin@thread.v2";
+const PRODBUGS: &str = "19:prodbugs@thread.v2";
+
+fn sort_cmd(h: &Harness, id: &str, by: SortBy) {
+    h.runner()(Cmd::Lists(ListsCmd::Sort(id.into(), by)));
+}
+
+/// The lowest element labelled `name`: "Chats" is also a filter pill above the list.
+fn section_header(app: &AppWindow, name: &str) -> ElementHandle {
+    find_label(app, name)
+        .into_iter()
+        .max_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y))
+        .unwrap_or_else(|| panic!("a header labelled {name:?}"))
+}
+
+/// Hovers the header, opens its "…" menu and picks `choice`.
+fn pick_sort(app: &AppWindow, header: &str, choice: &str) {
+    hover(app, &section_header(app, header));
+    let more = find_label(app, "Section options");
+    assert_eq!(more.len(), 1, "one \"…\" on the hovered header");
+    click(&more[0]);
+    let rows = menu_rows(app);
+    for want in ["Recent activity", "A to Z", "Unread first"] {
+        assert!(rows.contains(&want.to_string()), "{want:?} in {rows:?}");
+    }
+    click(&menu_row(app, choice));
+}
+
+#[test]
+fn chats_sort_from_the_header_menu_a_to_z_unread_first_and_back_to_recent() {
+    let h = harness();
+    let log = wire(&h);
+    let recent = ids_in(h.app.get_chats_main());
+    assert_eq!(recent[..5], [AHMED, SARA, STANDUP, ADMIN, PRODBUGS]);
+    assert_eq!(ls(&h.app).get_chats_sort(), "recent");
+
+    pick_sort(&h.app, "Chats", "A to Z");
+    assert_eq!(log.borrow().last().unwrap(), "sort chats | alpha");
+    assert_eq!(ls(&h.app).get_chats_sort(), "alpha");
+    // Latin names first, ignoring case; the Arabic one after them.
+    assert_eq!(
+        ids_in(h.app.get_chats_main())[..5],
+        [AHMED, STANDUP, PRODBUGS, SARA, ADMIN]
+    );
+    // Saved, and only for this section.
+    let saved = h.engine.test_lists().0.sort;
+    assert_eq!(saved.get("chats"), Some(&SortBy::Alpha));
+    assert_eq!(saved.len(), 1);
+    assert_eq!(ls(&h.app).get_favorites_sort(), "recent");
+
+    pick_sort(&h.app, "Chats", "Unread first");
+    assert_eq!(log.borrow().last().unwrap(), "sort chats | unread");
+    // Sara has unread messages: she moves above Ahmed, the rest stay newest first.
+    assert_eq!(
+        ids_in(h.app.get_chats_main())[..5],
+        [SARA, AHMED, STANDUP, ADMIN, PRODBUGS]
+    );
+
+    pick_sort(&h.app, "Chats", "Recent activity");
+    assert_eq!(ids_in(h.app.get_chats_main()), recent);
+    assert!(h.engine.test_lists().0.sort.is_empty());
+}
+
+#[test]
+fn favorites_and_channels_have_their_own_sort() {
+    let h = harness();
+    wire(&h);
+    let favorites = || ids_in(h.app.get_chats_favorites());
+    assert_eq!(favorites(), [NOTES, BACKEND]);
+    pick_sort(&h.app, "Favorites", "A to Z");
+    assert_eq!(favorites(), [BACKEND, NOTES]);
+    assert_eq!(ls(&h.app).get_favorites_sort(), "alpha");
+    // The Chats section was not touched.
+    assert_eq!(ls(&h.app).get_chats_sort(), "recent");
+    assert_eq!(ids_in(h.app.get_chats_main())[0], AHMED);
+    // Unread first: Backend Team is unread, the notes chat is not.
+    sort_cmd(&h, "favorites", SortBy::Unread);
+    assert_eq!(favorites(), [BACKEND, NOTES]);
+    sort_cmd(&h, "favorites", SortBy::Recent);
+    assert_eq!(favorites(), [NOTES, BACKEND]);
+    // Teams and channels sorts on its own too.
+    sort_cmd(&h, "channels", SortBy::Alpha);
+    assert_eq!(ls(&h.app).get_channels_sort(), "alpha");
+    assert_eq!(ids_in(h.app.get_chats_channels()), [GENERAL, TECH]);
+}
+
+#[test]
+fn a_section_of_the_account_sorts_instead_of_keeping_teams_order_and_forgets_it_when_deleted() {
+    let h = harness();
+    wire(&h);
+    h.engine
+        .test_set_folders(&folders(vec![("s1", "Dev", vec![STANDUP, SARA, AHMED])]));
+    h.runner()(Cmd::SetFilter("all".into()));
+    assert_eq!(section_items(&h.app, "Dev"), [STANDUP, SARA, AHMED]);
+    assert_eq!(
+        ls(&h.app).get_sections().row_data(0).unwrap().sort,
+        "recent"
+    );
+
+    pick_sort(&h.app, "Dev, expanded", "A to Z");
+    // Ahmed Ali, Morning Standup, Sara Hassan.
+    assert_eq!(section_items(&h.app, "Dev"), [AHMED, STANDUP, SARA]);
+    assert_eq!(ls(&h.app).get_sections().row_data(0).unwrap().sort, "alpha");
+
+    pick_sort(&h.app, "Dev, expanded", "Unread first");
+    assert_eq!(section_items(&h.app, "Dev"), [SARA, AHMED, STANDUP]);
+    // The count of unread chats is not changed by the order.
+    assert_eq!(ls(&h.app).get_sections().row_data(0).unwrap().unread, 1);
+
+    // A section made here sorts too, and deleting it drops its choice.
+    h.runner()(Cmd::Lists(ListsCmd::NewSection {
+        move_chat: Some(PRODBUGS.into()),
+        name: "Later".into(),
+    }));
+    let id = h.engine.test_lists().0.sections[0].0.clone();
+    sort_cmd(&h, &id, SortBy::Alpha);
+    assert_eq!(h.engine.test_lists().0.sort.len(), 2);
+    h.runner()(Cmd::Lists(ListsCmd::DeleteSection(id)));
+    let saved = h.engine.test_lists().0.sort;
+    assert_eq!(saved.len(), 1);
+    assert!(saved.contains_key("s1"));
+}
+
+#[test]
+fn the_meetings_section_has_no_sort_menu() {
+    let h = meetings_harness();
+    let header = section_header(&h.app, "Meetings, collapsed");
+    hover(&h.app, &header);
+    assert!(find_label(&h.app, "Section options").is_empty());
 }

@@ -1009,6 +1009,21 @@ msgstr "إعادة تسمية القسم"
 msgid "Delete section"
 msgstr "حذف القسم"
 
+msgid "Section options"
+msgstr "خيارات القسم"
+
+msgid "Sort by"
+msgstr "ترتيب حسب"
+
+msgid "Recent activity"
+msgstr "النشاط الأخير"
+
+msgid "A to Z"
+msgstr "من أ إلى ي"
+
+msgid "Unread first"
+msgstr "غير المقروءة أولًا"
+
 msgid "Section name"
 msgstr "اسم القسم"
 

@@ -3,7 +3,7 @@
 // UI sends `command(name, argument)` (two arguments are joined with a tab).
 import { Theme } from "../tokens/theme.slint";
 import { ChatRow } from "../tokens/types.slint";
-import { Icon, IconButton } from "../atoms/widgets.slint";
+import { Icon, IconButton, SectionHeader } from "../atoms/widgets.slint";
 import { RemindStore } from "remind.slint";
 import { TeamsStore } from "../stores/teams_store.slint";
 import { MediaStore } from "media.slint";
@@ -19,6 +19,8 @@ export struct SectionRow {
     unread: int,
     // A section made in IronTeams (it can be renamed and deleted here).
     local: bool,
+    // How the items are ordered: recent | alpha | unread.
+    sort: string,
     items: [ChatRow],
 }
 export struct SectionChoice { id: string, name: string }
@@ -35,6 +37,10 @@ export global ListStore {
     in-out property <bool> favorites-open: true;
     in-out property <bool> chats-open: true;
     in-out property <bool> channels-open: true;
+    // "Sort by" of the fixed sections: recent | alpha | unread (see `SortHeader`).
+    in property <string> favorites-sort: "recent";
+    in property <string> chats-sort: "recent";
+    in property <string> channels-sort: "recent";
     // Meeting chats sit in their own section, collapsed until opened. Their rows end
     // `chats-main` (`section` "meetings"); the section shows the newest five until "See all".
     in-out property <bool> meetings-open: false;
@@ -60,7 +66,8 @@ export global ListStore {
     // Pinned to the top of its team (pinned channels list).
     in property <bool> channel-pinned: false;
     // Names: new-section, rename-section, delete-section, section-toggle, collapse-all, move,
-    // remove-section, mute, mute-for, unmute, notify-available, notify-available-off, copy-link, hide, option, channel-menu, channel-show,
+    // remove-section, mute, mute-for, unmute, notify-available, notify-available-off, copy-link, hide, option, sort
+    // (a section: favorites | chats | channels | a section id, then recent | alpha | unread), channel-menu, channel-show,
     // channel-hide, channel-notify, channel-link, channel-team, channel-leave.
     callback command(string, string);
 }
@@ -72,6 +79,56 @@ component NotifyChoices inherits VerticalLayout {
     MenuItem { variant: MenuItemVariant.list; label: @tr("All activity"); checked: ListStore.channel-level == "all"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}all"); root.done(); } }
     MenuItem { variant: MenuItemVariant.list; label: @tr("Only show in the feed"); checked: ListStore.channel-level == "feed"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}feed"); root.done(); } }
     MenuItem { variant: MenuItemVariant.list; label: @tr("Off"); checked: ListStore.channel-level == "off"; clicked => { ListStore.command("channel-notify", root.channel + "\u{9}off"); root.done(); } }
+}
+
+// "Sort by" of one section, shared by the fixed sections' menu and the sections' menu.
+component SortChoices inherits VerticalLayout {
+    in property <string> target;
+    in property <string> sort;
+    callback done();
+    HorizontalLayout {
+        height: 24px;
+        padding-left: 10px;
+        Text { text: @tr("Sort by"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
+    }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Recent activity"); checked: root.sort == "recent"; clicked => { ListStore.command("sort", root.target + "\u{9}recent"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("A to Z"); checked: root.sort == "alpha"; clicked => { ListStore.command("sort", root.target + "\u{9}alpha"); root.done(); } }
+    MenuItem { variant: MenuItemVariant.list; label: @tr("Unread first"); checked: root.sort == "unread"; clicked => { ListStore.command("sort", root.target + "\u{9}unread"); root.done(); } }
+}
+
+// The header of Favorites, Chats or Teams and channels: the plain section header plus a "…" menu
+// with "Sort by".
+export component SortHeader inherits Rectangle {
+    in property <string> label;
+    // favorites | chats | channels
+    in property <string> target;
+    in property <string> sort;
+    in-out property <bool> expanded: true;
+    height: 32px;
+    SectionHeader {
+        label: root.label;
+        expanded <=> root.expanded;
+        more: true;
+        more-label: @tr("Section options");
+        more-clicked => { sort-menu.show(); }
+    }
+    sort-menu := PopupWindow {
+        close-policy: close-on-click-outside;
+        x: parent.width - 180px;
+        y: parent.height;
+        width: 170px;
+        height: sort-items.preferred-height + 2px;
+        Rectangle {
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.border;
+            sort-items := VerticalLayout {
+                padding: 4px;
+                SortChoices { target: root.target; sort: root.sort; done => { sort-menu.close(); } }
+            }
+        }
+    }
 }
 
 // Contents of the right-click menu of a chat or channel in the list (plan 8.2 and 8.5).
@@ -226,6 +283,8 @@ export component ChannelMenu inherits Rectangle {
 // here (rename, delete).
 export component SectionHead inherits Rectangle {
     in property <SectionRow> section;
+    // The menu has "Sort by" (the Meetings section has none).
+    in property <bool> sortable: true;
     callback toggle();
     height: 30px;
     background: head-touch.has-hover ? Theme.surface-hover : transparent;
@@ -260,32 +319,43 @@ export component SectionHead inherits Rectangle {
         mouse-cursor: pointer;
         clicked => { root.toggle(); }
         pointer-event(e) => {
-            if root.section.local && e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+            if (root.section.local || root.sortable) && e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
                 head-menu.show();
             }
         }
+        if root.sortable && head-touch.has-hover: IconButton {
+            x: parent.width - 30px;
+            y: 4px;
+            size: 22px;
+            icon: @image-url("../icons/more.svg");
+            tooltip: @tr("Section options");
+            clicked => { head-menu.show(); }
+        }
     }
     head-menu := PopupWindow {
+        close-policy: close-on-click-outside;
         x: 30px;
         y: parent.height;
-        width: 160px;
-        height: 72px;
+        width: 170px;
+        height: head-items.preferred-height + 2px;
         Rectangle {
             background: Theme.surface;
             border-radius: 6px;
             border-width: 1px;
             border-color: Theme.border;
-            VerticalLayout {
+            head-items := VerticalLayout {
                 padding: 4px;
-                MenuItem { variant: MenuItemVariant.list;
+                if root.section.local: MenuItem { variant: MenuItemVariant.list;
                     label: @tr("Rename section");
                     clicked => {
+                        head-menu.close();
                         ListStore.dialog-target = root.section.id;
                         ListStore.dialog-text = root.section.name;
                         ListStore.dialog = "rename-section";
                     }
                 }
-                MenuItem { variant: MenuItemVariant.list; label: @tr("Delete section"); danger: true; clicked => { ListStore.command("delete-section", root.section.id); } }
+                if root.section.local: MenuItem { variant: MenuItemVariant.list; label: @tr("Delete section"); danger: true; clicked => { head-menu.close(); ListStore.command("delete-section", root.section.id); } }
+                if root.sortable: SortChoices { target: root.section.id; sort: root.section.sort; done => { head-menu.close(); } }
             }
         }
     }
