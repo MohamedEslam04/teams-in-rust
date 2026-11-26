@@ -261,6 +261,19 @@ pub fn clamp_wheel_speed(v: f32) -> f32 {
     }
 }
 
+/// True when `now` (minutes after midnight) is inside the half-open window `start..end`. A window
+/// whose end is before its start runs over midnight; equal times mean no window. Quiet hours
+/// and the theme schedule share this rule.
+pub fn in_window(start: u16, end: u16, now: u16) -> bool {
+    if start == end {
+        false
+    } else if start < end {
+        start <= now && now < end
+    } else {
+        now >= start || now < end
+    }
+}
+
 fn de_wheel_speed<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(v.as_f64()
@@ -478,6 +491,39 @@ prefs_file!(GeneralPrefs, FILE_NAME);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn in_window_within_a_day() {
+        // 08:00 to 17:00.
+        let (s, e) = (480, 1020);
+        assert!(!in_window(s, e, 479));
+        assert!(in_window(s, e, 480));
+        assert!(in_window(s, e, 1019));
+        assert!(!in_window(s, e, 1020));
+        assert!(!in_window(s, e, 0));
+        assert!(!in_window(s, e, 1439));
+    }
+
+    #[test]
+    fn in_window_over_midnight() {
+        // 22:00 to 07:00.
+        let (s, e) = (1320, 420);
+        assert!(!in_window(s, e, 1319));
+        assert!(in_window(s, e, 1320));
+        assert!(in_window(s, e, 1439));
+        assert!(in_window(s, e, 0));
+        assert!(in_window(s, e, 419));
+        assert!(!in_window(s, e, 420));
+        assert!(!in_window(s, e, 720));
+    }
+
+    #[test]
+    fn in_window_with_equal_times_is_never() {
+        for now in [0, 479, 480, 1439] {
+            assert!(!in_window(480, 480, now));
+        }
+        assert!(!in_window(0, 0, 0));
+    }
 
     fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |k| {
