@@ -360,6 +360,7 @@ impl Engine {
             v.unread_marker = marker;
             v.open_at = open_at;
             v.opening = true;
+            v.reads_deferred = !self.connected.load(std::sync::atomic::Ordering::Relaxed);
             v.loaded = false;
             v.not_member = false;
             v.at_bottom = true;

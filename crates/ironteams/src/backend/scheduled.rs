@@ -83,14 +83,19 @@ impl Engine {
     }
 
     /// A failed read of the list: an account without the drafts thread answers 404 (nothing is
-    /// scheduled there); anything else is logged and shown.
+    /// scheduled there); a client that has no service host yet says so (`NotReady`) and the list
+    /// is read again once the engine is online; anything else is logged and shown.
     fn scheduled_list_failed(&self, err: &anyhow::Error) {
-        let none = matches!(
-            err.downcast_ref::<teams_proto::Error>(),
+        let teams_err = err.downcast_ref::<teams_proto::Error>();
+        if matches!(
+            teams_err,
             Some(teams_proto::Error::Status { status: 404, .. })
-        );
-        if none {
+        ) {
             tracing::debug!(%err, "scheduled messages: no drafts thread");
+            return;
+        }
+        if matches!(teams_err, Some(teams_proto::Error::NotReady)) {
+            tracing::debug!(%err, "scheduled messages: the session is not refreshed yet");
             return;
         }
         tracing::warn!(%err, "scheduled messages list failed");
@@ -110,10 +115,19 @@ impl Engine {
         self.scheduled_reads.load(Ordering::Relaxed)
     }
 
-    /// A chat was opened: its waiting messages show; the account's list is read once.
+    /// A chat was opened: its waiting messages show; the account's list is read once. A chat
+    /// opened before the engine is online (a cache-first start, a dropped connection) leaves the
+    /// read to [`Engine::chat_online_reads`]: the client may not know its service host yet.
     pub(super) fn scheduled_chat_opened(self: &Arc<Self>) {
         self.ui.schedule_choice(None);
         self.push_scheduled();
+        if self.connected.load(Ordering::Relaxed) {
+            self.load_scheduled_once();
+        }
+    }
+
+    /// Reads the account's list, the first time this is called in the session (not in demo mode).
+    pub(super) fn load_scheduled_once(self: &Arc<Self>) {
         let load = {
             let mut v = self.view.lock().unwrap();
             !std::mem::replace(&mut v.scheduled_loaded, true)

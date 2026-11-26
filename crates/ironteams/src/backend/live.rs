@@ -35,6 +35,8 @@ impl Engine {
                     let e = self.clone();
                     tokio::spawn(async move { e.flush_outbox(true).await });
                     if was_disconnected {
+                        // A chat opened while offline reads what it waited for.
+                        self.chat_online_reads();
                         // Catch up on anything missed while offline.
                         self.on_activity_event();
                         let e = self.clone();

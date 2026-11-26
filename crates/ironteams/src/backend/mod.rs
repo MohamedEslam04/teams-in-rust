@@ -313,6 +313,9 @@ struct View {
     scheduled: Vec<teams_proto::scheduled::ScheduledMessage>,
     /// `scheduled` was read from the account once.
     scheduled_loaded: bool,
+    /// The open chat was opened before the engine was online, so its reads from the service (its
+    /// members, receipts and channel tabs) did not happen: `chat_online_reads` runs them.
+    reads_deferred: bool,
     /// Latest composer text of the current chat as the engine knows it.
     draft_text: String,
     /// `draft_text` (or the reply target) changed since it was last written to the store.
@@ -678,6 +681,8 @@ impl Engine {
         self.connected.store(true, Ordering::Relaxed);
         self.ui.connected(true);
         self.start_online();
+        // The chat restored before the refresh could not read from the service yet.
+        self.chat_online_reads();
         crate::start_timing::mark(crate::start_timing::Stage::Online);
     }
 

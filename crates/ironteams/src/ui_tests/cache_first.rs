@@ -160,3 +160,23 @@ fn a_chat_opened_before_the_refresh_shows_no_banner_and_reads_the_scheduled_list
     let_spawned_tasks_run(&h);
     assert_eq!(h.engine.test_scheduled_reads(), 1);
 }
+
+#[test]
+fn names_asked_for_before_the_refresh_are_asked_for_again_later() {
+    // A name that could not be fetched yet must not count as asked for: the sender would stay
+    // unknown for the whole run.
+    let h = before_the_refresh();
+    h.engine.test_fetch_names(vec!["8:orgid:unknown".into()]);
+    assert_eq!(
+        h.engine.test_asked_names(),
+        1,
+        "marked while the fetch runs"
+    );
+    let_spawned_tasks_run(&h);
+    assert_eq!(
+        h.engine.test_asked_names(),
+        0,
+        "a fetch that was not ready is forgotten, so the next draw asks again"
+    );
+    assert_eq!(h.app.get_banner(), "");
+}

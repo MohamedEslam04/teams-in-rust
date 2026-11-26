@@ -362,6 +362,17 @@ impl Engine {
         people
     }
 
+    /// Tests: `fetch_names`, and how many names are marked as asked for.
+    #[cfg(test)]
+    pub(crate) fn test_fetch_names(self: &Arc<Self>, mris: Vec<String>) {
+        self.fetch_names(mris);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_asked_names(&self) -> usize {
+        self.name_requests.lock().unwrap().len()
+    }
+
     pub(super) fn fetch_names(self: &Arc<Self>, mris: Vec<String>) {
         let todo: Vec<String> = {
             let mut asked = self.name_requests.lock().unwrap();
@@ -374,8 +385,18 @@ impl Engine {
         }
         let e = self.clone();
         tokio::spawn(async move {
-            let Ok(profiles) = e.client.profiles(&todo).await else {
-                return;
+            let profiles = match e.client.profiles(&todo).await {
+                Ok(profiles) => profiles,
+                Err(teams_proto::Error::NotReady) => {
+                    // Before the first refresh (a cache-first start): the next draw asks again,
+                    // instead of the names staying unknown for the whole run.
+                    let mut asked = e.name_requests.lock().unwrap();
+                    for mri in &todo {
+                        asked.remove(mri);
+                    }
+                    return;
+                }
+                Err(_) => return,
             };
             {
                 let st = e.store.lock().unwrap();

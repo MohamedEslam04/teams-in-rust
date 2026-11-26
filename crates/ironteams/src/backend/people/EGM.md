@@ -21,7 +21,7 @@ Files:
 - `[pure.rs:matches_query]` pub(in backend) fn matches_query(name:&str, query:&str) -> bool; every query word is a prefix of some alphanumeric-split word of name, case-insensitive
 - `[commands.rs:Engine::people_cmd]` pub(in backend) async fn(self:&Arc<Self>, PeopleCmd)->anyhow::Result<()>; main command entry
 - `[pure.rs:with_at_signs]` pub(in backend) fn with_at_signs(text:&str, mentions:&[Mention]) -> (String, Vec<Entry>); prefixes '@' to each mention's display name found in order, returns composer entries
-- `[commands.rs:Engine::on_chat_opened]` pub(in backend) fn(&Arc<Self>, conv:&str); clears per-chat state, spawns members+tabs+pins load
+- `[commands.rs:Engine::on_chat_opened]` pub(in backend) fn(&Arc<Self>, conv:&str); clears per-chat state, spawns members+tabs+pins load (`read_chat_extras`); `[commands.rs:Engine::chat_online_reads]` pub(crate) fn(&Arc<Self>); the engine is online: reads the scheduled list once and, for a chat opened while not connected (`View.reads_deferred`), runs `read_chat_extras` again
 - `[pure.rs:sort_pins]` pub(in backend) fn sort_pins(pins:&mut [teams_proto::actions::PinnedMessage]); newest first by pinned_at
 - `[commands.rs:Engine::remember_members]` pub(in backend) fn(&self,&[ChatMeta]); caches aggregator member lists
 - `[pure.rs:ReceiptMark]` pub(in backend) struct {msg_id, state("sent"|"seen"), names(first three +N), readers:Vec<String>, compact:bool (an older message in a group: the row draws only an eye and the reader count)}; `ReceiptMark::plain(msg_id, state)` makes one with no names

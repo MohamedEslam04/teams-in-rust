@@ -10,7 +10,7 @@ Files:
 - `watchdog.rs`: Freeze watchdog: the UI thread and the async runtime beat every second; a thread of its own logs a warning when one has not beaten for over 5 s (again every 30 s, info once it runs again) and an "alive" line every 60 s.
 
 ## Interface
-- `[error_text.rs:shown_error]` pub(crate) fn(&anyhow::Error) -> String; transient teams_proto::Error -> 'Couldn't reach Teams...', Status -> status_text, NotMember -> not-a-member banner, else err.to_string()
+- `[error_text.rs:shown_error]` pub(crate) fn(&anyhow::Error) -> String; transient teams_proto::Error -> 'Couldn't reach Teams...', Status -> status_text, NotMember -> not-a-member banner, NotReady -> 'Still signing in to Teams...', else err.to_string()
 - `[error_text.rs:plain_banner]` pub(crate) fn(&str) -> String; replaces ': HTTP ddd...' tail with a status sentence keeping text before the context word, else returns input unchanged
 - `[quiet.rs:Incoming]` pub struct<'a> (Debug, Clone, Copy, Default): paused, routed, mentions_me, urgent, priority_sender, call, keyword: Option<&'a str>
 - `[quiet.rs:Why]` pub enum: Paused | QuietHours | Focus | Routing

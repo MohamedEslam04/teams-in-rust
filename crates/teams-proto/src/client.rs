@@ -516,7 +516,10 @@ impl Client {
         body: RawBody<'_>,
         extra: &[(&str, &str)],
     ) -> Result<RawResponse> {
-        let parsed = Url::parse(url).map_err(|e| Error::Protocol(format!("bad url {url}: {e}")))?;
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, Some(url)).await),
+        };
         if !audience_owns(aud, &parsed) {
             return Err(Error::Protocol(format!(
                 "{url} is not a host of {}",
@@ -665,12 +668,16 @@ impl Client {
         body: Option<&Value>,
         extra: &[(&str, &str)],
     ) -> Result<(u16, String, Option<String>)> {
+        // Before the refresh: a URL built on a service host that is not known yet has none, and
+        // refreshing here would only start a second refresh beside the one that is running.
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, Some(url)).await),
+        };
         self.ensure_fresh().await?;
         let mut refreshed = false;
         let mut resent = false;
         loop {
-            let parsed =
-                Url::parse(url).map_err(|e| Error::Protocol(format!("bad url {url}: {e}")))?;
             let tokens = self.tokens().await;
             let mut req = self.http.request(method.clone(), parsed.clone());
             for (k, v) in headers_for(&parsed, &tokens, &self.epid) {
@@ -741,8 +748,11 @@ impl Client {
         extra: &[(&str, String)],
         max_bytes: usize,
     ) -> Result<Vec<u8>> {
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, None).await),
+        };
         self.ensure_fresh().await?;
-        let parsed = Url::parse(url).map_err(|e| Error::Protocol(format!("bad url: {e}")))?;
         let tokens = self.tokens().await;
         let mut req = self.http.get(parsed.clone());
         for (k, v) in headers_for(&parsed, &tokens, &self.epid) {
