@@ -342,10 +342,19 @@ fn e_with_an_empty_composer_opens_the_editor_in_that_message_only() {
 fn e_over_someone_elses_message_does_nothing() {
     let app = app_with_messages(vec![msg("m1", "theirs", false), msg("m2", "mine", true)]);
     let log = editor_opens_on_edit(&app, "x");
+
+    // Focus on the message list: no editor, and no letter lands in the composer.
+    focus_messages(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+    assert_eq!(app.get_draft(), "");
+    assert_eq!(text_boxes(&app).len(), 1);
+
+    // Focus in the empty composer: no editor either; the letter is just typed there.
     focus_composer(&app);
     hover_and_press_e(&app, &rows(&app)[0]);
     assert!(log.borrow().is_empty(), "{:?}", log.borrow());
-    assert_eq!(app.get_draft(), "", "no letter in the composer either");
+    assert_eq!(app.get_draft(), "e");
     assert_eq!(text_boxes(&app).len(), 1);
 }
 
@@ -433,10 +442,13 @@ fn the_editor_formats_like_the_composer_and_drops_what_makes_no_sense_in_an_edit
     // The toolbar keeps Format and Emoji; attachments and Send are the composer's alone, and
     // Cancel and Save take Send's place.
     assert_eq!(find_label(&app, "Show formatting options").len(), 2);
+    let row = rows(&app).remove(0);
+    let in_row = |label: &str| find_label(&app, label).iter().any(|e| inside(&row, e));
     assert_eq!(find_label(&app, "Attach file").len(), 1);
-    assert_eq!(find_label(&app, "Send").len(), 1);
-    assert_eq!(find_label(&app, "Save").len(), 1);
-    assert_eq!(find_label(&app, "Cancel").len(), 1);
+    assert!(!in_row("Attach file"));
+    assert!(!in_row("Send"));
+    assert!(in_row("Save"));
+    assert!(in_row("Cancel"));
     let mut toggles = find_label(&app, "Show formatting options");
     toggles.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
     assert!(find_label(&app, "Bold").is_empty());
