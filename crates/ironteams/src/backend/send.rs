@@ -243,7 +243,10 @@ impl Engine {
 
     /// Downloads a voice message / video with credentials and opens it in the system player.
     pub(super) async fn play_media(&self, url: &str) -> anyhow::Result<()> {
-        let dir = session::Paths::new()?.cache_dir.join("media");
+        let dir = super::cache::media_dir(
+            &super::cache::current_account_dir()
+                .ok_or_else(|| anyhow::anyhow!("no cache directory"))?,
+        );
         std::fs::create_dir_all(&dir)?;
         let name: String = url
             .split("/objects/")
@@ -276,8 +279,8 @@ impl Engine {
         data: &[u8],
     ) -> anyhow::Result<()> {
         let item = self.new_outbox_item(target, kind, String::new(), None, None, None);
-        let dir = session::Paths::new()?
-            .cache_dir
+        let dir = super::cache::current_account_dir()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory"))?
             .join("outbox")
             .join(&item.client_message_id);
         // Keep only the file name: it is shown in the row and used as the upload name.

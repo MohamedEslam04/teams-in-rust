@@ -273,7 +273,7 @@ fn caps() -> &'static Caps {
 
 /// The sender's photo as a file the notification server can read (written once per person).
 pub(super) fn photo_file(mri: &str, bytes: &[u8]) -> Option<PathBuf> {
-    let dir = session::Paths::new().ok()?.cache_dir.join("notify");
+    let dir = super::cache::current_account_dir()?.join("notify");
     std::fs::create_dir_all(&dir).ok()?;
     let name: String = mri
         .chars()
