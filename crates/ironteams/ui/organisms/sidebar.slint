@@ -349,7 +349,7 @@ export component Sidebar inherits Rectangle {
     callback new-chat();
     // The New chat button's dropdown: Meet now.
     callback meet-now();
-    // Quick views: "mentions" or "followed".
+    // Quick views: "unreads", "mentions", "saved" or "followed".
     callback quick-view(string);
     callback manage-teams();
     callback open-community(string);
@@ -463,6 +463,7 @@ export component Sidebar inherits Rectangle {
                         spacing: 1px;
                         alignment: start;
                         QuickViewsSection {
+                            unreads: root.catch-chats;
                             mentions: root.catch-mentions;
                             drafts-on: root.filter == "drafts";
                             open(kind) => {
@@ -756,6 +757,7 @@ export component Sidebar inherits Rectangle {
                     padding-left: 10px;
                     Text { text: @tr("Quick views"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
                 }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("Unreads"); clicked => { list-menu.close(); root.quick-view("unreads"); } }
                 MenuItem { variant: MenuItemVariant.plain; label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
                 MenuItem { variant: MenuItemVariant.plain; label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
                 MenuItem { variant: MenuItemVariant.plain; label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }

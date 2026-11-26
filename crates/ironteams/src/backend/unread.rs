@@ -116,7 +116,7 @@ impl Engine {
     }
 
     /// Marks one conversation read on the server and in the store.
-    async fn mark_conversation_read(&self, conv: &str) -> anyhow::Result<()> {
+    pub(super) async fn mark_conversation_read(&self, conv: &str) -> anyhow::Result<()> {
         let page = self.client.messages(conv, None, 20).await?;
         let newest = page.messages.iter().rev().find(|m| m.is_chat_content());
         if let Some(m) = newest {

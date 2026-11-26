@@ -83,6 +83,7 @@ mod snippets;
 mod splash;
 mod teams;
 mod topbar;
+mod unreads;
 #[cfg(feature = "calls")]
 mod video_effects;
 mod web_parity;

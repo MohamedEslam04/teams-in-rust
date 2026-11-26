@@ -4,7 +4,7 @@
 use super::{UiHandle, img, model, rgb, styled};
 use crate::find_data::{HitData, PickData, SharedData};
 use crate::{AppWindow, ChannelTabApp, ChannelTabItem, FindStore, HitRow, PickRow, SharedRow};
-use slint::{ComponentHandle, ModelRc};
+use slint::{ComponentHandle, Model, ModelRc};
 
 fn hit(d: HitData) -> HitRow {
     let (avatar, has_avatar) = img(&d.avatar);
@@ -23,6 +23,7 @@ fn hit(d: HitData) -> HitRow {
         has_avatar,
         person: d.person.into(),
         rtl: d.rtl,
+        count: d.count,
     }
 }
 
@@ -204,5 +205,109 @@ impl UiHandle {
     /// Whether the open message menu's thread is followed.
     pub fn menu_following(&self, on: bool) {
         self.find_store(move |s| s.set_menu_following(on));
+    }
+}
+/// The kind of the message rows of the Unreads view (the group headers are not selectable).
+const MESSAGE_KIND: &str = "message";
+
+/// The message row the Unreads view's keyboard is on after `step`: 0 keeps `current`, 1 and -1
+/// go to the next and previous message row (the group headers are skipped, the ends do not
+/// wrap). `""` when no message is listed; a `current` that is not listed counts as the first.
+/// `rows` are `(kind, id)` in list order.
+pub fn unreads_step(rows: &[(String, String)], current: &str, step: i32) -> String {
+    let messages: Vec<&str> = rows
+        .iter()
+        .filter(|(kind, _)| kind == MESSAGE_KIND)
+        .map(|(_, id)| id.as_str())
+        .collect();
+    let Some(at) = messages.iter().position(|id| *id == current) else {
+        return messages
+            .first()
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+    };
+    let to = match step {
+        0 => at,
+        s if s > 0 => (at + 1).min(messages.len() - 1),
+        _ => at.saturating_sub(1),
+    };
+    messages[to].to_string()
+}
+
+/// Where `id` sits in `rows` (`(kind, id)` in list order), or -1.
+pub fn unreads_index(rows: &[(String, String)], id: &str) -> i32 {
+    rows.iter()
+        .position(|(_, row)| row == id)
+        .map_or(-1, |i| i as i32)
+}
+
+fn kinds_and_ids(rows: &ModelRc<HitRow>) -> Vec<(String, String)> {
+    rows.iter()
+        .map(|r| (r.kind.to_string(), r.id.to_string()))
+        .collect()
+}
+
+/// Attaches the Unreads view's keyboard helpers to a window.
+pub fn wire(window: &AppWindow) {
+    let s = window.global::<FindStore>();
+    s.on_unreads_step(|current, step, rows| {
+        unreads_step(&kinds_and_ids(&rows), &current, step).into()
+    });
+    s.on_unreads_index(|id, rows| unreads_index(&kinds_and_ids(&rows), &id));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows(spec: &[(&str, &str)]) -> Vec<(String, String)> {
+        spec.iter()
+            .map(|(k, id)| (k.to_string(), id.to_string()))
+            .collect()
+    }
+
+    fn list() -> Vec<(String, String)> {
+        rows(&[
+            ("unread-group", "g1"),
+            ("message", "a"),
+            ("message", "b"),
+            ("unread-group", "g2"),
+            ("message", "c"),
+        ])
+    }
+
+    #[test]
+    fn the_keyboard_walks_the_messages_and_skips_the_headers() {
+        let l = list();
+        assert_eq!(unreads_step(&l, "a", 1), "b");
+        assert_eq!(unreads_step(&l, "b", 1), "c", "over g2");
+        assert_eq!(unreads_step(&l, "c", -1), "b", "back over g2");
+        assert_eq!(unreads_step(&l, "b", -1), "a");
+    }
+
+    #[test]
+    fn the_keyboard_stops_at_both_ends_and_keeps_its_row_for_step_zero() {
+        let l = list();
+        assert_eq!(unreads_step(&l, "c", 1), "c");
+        assert_eq!(unreads_step(&l, "a", -1), "a");
+        assert_eq!(unreads_step(&l, "b", 0), "b");
+    }
+
+    #[test]
+    fn an_unlisted_row_means_the_first_message_and_no_messages_mean_nothing() {
+        let l = list();
+        assert_eq!(unreads_step(&l, "", 0), "a", "nothing chosen yet");
+        assert_eq!(unreads_step(&l, "gone", 1), "a", "its chat was read");
+        assert_eq!(unreads_step(&l, "g1", 0), "a", "a header is not a message");
+        assert_eq!(unreads_step(&[], "a", 1), "");
+        assert_eq!(unreads_step(&rows(&[("unread-group", "g")]), "", 0), "");
+    }
+
+    #[test]
+    fn the_index_is_the_position_in_the_whole_list() {
+        let l = list();
+        assert_eq!(unreads_index(&l, "g1"), 0);
+        assert_eq!(unreads_index(&l, "c"), 4);
+        assert_eq!(unreads_index(&l, "nope"), -1);
     }
 }

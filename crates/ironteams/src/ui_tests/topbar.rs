@@ -188,7 +188,11 @@ fn the_view_commands_open_what_their_names_say() {
 
     run("/saved");
     run("/mentions");
-    assert_eq!(*find.borrow(), ["quick saved", "quick mentions"]);
+    run("/unreads");
+    assert_eq!(
+        *find.borrow(),
+        ["quick saved", "quick mentions", "quick unreads"]
+    );
 
     run("/activity");
     assert_eq!(app.get_view(), "activity");

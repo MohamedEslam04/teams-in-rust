@@ -1800,6 +1800,12 @@ msgstr "الدردشات والقنوات معًا"
 msgid "Quick views"
 msgstr "عروض سريعة"
 
+msgid "Unreads"
+msgstr "غير المقروءة"
+
+msgid "Unread messages from your chats and channels are listed here."
+msgstr "تظهر هنا الرسائل غير المقروءة من الدردشات والقنوات."
+
 msgid "Mentions"
 msgstr "الإشارات"
 

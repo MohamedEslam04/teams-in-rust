@@ -28,6 +28,7 @@ mod dispatch;
 mod navigate;
 mod quick_lists;
 mod search;
+mod unreads;
 
 /// Messages asked from the server per page.
 const PAGE: u32 = 25;

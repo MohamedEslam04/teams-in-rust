@@ -505,6 +505,7 @@ pub fn install_local(window: &AppWindow) {
     crate::support::watchdog::start_ui();
     crate::loop_compose::install_local(window);
     palette::wire(window);
+    find::wire(window);
     message_toast::install_local(window);
     window.set_picker_items(picker_model("", window.get_skin_tone()));
     let weak = window.as_weak();

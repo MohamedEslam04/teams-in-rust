@@ -217,7 +217,7 @@ fn status_label(wire: &str) -> &'static str {
     }
 }
 
-/// Opens a quick view (`saved`, `mentions`) over the chat list's conversation pane.
+/// Opens a quick view (`unreads`, `saved`, `mentions`) over the chat list's conversation pane.
 fn open_quick(w: &AppWindow, kind: &str) {
     w.set_view(s("chat"));
     w.global::<FindStore>().invoke_command(s("quick"), s(kind));
@@ -238,6 +238,7 @@ fn run(w: &AppWindow, c: &Ctl, action: Action) -> bool {
             w.set_filter(s("unread"));
             w.invoke_set_filter(s("unread"));
         }
+        Action::Unreads => open_quick(w, "unreads"),
         Action::Saved => open_quick(w, "saved"),
         Action::Mentions => open_quick(w, "mentions"),
         Action::Activity => w.invoke_navigate(s("activity")),

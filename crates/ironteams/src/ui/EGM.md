@@ -15,7 +15,7 @@ Files:
 - `composer_apps.rs`: Fills the ComposerApps global from PickerData and wires its command callback to Cmd::ComposerApps.
 - `drive.rs`: Maps OneDrive backend view data (rows, cards, share, picker, versions, preview, info dialogs) into DriveStore; keeps rows in a thread-local VecModel updated in place.
 - `engage.rs`: Fills EngageStore (Viva Engage feed) and StorylineStore (profile, counts, posts) from backend data.
-- `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state.
+- `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state. Also the Unreads view's keyboard helpers (`unreads_step`, `unreads_index`, wired as pure FindStore callbacks).
 - `gifs.rs`: Fills GifStore items and status from GifRow results.
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).

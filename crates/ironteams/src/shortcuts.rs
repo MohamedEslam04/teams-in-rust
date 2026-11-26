@@ -29,6 +29,8 @@ pub fn action(key: &str, ctrl: bool, alt: bool, shift: bool) -> &'static str {
         (true, true, false, "z") => "filter-clear",
         (false, true, true, "r") => "focus-composer",
         (false, true, true, "m") => "focus-messages",
+        // Unreads: every unread message, by conversation.
+        (false, true, true, "u") => "unreads",
         (true, false, true, "x") => "expand-composer",
         (false, true, true, "o") => "attach-file",
         // The call button's Audio call and Video call (1:1 chats).
@@ -76,6 +78,7 @@ mod tests {
         assert_eq!(action("z", true, true, false), "filter-clear");
         assert_eq!(action("R", false, true, true), "focus-composer");
         assert_eq!(action("M", false, true, true), "focus-messages");
+        assert_eq!(action("U", false, true, true), "unreads");
         assert_eq!(action("X", true, false, true), "expand-composer");
         assert_eq!(action("E", true, false, true), "share-screen");
         assert_eq!(action("O", false, true, true), "attach-file");
