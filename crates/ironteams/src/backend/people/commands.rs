@@ -112,10 +112,15 @@ impl Engine {
                 .cloned()
                 .unwrap_or_default(),
         );
+        self.read_chat_extras(conv);
+    }
+
+    /// Reads the open chat's members, receipts, channel tabs and pins from the service, in the
+    /// background. Members, tabs and pins do not depend on each other: read together, not one
+    /// after the other (a channel's tabs waited for its members before).
+    fn read_chat_extras(self: &Arc<Self>, conv: &str) {
         let e = self.clone();
         let conv = conv.to_string();
-        // Members, tabs and pins do not depend on each other: read together, not one after the
-        // other (a channel's tabs waited for its members before).
         tokio::spawn(async move {
             tokio::join!(
                 async {
@@ -127,6 +132,23 @@ impl Engine {
                 e.refresh_pins(&conv),
             );
         });
+    }
+
+    /// The engine is online (the session was refreshed after a cache-first start, or the live
+    /// connection is back): the open chat reads what it could not before. A chat restored by a
+    /// cache-first start opens while the client has no service host, so its reads from the
+    /// service (members, receipts, channel tabs, and the account's scheduled list) failed or were
+    /// skipped then. The live call state is not here: it is read again every few seconds.
+    pub(crate) fn chat_online_reads(self: &Arc<Self>) {
+        let (conv, deferred) = {
+            let mut v = self.view.lock().unwrap();
+            (v.current.clone(), std::mem::take(&mut v.reads_deferred))
+        };
+        let Some(conv) = conv else { return };
+        self.load_scheduled_once();
+        if deferred {
+            self.read_chat_extras(&conv);
+        }
     }
 
     /// Remembers the members the aggregator snapshot lists for each chat.

@@ -360,6 +360,7 @@ impl Engine {
             v.unread_marker = marker;
             v.open_at = open_at;
             v.opening = true;
+            v.reads_deferred = !self.connected.load(std::sync::atomic::Ordering::Relaxed);
             v.loaded = false;
             v.not_member = false;
             v.at_bottom = true;
@@ -401,6 +402,14 @@ impl Engine {
                     d.teams = true;
                 });
                 anyhow::bail!("This conversation was deleted.");
+            }
+            // The session is not refreshed yet (a cache-first start): the saved messages stay on
+            // screen without a note, and the sync that runs once online reads the newest page.
+            Err(teams_proto::Error::NotReady) => {
+                tracing::debug!("chat history waits for the session refresh, showing the cache");
+                self.view.lock().unwrap().loaded = true;
+                self.mark(|d| d.messages = true);
+                return Ok(());
             }
             // No answer (a dropped connection, a suspend, no network): the saved messages are
             // already on screen, so say so quietly and try again instead of a red error.

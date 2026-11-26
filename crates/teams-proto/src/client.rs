@@ -516,7 +516,10 @@ impl Client {
         body: RawBody<'_>,
         extra: &[(&str, &str)],
     ) -> Result<RawResponse> {
-        let parsed = Url::parse(url).map_err(|e| Error::Protocol(format!("bad url {url}: {e}")))?;
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, Some(url)).await),
+        };
         if !audience_owns(aud, &parsed) {
             return Err(Error::Protocol(format!(
                 "{url} is not a host of {}",
@@ -594,6 +597,24 @@ impl Client {
         &self.epid
     }
 
+    /// The error for a request URL that does not parse. A URL with no host at all is what a
+    /// service host that the first token refresh has not set yet leaves behind
+    /// (`chat_service()`, `middle_tier()` and `presence_service()` are empty until then, and every
+    /// URL is formatted from one of them): that is [`Error::NotReady`], and nothing was sent.
+    /// After the refresh the same URL is a bug of the caller, so it stays a protocol error. `url`
+    /// is left out of the text where it may carry a secret (`None`).
+    async fn bad_url(&self, e: &url::ParseError, url: Option<&str>) -> Error {
+        if matches!(e, url::ParseError::RelativeUrlWithoutBase)
+            && self.state.lock().await.chat_service.is_empty()
+        {
+            return Error::NotReady;
+        }
+        match url {
+            Some(url) => Error::Protocol(format!("bad url {url}: {e}")),
+            None => Error::Protocol(format!("bad url: {e}")),
+        }
+    }
+
     /// Chat service base URL for this user's region.
     pub async fn chat_service(&self) -> String {
         self.state.lock().await.chat_service.clone()
@@ -647,12 +668,16 @@ impl Client {
         body: Option<&Value>,
         extra: &[(&str, &str)],
     ) -> Result<(u16, String, Option<String>)> {
+        // Before the refresh: a URL built on a service host that is not known yet has none, and
+        // refreshing here would only start a second refresh beside the one that is running.
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, Some(url)).await),
+        };
         self.ensure_fresh().await?;
         let mut refreshed = false;
         let mut resent = false;
         loop {
-            let parsed =
-                Url::parse(url).map_err(|e| Error::Protocol(format!("bad url {url}: {e}")))?;
             let tokens = self.tokens().await;
             let mut req = self.http.request(method.clone(), parsed.clone());
             for (k, v) in headers_for(&parsed, &tokens, &self.epid) {
@@ -723,8 +748,11 @@ impl Client {
         extra: &[(&str, String)],
         max_bytes: usize,
     ) -> Result<Vec<u8>> {
+        let parsed = match Url::parse(url) {
+            Ok(parsed) => parsed,
+            Err(e) => return Err(self.bad_url(&e, None).await),
+        };
         self.ensure_fresh().await?;
-        let parsed = Url::parse(url).map_err(|e| Error::Protocol(format!("bad url: {e}")))?;
         let tokens = self.tokens().await;
         let mut req = self.http.get(parsed.clone());
         for (k, v) in headers_for(&parsed, &tokens, &self.epid) {
@@ -1181,6 +1209,89 @@ mod tests {
         assert!(
             matches!(&err, Error::Auth(m) if m.contains(RESOURCE_SPACES)),
             "{err}"
+        );
+    }
+
+    /// A client restored from the saved session whose first refresh has not answered: no service
+    /// host yet, as between a cache-first start and `go_online`. Its refresh token is empty, so a
+    /// request that reached the token service would fail with an `Auth` or `Http` error instead.
+    fn before_the_first_refresh() -> Client {
+        Client::restore(Session {
+            tenant: String::new(),
+            refresh_token: String::new(),
+            epid: "test".into(),
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn scheduled_messages_before_the_first_refresh_is_not_ready_and_sends_nothing() {
+        let c = before_the_first_refresh();
+        assert_eq!(c.chat_service().await, "", "no host before the refresh");
+        let err = c.scheduled_messages().await.err().unwrap();
+        assert!(matches!(err, Error::NotReady), "{err:?}");
+        assert!(err.is_transient());
+    }
+
+    #[tokio::test]
+    async fn every_request_built_on_a_service_host_is_not_ready_before_the_first_refresh() {
+        // The guard is in the shared request path, not in one feature's call: the chat service,
+        // middle tier and presence hosts are all empty until the refresh answers.
+        let c = before_the_first_refresh();
+        let err = c.messages("48:notes", None, 30).await.err().unwrap();
+        assert!(matches!(err, Error::NotReady), "messages: {err:?}");
+        let err = c
+            .consumption_horizons("19:a@thread.v2")
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::NotReady), "horizons: {err:?}");
+        let err = c
+            .conversation_live_call("19:a@thread.v2")
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::NotReady), "live call: {err:?}");
+        let err = c.bytes("/v1/objects/x", &[], 1024).await.err().unwrap();
+        assert!(matches!(err, Error::NotReady), "bytes: {err:?}");
+        let err = c
+            .request_raw_as(
+                &Audience::Graph,
+                Method::GET,
+                "/v1.0/me",
+                RawBody::None,
+                &[],
+            )
+            .await
+            .err()
+            .unwrap();
+        assert!(matches!(err, Error::NotReady), "raw: {err:?}");
+    }
+
+    #[tokio::test]
+    async fn only_a_missing_host_before_the_refresh_is_not_ready() {
+        let relative = Url::parse("/v1/users/ME/drafts").unwrap_err();
+        let empty_host = Url::parse("https://").unwrap_err();
+        let before = before_the_first_refresh();
+        assert!(matches!(
+            before.bad_url(&relative, Some("/x")).await,
+            Error::NotReady
+        ));
+        assert!(matches!(
+            before.bad_url(&relative, None).await,
+            Error::NotReady
+        ));
+        // Another way a URL can be bad stays a protocol error, with or without the URL in it.
+        assert!(
+            matches!(before.bad_url(&empty_host, Some("https://")).await, Error::Protocol(m) if m.starts_with("bad url https://"))
+        );
+        assert!(
+            matches!(before.bad_url(&empty_host, None).await, Error::Protocol(m) if m.starts_with("bad url:"))
+        );
+        // After the refresh a URL with no host is a bug of the caller, not a start-up gap.
+        let after = Client::offline("test").unwrap();
+        assert!(
+            matches!(after.bad_url(&relative, Some("/x")).await, Error::Protocol(m) if m.starts_with("bad url /x"))
         );
     }
 }

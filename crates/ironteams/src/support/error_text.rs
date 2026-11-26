@@ -5,6 +5,9 @@
 /// the server's JSON (the log line of the failure has those).
 pub(crate) fn shown_error(err: &anyhow::Error) -> String {
     match err.downcast_ref::<teams_proto::Error>() {
+        Some(teams_proto::Error::NotReady) => {
+            "Still signing in to Teams. Try again in a moment.".to_owned()
+        }
         Some(e) if e.is_transient() => {
             "Couldn't reach Teams. Check the connection and try again.".to_owned()
         }
@@ -79,6 +82,13 @@ mod tests {
         assert_eq!(
             shown_error(&anyhow::anyhow!("This conversation was deleted.")),
             "This conversation was deleted."
+        );
+        // A command run before the session refresh answered says what is going on, not that the
+        // connection is bad.
+        let early = anyhow::Error::from(teams_proto::Error::NotReady);
+        assert_eq!(
+            shown_error(&early),
+            "Still signing in to Teams. Try again in a moment."
         );
     }
     #[test]

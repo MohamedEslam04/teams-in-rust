@@ -313,6 +313,9 @@ struct View {
     scheduled: Vec<teams_proto::scheduled::ScheduledMessage>,
     /// `scheduled` was read from the account once.
     scheduled_loaded: bool,
+    /// The open chat was opened before the engine was online, so its reads from the service (its
+    /// members, receipts and channel tabs) did not happen: `chat_online_reads` runs them.
+    reads_deferred: bool,
     /// Latest composer text of the current chat as the engine knows it.
     draft_text: String,
     /// `draft_text` (or the reply target) changed since it was last written to the store.
@@ -436,6 +439,9 @@ pub struct Engine {
     /// Tests: the error the next newest-page read of an opened chat answers with.
     #[cfg(test)]
     history_error: Mutex<Option<teams_proto::Error>>,
+    /// Tests: how many times the account's scheduled-message list was read.
+    #[cfg(test)]
+    scheduled_reads: AtomicU32,
     /// The live connection is up; while it is not, the outbox waits.
     connected: AtomicBool,
     /// One outbox flush at a time keeps messages in order.
@@ -556,6 +562,8 @@ impl Engine {
             last_unread: AtomicU32::new(u32::MAX),
             #[cfg(test)]
             history_error: Mutex::new(None),
+            #[cfg(test)]
+            scheduled_reads: AtomicU32::new(0),
             connected: AtomicBool::new(true),
             flush_lock: tokio::sync::Mutex::new(()),
             retry_pending: AtomicBool::new(false),
@@ -673,6 +681,8 @@ impl Engine {
         self.connected.store(true, Ordering::Relaxed);
         self.ui.connected(true);
         self.start_online();
+        // The chat restored before the refresh could not read from the service yet.
+        self.chat_online_reads();
         crate::start_timing::mark(crate::start_timing::Stage::Online);
     }
 
