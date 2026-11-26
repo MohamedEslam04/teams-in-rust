@@ -14,8 +14,7 @@ pub struct AccountRow {
 pub fn account_rows(cfg: &session::Config) -> Vec<AccountRow> {
     let mut cfg = cfg.clone();
     cfg.sync_active();
-    cfg.accounts
-        .iter()
+    cfg.usable_accounts()
         .map(|a| AccountRow {
             label: a.label.clone(),
             name: a.display_name.clone().unwrap_or_default(),

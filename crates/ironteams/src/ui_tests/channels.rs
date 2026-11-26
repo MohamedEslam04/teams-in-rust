@@ -241,8 +241,8 @@ fn chat_and_teams_each_return_to_their_own_last_conversation() {
     // The window state remembers the chat, not the channel, as the open chat.
     let mut s = session::window_state::WindowState::default();
     crate::window_state::remember_open_chat(&h.app, &mut s);
-    assert_eq!(s.last_chat.as_deref(), Some(NOTES));
-    assert_eq!(s.last_channel.as_deref(), Some(TECH));
+    assert_eq!(s.active_view().last_chat.as_deref(), Some(NOTES));
+    assert_eq!(s.active_view().last_channel.as_deref(), Some(TECH));
 
     // A channel opened from the chat list on the Chat page is that page's last chat.
     h.app.invoke_navigate("chat".into());

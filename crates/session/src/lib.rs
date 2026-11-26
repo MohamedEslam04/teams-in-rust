@@ -162,9 +162,67 @@ pub struct Account {
     /// The organizations last read from the Teams middle tier.
     #[serde(default)]
     pub orgs: Vec<OrgRef>,
+    /// What kind of account this is. A file without the key is a work account. A kind this
+    /// build does not know is kept as it is and the account is left alone (see
+    /// [`AccountKind::Unknown`]).
+    #[serde(default, skip_serializing_if = "AccountKind::is_work")]
+    pub kind: AccountKind,
+    /// The unread total (activity plus unread chats) when this account last quit; shown for an
+    /// account that is not running. `None` until it ran once with a build that saves it.
+    #[serde(default)]
+    pub last_unread: Option<u32>,
+    /// Fields a newer build wrote that this one does not know. They are written back unchanged.
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// The kind of an [`Account`]. Only work accounts exist today; a later build adds more (for
+/// example `"personal"`). A build that does not know a kind reads it as [`AccountKind::Unknown`]:
+/// the account is skipped (not listed, never started, never removed or rewritten) and its kind is
+/// written back as it was.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum AccountKind {
+    /// An Entra work or school account (also a guest in another organization).
+    #[default]
+    Work,
+    /// A kind this build does not understand, with the value found in the file.
+    Unknown(String),
+}
+
+impl AccountKind {
+    /// True for [`AccountKind::Work`], the only kind this build can use.
+    pub fn is_work(&self) -> bool {
+        matches!(self, AccountKind::Work)
+    }
+}
+
+impl Serialize for AccountKind {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            AccountKind::Work => ser.serialize_str("work"),
+            AccountKind::Unknown(raw) => ser.serialize_str(raw),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AccountKind {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> std::result::Result<Self, D::Error> {
+        // Any value reads: a wrong type from a newer build must not make the whole config fail.
+        Ok(match serde_json::Value::deserialize(de)? {
+            serde_json::Value::Null => AccountKind::Work,
+            serde_json::Value::String(s) if s == "work" => AccountKind::Work,
+            serde_json::Value::String(s) => AccountKind::Unknown(s),
+            other => AccountKind::Unknown(other.to_string()),
+        })
+    }
 }
 
 impl Account {
+    /// True when this build can sign in to the account (its kind is [`AccountKind::Work`]).
+    pub fn is_usable(&self) -> bool {
+        self.kind.is_work()
+    }
+
     fn fresh(label: &str) -> Account {
         Account {
             label: label.into(),
@@ -176,6 +234,9 @@ impl Account {
             epid: teams_proto::client::new_epid(),
             last_used_ms: None,
             orgs: Vec::new(),
+            kind: AccountKind::Work,
+            last_unread: None,
+            extra: Default::default(),
         }
     }
 }
@@ -309,8 +370,43 @@ impl Config {
                 epid: self.epid.clone(),
                 last_used_ms: None,
                 orgs: Vec::new(),
+                kind: AccountKind::Work,
+                last_unread: None,
+                extra: Default::default(),
             });
         }
+        // This build cannot run an account of another kind: start on the most recently used
+        // one it can (or a fresh signed-out one). The other entry stays in the list untouched.
+        if self.active_account().is_some_and(|a| !a.is_usable()) {
+            let recent = self.most_recent_usable().map(|a| a.label.clone());
+            let next = recent.unwrap_or_else(|| {
+                let label = self.free_label("default");
+                self.accounts.push(Account::fresh(&label));
+                label
+            });
+            self.load_active(&next);
+        }
+    }
+
+    /// The accounts this build can sign in to: every one except those of an unknown kind.
+    pub fn usable_accounts(&self) -> impl Iterator<Item = &Account> {
+        self.accounts.iter().filter(|a| a.is_usable())
+    }
+
+    fn most_recent_usable(&self) -> Option<&Account> {
+        self.usable_accounts()
+            .max_by_key(|a| a.last_used_ms.unwrap_or(0))
+    }
+
+    /// `base`, or `base-2`, `base-3`, ... when that label is taken.
+    fn free_label(&self, base: &str) -> String {
+        let mut label = base.to_string();
+        let mut n = 1;
+        while self.account_by_label(&label).is_some() {
+            n += 1;
+            label = format!("{base}-{n}");
+        }
+        label
     }
 
     /// Copies the legacy fields (which callers edit directly) into the active account.
@@ -367,6 +463,7 @@ impl Config {
         if self.account_by_label(label).is_none() {
             return Err(Error::Account(format!("no account {label:?}")));
         }
+        self.ensure_usable(label)?;
         if let Some(a) = self.accounts.iter_mut().find(|a| a.label == label) {
             a.last_used_ms = Some(now_ms());
         }
@@ -382,18 +479,42 @@ impl Config {
         if self.account_by_label(label).is_none() {
             return Err(Error::Account(format!("no account {label:?}")));
         }
+        self.ensure_usable(label)?;
         self.accounts.retain(|a| a.label != label);
-        if self.accounts.is_empty() {
-            self.accounts.push(Account::fresh("default"));
+        if self.usable_accounts().next().is_none() {
+            let fresh = self.free_label("default");
+            self.accounts.push(Account::fresh(&fresh));
         }
         if self.account == label {
             let next = self
-                .accounts
-                .iter()
-                .max_by_key(|a| a.last_used_ms.unwrap_or(0))
+                .most_recent_usable()
                 .map(|a| a.label.clone())
-                .expect("at least one account");
+                .expect("at least one usable account");
             self.load_active(&next);
+        }
+        Ok(())
+    }
+
+    /// An error unless the account `label` (which must exist) is of a kind this build can use.
+    fn ensure_usable(&self, label: &str) -> Result<()> {
+        match self.account_by_label(label) {
+            Some(a) if !a.is_usable() => Err(Error::Account(format!(
+                "account {label:?} is of a kind this version of IronTeams does not support"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// Remembers the unread total an account had when it quit. Fails for an unknown label and
+    /// for an account of an unknown kind, which is never rewritten.
+    pub fn set_last_unread(&mut self, label: &str, unread: u32) -> Result<()> {
+        self.sync_active();
+        if self.account_by_label(label).is_none() {
+            return Err(Error::Account(format!("no account {label:?}")));
+        }
+        self.ensure_usable(label)?;
+        if let Some(a) = self.accounts.iter_mut().find(|a| a.label == label) {
+            a.last_unread = Some(unread);
         }
         Ok(())
     }
@@ -424,6 +545,12 @@ impl Config {
 
     fn home_tenant(&self) -> Option<&str> {
         self.active_account().and_then(|a| a.home_tenant.as_deref())
+    }
+
+    /// The [`token_key`] of the active account in the tenant it works in: the label, or
+    /// `label@tenant` in a guest organization. Per-account state is keyed by it.
+    pub fn active_token_key(&self) -> String {
+        token_key(&self.account, &self.tenant, self.home_tenant())
     }
 
     /// Copies the settings a running app edits (composer, calendar) from `app` onto `self`.
@@ -1536,5 +1663,299 @@ mod tests {
             cache_dir: "/x".into(),
         };
         assert_eq!(p.db_path_for(&c), PathBuf::from("/d/cache-work.sqlite"));
+    }
+
+    // ---- account kinds and forward-compatible entries ----
+
+    fn acct(label: &str, kind: Option<&str>, last_used_ms: Option<i64>) -> serde_json::Value {
+        let mut v = serde_json::json!({
+            "label": label,
+            "tenant": "organizations",
+            "epid": format!("ep-{label}"),
+            "last_used_ms": last_used_ms,
+        });
+        if let Some(k) = kind {
+            v["kind"] = k.into();
+        }
+        v
+    }
+
+    fn config_with(active: &str, accounts: Vec<serde_json::Value>) -> Config {
+        let mut c: Config = serde_json::from_value(serde_json::json!({
+            "account": active,
+            "tenant": "organizations",
+            "epid": format!("ep-{active}"),
+            "accounts": accounts,
+        }))
+        .unwrap();
+        c.normalize();
+        c
+    }
+
+    #[test]
+    fn a_missing_kind_is_a_work_account_and_is_not_written() {
+        let a: Account = serde_json::from_value(acct("work", None, None)).unwrap();
+        assert_eq!(a.kind, AccountKind::Work);
+        assert!(a.is_usable());
+        assert_eq!(a.last_unread, None);
+        assert!(a.extra.is_empty());
+        let back = serde_json::to_value(&a).unwrap();
+        assert!(back.get("kind").is_none(), "{back}");
+
+        // The same for an explicit "work".
+        let a: Account = serde_json::from_value(acct("work", Some("work"), None)).unwrap();
+        assert_eq!(a.kind, AccountKind::Work);
+    }
+
+    #[test]
+    fn an_unknown_kind_and_unknown_fields_are_written_back_unchanged() {
+        let mut raw = acct("pers", Some("personal"), Some(7));
+        raw["last_unread"] = 3.into();
+        raw["future_field"] = serde_json::json!({"a": [1, 2], "b": null});
+        let a: Account = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(a.kind, AccountKind::Unknown("personal".into()));
+        assert!(!a.is_usable());
+        assert_eq!(a.last_unread, Some(3));
+        assert_eq!(a.extra.len(), 1);
+
+        let back = serde_json::to_value(&a).unwrap();
+        assert_eq!(back["kind"], "personal");
+        assert_eq!(back["future_field"], raw["future_field"]);
+        assert_eq!(back["last_unread"], 3);
+        // And it reads the same again.
+        assert_eq!(serde_json::from_value::<Account>(back).unwrap(), a);
+    }
+
+    #[test]
+    fn a_kind_of_the_wrong_type_does_not_break_the_file() {
+        let mut raw = acct("odd", None, None);
+        raw["kind"] = serde_json::json!({"x": 1});
+        let a: Account = serde_json::from_value(raw).unwrap();
+        assert!(matches!(a.kind, AccountKind::Unknown(_)));
+        let mut raw = acct("nul", None, None);
+        raw["kind"] = serde_json::Value::Null;
+        assert_eq!(
+            serde_json::from_value::<Account>(raw).unwrap().kind,
+            AccountKind::Work
+        );
+    }
+
+    #[test]
+    fn an_old_config_without_the_new_fields_loads() {
+        let old = r#"{"account":"default","tenant":"organizations","epid":"e",
+            "accounts":[{"label":"default","tenant":"organizations","epid":"e"}]}"#;
+        let mut c: Config = serde_json::from_str(old).unwrap();
+        c.normalize();
+        let a = &c.accounts[0];
+        assert_eq!(
+            (a.kind.clone(), a.last_unread, a.extra.len()),
+            (AccountKind::Work, None, 0)
+        );
+    }
+
+    #[test]
+    fn usable_accounts_skips_unknown_kinds() {
+        let c = config_with(
+            "work",
+            vec![
+                acct("work", None, Some(1)),
+                acct("pers", Some("personal"), Some(9)),
+                acct("other", Some("work"), None),
+            ],
+        );
+        let labels: Vec<_> = c.usable_accounts().map(|a| a.label.as_str()).collect();
+        assert_eq!(labels, ["work", "other"]);
+        assert_eq!(c.accounts.len(), 3, "the unknown one stays in the list");
+    }
+
+    #[test]
+    fn startup_falls_back_when_the_active_account_is_unknown() {
+        let (_dir, p) = temp_paths("kind-fallback");
+        std::fs::create_dir_all(&p.config_dir).unwrap();
+        let mut raw = serde_json::json!({
+            "account": "pers",
+            "tenant": "t-pers",
+            "epid": "ep-pers",
+            "self_mri": "8:orgid:pers",
+            "accounts": [
+                acct("old", None, Some(1)),
+                acct("pers", Some("personal"), Some(100)),
+                acct("recent", None, Some(50)),
+            ],
+        });
+        raw["accounts"][1]["tenant"] = "t-pers".into();
+        raw["accounts"][1]["future_field"] = "keep me".into();
+        std::fs::write(p.config_path(), raw.to_string()).unwrap();
+
+        let c = p.load_config().unwrap();
+        assert_eq!(c.account, "recent", "the most recently used work account");
+        assert_eq!(c.epid, "ep-recent");
+        assert_eq!(c.tenant, "organizations");
+        assert_eq!(
+            c.self_mri, None,
+            "the legacy fields follow the new active one"
+        );
+
+        // Saving keeps the entry it skipped exactly as it was.
+        p.save_config(&c).unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p.config_path()).unwrap()).unwrap();
+        assert_eq!(written["account"], "recent");
+        let pers = written["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["label"] == "pers")
+            .expect("not removed");
+        assert_eq!(pers["kind"], "personal");
+        assert_eq!(pers["future_field"], "keep me");
+        assert_eq!(pers["tenant"], "t-pers");
+        assert_eq!(pers["epid"], "ep-pers");
+        assert_eq!(pers["last_used_ms"], 100);
+    }
+
+    #[test]
+    fn startup_adds_a_fresh_account_when_none_is_usable() {
+        let c = config_with(
+            "default",
+            vec![
+                acct("default", Some("personal"), Some(1)),
+                acct("pers2", Some("personal"), Some(2)),
+            ],
+        );
+        assert_eq!(c.account, "default-2", "a free label, not the unknown one");
+        assert_eq!(c.accounts.len(), 3);
+        assert!(c.active_account().unwrap().is_usable());
+        assert_eq!(
+            c.account_by_label("default").unwrap().kind,
+            AccountKind::Unknown("personal".into())
+        );
+    }
+
+    #[test]
+    fn switching_to_an_unknown_account_is_refused() {
+        let mut c = config_with(
+            "work",
+            vec![
+                acct("work", None, Some(1)),
+                acct("pers", Some("personal"), None),
+            ],
+        );
+        let before = c.clone();
+        let err = c.switch_account("pers").unwrap_err().to_string();
+        assert!(
+            err.contains("pers") && err.contains("does not support"),
+            "{err}"
+        );
+        assert_eq!(c.account, "work");
+        assert_eq!(
+            c.account_by_label("pers"),
+            before.account_by_label("pers"),
+            "not rewritten, not even its last_used_ms"
+        );
+        // A usable one still works.
+        c.add_account("second").unwrap();
+        c.switch_account("second").unwrap();
+        assert_eq!(c.account, "second");
+    }
+
+    #[test]
+    fn an_unknown_account_is_never_removed() {
+        let mut c = config_with(
+            "work",
+            vec![
+                acct("work", None, Some(1)),
+                acct("pers", Some("personal"), None),
+            ],
+        );
+        assert!(c.remove_account("pers").is_err());
+        assert!(c.account_by_label("pers").is_some());
+
+        // Removing the only usable account leaves a fresh signed-out one beside the unknown.
+        c.remove_account("work").unwrap();
+        assert_eq!(c.account, "default");
+        assert!(c.active_account().unwrap().is_usable());
+        assert!(c.account_by_label("pers").is_some());
+        assert_eq!(c.accounts.len(), 2);
+    }
+
+    #[test]
+    fn removing_the_active_account_picks_a_usable_one() {
+        let mut c = config_with(
+            "work",
+            vec![
+                acct("work", None, Some(1)),
+                acct("pers", Some("personal"), Some(999)),
+                acct("b", None, Some(5)),
+            ],
+        );
+        c.remove_account("work").unwrap();
+        assert_eq!(c.account, "b", "never the more recent unknown account");
+    }
+
+    #[test]
+    fn last_unread_is_saved_per_account_and_survives_a_save() {
+        let (_dir, p) = temp_paths("unread");
+        let mut c = p.load_config().unwrap();
+        c.add_account("second").unwrap();
+        p.save_config(&c).unwrap();
+
+        p.update_config(|c| {
+            c.set_last_unread("second", 12)?;
+            c.set_last_unread("default", 0)
+        })
+        .unwrap();
+        let back = p.load_config().unwrap();
+        assert_eq!(
+            back.account_by_label("second").unwrap().last_unread,
+            Some(12)
+        );
+        assert_eq!(
+            back.account_by_label("default").unwrap().last_unread,
+            Some(0)
+        );
+
+        // Switching and saving (which syncs the legacy fields) does not clear it.
+        p.update_config(|c| c.switch_account("second")).unwrap();
+        p.save_config(&p.load_config().unwrap()).unwrap();
+        assert_eq!(
+            p.load_config()
+                .unwrap()
+                .account_by_label("second")
+                .unwrap()
+                .last_unread,
+            Some(12)
+        );
+
+        let mut c = p.load_config().unwrap();
+        assert!(c.set_last_unread("nope", 1).is_err());
+    }
+
+    #[test]
+    fn last_unread_is_not_written_for_an_unknown_account() {
+        let mut c = config_with(
+            "work",
+            vec![
+                acct("work", None, None),
+                acct("pers", Some("personal"), None),
+            ],
+        );
+        assert!(c.set_last_unread("pers", 4).is_err());
+        assert_eq!(c.account_by_label("pers").unwrap().last_unread, None);
+    }
+
+    #[test]
+    fn the_active_token_key_is_the_label_or_label_at_tenant() {
+        let mut c = config_with("work", vec![acct("work", None, None)]);
+        assert_eq!(c.active_token_key(), "work");
+        c.switch_tenant("guest-1").unwrap();
+        assert_eq!(c.active_token_key(), "work@guest-1");
+        c.set_orgs(vec![OrgRef {
+            tenant_id: "home-id".into(),
+            name: "Home".into(),
+            is_home: true,
+        }]);
+        c.switch_tenant("home-id").unwrap();
+        assert_eq!(c.active_token_key(), "work");
     }
 }
