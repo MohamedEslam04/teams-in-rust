@@ -723,17 +723,33 @@ impl UiHandle {
     /// Saved composer preferences: Enter behavior, emoji skin tone and the recent emoji row.
     pub fn prefs(&self, enter_sends: bool, skin_tone: u8, recent: Vec<String>) {
         self.run(move |w| {
+            let recent: Vec<ComposerEmoji> = recent
+                .into_iter()
+                .map(|ch| ComposerEmoji {
+                    ch: ch.into(),
+                    name: SharedString::new(),
+                })
+                .collect();
             w.set_enter_sends(enter_sends);
             w.set_skin_tone(skin_tone.into());
-            w.set_recent_emoji(model(
-                recent
-                    .into_iter()
-                    .map(|ch| ComposerEmoji {
-                        ch: ch.into(),
-                        name: SharedString::new(),
-                    })
-                    .collect(),
-            ));
+            w.set_recent_emoji(model(recent.clone()));
+            // The editor of a sent message is a composer too, and follows the same settings.
+            let edit = w.global::<crate::EditStore>();
+            edit.set_enter_sends(enter_sends);
+            edit.set_skin_tone(skin_tone.into());
+            edit.set_recent_emoji(model(recent));
+        });
+    }
+
+    /// The editor of a sent message opens in its row (`id`) with `text`, or closes (`id` empty).
+    pub fn inline_edit(&self, id: String, text: String) {
+        self.run(move |w| {
+            let edit = w.global::<crate::EditStore>();
+            edit.set_draft(text.into());
+            if id.is_empty() {
+                edit.set_focused(false);
+            }
+            edit.set_id(id.into());
         });
     }
 

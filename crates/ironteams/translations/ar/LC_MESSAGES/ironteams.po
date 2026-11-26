@@ -721,6 +721,9 @@ msgstr "الانتقال إلى الرسالة الأصلية"
 msgid "Find in chat or channel"
 msgstr "البحث في الدردشة أو القناة"
 
+msgid "Edit that message"
+msgstr "تحرير هذه الرسالة"
+
 msgid "Jump to the first message of the chat"
 msgstr "الانتقال إلى أول رسالة في الدردشة"
 

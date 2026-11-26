@@ -1,5 +1,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Msg } from "../tokens/types.slint";
+import { EditStore } from "../stores/edit_store.slint";
+import { Composer } from "composer.slint";
 import { AddReactionChip, Icon, IconButton, ReactionChip } from "../atoms/widgets.slint";
 import { FileCard, LoopCardView, MeetLinkCard } from "../molecules/cards.slint";
 import { Avatar } from "../atoms/avatar.slint";
@@ -21,6 +23,12 @@ import { Fixed } from "../tokens/fixed.slint";
 // never sees a right click on them: the hovered row opens its menu from this count instead.
 export global MessagePointer {
     in-out property <int> right-clicks;
+    // Left clicks the window saw (`main.rs`), and the request that follows from one on a message:
+    // the window takes the keyboard (`AppKeys`), so a key like E is not typed into the composer.
+    in-out property <int> left-clicks;
+    in-out property <int> focus-tick;
+    // The message of mine under the pointer that the E key edits (`key-edit` rows only), or "".
+    in-out property <string> edit-id;
 }
 
 // A reader's photo under my message: their initials in a small circle that slides in from the
@@ -203,6 +211,25 @@ export component MessageRow inherits TouchArea {
     callback react(string);
     callback reply();
     callback edit();
+    // The row's list wires `edit` to the window's, so E over the row (or its hover bar) edits it
+    // (`MessagePointer.edit-id`, read by `AppKeys`).
+    in property <bool> key-edit: false;
+    // The pointer is on the hover bar, which sits above the row.
+    property <bool> bar-hover: false;
+    // This message is the one being edited (`EditStore`): its editor takes the place of its words.
+    property <bool> editing-here: root.key-edit && root.m.id != "" && EditStore.id == root.m.id;
+    // The same condition as the hover bar's Edit button, and not while its editor is open.
+    property <string> hover-edit-id: root.key-edit && !root.editing-here && root.m.mine && !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed && (root.has-hover || root.bar-hover) ? root.m.id : "";
+    property <string> claimed-edit-id;
+    changed hover-edit-id => {
+        if self.hover-edit-id != "" {
+            MessagePointer.edit-id = self.hover-edit-id;
+            self.claimed-edit-id = self.hover-edit-id;
+        } else {
+            if MessagePointer.edit-id == self.claimed-edit-id { MessagePointer.edit-id = ""; }
+            self.claimed-edit-id = "";
+        }
+    }
     // "More reactions" and the "…" menu, anchored at window coordinates.
     callback more-reactions(length, length);
     callback menu(length, length);
@@ -260,6 +287,15 @@ export component MessageRow inherits TouchArea {
     property <int> right-clicks: MessagePointer.right-clicks;
     changed right-clicks => {
         if root.has-hover { root.open-menu-here(); }
+    }
+    // A click on the message (its words take the press themselves, so this is the window's count)
+    // moves the keyboard off the composer. Not for the hover bar, whose buttons act on their own,
+    // nor for the editor, which keeps the keyboard.
+    property <int> left-clicks: MessagePointer.left-clicks;
+    changed left-clicks => {
+        if root.key-edit && root.has-hover && !root.bar-hover && !root.editing-here && !root.select-mode {
+            MessagePointer.focus-tick += 1;
+        }
     }
 
     if root.m.selected: Rectangle { background: Theme.accent-wash; }
@@ -445,6 +481,24 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
+                    // The message is being edited: the composer, in its `inline-edit` mode, with the
+                    // message's text and formatting, in place of the words.
+                    if root.editing-here: Composer {
+                        inline-edit: true;
+                        editing-id: root.m.id;
+                        min-width: min(520px, max(240px, root.max-bubble - 28px));
+                        draft <=> EditStore.draft;
+                        enter-sends <=> EditStore.enter-sends;
+                        skin-tone <=> EditStore.skin-tone;
+                        recent-emoji: EditStore.recent-emoji;
+                        input-focus(f) => { EditStore.focused = f; }
+                        send(text) => { EditStore.save(text); }
+                        cancel-reply => { EditStore.cancel(); }
+                        draft-edited(text) => { EditStore.draft-edited(text); }
+                        emoji-used(e) => { EditStore.emoji-used(e); }
+                        skin-tone-changed(t) => { EditStore.skin-tone-changed(t); }
+                    }
+
                     if root.m.deleted: Text { text: @tr("This message has been deleted."); color: Theme.fg-subtle; font-italic: true; font-size: 13px * Theme.font-scale; }
 
                     if !root.m.deleted && root.m.card.length > 0: CardView {
@@ -453,7 +507,7 @@ export component MessageRow inherits TouchArea {
                         open-url(u) => { root.open-url(u); }
                     }
 
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0 && !root.by-blocks: StyledText {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0 && !root.by-blocks && !root.editing-here: StyledText {
                         text: root.m.body;
                         // The layout would keep the bubble as wide as the longest word (a URL, a path);
                         // with no minimum the text wraps inside the bubble, breaking such a word.
@@ -467,7 +521,7 @@ export component MessageRow inherits TouchArea {
                     }
 
                     // A text with code blocks: its runs of text and its boxes of code, in order.
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0 && !root.by-blocks: VerticalLayout {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0 && !root.by-blocks && !root.editing-here: VerticalLayout {
                         spacing: 6px;
                         for p in root.m.parts: VerticalLayout {
                             if !p.is-code: StyledText {
@@ -488,7 +542,7 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
-                    if root.post-style && root.m.blocks.length > 0 && !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != ""): PostBlocks {
+                    if root.post-style && root.m.blocks.length > 0 && !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && !root.editing-here: PostBlocks {
                         blocks: root.m.blocks;
                         code-min: min(240px, root.max-bubble);
                         open-url(u) => { root.open-url(u); }
@@ -658,6 +712,7 @@ export component MessageRow inherits TouchArea {
                     property <length> left-in-row: parent.absolute-position.x - root.absolute-position.x;
                     property <length> above: -(self.height - 8px);
                     enabled: root.has-hover || self.has-hover;
+                    changed has-hover => { root.bar-hover = self.has-hover; }
                     width: (SettingsStore.quick-reactions.length + (root.m.mine ? 4 : 3)) * 30px + 1px + 8px;
                     height: 32px;
                     x: max(8px - self.left-in-row, min(root.width - 8px - self.left-in-row - self.width, root.m.mine && !root.left-side ? parent.width - self.width - 8px : max(0px, parent.width - self.width - 8px)));

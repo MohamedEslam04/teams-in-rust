@@ -157,7 +157,11 @@ pub enum Cmd {
     React(String, String),
     Reply(String),
     CancelReply,
+    /// Edit one of my messages: its row shows an editor with the message's text.
     Edit(String),
+    /// Save in that editor: the edit goes out like the composer's, and the editor closes. Ignored
+    /// when the edit was dropped meanwhile (Esc, another chat), so it never sends a new message.
+    SaveEdit(String),
     Delete(String),
     OpenUrl(String),
     OpenThread(String),
@@ -871,7 +875,9 @@ impl Engine {
                     self.ui
                         .reply_bar(self.sender_display_name(&r), reply_preview(&r), false);
                     let mut v = self.view.lock().unwrap();
-                    v.editing = None;
+                    if v.editing.take().is_some() {
+                        self.ui.inline_edit(String::new(), String::new());
+                    }
                     v.reply_to = Some(r);
                     drop(v);
                     self.schedule_draft_save();
@@ -882,31 +888,37 @@ impl Engine {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row.filter(|r| r.sender_mri == self.me) {
                     // Only the author's own text is edited; a forwarded or quoted message is kept.
+                    // The text comes back in the composer's own source (bold, lists, links), so
+                    // sending it again gives the same message.
                     let split = ::render::split_quote_blocks(&r.content_html);
-                    let text = ::render::plain_text(&::render::parse_teams_html(&split.body));
+                    let text = ::render::composer_source(&::render::parse_rich_html(&split.body));
                     let text = self.restore_edit_mentions(&r, text);
-                    let banner = if text.is_empty() {
-                        reply_preview(&r)
-                    } else {
-                        text.chars().take(120).collect()
-                    };
-                    self.ui.reply_bar(String::new(), banner, true);
-                    self.ui.set_draft(text);
+                    // The editor is in the message's row; a reply bar over the composer would
+                    // be for a reply this edit drops.
+                    self.ui.reply_bar(String::new(), String::new(), false);
+                    self.ui.inline_edit(r.id.clone(), text);
                     let mut v = self.view.lock().unwrap();
                     v.reply_to = None;
                     v.editing = Some(r.id);
                     v.edit_quotes = (split.before, split.after);
                 }
-                self.ui.focus();
+            }
+            Cmd::SaveEdit(text) => {
+                if self.view.lock().unwrap().editing.is_some() {
+                    self.send(text, String::new()).await?;
+                } else {
+                    self.ui.inline_edit(String::new(), String::new());
+                }
             }
             Cmd::CancelReply => {
                 let mut v = self.view.lock().unwrap();
                 v.reply_to = None;
-                if v.editing.take().is_some() {
-                    // Back to the draft that was in the composer before the edit.
-                    self.ui.set_draft(v.draft_text.clone());
-                }
+                let was_editing = v.editing.take().is_some();
                 drop(v);
+                if was_editing {
+                    // The composer was left as it was; only the editor in the row goes.
+                    self.ui.inline_edit(String::new(), String::new());
+                }
                 self.ui.reply_bar(String::new(), String::new(), false);
                 self.schedule_draft_save();
             }

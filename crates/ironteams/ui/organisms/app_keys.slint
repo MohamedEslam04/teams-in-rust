@@ -4,8 +4,10 @@
 import { AppsStore } from "../stores/apps_store.slint";
 import { ChannelStore } from "channel_posts.slint";
 import { DirectCallStore } from "call_incoming.slint";
+import { EditStore } from "../stores/edit_store.slint";
 import { FindStore } from "../stores/find_store.slint";
 import { ListStore } from "lists.slint";
+import { MessagePointer } from "message_row.slint";
 import { PaletteStore } from "../stores/palette_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
@@ -18,8 +20,12 @@ export component AppKeys inherits FocusScope {
     callback cancel-reply;
     callback catch-up(int);
     callback close-thread;
+    // E with the pointer over a message of mine: start editing it (message id).
+    callback edit-message(string);
     in-out property <bool> composer-expanded;
     in property <bool> composer-focused;
+    // The composer holds no text (E may then edit the message under the pointer).
+    in property <bool> composer-empty;
     in property <string> current-id;
     in-out property <string> filter;
     in-out property <int> focus-tick;
@@ -55,16 +61,28 @@ export component AppKeys inherits FocusScope {
     changed no-channel => {
         if self.no-channel && !PaletteStore.open { self.focus(); }
     }
+    // A click on a message took the keyboard off the composer, so E (and the other keys of this
+    // scope) work after it.
+    property <int> click-focus: MessagePointer.focus-tick;
+    changed click-focus => { self.focus(); }
+    // The composer, or the editor of a sent message, has the keyboard.
+    property <bool> typing-in-composer: root.composer-focused || (EditStore.id != "" && EditStore.focused);
     // Shift+Esc marks every chat read, wherever the focus is. The Activity view handles it
     // itself (marks every Activity item read).
     capture-key-pressed(event) => {
+        // E over one of my messages edits it while the composer has the focus but holds no text:
+        // there it would only type an "e" (a text box that holds text keeps its letters).
+        if root.composer-focused && root.composer-empty && MessagePointer.edit-id != "" && !root.menu-open && ShortcutApi.edit-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta) {
+            root.edit-message(MessagePointer.edit-id);
+            return accept;
+        }
         if (event.text == Key.Escape && event.modifiers.shift && root.view != "activity") {
             root.mark-all-read();
             return accept;
         }
         // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
         // are the numbered and bullet list (Teams), so they stay with the composer there.
-        if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
+        if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.typing-in-composer && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
             AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
             return accept;
         }
@@ -80,6 +98,13 @@ export component AppKeys inherits FocusScope {
     // Esc, when nothing else took it: closes the shortcut list, then the active split pane, then
     // the thread, then the reply.
     key-pressed(event) => {
+        // E over one of my messages edits it, like Teams. Only keys no text box took get here
+        // (a text box keeps its letters), so typing "e" still types; the composer is the one
+        // text box that gives it up, when it is empty (`capture-key-pressed` above).
+        if MessagePointer.edit-id != "" && !root.menu-open && ShortcutApi.edit-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta) {
+            root.edit-message(MessagePointer.edit-id);
+            return accept;
+        }
         if event.text == Key.Escape && !event.modifiers.shift {
             if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
             if PeopleStore.jump-date-open { PeopleStore.jump-date-open = false; root.focus-tick += 1; return accept; }

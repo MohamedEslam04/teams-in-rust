@@ -5,6 +5,7 @@
 //! the other way for the composer.
 
 mod compose;
+mod composer_source;
 pub mod edit;
 pub mod lines;
 mod links;
@@ -14,6 +15,7 @@ mod quotes;
 mod rich;
 
 pub use compose::{reply_html, reply_quote_html, text_to_teams_html};
+pub use composer_source::composer_source;
 pub use links::{
     is_loop_link, is_meeting_link, linkify, linkify_doc, linkify_spans, links, loop_title,
 };
