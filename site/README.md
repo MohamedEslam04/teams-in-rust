@@ -87,4 +87,4 @@ node -e 'const R=require("./site/js/releases.js");const p=R.pick(R.normalize(req
 - The screenshots in `docs/screenshots/` are not used: they show the old name "kelma" in the window,
   and the PNGs on `dev` have a damaged text chunk from the rename.
 
-Docs synced to commit 7101a666 ("Merge pull request #94 from MohamedEslam04/fix/avatar-retry-after-start", 2026-11-26)
+Docs synced to commit dd3fc859 ("Merge pull request #98 from MohamedEslam04/fix/layer-check-removed-aliases", 2026-11-26)

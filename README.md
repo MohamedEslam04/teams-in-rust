@@ -429,4 +429,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 7101a666 ("Merge pull request #94 from MohamedEslam04/fix/avatar-retry-after-start", 2026-11-26)
+Docs synced to commit dd3fc859 ("Merge pull request #98 from MohamedEslam04/fix/layer-check-removed-aliases", 2026-11-26)
