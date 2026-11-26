@@ -17,6 +17,10 @@ pub enum FindCmd {
     Unfollow(String),
     /// Removes a row of the Saved quick view from the saved list.
     Unsave(String),
+    /// "Mark as read" on a conversation header of the Unreads view (the header row's id).
+    UnreadsRead(String),
+    /// "Mark all as read" in the Unreads view.
+    UnreadsReadAll,
     FindOpen,
     FindClose,
     FindQuery(String),
@@ -82,6 +86,8 @@ impl FindCmd {
             "quick-close" => FindCmd::QuickClose,
             "unfollow" => FindCmd::Unfollow(a),
             "unsave" => FindCmd::Unsave(a),
+            "unreads-read" => FindCmd::UnreadsRead(a),
+            "unreads-read-all" => FindCmd::UnreadsReadAll,
             "find-open" => FindCmd::FindOpen,
             "find-close" => FindCmd::FindClose,
             "find-query" => FindCmd::FindQuery(a),
@@ -220,7 +226,8 @@ pub(in super::super) struct Hit {
     pub(super) name: String,
     /// Where it happened (`Team › channel`, a chat's title) or a person's job.
     pub(super) place: String,
-    /// Plain text to show a snippet of.
+    /// Plain text to show a snippet of. On an `unread-group` header (a conversation of the
+    /// Unreads view) it is the number of unread messages listed under it.
     pub(super) text: String,
     /// A snippet the cache's search index cut and marked (`store::MARK_START`…), shown instead
     /// of highlighting `text`; empty for the other hits.

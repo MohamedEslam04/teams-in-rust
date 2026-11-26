@@ -21,6 +21,7 @@ mod instance;
 mod key_layout;
 mod language;
 mod lists_data;
+mod lists_sort;
 mod logging;
 mod loop_compose;
 mod malloc_arenas;
@@ -34,6 +35,7 @@ mod reactions;
 mod relaunch;
 mod renderer;
 mod send_options;
+mod shortcut_keys;
 mod shortcuts;
 mod sign_in_failure;
 mod snippets;
@@ -787,6 +789,7 @@ fn main() -> anyhow::Result<()> {
     ui::message_toast::install(&window, tx.clone());
     ui::settings::install_system(&window, tx.clone());
     snippets::install_system(&window);
+    shortcut_keys::install_system(&window);
     ui::topbar::install(&window, session::Paths::new().ok().map(|p| p.config_dir));
     #[cfg(feature = "calls")]
     ui::call_direct::install(&window, tx.clone());
@@ -818,6 +821,12 @@ fn main() -> anyhow::Result<()> {
             if let Some(c) = backend::RemindCmd::parse(&name, &arg) {
                 let _ = tx.send(Cmd::Remind(c));
             }
+        });
+    }
+    {
+        let tx = tx.clone();
+        window.global::<ChatNoteStore>().on_edited(move |text| {
+            let _ = tx.send(Cmd::NoteEdited(text.into()));
         });
     }
     {

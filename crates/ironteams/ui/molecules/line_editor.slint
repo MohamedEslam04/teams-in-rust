@@ -34,10 +34,20 @@
 // `caret` (a child of the input) is drawn instead, `text-cursor-width` wide, just inside the edge.
 // It does not blink.
 //
+// Images between the lines (docs/designs/composer-inline-images.md): a line that is exactly one
+// image marker (`LineApi.image-slot`) of a live image in `images` is drawn as that picture with an
+// X. Its input stays, so the cursor can rest on it and the arrows cross it, but it is read-only
+// and its text is not drawn; the picture is outlined while the cursor is on it. There Backspace,
+// Delete and the X remove the image's line, and Up, Down and Enter move to the line before or
+// after. Backspace at the start of the line after an image, or Delete at the end of the line
+// before one, removes the image too.
+//
 // What it does not do: any other selection stays inside one line (no Shift+Up/Down), and an
 // input's own undo only knows its own line.
 import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
+import { InlineImage } from "../tokens/types.slint";
+import { Icon } from "../atoms/widgets.slint";
 
 // Rust side: src/composer_lines.rs. Offsets are byte offsets into the whole text.
 export global LineApi {
@@ -64,6 +74,10 @@ export global LineApi {
     pure callback step(string, int, int, bool) -> int;
     // Whether a key's text is a typed character (not a special key)
     pure callback printable(string) -> bool;
+    // line -> the slot of the image whose marker the line is, or -1 (src/support/inline_images.rs)
+    pure callback image-slot(string) -> int;
+    // Whether the text has an image line
+    pure callback has-images(string) -> bool;
 }
 
 export component LineEditor inherits Rectangle {
@@ -75,6 +89,8 @@ export component LineEditor inherits Rectangle {
     out property <int> anchor-position-byte-offset: root.anchor;
     out property <bool> focused: root.focus-line >= 0;
     out property <length> text-height: lines-box.preferred-height;
+    // The pictures of the image lines, by slot.
+    in property <[InlineImage]> images;
     // The text was edited by typing or pasting (not when it is set from outside).
     callback edited();
 
@@ -145,6 +161,28 @@ export component LineEditor inherits Rectangle {
         root.edited();
     }
 
+    // Line `k` is the line of a live image.
+    pure function is-image-line(k: int) -> bool {
+        let s = LineApi.image-slot(root.lines[k]);
+        return s >= 0 && s < root.images.length && root.images[s].live;
+    }
+
+    // Removes image line `k` with one line break. The cursor goes to the end of the line before
+    // (`keep-before`) or to the start of the line after (the end of the text for the last line).
+    function remove-line(k: int, keep-before: bool) {
+        let first = LineApi.offset-of(root.own, k, 0);
+        let last = k >= root.lines.length - 1;
+        let start = last && k > 0 ? first - 1 : first;
+        let end = last ? LineApi.offset-of(root.own, 2000000000, 0) : LineApi.offset-of(root.own, k + 1, 0);
+        let at = keep-before && k > 0 ? first - 1 : start;
+        root.whole = false;
+        root.own = LineApi.splice(root.own, start, end, "");
+        root.text = root.own;
+        LineApi.update(root.lines, root.own);
+        root.request(at, at, true);
+        root.edited();
+    }
+
     // Ctrl+A: every line shows as selected, the selection is the whole text.
     function select-all() {
         let total = LineApi.offset-of(root.own, 2000000000, 0);
@@ -209,7 +247,12 @@ export component LineEditor inherits Rectangle {
             height: max(flick.height, self.preferred-height);
             for line[i] in root.lines: ti := TextInput {
                 text <=> line;
-                color: root.c.fg;
+                // The line of an image: drawn as its picture (below), not as text.
+                property <bool> is-image: root.is-image-line(i);
+                property <int> slot: LineApi.image-slot(line);
+                read-only: self.is-image;
+                color: self.is-image ? transparent : root.c.fg;
+                min-height: self.is-image ? 104px : root.row-height;
                 font-size: root.font-size;
                 single-line: false;
                 wrap: word-wrap;
@@ -368,6 +411,36 @@ export component LineEditor inherits Rectangle {
                             return accept;
                         }
                     }
+                    // An image line takes no typing: Backspace and Delete remove the image, Up,
+                    // Down and Enter move off it.
+                    if self.is-image && normal && !root.whole {
+                        if event.text == Key.Backspace || event.text == Key.Delete {
+                            root.remove-line(i, event.text == Key.Backspace);
+                            return accept;
+                        }
+                        if event.text == Key.UpArrow && plain {
+                            let up = i > 0 ? LineApi.offset-of(root.own, i, 0) - 1 : 0;
+                            root.request(up, up, true);
+                            return accept;
+                        }
+                        if (event.text == Key.DownArrow && plain) || event.text == Key.Return {
+                            if i < root.lines.length - 1 {
+                                let down = LineApi.offset-of(root.own, i + 1, 0);
+                                root.request(down, down, true);
+                            }
+                            return accept;
+                        }
+                    }
+                    // Backspace at the start of the line after an image, or Delete at the end of
+                    // the line before one, removes the image.
+                    if event.text == Key.Backspace && at-start && normal && i > 0 && !event.modifiers.control && root.is-image-line(i - 1) {
+                        root.remove-line(i - 1, false);
+                        return accept;
+                    }
+                    if event.text == Key.Delete && at-end && normal && i < root.lines.length - 1 && !event.modifiers.control && root.is-image-line(i + 1) {
+                        root.remove-line(i + 1, true);
+                        return accept;
+                    }
                     // Home and End: the start and the end of the line in the text, in any direction (a
                     // TextInput resolves them on screen, so in a right to left line Home went to the
                     // left edge, the end of the text). Shift extends the selection; Ctrl goes to the start
@@ -448,6 +521,45 @@ export component LineEditor inherits Rectangle {
                     width: ti.caret-clipped ? ti.text-cursor-width : 0px;
                     height: root.row-height;
                     background: ti.color;
+                }
+
+                // The picture of an image line, outlined while the cursor is on it, and its X.
+                if ti.is-image: Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: ti.width;
+                    height: ti.height;
+                    image-frame := Rectangle {
+                        x: 0px;
+                        y: 4px;
+                        width: pic.width + 4px;
+                        height: pic.height + 4px;
+                        border-radius: 4px;
+                        border-width: 2px;
+                        border-color: ti.has-focus ? root.c.accent : root.c.border;
+                        pic := Image {
+                            x: 2px;
+                            y: 2px;
+                            width: root.images[ti.slot].preview.width * 1px;
+                            height: root.images[ti.slot].preview.height * 1px;
+                            source: root.images[ti.slot].preview;
+                        }
+                    }
+                    Rectangle {
+                        x: image-frame.width + 6px;
+                        y: 4px;
+                        width: 22px;
+                        height: 22px;
+                        border-radius: 4px;
+                        background: image-x.has-hover ? root.c.surface-hover : transparent;
+                        accessible-role: button;
+                        accessible-label: @tr("Remove image");
+                        Icon { c: root.c; source: @image-url("../icons/close.svg"); width: 12px; height: 12px; x: 5px; y: 5px; }
+                        image-x := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.remove-line(i, false); }
+                        }
+                    }
                 }
             }
         }

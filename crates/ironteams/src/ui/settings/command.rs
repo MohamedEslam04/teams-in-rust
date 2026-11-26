@@ -140,7 +140,8 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 r => saved(w, r),
             }
         }
-        "accent" | "density" | "font-step" | "font-scale" => {
+        "accent" | "density" | "font-step" | "font-scale" | "message-style" | "show-avatars"
+        | "show-timestamps" | "show-reactions" => {
             let mut c = shared.borrow_mut();
             let a = &mut c.local.appearance;
             match name {
@@ -152,6 +153,12 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                         Density::Comfy
                     }
                 }
+                "message-style" => {
+                    a.message_style = MessageStyle::from_slug(arg).unwrap_or_default();
+                }
+                "show-avatars" => a.show_avatars = bit(arg),
+                "show-timestamps" => a.show_timestamps = bit(arg),
+                "show-reactions" => a.show_reactions = bit(arg),
                 "font-step" => {
                     let v = st::step_font_scale(a.font_scale, arg.parse().unwrap_or(0));
                     a.set_font_scale(v);
@@ -218,6 +225,24 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             c.local.general.renderer = appearance::Renderer::parse(arg).unwrap_or_default();
             let r = c.local.save_general();
             push_local(w, &c);
+            saved(w, r);
+        }
+        // --- App bar: `rail-move` (key, up|down, rail), `rail-show` (key, 0|1), `rail-auto` ---
+        // "rail" after the direction: a move from the rail's menu jumps over the hidden entries.
+        "rail-move" | "rail-show" | "rail-auto" => {
+            let mut c = shared.borrow_mut();
+            let key = parts[0];
+            let arg1 = parts.get(1).copied().unwrap_or("");
+            match name {
+                "rail-move" => {
+                    let from_rail = parts.get(2) == Some(&"rail");
+                    c.local.rail.move_item(key, arg1 == "up", from_rail);
+                }
+                "rail-show" => c.local.rail.set_hidden(key, !bit(arg1)),
+                _ => c.local.rail.auto_collapse = bit(arg),
+            }
+            let r = c.local.save_rail();
+            push_rail(w, &c.local.rail);
             saved(w, r);
         }
         // --- Accessibility ---
@@ -839,6 +864,39 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 arg.parse()
                     .unwrap_or(appearance::general::WHEEL_SPEED_DEFAULT),
             );
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
+        // `<slot>:<reaction key>` from the reaction picker Chats opened for a slot of the hover bar.
+        "quick-reaction" => {
+            let mut c = shared.borrow_mut();
+            if let Some((slot, key)) = arg.split_once(':')
+                && let Ok(slot) = slot.parse::<usize>()
+                && crate::reactions::is_accepted_key(key)
+            {
+                let next = appearance::general::with_quick_reaction(
+                    &c.local.general.quick_reactions,
+                    slot,
+                    key,
+                );
+                c.local.general.quick_reactions = next;
+                let r = c.local.save_general();
+                push_local(w, &c);
+                saved(w, r);
+            }
+        }
+        "quick-reaction-reset" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.quick_reactions = appearance::general::default_quick_reactions();
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
+        "start-page" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.start_page =
+                appearance::general::StartPage::from_slug(arg).unwrap_or_default();
             let r = c.local.save_general();
             push_local(w, &c);
             saved(w, r);

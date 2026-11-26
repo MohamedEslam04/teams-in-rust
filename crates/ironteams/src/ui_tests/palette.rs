@@ -3,7 +3,7 @@
 //! Only the stores' own callbacks are recorded; nothing here can change a status or sign out.
 
 use super::*;
-use crate::{CallsPageStore, ChatRow, PaletteStore, SettingsStore};
+use crate::{CallsPageStore, ChatRow, PaletteStore, RemindStore, SettingsStore};
 use appearance::GeneralPrefs;
 
 fn chord(app: &AppWindow, mods: &[Key], text: &str) {
@@ -290,6 +290,21 @@ fn used_actions_come_first_when_the_palette_opens_again() {
     enter(&app);
     reopen(&app);
     assert_eq!(labels(&app)[..2], ["Go to Teams", "Go to Calendar"]);
+}
+
+#[test]
+fn open_later_shows_the_later_page_and_asks_for_its_list() {
+    let app = open_palette();
+    let sent = Rc::new(RefCell::new(Vec::new()));
+    let s = sent.clone();
+    app.global::<RemindStore>()
+        .on_command(move |n, a| s.borrow_mut().push((n.to_string(), a.to_string())));
+    type_text(&app, "open later");
+    assert_eq!(labels(&app).first().map(String::as_str), Some("Open Later"));
+    enter(&app);
+    assert!(app.global::<RemindStore>().get_later_open());
+    assert_eq!(*sent.borrow(), [("refresh".to_string(), String::new())]);
+    assert!(!is_open(&app));
 }
 
 #[test]

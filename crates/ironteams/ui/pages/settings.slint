@@ -10,12 +10,14 @@ import { SettingsStore, SFind } from "../stores/settings_store.slint";
 import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
 import { SettingsLinkRow, SettingsMetrics, SettingsNote, SettingsSection } from "../molecules/settings_kit.slint";
 import { Space } from "../tokens/space.slint";
+import { ShortcutsPage } from "settings_shortcuts.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage, StoragePage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { CountBadge } from "../atoms/chip.slint";
 import { Fixed } from "../tokens/fixed.slint";
+import { EmojiPanel } from "../organisms/composer_popups.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -26,6 +28,8 @@ export component SettingsPage inherits Rectangle {
     // Chats › "Press Enter to send": the composer's own setting, kept by the window.
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
+    // Chats > Quick reactions: the slot, and where under it the picker opens.
+    callback pick-quick-reaction(int, length, length);
     // A Find result opened a page: the row of that setting reports its place (settings_widgets),
     // and the page scrolls it into view.
     property <length> want-y: SettingsStore.target-y;
@@ -111,6 +115,7 @@ export component SettingsPage inherits Rectangle {
                         {key: "notifications", label: @tr("Notifications and activity"), icon: @image-url("../icons/activity.svg")},
                         {key: "appearance", label: @tr("Appearance"), icon: @image-url("../icons/eye.svg")},
                         {key: "accessibility", label: @tr("Accessibility"), icon: @image-url("../icons/people.svg")},
+                        {key: "shortcuts", label: @tr("Keyboard shortcuts"), icon: @image-url("../icons/shortcut.svg")},
                         {key: "devices", label: @tr("Devices"), icon: @image-url("../icons/video.svg")},
                         {key: "calls", label: @tr("Calls"), icon: @image-url("../icons/call-direct.svg")},
                         {key: "files", label: @tr("Files and links"), icon: @image-url("../icons/file.svg")},
@@ -160,7 +165,7 @@ export component SettingsPage inherits Rectangle {
                             }
                             if SettingsStore.query == "": Text {
                                 horizontal-alignment: Theme.start-align;
-                                text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
+                                text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "shortcuts" ? @tr("Keyboard shortcuts") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
                                 color: Theme.fg;
                                 font-size: Theme.font-title;
                                 font-weight: 700;
@@ -172,12 +177,14 @@ export component SettingsPage inherits Rectangle {
                             if SettingsStore.query == "" && SettingsStore.page == "chats": ChatsPage {
                                 enter-sends: root.enter-sends;
                                 set-enter-sends(on) => { root.set-enter-sends(on); }
+                                pick-quick-reaction(slot, x, y) => { root.pick-quick-reaction(slot, x, y); }
                             }
                             if SettingsStore.query == "" && SettingsStore.page == "accounts": AccountsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "privacy": PrivacyPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "notifications": NotificationsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "appearance": AppearancePage { }
                             if SettingsStore.query == "" && SettingsStore.page == "accessibility": AccessibilityPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "shortcuts": ShortcutsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "devices": DevicesPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "calls": CallsSettingsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "files": FilesPage { }
@@ -426,6 +433,10 @@ export component ProfileMenu inherits Rectangle {
     // flyout is SettingsStore.status-open and the duration one opens from it.
     property <string> flyout: "";
     property <bool> duration-open: false;
+    // The emoji picker of the status message editor.
+    property <bool> note-emoji-open: false;
+    property <string> note-emoji-query;
+    property <int> note-emoji-tab;
     property <bool> any-flyout: root.flyout != "" || SettingsStore.status-open;
     // Where a flyout of height `h` starts: level with the row `row-y` that opened it, but inside
     // the window.
@@ -632,9 +643,43 @@ export component ProfileMenu inherits Rectangle {
                         padding-top: 4px;
                         spacing: 6px;
                         Text { text: SettingsStore.me-status != "" ? SettingsStore.me-status : @tr("No status message"); color: SettingsStore.me-status != "" ? Theme.fg : Theme.fg-subtle; font-size: Theme.font-body; wrap: word-wrap; accessible-role: text; accessible-label: @tr("Status message"); accessible-value: SettingsStore.me-status; }
-                        note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; }
+                        if SettingsStore.me-status != "" && SettingsStore.me-status-ends != "": Text {
+                            text: @tr("Clears at {}", SettingsStore.me-status-ends);
+                            color: Theme.fg-subtle;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                            accessible-label: @tr("Status message clears");
+                            accessible-value: self.text;
+                        }
+                        // The emoji goes first in the text: the button opens the picker under the field
+                        // and puts the pick at the start.
+                        HorizontalLayout {
+                            spacing: 6px;
+                            note := Field { variant: FieldVariant.settings; label: @tr("New status message"); text: SettingsStore.me-status; horizontal-stretch: 1; }
+                            VerticalLayout {
+                                alignment: end;
+                                horizontal-stretch: 0;
+                                Button {
+                                    variant: ButtonVariant.settings;
+                                    label: "🙂";
+                                    active: root.note-emoji-open;
+                                    accessible-label: @tr("Add emoji to status message");
+                                    clicked => { root.note-emoji-query = ""; root.note-emoji-open = !root.note-emoji-open; }
+                                }
+                            }
+                        }
+                        if root.note-emoji-open: EmojiPanel {
+                            height: 320px;
+                            emoji-query <=> root.note-emoji-query;
+                            emoji-tab <=> root.note-emoji-tab;
+                            skin-tone <=> SettingsStore.skin-tone;
+                            skin-tone-changed(t) => { SettingsStore.command("skin-tone", "\{t}"); }
+                            pick-emoji(ch) => { note.text = note.text == "" ? ch : ch + " " + note.text; }
+                            close-popup => { root.note-emoji-open = false; }
+                        }
                         Text { text: @tr("Clear message after"); color: Theme.fg-muted; font-size: Theme.font-small; }
-                        for d in [{v: "never", l: @tr("Never")}, {v: "today", l: @tr("Today")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "week", l: @tr("This week")}]: SRadio {
+                        for d in [{v: "never", l: @tr("Never")}, {v: "30m", l: @tr("30 minutes")}, {v: "1h", l: @tr("1 hour")}, {v: "4h", l: @tr("4 hours")}, {v: "today", l: @tr("Today")}, {v: "week", l: @tr("This week")}]: SRadio {
                             group: @tr("Clear message after");
                             label: d.l;
                             checked: SettingsStore.note-clear-after == d.v;

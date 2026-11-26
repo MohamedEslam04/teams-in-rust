@@ -53,6 +53,11 @@ export component SectionHeader inherits Rectangle {
     in property <Tokens> c: Theme.content;
     in property <string> label;
     in-out property <bool> expanded: true;
+    // A "…" on the right while the pointer rests on the header (and on a right click), for a
+    // menu the owner draws: `more-clicked` asks it to open.
+    in property <bool> more: false;
+    in property <string> more-label;
+    callback more-clicked();
     height: 32px;
     border-radius: 4px;
     background: touch.has-hover ? root.c.surface-hover : transparent;
@@ -84,7 +89,23 @@ export component SectionHeader inherits Rectangle {
             horizontal-stretch: 1;
         }
     }
-    touch := TouchArea { mouse-cursor: pointer; clicked => { Motion.toggled = true; root.expanded = !root.expanded; } }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Motion.toggled = true; root.expanded = !root.expanded; }
+        pointer-event(e) => {
+            if root.more && e.button == PointerEventButton.right && e.kind == PointerEventKind.up {
+                root.more-clicked();
+            }
+        }
+        if root.more && touch.has-hover: IconButton {
+            x: parent.width - 30px;
+            y: (parent.height - 22px) / 2;
+            size: 22px;
+            icon: @image-url("../icons/more.svg");
+            tooltip: root.more-label;
+            clicked => { root.more-clicked(); }
+        }
+    }
 }
 
 export component ReactionChip inherits Rectangle {

@@ -11,10 +11,12 @@
 
 use crate::backend::Cmd;
 use crate::{AppWindow, CallStore, QuickViewsStore};
+use appearance::general::StartPage;
 use session::window_state::WindowState;
 use slint::{ComponentHandle, LogicalSize, Model, PhysicalPosition, Timer, TimerMode};
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// At most one write per this interval.
@@ -161,6 +163,28 @@ pub fn restore_target(id: &str, list: &[ListEntry]) -> Option<RestoreTarget> {
     })
 }
 
+/// The page to open at start: the one chosen in Settings, or for "Where I left off" the one
+/// that was open when IronTeams last closed (Chat when none was remembered).
+pub fn start_view(pref: StartPage, last_view: Option<&str>) -> &'static str {
+    match pref {
+        StartPage::Activity => "activity",
+        StartPage::Chat => "chat",
+        StartPage::Teams => "teams",
+        StartPage::Calendar => "calendar",
+        StartPage::Last => session::window_state::START_VIEWS
+            .into_iter()
+            .find(|v| Some(*v) == last_view)
+            .unwrap_or("chat"),
+    }
+}
+
+/// Whether the last chat is opened (as a message list, marked read) at start. Not on the Teams
+/// page: it opens the last channel instead, and a chat opened there would replace it. The Chat
+/// page still shows the last chat when the user goes back to it.
+pub fn opens_last_chat(view: &str) -> bool {
+    view != "teams"
+}
+
 /// Section id of a collapsed team.
 fn team_section(team_id: &str) -> String {
     format!("{TEAM_PREFIX}{team_id}")
@@ -236,6 +260,10 @@ impl Shared {
 }
 
 static SHARED: Mutex<Option<Shared>> = Mutex::new(None);
+
+/// The page the window shows is only remembered once the start page was applied: before that it
+/// is the Chat page the window starts on, not what the user was looking at.
+static VIEW_SETTLED: AtomicBool = AtomicBool::new(false);
 
 fn with_shared<R>(f: impl FnOnce(&mut Shared) -> R) -> Option<R> {
     SHARED.lock().ok()?.as_mut().map(f)
@@ -372,6 +400,9 @@ fn capture(w: &AppWindow) {
         s.state.filmstrip_pos = filmstrip;
         remember_quick_views(w, &mut s.state);
         remember_open_chat(w, &mut s.state);
+        if VIEW_SETTLED.load(Ordering::Relaxed) {
+            s.state.set_last_view(Some(w.get_view().as_str()));
+        }
     });
 }
 
@@ -476,7 +507,12 @@ pub fn install(
     } else {
         WindowState::default()
     };
-    install_state(window, persist, state, tx)
+    let start_page = if persist {
+        appearance::GeneralPrefs::load().start_page
+    } else {
+        StartPage::default()
+    };
+    install_state(window, persist, state, start_page, tx)
 }
 
 /// [`install`] with the state already loaded (for the account `state` was loaded for).
@@ -484,9 +520,11 @@ fn install_state(
     window: &AppWindow,
     persist: bool,
     state: WindowState,
+    start_page: StartPage,
     tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
 ) -> Vec<Timer> {
     let plan = restore_plan(&state);
+    let view = start_view(start_page, state.active_view().last_view.as_deref());
     let last_chat = state.active_view().last_chat.clone();
     let last_channel = state.active_view().last_channel.clone();
     let sidebar = state.sidebar_width;
@@ -509,6 +547,7 @@ fn install_state(
     if let Some(id) = last_channel {
         window.set_last_channel_id(id.into());
     }
+    VIEW_SETTLED.store(view == "chat", Ordering::Relaxed);
     if let Some(w) = sidebar_width_to_restore(sidebar) {
         window.set_sidebar_width(w);
     }
@@ -533,10 +572,40 @@ fn install_state(
     SAVE_TIMER.with(|t| *t.borrow_mut() = Some(save));
 
     // IRONTEAMS_OPEN is a development aid that opens its own chat.
-    if let Some(id) = last_chat.filter(|_| compat::var_os("IRONTEAMS_OPEN").is_none()) {
-        timers.push(start_restore(window, id, tx));
+    let dev_open = compat::var_os("IRONTEAMS_OPEN").is_some();
+    if let Some(id) = last_chat {
+        if !opens_last_chat(view) {
+            // Going to the Chat page later opens it.
+            window.set_last_chat_id(id.into());
+        } else if !dev_open {
+            timers.push(start_restore(window, id, tx));
+        }
+    }
+    if view != "chat" && !dev_open {
+        timers.push(start_page_restore(window, view));
     }
     timers
+}
+
+/// Opens the page `view` once the app is signed in and shown (the same wait as
+/// [`start_restore`]), unless the user already went elsewhere. From then on the page the window
+/// shows is remembered.
+pub(crate) fn start_page_restore(window: &AppWindow, view: &'static str) -> Timer {
+    let timer = Timer::default();
+    let weak = window.as_weak();
+    let mut finished = false;
+    timer.start(TimerMode::Repeated, RESTORE_POLL, move || {
+        let Some(w) = weak.upgrade() else { return };
+        if finished || w.get_login_state() != "ready" || !w.window().is_visible() {
+            return;
+        }
+        if w.get_view() == "chat" {
+            w.invoke_navigate(view.into());
+        }
+        VIEW_SETTLED.store(true, Ordering::Relaxed);
+        finished = true;
+    });
+    timer
 }
 
 /// Opens the chat `id` once the app is signed in, shown, and has it in the sidebar; gives up
@@ -616,6 +685,37 @@ pub fn finish(w: &AppWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_start_page_picks_the_view_and_where_i_left_off_follows_the_last_one() {
+        use StartPage::*;
+        assert_eq!(start_view(Activity, Some("teams")), "activity");
+        assert_eq!(start_view(Chat, Some("calendar")), "chat");
+        assert_eq!(start_view(Teams, None), "teams");
+        assert_eq!(start_view(Calendar, Some("chat")), "calendar");
+        for v in ["chat", "teams", "activity", "calendar"] {
+            assert_eq!(start_view(Last, Some(v)), v);
+        }
+        assert_eq!(start_view(Last, None), "chat", "nothing remembered yet");
+        assert_eq!(
+            start_view(Last, Some("onedrive")),
+            "chat",
+            "not a start page"
+        );
+        assert_eq!(
+            start_view(StartPage::default(), None),
+            "chat",
+            "the default is how IronTeams started before the setting"
+        );
+    }
+
+    #[test]
+    fn only_the_teams_start_skips_opening_the_last_chat() {
+        assert!(opens_last_chat("chat"));
+        assert!(opens_last_chat("activity"));
+        assert!(opens_last_chat("calendar"));
+        assert!(!opens_last_chat("teams"));
+    }
 
     #[test]
     fn the_chat_list_width_is_remembered_within_its_range() {

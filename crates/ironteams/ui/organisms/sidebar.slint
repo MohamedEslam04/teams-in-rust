@@ -4,7 +4,7 @@ import { ChatRow, TeamRow } from "../tokens/types.slint";
 import { Icon, IconButton, SectionHeader } from "../atoms/widgets.slint";
 import { Pill } from "../atoms/chip.slint";
 import { Avatar, GlyphAvatar } from "../atoms/avatar.slint";
-import { ChannelMenu, ItemMenu, ListStore, OptionRow, SectionHead } from "lists.slint";
+import { ChannelMenu, ItemMenu, ListStore, OptionRow, SectionHead, SortHeader } from "lists.slint";
 import { CommunitiesSection } from "communities_section.slint";
 import { TeamMenuItems } from "team_menu.slint";
 import { TeamsStore } from "../stores/teams_store.slint";
@@ -74,7 +74,8 @@ component ChatItem inherits Rectangle {
     callback toggle-favorite();
     callback mark-unread();
     callback leave();
-    height: 56px;
+    // One line (the title) when the previews are off, as in Teams' compact list.
+    height: ListStore.show-previews ? 56px : 40px;
     border-radius: 4px;
     background: selected ? root.c.selected : (t.has-hover ? root.c.surface-hover : transparent);
     animate background { duration: Motion.quick; }
@@ -240,7 +241,7 @@ component ChatItem inherits Rectangle {
             if t.has-hover: IconButton {
                 c: root.c;
                 x: parent.width - 30px;
-                y: 30px;
+                y: ListStore.show-previews ? 30px : (parent.height - self.height) / 2;
                 size: 22px;
                 icon: @image-url("../icons/star.svg");
                 tint: root.data.favorite ? Fixed.favorite : root.c.fg-subtle;
@@ -250,7 +251,7 @@ component ChatItem inherits Rectangle {
             if t.has-hover: IconButton {
                 c: root.c;
                 x: parent.width - 54px;
-                y: 30px;
+                y: ListStore.show-previews ? 30px : (parent.height - self.height) / 2;
                 size: 22px;
                 icon: @image-url("../icons/more.svg");
                 tooltip: @tr("More options");
@@ -364,7 +365,7 @@ export component Sidebar inherits Rectangle {
     callback new-chat();
     // The New chat button's dropdown: Meet now.
     callback meet-now();
-    // Quick views: "mentions" or "followed".
+    // Quick views: "unreads", "mentions", "saved" or "followed".
     callback quick-view(string);
     callback manage-teams();
     callback open-community(string);
@@ -484,6 +485,7 @@ export component Sidebar inherits Rectangle {
                         alignment: start;
                         QuickViewsSection {
                             c: root.c;
+                            unreads: root.catch-chats;
                             mentions: root.catch-mentions;
                             drafts-on: root.filter == "drafts";
                             open(kind) => {
@@ -498,7 +500,7 @@ export component Sidebar inherits Rectangle {
                         }
                         // The chat being started in the New chat pane, as Teams lists it.
                         if PeopleStore.new-chat-open: NewMessageRow { c: root.c; }
-                        if root.filter != "communities": SectionHeader { c: root.c; label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
+                        if root.filter != "communities": SortHeader { c: root.c; label: @tr("Favorites"); target: "favorites"; sort: ListStore.favorites-sort; expanded <=> ListStore.favorites-open; }
                         if ListStore.favorites-open: Reveal { for c in root.chats-favorites: ChatItem {
                             c: root.c;
                             data: c;
@@ -524,7 +526,7 @@ export component Sidebar inherits Rectangle {
                                 leave => { root.leave-chat(c.id); }
                             } }
                         }
-                        if root.filter != "communities": SectionHeader { c: root.c; label: @tr("Chats"); expanded <=> ListStore.chats-open; }
+                        if root.filter != "communities": SortHeader { c: root.c; label: @tr("Chats"); target: "chats"; sort: ListStore.chats-sort; expanded <=> ListStore.chats-open; }
                         if ListStore.chats-open: Reveal { for c in root.chats-main: VerticalLayout {
                             if c.section != "meetings": ChatItem {
                                 c: root.c;
@@ -542,6 +544,7 @@ export component Sidebar inherits Rectangle {
                         if ListStore.meetings-count > 0: SectionHead {
                             c: root.c;
                             section: { id: "meetings", name: @tr("Meetings"), expanded: ListStore.meetings-open, unread: ListStore.meetings-unread, local: false };
+                            sortable: false;
                             toggle => { Motion.toggled = true; ListStore.meetings-open = !ListStore.meetings-open; }
                         }
                         if ListStore.meetings-count > 0 && ListStore.meetings-open: Reveal { for c[i] in root.chats-main: VerticalLayout {
@@ -562,7 +565,7 @@ export component Sidebar inherits Rectangle {
                             label: ListStore.meetings-all ? @tr("Show less") : @tr("See all ({})", ListStore.meetings-count);
                             clicked => { ListStore.meetings-all = !ListStore.meetings-all; }
                         }
-                        if !ListStore.combined && root.filter != "communities": SectionHeader { c: root.c; label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
+                        if !ListStore.combined && root.filter != "communities": SortHeader { c: root.c; label: @tr("Teams and channels"); target: "channels"; sort: ListStore.channels-sort; expanded <=> ListStore.channels-open; }
                         if ListStore.channels-open && !ListStore.combined: Reveal { for c in root.chats-channels: ChatItem {
                             c: root.c;
                             data: c;
@@ -763,7 +766,7 @@ export component Sidebar inherits Rectangle {
             list-items := VerticalLayout {
                 padding: 4px;
                 MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
-                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.open-new-section(); } }
                 MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
                 // Teams' "Customize view": the list's display options, behind a chevron.
                 MenuItem { c: Theme.content; variant: MenuItemVariant.parity; label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }
@@ -787,6 +790,7 @@ export component Sidebar inherits Rectangle {
                     padding-left: 10px;
                     Text { text: @tr("Quick views"); color: Theme.content.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
                 }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Unreads"); clicked => { list-menu.close(); root.quick-view("unreads"); } }
                 MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
                 MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
                 MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }

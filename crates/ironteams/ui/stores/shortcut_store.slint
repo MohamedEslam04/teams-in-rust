@@ -1,0 +1,33 @@
+// The window's customizable shortcuts as the Settings page and the shortcut list show them. The
+// table, the matching of key presses and the saving are in src/shortcut_keys.rs.
+
+// One customizable shortcut: the action's id (see ACTIONS in shortcut_keys.rs), the chord it has
+// now and the one it comes with, and whether the user changed it.
+export struct ShortcutItem {
+    id: string,
+    keys: string,
+    default-keys: string,
+    custom: bool,
+}
+
+export global ShortcutStore {
+    in property <[ShortcutItem]> items;
+    // Some shortcut differs from its default (the Reset all button is useful).
+    in property <bool> customized;
+    // Counts every change, so text that asks for a chord by id (`keys`) is drawn again.
+    in property <int> version;
+    // The id of the shortcut whose Settings row is waiting for new keys, "" when none is. That
+    // row has the keyboard (Settings is outside the window's shortcut handler), so any chord
+    // can be pressed, even one that is a shortcut now.
+    in-out property <string> recording-id;
+    // After a "taken" answer: the id of the action that has the chord.
+    in property <string> conflict;
+    // The chord of an action as text ("Ctrl+Alt+E"); the second argument is `version`.
+    pure callback keys(string, int) -> string;
+    // Binds an action to a key press (id, key text, ctrl, alt, shift, meta). "" when it was saved,
+    // "wait" for a modifier on its own, else why not: "taken", "needs-modifier", "reserved" or
+    // "unsupported".
+    callback rebind(string, string, bool, bool, bool, bool) -> string;
+    callback reset(string);
+    callback reset-all();
+}

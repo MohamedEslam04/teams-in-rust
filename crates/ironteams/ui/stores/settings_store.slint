@@ -3,6 +3,8 @@
 // (`ui/settings.rs`); the UI reports what the user did through `command(name, argument)`.
 // Arguments with several values are joined with the unit separator "\u{1f}".
 
+import { EmojiItem } from "../tokens/types.slint";
+
 export struct SOption { v: string, l: string }
 // A switch row. `enabled: false` greys it out; `hint` is the second line.
 export struct SToggle { key: string, label: string, hint: string, on: bool, enabled: bool }
@@ -43,6 +45,8 @@ export global SettingsStore {
     in-out property <string> me-email;
     in-out property <string> me-initials;
     in-out property <string> me-status;
+    // When the status message clears ("14:30", or "11/21 14:30"), "" when it has no end.
+    in-out property <string> me-status-ends;
     in-out property <string> me-presence;
     // What I am doing (InACall, InAMeeting, OffWork, ...), and the words Teams shows for my status
     // ("In a call", else the availability's). Both are set together with me-presence (Rust).
@@ -61,7 +65,7 @@ export global SettingsStore {
     // "Reset status after" (never | 30m | 1h | 2h | today | week | custom) and the custom time.
     in-out property <string> status-duration: "never";
     in-out property <string> status-custom;
-    // The status message's "Clear after" (never | today | 1h | 4h | week) and "Show when people
+    // The status message's "Clear after" (never | 30m | 1h | 4h | today | week) and "Show when people
     // message me".
     in-out property <string> note-clear-after: "never";
     in-out property <bool> note-show-when-messaged: false;
@@ -88,6 +92,11 @@ export global SettingsStore {
     in-out property <string> accent-shown;
     in-out property <string> density: "comfy"; // comfy | compact
     in-out property <float> font-scale: 1.0;
+    // How a message is drawn (organisms/message_row.slint): bubbles | flat | compact.
+    in-out property <string> message-style: "bubbles";
+    in-out property <bool> show-avatars: true;
+    in-out property <bool> show-timestamps: true;
+    in-out property <bool> show-reactions: true;
     in-out property <int> skin-tone: 0;
 
     // --- General (X1.2) ---
@@ -96,6 +105,8 @@ export global SettingsStore {
     in-out property <string> language-shown;
     in-out property <string> date-format: "auto"; // auto | dmy | mdy | ymd
     in-out property <string> time-format: "auto"; // auto | h12 | h24
+    // The page IronTeams opens on at start: activity | chat | teams | calendar | last.
+    in-out property <string> start-page: "chat";
     in-out property <string> time-zone: "";       // "" follows the system
     in-out property <string> system-time-zone;
     in-out property <[SToggle]> startup;
@@ -106,6 +117,16 @@ export global SettingsStore {
     in-out property <bool> link-previews: true;
     // How far a mouse wheel notch scrolls the conversation lists: the notch times this (1 to 5).
     in-out property <float> wheel-speed: 2.5;
+    // The reactions on a message's hover bar, up to six (Chats > Quick reactions). Teams' four
+    // until the Rust side pushes the saved ones.
+    in-out property <[EmojiItem]> quick-reactions: [
+        { key: "like", emoji: "👍", name: "Like" },
+        { key: "heart", emoji: "❤️", name: "Heart" },
+        { key: "laugh", emoji: "😆", name: "Laugh" },
+        { key: "surprised", emoji: "😮", name: "Surprised" },
+    ];
+    // The slot the reaction picker is choosing for (Settings opened it).
+    in-out property <int> quick-slot: -1;
 
     // --- Accessibility (X1.3) ---
     in-out property <string> high-contrast: "auto"; // auto | on | off

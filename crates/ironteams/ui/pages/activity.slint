@@ -233,6 +233,7 @@ export component ActivityView inherits Rectangle {
     callback more-reactions(string, length, length);
     callback menu(Msg, length, length);
     callback notification-settings();
+    callback open-later();
     callback dismiss-banner();
 
     background: Theme.main;
@@ -284,6 +285,12 @@ export component ActivityView inherits Rectangle {
                         padding-right: 12px;
                         Text { text: "Activity"; color: Theme.fg; font-size: 20px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
+                        // Reminders and saved messages in one list.
+                        VerticalLayout {
+                            alignment: center;
+                            Pill { label: @tr("Later"); clicked => { root.open-later(); } }
+                        }
+                        Rectangle { width: 6px; }
                         more := IconButton {
                             icon: @image-url("../icons/more.svg");
                             y: 12px;

@@ -162,6 +162,45 @@ pub enum TimeFormat {
     H24,
 }
 
+/// The page IronTeams opens on when it starts (Settings > General). `Chat` is how IronTeams
+/// started before the setting existed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartPage {
+    Activity,
+    #[default]
+    Chat,
+    Teams,
+    Calendar,
+    /// The page that was open when IronTeams last closed (and its chat).
+    Last,
+}
+
+impl StartPage {
+    /// The name Settings and the file use: `activity`, `chat`, `teams`, `calendar` or `last`.
+    pub fn slug(self) -> &'static str {
+        match self {
+            StartPage::Activity => "activity",
+            StartPage::Chat => "chat",
+            StartPage::Teams => "teams",
+            StartPage::Calendar => "calendar",
+            StartPage::Last => "last",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<StartPage> {
+        [
+            StartPage::Activity,
+            StartPage::Chat,
+            StartPage::Teams,
+            StartPage::Calendar,
+            StartPage::Last,
+        ]
+        .into_iter()
+        .find(|p| p.slug() == s)
+    }
+}
+
 fn de_language<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     let s: Option<String> = lenient(d)?;
     Ok(s.as_deref().and_then(normalize_tag))
@@ -239,6 +278,61 @@ fn de_wheel_speed<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(v.as_f64()
         .map_or(WHEEL_SPEED_DEFAULT, |f| clamp_wheel_speed(f as f32)))
+}
+
+/// Most reactions the hover bar can show.
+pub const QUICK_REACTIONS_MAX: usize = 6;
+
+/// The hover bar's reactions until the user picks their own: Teams' like, heart, laugh and
+/// surprised.
+pub fn default_quick_reactions() -> Vec<String> {
+    ["like", "heart", "laugh", "surprised"]
+        .map(String::from)
+        .to_vec()
+}
+
+/// Reaction keys as the bar keeps them: trimmed, none empty or twice, at most
+/// [`QUICK_REACTIONS_MAX`].
+pub fn clean_quick_reactions(keys: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for k in keys {
+        let k = k.trim().to_string();
+        if !k.is_empty() && !out.contains(&k) {
+            out.push(k);
+        }
+    }
+    out.truncate(QUICK_REACTIONS_MAX);
+    out
+}
+
+/// `keys` with `key` in `slot`. A key the bar already has in another slot swaps places with the
+/// one it replaces; a slot past the end appends (while there is room); a slot past the last one
+/// changes nothing.
+pub fn with_quick_reaction(keys: &[String], slot: usize, key: &str) -> Vec<String> {
+    let mut out = keys.to_vec();
+    let key = key.trim().to_string();
+    if slot >= QUICK_REACTIONS_MAX || key.is_empty() {
+        return out;
+    }
+    if slot >= out.len() {
+        out.retain(|k| *k != key);
+        out.push(key);
+    } else {
+        if let Some(other) = out.iter().position(|k| *k == key) {
+            out.swap(other, slot);
+        }
+        out[slot] = key;
+    }
+    clean_quick_reactions(out)
+}
+
+fn de_quick_reactions<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(Vec::<String>::deserialize(v)
+        .map(clean_quick_reactions)
+        .ok()
+        .filter(|k| !k.is_empty())
+        .unwrap_or_else(default_quick_reactions))
 }
 
 fn lenient_days<'de, D: Deserializer<'de>>(d: D) -> Result<[bool; 7], D::Error> {
@@ -353,6 +447,13 @@ pub struct GeneralPrefs {
     /// ([`WHEEL_SPEED_MIN`] to [`WHEEL_SPEED_MAX`]).
     #[serde(deserialize_with = "de_wheel_speed")]
     pub wheel_speed: f32,
+    /// Reaction keys of the hover bar on a message, in order: one to [`QUICK_REACTIONS_MAX`].
+    /// Missing or unreadable gives [`default_quick_reactions`].
+    #[serde(deserialize_with = "de_quick_reactions")]
+    pub quick_reactions: Vec<String>,
+    /// The page IronTeams opens on at start.
+    #[serde(deserialize_with = "lenient")]
+    pub start_page: StartPage,
 }
 
 impl Default for GeneralPrefs {
@@ -379,6 +480,8 @@ impl Default for GeneralPrefs {
             keyword_alerts: Vec::new(),
             link_previews: true,
             wheel_speed: WHEEL_SPEED_DEFAULT,
+            quick_reactions: default_quick_reactions(),
+            start_page: StartPage::default(),
         }
     }
 }
@@ -513,6 +616,127 @@ mod tests {
         assert_eq!(speed(r#"{"wheel_speed":"fast"}"#), WHEEL_SPEED_DEFAULT);
         assert_eq!(clamp_wheel_speed(f32::NAN), WHEEL_SPEED_DEFAULT);
         assert_eq!(clamp_wheel_speed(-3.0), WHEEL_SPEED_MIN);
+    }
+
+    #[test]
+    fn quick_reactions_default_to_teams_four_and_old_files_still_load() {
+        let four = ["like", "heart", "laugh", "surprised"];
+        assert_eq!(GeneralPrefs::default().quick_reactions, four);
+        let old = r#"{"language":"ar"}"#;
+        assert_eq!(
+            serde_json::from_str::<GeneralPrefs>(old)
+                .unwrap()
+                .quick_reactions,
+            four,
+            "a file written before the setting existed"
+        );
+    }
+
+    #[test]
+    fn quick_reactions_load_leniently() {
+        let keys = |json: &str| {
+            serde_json::from_str::<GeneralPrefs>(json)
+                .unwrap()
+                .quick_reactions
+        };
+        assert_eq!(
+            keys(r#"{"quick_reactions":["fire","like"]}"#),
+            ["fire", "like"]
+        );
+        // Blank and repeated keys go, and no more than six stay.
+        assert_eq!(
+            keys(r#"{"quick_reactions":[" fire ","","fire","a","b","c","d","e","f"]}"#),
+            ["fire", "a", "b", "c", "d", "e"]
+        );
+        // Anything unreadable, or nothing left, is today's set.
+        let four = default_quick_reactions();
+        assert_eq!(keys(r#"{"quick_reactions":"like"}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":[1,2]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":["like",3]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":[]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":["",""]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":null}"#), four);
+        // A bad value only resets its own field.
+        let p: GeneralPrefs =
+            serde_json::from_str(r#"{"quick_reactions":7,"auto_start":true}"#).unwrap();
+        assert!(p.auto_start);
+    }
+
+    #[test]
+    fn a_quick_reaction_replaces_its_slot_swaps_a_repeat_and_appends_in_an_empty_slot() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let four = default_quick_reactions();
+        assert_eq!(
+            with_quick_reaction(&four, 1, "fire"),
+            ["like", "fire", "laugh", "surprised"]
+        );
+        // Already in slot 3: the two trade places, nothing is lost.
+        assert_eq!(
+            with_quick_reaction(&four, 0, "surprised"),
+            ["surprised", "heart", "laugh", "like"]
+        );
+        assert_eq!(with_quick_reaction(&four, 2, "laugh"), four);
+        // Slots 4 and 5 are empty: they add.
+        assert_eq!(
+            with_quick_reaction(&four, 4, "fire"),
+            ["like", "heart", "laugh", "surprised", "fire"]
+        );
+        assert_eq!(
+            with_quick_reaction(&v(&["a"]), 5, "b"),
+            ["a", "b"],
+            "the next free slot, never a gap"
+        );
+        assert_eq!(with_quick_reaction(&v(&["a", "b"]), 4, "a"), ["b", "a"]);
+        // Out of range or blank: unchanged.
+        assert_eq!(with_quick_reaction(&four, 6, "fire"), four);
+        assert_eq!(with_quick_reaction(&four, 0, "  "), four);
+        let full = v(&["a", "b", "c", "d", "e", "f"]);
+        let replaced = with_quick_reaction(&full, 5, "z");
+        assert_eq!(replaced.len(), QUICK_REACTIONS_MAX);
+        assert_eq!(replaced[5], "z");
+    }
+
+    #[test]
+    fn start_page_defaults_to_chat_and_a_bad_value_resets_it() {
+        assert_eq!(GeneralPrefs::default().start_page, StartPage::Chat);
+        let old: GeneralPrefs = serde_json::from_str(r#"{"language":"ar"}"#).unwrap();
+        assert_eq!(old.start_page, StartPage::Chat, "a file from before it");
+        for (slug, page) in [
+            ("activity", StartPage::Activity),
+            ("chat", StartPage::Chat),
+            ("teams", StartPage::Teams),
+            ("calendar", StartPage::Calendar),
+            ("last", StartPage::Last),
+        ] {
+            let p: GeneralPrefs =
+                serde_json::from_str(&format!(r#"{{"start_page":"{slug}"}}"#)).unwrap();
+            assert_eq!(p.start_page, page, "{slug}");
+        }
+        for bad in [r#""weird""#, "3", "null", r#"["teams"]"#] {
+            let p: GeneralPrefs =
+                serde_json::from_str(&format!(r#"{{"start_page":{bad},"auto_start":true}}"#))
+                    .unwrap();
+            assert_eq!(p.start_page, StartPage::Chat, "{bad}");
+            assert!(p.auto_start, "a bad value only resets its own field");
+        }
+    }
+
+    #[test]
+    fn start_page_slugs_round_trip_and_match_the_file() {
+        for p in [
+            StartPage::Activity,
+            StartPage::Chat,
+            StartPage::Teams,
+            StartPage::Calendar,
+            StartPage::Last,
+        ] {
+            assert_eq!(StartPage::from_slug(p.slug()), Some(p));
+            assert_eq!(
+                serde_json::to_string(&p).unwrap(),
+                format!("\"{}\"", p.slug())
+            );
+        }
+        assert_eq!(StartPage::from_slug("onedrive"), None);
     }
 
     #[test]
@@ -749,6 +973,8 @@ mod tests {
             keyword_alerts: vec!["deploy".into(), "نشر".into()],
             link_previews: false,
             wheel_speed: 4.0,
+            quick_reactions: vec!["fire".into(), "like".into()],
+            start_page: StartPage::Last,
         };
         p.save_to(&path).unwrap();
         assert_eq!(GeneralPrefs::load_from(&path), p);

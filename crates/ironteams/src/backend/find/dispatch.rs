@@ -43,6 +43,8 @@ impl Engine {
             }
             FindCmd::Unfollow(id) => self.unfollow_row(&id).await?,
             FindCmd::Unsave(id) => self.unsave_row(&id).await?,
+            FindCmd::UnreadsRead(id) => self.unreads_mark_read(&id).await?,
+            FindCmd::UnreadsReadAll => self.unreads_mark_all_read().await?,
             FindCmd::FindOpen => {
                 let mut f = self.find.lock().unwrap();
                 f.find = ChatFind {
@@ -218,6 +220,11 @@ impl Engine {
             avatar: self.avatar(avatar_of),
             person: avatar_of.to_string(),
             rtl: ::render::base_direction(&h.text) == ::render::Dir::Rtl,
+            count: if h.kind == "unread-group" {
+                h.text.parse().unwrap_or(0)
+            } else {
+                0
+            },
         }
     }
 

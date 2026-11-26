@@ -19,6 +19,7 @@ Files:
 - `key_layout.rs`: Ctrl/Cmd/Alt shortcuts by physical key on non-Latin layouts: `Shortcuts` (window event hook installed in main.rs), `us_key`, `latin`, `send`; typing without those modifiers is untouched.
 - `language.rs`: Applies the interface language: resolves it from GeneralPrefs and selects the Slint bundled translation (English = source text).
 - `lists_data.rs`: Plain view-data structs for chat list sections, channel post cards, threads, Adaptive Card rows, channel menu state and list options.
+- `lists_sort.rs`: `SortBy` (recent, A to Z, unread first) and the pure `sort_items` that orders the rows of one chat list section.
 - `logging.rs`: `init(logs_dir)`: size-rotated file log `<data_dir>/logs/ironteams.log` (5 files of up to 5 MiB), stdout when no folder is given (demo mode, unwritable folder) or when `IRONTEAMS_LOG` is set; `IRONTEAMS_LOG` replaces the default filter; panics with backtrace go to the same log.
 - `loop_compose.rs`: Composer's Loop paragraph: templates, row editing callbacks on LoopStore, and conversion to an HTML message sent via Cmd::SendLoop.
 - `markdown.rs`: Converts the render crate's rich-text model into Slint StyledText Markdown, extracts reply quote cards (`QuoteCard`), text/code `Segment`s, channel-post blocks (`PostBlock`) and images into `Rendered`, upgrades rich messages (headings/tables/colors), draws mentions in the theme colour (`set_mention_color`/`mention_color`), and maps reaction keys to emoji (`reaction_emoji`: Teams catalog id with optional `-toneN`, then `<hex>_<name>` codepoint keys, then emoji-table names; an unknown key shows without its tone suffix).
@@ -31,7 +32,8 @@ Files:
 - `relaunch.rs`: Starting IronTeams again as the last step of `main` (account switch, restart): `request(Relaunch {hidden, account})` / `take()` over a process-wide slot, `command(appimage, exe, &Relaunch, bundle)` (`$APPIMAGE` or the executable, `open -n <bundle> --args` in a macOS bundle, `--hidden`, `--account <label>[@<tenant>]`, `IRONTEAMS_OPEN`/`KELMA_OPEN` removed from the child), `run_if_requested(data_dir, instance)` (guard marked healthy, instance released, then spawn), and the `--account` argument (`account_from_args`, `apply_account_arg`, `apply_args`).
 - `renderer.rs`: Window renderer choice: `Started {wanted, running}` (`fell_back`), `wanted`, `start`, `record`, `running`, `env`; precedence `IRONTEAMS_RENDERER` > saved `general.json` renderer > CPU; a GPU start failure falls back to the software renderer.
 - `send_options.rs`: Send-button schedule picker logic: typed-time parsing, quick choices, month calendar cells, local-time resolve to ms, labels, wired into SendStore.
-- `shortcuts.rs`: Maps window-level key chords to action names (including "find" for Ctrl+F and "jump-first" for Ctrl+Alt+Home) and finds the last editable own message; wires ShortcutApi and catch_up.
+- `shortcut_keys.rs`: The customizable window shortcuts: `ACTIONS` (action id, default chord), `Chord` parse/format/from key press, `Bindings` (defaults + the user's changes from `appearance::ShortcutPrefs`; rebind refuses a chord another action has, a plain letter, or one the text boxes, composer, calls or app bar keep), the thread-local current bindings, and the ShortcutStore wiring (rebind, reset, reset all, save to `shortcuts.json`).
+- `shortcuts.rs`: Maps window-level key chords to action names (`action` asks `shortcut_keys` for the current bindings) and finds the last editable own message; wires ShortcutApi, shortcut_keys and catch_up.
 - `snippets.rs`: Composer /snippet quick replies: active-query detection, ranking, placeholder expansion, name validation, completion, plus persisted snippets.json store wired to SnippetStore/SnippetApi.
 - `spell.rs`: Composer spell check: loads Hunspell dictionaries (en/ar) on a worker thread, flags misspelled words by byte range, ranks suggestions, persists user-added words, and wires SpellApi callbacks to the window.
 - `suggest.rs`: Pure matching of cached conversations by name for the top search box suggestions and for /goto, /chat, /call target resolution.
@@ -89,7 +91,7 @@ Files:
 - `[native_tray.rs:set_unread]` pub fn set_unread(count: u32); updates badge and tooltip (0 hides badge)
 - `[spell.rs:Speller::system]` pub fn system() -> Speller; loads system dictionaries and saved words (slow, parses dictionaries)
 - `[topbar.rs:MOBILE_APP_URL]` pub const &str, Microsoft Teams download page
-- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, row_fingerprint, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, model_sync, ongoing_call, palette, people, remind, teams, voice, cal
+- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, row_fingerprint, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, model_sync, ongoing_call, palette, people, remind, split, teams, voice, cal
 - `[window_state.rs:RestorePlan]` pub struct {size: Option<(i32,i32)> logical, position: Option<(i32,i32)> physical, maximized: bool}
 - `[catch_up.rs:Row]` pub struct {id:String, unread:bool, mention:bool}
 - `[demo.rs:activity]` pub fn activity(st: &Store, now: i64) -> Vec<ActivityItem>: 6 invented items (newest first) referencing message ids looked up from seeded store
@@ -99,7 +101,7 @@ Files:
 - `[topbar.rs:RECENT_MAX]` pub const usize = 8
 - `[ui.rs:UiHandle::login_checking/login_code/login_error/ready]` pub login-state transitions (checking|code|error|ready) setting user code, verify url, error, my initials
 - `[window_state.rs:restore_plan]` pub fn(&WindowState) -> RestorePlan; maximized => only maximized; default state => nothing; else size+position
-- `[catch_up.rs:Step]` pub enum {First, Next, Previous}
+- `[catch_up.rs:Step]` pub enum {First, Next, Previous, NextWrap, PreviousWrap} (the Wrap pair is Alt+Shift+Down/Up, UI step 2 / -2)
 - `[demo.rs:drive_libraries]` pub fn drive_libraries() -> Vec<(String,String)>: (drive id, name) for Quick access
 - `[find_data.rs:matches_all]` pub fn(text:&str, terms:&[String])->bool: case-insensitive contains-all; false for empty terms
 - `[native_tray.rs:shutdown]` pub fn shutdown(); drops the tray state/icon
@@ -107,7 +109,7 @@ Files:
 - `[topbar.rs:RECENT_FILE]` pub const &str = "recent-searches.json"
 - `[ui.rs:UiHandle::banner/info]` pub transient banner (error/notice), text passed through `support::error_text::plain_banner`, cleared after 8 s if unchanged
 - `[window_state.rs:Observed]` pub struct {size, position: Option<(i32,i32)>, maximized: bool} live window snapshot
-- `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; no wrap-around
+- `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; Next/Previous do not wrap, NextWrap/PreviousWrap do and skip the open chat
 - `[demo.rs:drive_favorites]` pub fn drive_favorites() -> HashSet<String>: initial favorite item ids
 - `[find_data.rs:highlight_md]` pub fn(text,&[String] terms,max:usize)->String: Markdown snippet around first match with matches bold, newlines->spaces
 - `[native_tray.rs:IronTeamsTray]` slint-generated component (SystemTrayIcon) with callbacks open/toggle-mute/toggle-focus/quit
@@ -184,7 +186,7 @@ Files:
 - `[spell.rs:Speller::add_word]` creates the config dir and appends the word to spelling-words.txt; logs a tracing warning on failure
 - `[topbar.rs:Recents::save]` create_dir_all, writes a temp file and renames it to recent-searches.json
 - `[ui.rs:UiHandle::messages]` for `Scroll::Bottom` only, starts slint::Timer::single_shot (150 ms) for the second scroll tick; writes thread-local MESSAGES/MESSAGE_PRINTS (chat lists use CHAT_LISTS through `model_sync`)
-- `[window_state.rs:install]` pub fn(&AppWindow, persist: bool, key: &str, tx) -> Vec<Timer>; WindowState::load_for(key) reads saved state from disk for the account `key` (`active_account_key()` is the config's `active_token_key()`; the save timer and `capture` then write into that account's view); starts the save timer (kept in thread-local SAVE_TIMER, run only while the window is in sight, one more save when it leaves) and, when a last chat is saved (and IRONTEAMS_OPEN is unset), a 300 ms restore timer that reopens the last chat/channel with Cmd::SelectChat/SelectChannel once signed in and the window is visible (gives up after 100 ticks; `start_restore`; a cache-first start has the saved chats in the sidebar already, so it finds the chat before the network answers)
+- `[window_state.rs:install]` pub fn(&AppWindow, persist: bool, key: &str, tx) -> Vec<Timer>; WindowState::load_for(key) reads saved state from disk for the account `key` (`active_account_key()` is the config's `active_token_key()`; the save timer and `capture` then write into that account's view); starts the save timer (kept in thread-local SAVE_TIMER, run only while the window is in sight, one more save when it leaves) and, when a last chat is saved (and IRONTEAMS_OPEN is unset), a 300 ms restore timer that reopens the last chat/channel with Cmd::SelectChat/SelectChannel once signed in and the window is visible (gives up after 100 ticks; `start_restore`; the General setting `start_page` picks the view via pure `start_view(pref, last_view)`: any view other than chat also starts `start_page_restore`, which calls `navigate` once signed in and visible, and the Teams start skips the chat restore (`opens_last_chat`) and hands the chat to `last-chat-id`; `capture` records the open view only after that (VIEW_SETTLED); a cache-first start has the saved chats in the sidebar already, so it finds the chat before the network answers)
 - `[main.rs:main]` disk: compat::migrate_legacy_dirs, desktop_entry::ensure (Linux), updater::backup::on_start, guard::start/healthy_in
 - `[desktop_entry.rs:ensure]` tracing::info logging of outcome/error
 - `[loop_compose.rs:wire]` sends Cmd::SendLoop(html) on an unbounded tokio channel to the backend

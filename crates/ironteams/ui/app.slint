@@ -31,8 +31,12 @@ import { ReactionHover } from "atoms/reaction_hover.slint";
 import { ProfileModal } from "organisms/profile_modal.slint";
 import { TeamsStore } from "stores/teams_store.slint";
 import { TeamsPage } from "pages/teams_page.slint";
+import { LaterPage } from "pages/later.slint";
 import { TeamsDialogs } from "organisms/teams_dialogs.slint";
 export { ChatWindow } from "organisms/chat_window.slint";
+import { ChatColumn } from "organisms/chat_column.slint";
+import { SplitStore } from "stores/split_store.slint";
+export { SplitStore } from "stores/split_store.slint";
 import { OneDriveView } from "pages/onedrive.slint";
 import { DriveStore } from "stores/drive_store.slint";
 import { DriveFilePicker } from "organisms/drive_file_picker.slint";
@@ -74,12 +78,14 @@ export { SettingsMetrics } from "molecules/settings_kit.slint";
 export { Space } from "tokens/space.slint";
 export { Motion, TypingStore } from "tokens/motion.slint";
 export { ReaderItem, Reactor } from "tokens/types.slint";
-export { BodyPart, PostBlock, PersonItem, PinnedItem, QuoteItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "tokens/types.slint";
+export { BodyPart, PostBlock, PersonItem, PinnedItem, QuoteItem, ActivityRow, ChatRow, ReactionItem, EmojiItem, ComposerEmoji, Edited, PendingAttachment, InlineImage, Recipient, FileItem, ImageItem, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, ChannelRow, TeamRow, VoiceItem, VideoClipItem } from "tokens/types.slint";
 export { EmojiApi } from "organisms/composer.slint";
 export { SpellApi, SpellWord } from "molecules/spelling.slint";
 export { LineApi } from "molecules/line_editor.slint";
+export { InlineImageStore } from "stores/inline_image_store.slint";
 export { FormatApi, FormatEdit } from "organisms/composer_format.slint";
 export { ShortcutApi } from "organisms/shortcuts.slint";
+export { ShortcutStore, ShortcutItem } from "stores/shortcut_store.slint";
 export { PaletteApi, PaletteStore, PaletteAction, PaletteItem } from "pages/palette.slint";
 export { MentionApi } from "molecules/mention_picker.slint";
 export { SnippetApi, SnippetStore, SnippetItem } from "molecules/snippet_picker.slint";
@@ -89,7 +95,8 @@ export { ClipStore } from "organisms/video_clip.slint";
 export { LoopStore, LoopRow } from "molecules/loop_editor.slint";
 export { PeopleStore } from "molecules/people.slint";
 export { ListStore, SectionRow, SectionChoice } from "organisms/lists.slint";
-export { RemindStore, ReminderRow, SnoozedRow } from "organisms/remind.slint";
+export { RemindStore, ReminderRow, SnoozedRow, LaterRow } from "organisms/remind.slint";
+export { ChatNoteStore } from "organisms/chat_note.slint";
 export { ChannelStore, PostItem, Replier } from "organisms/channel_posts.slint";
 export { FindStore, HitRow, PickRow, SharedRow } from "stores/find_store.slint";
 export { MediaStore } from "organisms/media.slint";
@@ -119,7 +126,7 @@ import { AppKeys } from "organisms/app_keys.slint";
 import { NoticeBanner } from "organisms/notice_banner.slint";
 import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
-export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
+export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, RailFixed, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
 export { TopBarStore, TopRow } from "organisms/topbar.slint";
 
@@ -132,6 +139,10 @@ export component AppWindow inherits Window {
     min-height: 560px;
     background: Theme.main;
     default-font-size: 14px * Theme.font-scale;
+    // "Auto collapse app bar" needs the window's width (AppsStore.narrow-width is the
+    // `single-pane` breakpoint below).
+    init => { AppsStore.window-width = root.width; }
+    changed width => { AppsStore.window-width = root.width; }
 
     // --- state set from Rust ---
     in property <string> login-state: "checking"; // checking | code | error | ready
@@ -152,6 +163,8 @@ export component AppWindow inherits Window {
     in-out property <string> view: "chat"; // chat | teams | activity | calendar | onedrive
     // Any other page (an app, search, a notification) shrinks a running call to its floating bar.
     changed view => {
+        // The Later page covers the page under it: another page leaves it.
+        RemindStore.later-open = false;
         if CallStore.phase != "" { CallStore.minimized = true; }
         TopBarStore.command("visit", root.view + "\u{1f}" + root.current-id);
     }
@@ -167,6 +180,7 @@ export component AppWindow inherits Window {
         // Settings covers the page: going to a page leaves it, as in Teams (also for the page
         // already open under it).
         root.leave-settings();
+        RemindStore.later-open = false;
         // Leaving the call view keeps the call running in the small floating bar.
         if CallStore.phase != "" { CallStore.minimized = true; }
         let from = root.view;
@@ -339,7 +353,8 @@ export component AppWindow inherits Window {
     property <int> catch-chats: root.catch-counts.length > 0 ? root.catch-counts[0] : 0;
     // Catching up everything ends the card, so it does not come back with the next message.
     changed catch-chats => { if root.synced && root.catch-chats == 0 { root.away-dismissed = true; } }
-    // Alt+Down / Alt+Up (1 / -1) and the chip (0) open an unread chat, or say there is none.
+    // Alt+Down / Alt+Up (1 / -1), Alt+Shift+Down / Alt+Shift+Up (2 / -2, wrapping around the list)
+    // and the chip (0) open an unread chat, or say there is none.
     function catch-up(step: int) {
         if ShortcutApi.catch-up-target(root.current-id, step, root.chats-favorites, ListStore.sections, root.chats-main, root.chats-channels) != "" {
             root.view = "chat";
@@ -461,13 +476,28 @@ export component AppWindow inherits Window {
     // Narrow windows. Below 800px one pane shows at a time, as in Teams: an open chat takes the
     // window and its header's Back shows the list again. Above it the list gives way so the
     // conversation keeps 480px.
-    property <bool> single-pane: root.width < 800px;
+    property <bool> single-pane: root.width < AppsStore.narrow-width;
     in-out property <bool> pane-list: false;
     property <bool> list-only: root.single-pane && (root.current-id == "" || root.pane-list || root.teams-no-channel);
     property <bool> chat-only: root.single-pane && !root.list-only;
     property <length> list-width: min(root.sidebar-width, max(220px, root.width - AppsStore.rail-width - 5px - 480px));
+    // Split view (`SplitStore`): a second chat right of the open one. It shows while the room
+    // right of the list holds both, the open chat at least 360px and the pane at least 300px;
+    // a narrower window hides it until it is wide enough again. Rust reads `split-fits`.
+    property <length> chat-room: root.width - AppsStore.rail-width - root.list-width - 5px;
+    out property <bool> split-fits: !root.single-pane && root.chat-room >= 360px + 5px + 300px;
+    property <bool> split-shown: SplitStore.open && root.split-fits && root.view != "search";
+    property <length> split-width: max(300px, min(SplitStore.width > 0px ? SplitStore.width : (root.chat-room - 5px) / 2, root.chat-room - 5px - 360px));
     in property <int> anchor-index: -1;
 
+
+    // The split pane's X and Esc: the engine stops filling it and the keys go back to the chat.
+    function close-split() {
+        SplitStore.open = false;
+        SplitStore.active = false;
+        MediaStore.command("split-close", "");
+        root.focus-tick += 1;
+    }
 
     // The command palette runs the same things the rail, the shortcuts and Settings run.
     function leave-settings() {
@@ -518,7 +548,15 @@ export component AppWindow inherits Window {
             FindStore.command("search-tab", "chats");
             FindStore.focus-tick += 1;
         }
+        if cmd == "later" {
+            root.leave-settings();
+            RemindStore.later-open = true;
+            RemindStore.command("refresh", "");
+            root.palette-done();
+        }
         if cmd == "mark-all-read" { root.mark-all-read(); root.palette-done(); }
+        if cmd == "next-unread-wrap" { root.leave-settings(); root.catch-up(2); root.palette-done(); }
+        if cmd == "previous-unread-wrap" { root.leave-settings(); root.catch-up(-2); root.palette-done(); }
         if cmd == "settings" { SettingsStore.show(arg); }
         if cmd == "toggle-theme" { SettingsStore.command("theme", SettingsStore.theme-shown == "dark" ? "light" : "dark"); root.palette-done(); }
         if cmd == "reset-theme" { SettingsStore.command("reset-theme", ""); root.palette-done(); }
@@ -599,6 +637,8 @@ export component AppWindow inherits Window {
         reply-preview: root.reply-preview;
         set-filter(a0) => { root.set-filter(a0); }
         shortcuts-open <=> root.shortcuts-open;
+        split-shown: root.split-shown;
+        close-split => { root.close-split(); }
         teams-no-channel: root.teams-no-channel;
         thread-root: root.thread-root;
         view <=> root.view;
@@ -715,7 +755,7 @@ export component AppWindow inherits Window {
                                 z: 18;
                                 width: parent.width;
                                 height: parent.height;
-                                close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); }
+                                close => { FindStore.quick-open = false; FindStore.command("quick-close", ""); root.palette-done(); }
                             }
                             if PeopleStore.new-chat-open && root.view != "activity": NewChatPane {
                                 z: 30;
@@ -778,6 +818,7 @@ export component AppWindow inherits Window {
                                     schedule-meeting(a0) => { root.schedule-meeting(a0); }
                                     single-pane: root.single-pane;
                                     thread-root: root.thread-root;
+                                    can-split: root.split-fits;
                                 }
 
                                 if FindStore.chat-find-open && root.thread-root == "": ChatFindBar { channel: root.current-is-channel; }
@@ -875,7 +916,8 @@ export component AppWindow inherits Window {
                                 // Composer
                                 if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable && !root.opening: Composer {
                                     vertical-stretch: 0;
-                                    window-width: root.width;
+                                    // The split pane takes its share of the window from the composer.
+                                    window-width: root.split-shown ? root.width - root.split-width - 5px : root.width;
                                     current-is-channel: root.current-is-channel;
                                     thread-root: root.thread-root;
                                     reply-author: root.reply-author;
@@ -888,7 +930,10 @@ export component AppWindow inherits Window {
                                     expanded <=> root.composer-expanded;
                                     important <=> root.important;
                                     urgent <=> root.urgent;
-                                    input-focus(f) => { root.composer-focused = f; }
+                                    input-focus(f) => {
+                                        root.composer-focused = f;
+                                        if f { SplitStore.active = false; }
+                                    }
                                     edit-last => {
                                         if ShortcutApi.last-own(root.messages) != "" { root.edit(ShortcutApi.last-own(root.messages)); }
                                     }
@@ -953,6 +998,41 @@ export component AppWindow inherits Window {
                                 width: parent.width;
                                 height: parent.height;
                             }
+                        }
+
+                        // The split view: its divider drags the pane's width.
+                        if root.split-shown: Rectangle {
+                            width: 5px;
+                            background: split-drag.pressed || split-drag.has-hover ? Theme.accent : Theme.border;
+                            accessible-role: slider;
+                            accessible-label: @tr("Split view width");
+                            accessible-value: round(root.split-width / 1px);
+                            accessible-action-increment => { SplitStore.width = root.split-width + 20px; }
+                            accessible-action-decrement => { SplitStore.width = max(300px, root.split-width - 20px); }
+                            split-drag := TouchArea {
+                                mouse-cursor: col-resize;
+                                moved => {
+                                    if self.pressed {
+                                        SplitStore.width = max(300px, min(root.chat-room - 5px - 360px, root.split-width - (self.mouse-x - self.pressed-x)));
+                                    }
+                                }
+                            }
+                        }
+                        if root.split-shown: ChatColumn {
+                            width: root.split-width;
+                            chat-title: SplitStore.title;
+                            messages: SplitStore.messages;
+                            draft <=> SplitStore.draft;
+                            scroll-tick: SplitStore.scroll-tick;
+                            focus-tick: SplitStore.focus-tick;
+                            closable: true;
+                            active: SplitStore.active;
+                            take-focus: SplitStore.active;
+                            send(t) => { MediaStore.command("split-send", SplitStore.conv-id + "\u{1f}" + t); }
+                            react(id, k) => { root.react(id, k); }
+                            open-url(u) => { root.open-url(u); }
+                            activated => { SplitStore.active = true; }
+                            close => { root.close-split(); }
                         }
                     }
                 }
@@ -1028,6 +1108,10 @@ export component AppWindow inherits Window {
                         root.menu-open = true;
                     }
                     notification-settings => { root.activity-settings(); }
+                    open-later => {
+                        RemindStore.later-open = true;
+                        RemindStore.command("refresh", "");
+                    }
                     dismiss-banner => { root.dismiss-banner(); }
                 }
             }
@@ -1105,6 +1189,7 @@ export component AppWindow inherits Window {
         height: root.height;
         close => { root.shortcuts-open = false; }
         open-palette => { root.shortcuts-open = false; PaletteStore.open = true; }
+        open-settings => { root.shortcuts-open = false; SettingsStore.show("shortcuts"); }
     }
 
     if root.login-state == "ready" && PaletteStore.open: CommandPalette {
@@ -1119,7 +1204,8 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.picker-open: ReactionPickerLayer {
-        z: 46;
+        // Above Settings (60) when it is choosing a quick reaction.
+        z: root.picker-msg-id == "quick-slot" ? 65 : 46;
         width: root.width;
         height: root.height;
         picker-items: root.picker-items;
@@ -1128,7 +1214,13 @@ export component AppWindow inherits Window {
         picker-search(a0) => { root.picker-search(a0); }
         picker-x: root.picker-x;
         picker-y: root.picker-y;
-        react(a0, a1) => { root.react(a0, a1); }
+        react(a0, a1) => {
+            if a0 == "quick-slot" {
+                SettingsStore.command("quick-reaction", "" + SettingsStore.quick-slot + ":" + a1);
+            } else {
+                root.react(a0, a1);
+            }
+        }
     }
 
     if root.login-state == "ready" && root.forward-open: ForwardLayer {
@@ -1254,6 +1346,8 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): SectionDialogLayer {
+        // Above Settings (z 60): its Chats page has a "New section" button.
+        z: 80;
         width: root.width;
         height: root.height;
     }
@@ -1277,6 +1371,14 @@ export component AppWindow inherits Window {
             root.view = "teams";
             root.select-channel(id, title);
         }
+    }
+    // Later: reminders and saved messages in one list, over the area right of the rail.
+    if root.login-state == "ready" && RemindStore.later-open: LaterPage {
+        x: AppsStore.rail-width;
+        y: 48px;
+        z: 40;
+        width: root.width - AppsStore.rail-width;
+        height: root.height - 48px;
     }
     // Viva Engage: a community's read-only feed covers the area right of the rail.
     if root.login-state == "ready" && EngageStore.open && (root.view == "chat" || root.view == "teams"): EngageView {
@@ -1303,7 +1405,9 @@ export component AppWindow inherits Window {
         view: root.view;
     }
 
+    // Above Settings (z 60): a right click on a rail icon opens its menu while Settings is open.
     if root.login-state == "ready": AppsOverlays {
+        z: 61;
         width: root.width;
         height: root.height;
     }
@@ -1315,6 +1419,15 @@ export component AppWindow inherits Window {
         height: root.height - 48px;
         enter-sends: root.enter-sends;
         set-enter-sends(on) => { root.enter-sends = on; root.set-enter-sends(on); }
+        // Chats > Quick reactions: the reaction picker chooses for a slot instead of reacting.
+        pick-quick-reaction(slot, x, y) => {
+            SettingsStore.quick-slot = slot;
+            root.picker-msg-id = "quick-slot";
+            root.picker-x = x;
+            root.picker-y = y;
+            root.picker-open = true;
+            root.picker-search("");
+        }
     }
     // The account switch's question, above Settings and the profile menu it can come from.
     if root.login-state == "ready" && SettingsStore.switch-confirm-open: SwitchConfirmLayer {

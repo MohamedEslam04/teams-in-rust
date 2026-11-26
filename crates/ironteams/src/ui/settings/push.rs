@@ -291,8 +291,27 @@ pub(super) fn toggles(rows: Vec<st::ToggleRow>) -> ModelRc<SToggle> {
     )
 }
 
+/// Pushes the app bar's order, hidden entries and auto collapse into `AppsStore`.
+pub(super) fn push_rail(w: &AppWindow, rail: &appearance::RailPrefs) {
+    let a = w.global::<AppsStore>();
+    a.set_rail_fixed(model(
+        rail.items()
+            .into_iter()
+            .map(|i| RailFixed {
+                key: s(i.key),
+                shown: !i.hidden,
+                locked: i.locked,
+                menu_up: i.shown_above,
+                menu_down: i.shown_below,
+            })
+            .collect(),
+    ));
+    a.set_auto_collapse(rail.auto_collapse);
+}
+
 /// Pushes every local preference into `SettingsStore`.
 pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
+    push_rail(w, &c.local.rail);
     let g = w.global::<SettingsStore>();
     let l = &c.local;
     let a = &l.appearance;
@@ -302,6 +321,10 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
         Density::Compact => "compact",
     }));
     g.set_font_scale(a.font_scale);
+    g.set_message_style(s(a.message_style.slug()));
+    g.set_show_avatars(a.show_avatars);
+    g.set_show_timestamps(a.show_timestamps);
+    g.set_show_reactions(a.show_reactions);
     g.set_skin_tone(w.get_skin_tone());
     push_themes(w, c);
 
@@ -355,6 +378,10 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     ));
     g.set_link_previews(gp.link_previews);
     g.set_wheel_speed(appearance::general::clamp_wheel_speed(gp.wheel_speed));
+    g.set_quick_reactions(emoji_model(crate::reactions::quick_items(
+        &gp.quick_reactions,
+    )));
+    g.set_start_page(s(gp.start_page.slug()));
     g.set_open_chat_at(s(match c.open_chat_at {
         OpenChatAt::FirstUnread => "last-read",
         OpenChatAt::Newest => "newest",
@@ -577,6 +604,13 @@ pub(super) fn push_profile(w: &AppWindow, c: &Ctl) {
     g.set_me_name(s(name));
     g.set_me_email(s(email));
     g.set_me_status(s(d.and_then(|d| d.me_status.clone()).unwrap_or_default()));
+    // "Clears at 14:30" under the message: only for a message that has an end still ahead.
+    g.set_me_status_ends(s(d
+        .filter(|d| d.me_status.is_some())
+        .and_then(|d| d.me_status_ends)
+        .filter(|end| *end > teams_proto::time::now_ms())
+        .map(expiry::at_label)
+        .unwrap_or_default()));
     let presence = d.and_then(|d| d.me_presence.clone()).unwrap_or_default();
     let activity = d.and_then(|d| d.me_activity.clone()).unwrap_or_default();
     g.set_me_presence_until(s(status_until_line(c, &presence)));

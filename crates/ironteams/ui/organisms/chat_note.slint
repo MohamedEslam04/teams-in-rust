@@ -1,0 +1,65 @@
+// The private note on a chat: a few lines of plain text the user keeps next to a conversation,
+// in the details pane ("In this chat"). It stays on this computer (the store's `chat_notes`) and is
+// never sent to Teams. It is not the OneNote "Notes" of the Apps rail. Rust fills `text` when a chat
+// opens (backend/chat_note.rs); `edited` carries every edit back, and Rust writes it after a pause.
+// The editor is the composer's, so each line is aligned by its own first strong character.
+import { Theme } from "../tokens/theme.slint";
+import { LineEditor } from "../molecules/line_editor.slint";
+
+export global ChatNoteStore {
+    // The open chat's note ("" when it has none).
+    in-out property <string> text;
+    callback edited(string);
+}
+
+export component ChatNotePanel inherits Rectangle {
+    height: 164px;
+    accessible-role: groupbox;
+    accessible-label: @tr("Private note");
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 2px;
+        Text {
+            height: 28px;
+            text: @tr("Private note");
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: Theme.start-align;
+        }
+        Text {
+            text: @tr("Only on this computer. Never sent to Teams.");
+            color: Theme.fg-subtle;
+            font-size: 11px * Theme.font-scale;
+            wrap: word-wrap;
+            horizontal-alignment: Theme.start-align;
+        }
+        Rectangle {
+            height: 88px;
+            border-radius: 4px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: note-input.focused ? Theme.accent : Theme.border;
+            note-input := LineEditor {
+                x: 8px;
+                y: 6px;
+                width: parent.width - 16px;
+                height: parent.height - 12px;
+                text <=> ChatNoteStore.text;
+                font-size: 13px * Theme.font-scale;
+                edited => { ChatNoteStore.edited(self.text); }
+            }
+            if note-input.text == "": Text {
+                x: 8px;
+                y: 6px;
+                width: parent.width - 16px;
+                text: @tr("Add a private note about this chat");
+                color: Theme.fg-subtle;
+                font-size: 13px * Theme.font-scale;
+                horizontal-alignment: Theme.start-align;
+            }
+        }
+    }
+}

@@ -16,6 +16,7 @@ export struct ChatRow {
     mention: bool, // an unread message mentions me
     group: bool,   // a group chat (the item menu offers Leave)
     muted: bool,   // notifications are off (the item menu offers Unmute)
+    muted-until: string, // when a timed mute ends ("" for a mute with no end)
     channel: bool, // a channel (the item menu offers the channel items)
     presence: string, // the other person's availability in a 1:1 chat ("" draws no dot)
     person: string,   // the other person in a 1:1 chat ("" otherwise), for the hover card
@@ -61,6 +62,8 @@ export struct Edited { text: string, cursor: int }
 
 // An attachment waiting in the composer (pasted image, dropped or picked file).
 export struct PendingAttachment { name: string, detail: string, is-image: bool, preview: image, has-preview: bool }
+// An image placed between the composer's lines (stores/inline_image_store.slint).
+export struct InlineImage { preview: image, live: bool }
 // `place`: "OneDrive" | "SharePoint" | "" (elsewhere). `detail`: the card's second line.
 export struct FileItem { name: string, url: string, ext: string, place: string, detail: string }
 // A Loop component link drawn as a card.

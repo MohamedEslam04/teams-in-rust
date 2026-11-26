@@ -1,5 +1,6 @@
-//! More of the message menu: Share to Outlook and Report this message, and the chat popped out
-//! into its own window ("Pop out chat").
+//! More of the message menu: Share to Outlook and Report this message, and a second chat next to
+//! the open one: popped out into its own window ("Pop out chat") or in the main window's split pane
+//! ("Open in split view").
 
 use crate::backend::Engine;
 use crate::backend::outbox::row_from_outbox;
@@ -9,8 +10,19 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use store::{ConvKind, OutboxKind};
 
-/// Messages the pop-out window shows (the newest ones).
+/// Messages the pop-out window and the split pane show (the newest ones).
 const POPOUT_ROWS: usize = 200;
+
+/// Where a second chat shows next to the main view. Both take the same path: the engine keeps the
+/// chat's id, pushes its newest messages (and queued sends) after each render, and the composer's
+/// text goes through the outbox (`popout_send`).
+#[derive(Clone, Copy)]
+pub(super) enum Second {
+    /// Its own window ("Pop out chat").
+    PopOut,
+    /// The main window's pane right of the open chat ("Open in split view").
+    Split,
+}
 
 fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -45,25 +57,43 @@ pub(super) fn outlook_draft(
 }
 
 impl Engine {
-    /// "Pop out chat": opens the chat in its own window. Channels stay in the main window.
-    pub(super) async fn popout_open(self: &Arc<Self>, conv: &str) -> anyhow::Result<()> {
+    /// "Pop out chat" and "Open in split view": shows the chat in its own window or in the split
+    /// pane. Channels stay in the main view.
+    pub(super) async fn second_open(
+        self: &Arc<Self>,
+        conv: &str,
+        to: Second,
+    ) -> anyhow::Result<()> {
         let row = self.store.lock().unwrap().conversation(conv)?;
         let Some(row) = row else {
             return Ok(());
         };
         if row.kind == ConvKind::Channel {
-            self.ui
-                .banner("Pop out is available for chats; channels stay here".into());
+            self.ui.banner(
+                match to {
+                    Second::PopOut => "Pop out is available for chats; channels stay here",
+                    Second::Split => "Split view is available for chats; channels stay here",
+                }
+                .into(),
+            );
             return Ok(());
         }
-        self.media.lock().unwrap().popout = Some(conv.to_string());
         let title = if row.title.trim().is_empty() {
             "Chat".to_string()
         } else {
             row.title.clone()
         };
-        self.ui.popout_open(conv.to_string(), title);
-        self.render_popout();
+        match to {
+            Second::PopOut => {
+                self.media.lock().unwrap().popout = Some(conv.to_string());
+                self.ui.popout_open(conv.to_string(), title);
+            }
+            Second::Split => {
+                self.media.lock().unwrap().split = Some(conv.to_string());
+                self.ui.split_open(conv.to_string(), title);
+            }
+        }
+        self.render_second(to);
         let empty = self
             .store
             .lock()
@@ -88,7 +118,23 @@ impl Engine {
 
     /// Pushes the popped-out chat's messages (and its queued sends) to its window.
     pub(in crate::backend) fn render_popout(self: &Arc<Self>) {
-        let Some(conv) = self.media.lock().unwrap().popout.clone() else {
+        self.render_second(Second::PopOut);
+    }
+
+    /// Pushes the split chat's messages (and its queued sends) to the split pane.
+    pub(in crate::backend) fn render_split(self: &Arc<Self>) {
+        self.render_second(Second::Split);
+    }
+
+    fn render_second(self: &Arc<Self>, to: Second) {
+        let conv = {
+            let media = self.media.lock().unwrap();
+            match to {
+                Second::PopOut => media.popout.clone(),
+                Second::Split => media.split.clone(),
+            }
+        };
+        let Some(conv) = conv else {
             return;
         };
         let rows = {
@@ -102,10 +148,14 @@ impl Engine {
             rows
         };
         let msgs = self.build_msgs(&rows, false, &None, &HashMap::new(), &MsgMarks::default());
-        self.ui.popout_messages(msgs);
+        match to {
+            Second::PopOut => self.ui.popout_messages(msgs),
+            Second::Split => self.ui.split_messages(msgs),
+        }
     }
 
-    /// The pop-out window's composer: the text goes through the outbox like any message.
+    /// The pop-out window's (or the split pane's) composer: the text goes through the outbox like
+    /// any message.
     pub(super) async fn popout_send(
         self: &Arc<Self>,
         conv: &str,

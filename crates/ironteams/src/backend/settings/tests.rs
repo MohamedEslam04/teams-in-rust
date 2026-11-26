@@ -13,6 +13,8 @@ fn local_prefs_round_trip_through_their_files() {
     l.appearance.theme = Theme::Dark;
     l.general.auto_start = true;
     l.a11y.larger_text = true;
+    l.rail.set_hidden("calls", true);
+    l.rail.auto_collapse = true;
     l.devices.microphone = Some("alsa:pipewire".into());
     l.files.open_office_in = OpenFilesIn::Desktop;
     l.calls.ask_feedback = call_feedback::Ask::Never;
@@ -20,6 +22,7 @@ fn local_prefs_round_trip_through_their_files() {
     l.save_appearance().unwrap();
     l.save_general().unwrap();
     l.save_a11y().unwrap();
+    l.save_rail().unwrap();
     l.save_devices().unwrap();
     l.save_files().unwrap();
     l.save_calls().unwrap();
@@ -444,6 +447,48 @@ fn find_matches_labels_pages_and_keywords() {
 }
 
 #[test]
+fn the_message_style_is_found_on_the_appearance_page() {
+    for q in ["message style", "bubble", "flat", "slack"] {
+        assert!(
+            find(q)
+                .iter()
+                .any(|f| f.page == "appearance" && f.label == "Message style"),
+            "{q}"
+        );
+    }
+}
+
+#[test]
+fn what_a_message_shows_is_found_on_the_appearance_page() {
+    for (q, label) in [
+        ("avatar", "Show avatars"),
+        ("photo", "Show avatars"),
+        ("timestamp", "Show time stamps"),
+        ("reactions", "Show reactions"),
+    ] {
+        assert!(
+            find(q)
+                .iter()
+                .any(|f| f.page == "appearance" && f.label == label),
+            "{q}"
+        );
+    }
+}
+
+#[test]
+fn the_app_bar_settings_are_found_on_the_appearance_page() {
+    for q in ["app bar", "sidebar", "narrow icons"] {
+        let hits: Vec<_> = find(q)
+            .into_iter()
+            .filter(|f| f.label == "Auto collapse app bar")
+            .collect();
+        assert_eq!(hits.len(), 1, "{q}");
+        assert_eq!(hits[0].page, "appearance");
+    }
+    assert!(find("app bar").iter().any(|f| f.label == "Show app names"));
+}
+
+#[test]
 fn the_graphics_setting_is_found_on_the_general_page() {
     for q in ["graphics", "gpu", "cpu", "memory"] {
         assert!(
@@ -491,6 +536,23 @@ fn the_storage_page_is_listed_and_its_settings_are_found() {
     assert_eq!(on_storage("backup"), ["Delete old update backups"]);
     assert!(on_storage("free up space").contains(&"Clear all cached data"));
     assert!(on_storage("disk").len() >= 4);
+}
+
+#[test]
+fn the_keyboard_shortcuts_page_is_listed_and_its_settings_are_found() {
+    assert_eq!(page_title("shortcuts"), "Keyboard shortcuts");
+    assert!(PAGES.iter().any(|(k, _)| *k == "shortcuts"));
+    let on_shortcuts = |q: &str| {
+        find(q)
+            .into_iter()
+            .filter(|f| f.page == "shortcuts")
+            .map(|f| f.label)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(on_shortcuts("rebind"), ["Change a keyboard shortcut"]);
+    assert!(on_shortcuts("hotkey").contains(&"Reset all shortcuts"));
+    // The page's title is part of what a search matches, so both settings come up.
+    assert_eq!(on_shortcuts("keyboard").len(), 2);
 }
 
 #[test]

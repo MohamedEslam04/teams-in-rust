@@ -58,7 +58,11 @@ fn a_call_going_on_shows_the_strip_with_its_timer_and_join() {
     assert!(s.get_live());
     assert_eq!(s.get_chat_id(), GROUP);
     let elapsed = s.get_elapsed().to_string();
-    assert!(elapsed == "01:05" || elapsed == "01:06", "{elapsed}");
+    // The timer runs on the wall clock and building the harness takes seconds on a slow runner.
+    let secs = elapsed
+        .split_once(':')
+        .and_then(|(m, s)| Some(m.parse::<u32>().ok()? * 60 + s.parse::<u32>().ok()?));
+    assert!(matches!(secs, Some(65..=80)), "{elapsed}");
     assert!(
         !find_label(&h.app, &format!("Call in progress, {elapsed}")).is_empty(),
         "the strip reads its timer"

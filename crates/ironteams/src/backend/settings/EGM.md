@@ -47,7 +47,7 @@ Files:
 - `[rows.rs:meeting_chat_slug]` pub fn meeting_chat_slug(Option<&NotificationSettings>)->&'static str ("" if unknown)
 - `[engine.rs:Engine::refresh_license]` pub(super) async fn -> Result<()>
 - `[rows.rs:dry_run_meeting_chat]` pub fn dry_run_meeting_chat(chat_service,&NotificationSettings,MeetingChatMode)->PlannedRequest
-- `[index.rs:PAGES]` pub const [(&str,&str);13] settings pages (a `storage` page sits between `files` and `permissions`)
+- `[index.rs:PAGES]` pub const [(&str,&str);14] settings pages (a `storage` page sits between `files` and `permissions`; the `shortcuts` page, Keyboard shortcuts, follows `accessibility`)
 - `[rows.rs:dry_run_text]` pub fn dry_run_text(&PlannedRequest)->String (PlannedRequest::dry_run)
 - `[index.rs:page_title]` pub fn(&str) -> &'static str; falls back to "Settings"
 - `[rows.rs:dry_run_notify]` pub fn dry_run_notify(chat_service,&NotificationSettings,Kind,Delivery)->PlannedRequest

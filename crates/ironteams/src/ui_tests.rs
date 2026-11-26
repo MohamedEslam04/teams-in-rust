@@ -18,6 +18,7 @@ use store::Store;
 use teams_proto::Client;
 
 mod activity;
+mod app_bar;
 mod appstore;
 mod cache;
 mod cache_first;
@@ -30,10 +31,12 @@ mod catch_up;
 mod channels;
 mod chat_header;
 mod chat_navigation;
+mod chat_note;
 mod chat_titles;
 mod clip_loop;
 mod composer_apps;
 mod composer_gaps;
+mod composer_inline_images;
 mod composer_lines;
 mod composer_send;
 mod desktop_cards;
@@ -47,11 +50,13 @@ mod format_live;
 mod global_search;
 mod inline_scale;
 mod language;
+mod later;
 mod list_parity;
 mod list_stability;
 mod lists;
 mod media;
 mod meeting_cards;
+mod message_style;
 mod message_toast;
 mod message_ui;
 mod motion;
@@ -75,12 +80,16 @@ mod seen_by;
 mod settings;
 mod settings_layout;
 mod settings_shots;
+mod shortcut_keys;
 mod shortcuts;
 mod snippets;
 mod splash;
+mod split_view;
 mod teams;
+mod theme_shots;
 mod themes;
 mod topbar;
+mod unreads;
 #[cfg(feature = "calls")]
 mod video_effects;
 mod web_parity;
@@ -382,6 +391,38 @@ fn hover_bar_order_for_own_message() {
     click(&buttons[1]);
     click(&buttons[2]);
     assert_eq!(*log.borrow(), vec!["reply m2", "edit m2"]);
+}
+
+#[test]
+fn the_hover_bar_shows_the_chosen_quick_reactions() {
+    let app = app_with_messages(vec![msg("m1", "theirs", false)]);
+    let log = record_actions(&app);
+    let chosen = ["fire", "like", "heart", "laugh", "surprised", "sad"];
+    let items: Vec<crate::EmojiItem> = chosen
+        .iter()
+        .map(|k| crate::EmojiItem {
+            key: (*k).into(),
+            emoji: "x".into(),
+            name: (*k).into(),
+        })
+        .collect();
+    app.global::<crate::SettingsStore>()
+        .set_quick_reactions(slint::ModelRc::new(slint::VecModel::from(items)));
+    let row = &rows(&app)[0];
+    hover(&app, row);
+    let reacts = quick_reactions(&app);
+    assert_eq!(reacts.len(), 6, "one cell for each chosen reaction");
+    for r in &reacts {
+        click(r);
+    }
+    let want: Vec<String> = chosen.iter().map(|k| format!("react m1 {k}")).collect();
+    assert_eq!(*log.borrow(), want);
+    // The bar still holds its other buttons.
+    let labels: Vec<_> = bar_buttons(&app, row).iter().map(label).collect();
+    assert_eq!(
+        labels,
+        ["More reactions", "Reply with quote", "More actions"]
+    );
 }
 
 #[test]
@@ -2185,6 +2226,20 @@ fn chips(app: &AppWindow) -> Vec<String> {
         .collect()
 }
 
+/// The composer's text with each image line shown as "🖼".
+fn shown_draft(app: &AppWindow) -> String {
+    crate::support::inline_images::readable(&app.get_draft())
+}
+
+/// How many images are placed in the composer's text.
+fn inline_images(app: &AppWindow) -> usize {
+    app.global::<crate::InlineImageStore>()
+        .get_images()
+        .iter()
+        .filter(|i| i.live)
+        .count()
+}
+
 /// A PNG and a text file in a scratch directory.
 fn sample_files(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("ironteams-attach-{tag}-{}", std::process::id()));
@@ -2281,29 +2336,38 @@ fn files_become_chips_per_chat_and_each_can_be_removed() {
     let run = h.runner();
     run(Cmd::AddFile(png));
     run(Cmd::AddFile(txt));
-    assert_eq!(chips(&h.app), vec!["shot.png", "notes.txt"]);
-    let model = h.app.get_pending_attachments();
-    let first = model.row_data(0).unwrap();
-    assert!(
-        first.is_image && first.has_preview,
-        "images get a thumbnail"
+    assert_eq!(
+        chips(&h.app),
+        vec!["notes.txt"],
+        "the image went into the text (ui_tests/composer_inline_images.rs); the file is a chip"
     );
-    let second = model.row_data(1).unwrap();
-    assert!(!second.is_image && !second.has_preview);
-    assert_eq!(second.detail, "5 B");
-    assert_eq!(ids(&h.app, "ComposerAttachments::chip").len(), 2);
+    assert_eq!(inline_images(&h.app), 1);
+    let model = h.app.get_pending_attachments();
+    let file = model.row_data(0).unwrap();
+    assert!(!file.is_image && !file.has_preview);
+    assert_eq!(file.detail, "5 B");
+    assert_eq!(ids(&h.app, "ComposerAttachments::chip").len(), 1);
 
     h.select(BACKEND);
     assert!(chips(&h.app).is_empty(), "attachments belong to their chat");
     h.select(NOTES);
-    assert_eq!(chips(&h.app).len(), 2);
+    assert_eq!(chips(&h.app).len(), 1);
 
     h.app.on_remove_attachment({
         let run = run.clone();
         move |i| run(Cmd::RemoveAttachment(i as usize))
     });
+    // The composer lost the image's taller line with the chat switch: let it lay out again
+    // before the X is clicked where it now is.
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     ids(&h.app, "ComposerAttachments::chip-x")[0].mock_single_click(PointerEventButton::Left);
-    assert_eq!(chips(&h.app), vec!["notes.txt"]);
+    assert!(chips(&h.app).is_empty());
+    assert_eq!(
+        inline_images(&h.app),
+        1,
+        "the image in the text is not a chip"
+    );
 }
 
 /// The plain text of every message row of the open chat, oldest first.
@@ -2330,38 +2394,84 @@ fn a_failed_upload_keeps_the_chips_and_the_text() {
             .add_attachment("bad\0name.txt".into(), vec![1, 2, 3]),
     )
     .unwrap();
-    assert_eq!(chips(&h.app), vec!["shot.png", "bad\0name.txt"]);
-    run(Cmd::Send("with a picture".into(), String::new()));
+    assert_eq!(chips(&h.app), vec!["bad\0name.txt"]);
+    let draft = format!("with a picture\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
     assert_eq!(
         chips(&h.app),
         vec!["bad\0name.txt"],
-        "the chip that could not be queued stays; the one before it went to the outbox"
+        "the file that could not be queued stays"
     );
-    assert_eq!(h.app.get_draft(), "with a picture");
+    assert_eq!(
+        shown_draft(&h.app),
+        "with a picture\n🖼",
+        "the image that waited for the message is back in the text"
+    );
+    assert_eq!(inline_images(&h.app), 1);
     assert!(
-        message_texts(&h.app).iter().all(|t| t != "with a picture"),
-        "the text was not sent"
+        message_texts(&h.app)
+            .iter()
+            .all(|t| !t.contains("with a picture") && !t.contains("shot.png")),
+        "nothing was sent or queued: {:?}",
+        message_texts(&h.app)
     );
     discard_pending(&h, &run);
 }
 
 #[test]
-fn chips_and_text_go_through_the_outbox_in_order() {
+fn images_that_cannot_be_queued_stay_in_the_text_in_the_composer() {
+    let h = Harness::new();
+    h.select(NOTES);
+    let (png, _) = sample_files("badimg");
+    let bytes = std::fs::read(&png).unwrap();
+    let run = h.runner();
+    run(Cmd::AddFile(png));
+    // A valid image under a name no file system accepts.
+    h.rt.block_on(h.engine.add_attachment("bad\0name.png".into(), bytes))
+        .unwrap();
+    assert_eq!(shown_draft(&h.app), "🖼\n🖼\n", "one after the other");
+    let draft = format!("two pictures\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
+    assert!(chips(&h.app).is_empty());
+    assert_eq!(shown_draft(&h.app), "two pictures\n🖼\n🖼");
+    assert_eq!(inline_images(&h.app), 2);
+    assert!(
+        message_texts(&h.app)
+            .iter()
+            .all(|t| !t.contains("two pictures") && !t.contains("shot.png")),
+        "no half message was queued"
+    );
+    discard_pending(&h, &run);
+}
+
+#[test]
+fn files_go_through_the_outbox_first_then_one_message_with_the_text_and_the_images() {
     let h = Harness::new();
     h.select(NOTES);
     let (png, txt) = sample_files("outbox");
     let run = h.runner();
     run(Cmd::AddFile(png));
     run(Cmd::AddFile(txt));
-    run(Cmd::Send("caption".into(), String::new()));
+    let draft = format!("caption\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
     assert!(chips(&h.app).is_empty(), "queued chips are gone");
-    assert_eq!(h.app.get_draft(), "", "the sent text left the composer");
+    assert_eq!(inline_images(&h.app), 0, "and so is the image in the text");
     let texts = message_texts(&h.app);
-    let tail: Vec<_> = texts.iter().rev().take(3).rev().cloned().collect();
+    let tail: Vec<_> = texts.iter().rev().take(2).rev().cloned().collect();
     assert_eq!(
-        tail,
-        vec!["🖼 shot.png", "📎 notes.txt", "caption"],
-        "image, file card, then the text, as outbox rows"
+        tail[0], "📎 notes.txt",
+        "the file card, then ONE message for the text and the image: {texts:?}"
+    );
+    let (c, i) = (tail[1].find("caption"), tail[1].find("🖼 shot.png"));
+    assert!(
+        c.is_some() && i.is_some() && c < i,
+        "the text, then the image: {:?}",
+        tail[1]
+    );
+    assert_eq!(
+        texts.iter().filter(|t| t.contains("shot.png")).count(),
+        1,
+        "the image is not a row of its own: {texts:?}"
     );
     discard_pending(&h, &run);
 }

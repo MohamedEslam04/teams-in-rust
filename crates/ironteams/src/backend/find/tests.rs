@@ -1,3 +1,4 @@
+use super::unreads::unread_rows;
 use super::*;
 
 fn hit(kind: &'static str, conv: &str, message: &str, ms: i64) -> Hit {
@@ -149,6 +150,14 @@ fn commands_parse() {
         Some(FindCmd::Details(false))
     );
     assert_eq!(FindCmd::parse("find-next", ""), Some(FindCmd::FindNext));
+    assert_eq!(
+        FindCmd::parse("unreads-read", "unread-group|c"),
+        Some(FindCmd::UnreadsRead("unread-group|c".into()))
+    );
+    assert_eq!(
+        FindCmd::parse("unreads-read-all", ""),
+        Some(FindCmd::UnreadsReadAll)
+    );
     assert_eq!(FindCmd::parse("nope", ""), None);
 }
 
@@ -228,4 +237,179 @@ fn date_filter_maps_to_a_start_time_and_a_day() {
     assert_eq!(Date::parse("30d").label(), "Past month");
     assert_eq!(day_of(0), "1970-01-01");
     assert_eq!(day_of(1_795_000_000_000), "2026-11-18");
+}
+
+fn conv(
+    id: &str,
+    kind: ConvKind,
+    title: &str,
+    last_days_ago: f64,
+    unread: bool,
+) -> ConversationRow {
+    ConversationRow {
+        id: id.into(),
+        kind,
+        title: title.into(),
+        team_id: None,
+        team_name: (kind == ConvKind::Channel).then(|| "Backend Team".to_string()),
+        last_activity_ms: now_ms() - (last_days_ago * 86_400_000.0) as i64,
+        last_preview: String::new(),
+        unread,
+        favorite: false,
+        read_horizon_ms: 0,
+    }
+}
+
+fn unread_engine() -> (Arc<Engine>, crate::AppWindow) {
+    let (e, w) = engine_with(&[
+        ("a1", "chat", "8:sara", 3, "<p>read already</p>"),
+        ("a2", "chat", "8:sara", 2, "<p>first unread</p>"),
+        ("a3", "chat", "8:me", 2, "<p>my own reply</p>"),
+        ("a4", "chat", "8:sara", 1, "<p>second unread</p>"),
+        ("c1", "chan", "8:omar", 0, "<p>channel post</p>"),
+        ("r1", "quiet", "8:omar", 0, "<p>in a read chat</p>"),
+    ]);
+    let horizon = now_ms() - 5 * 86_400_000 / 2;
+    {
+        let st = e.store.lock().unwrap();
+        let mut chat = conv("chat", ConvKind::OneOnOne, "Sara Hassan", 1.0, true);
+        chat.read_horizon_ms = horizon;
+        st.upsert_conversation(&chat).unwrap();
+        st.upsert_conversation(&conv("chan", ConvKind::Channel, "General", 0.5, true))
+            .unwrap();
+        st.upsert_conversation(&conv("quiet", ConvKind::Group, "Quiet", 0.1, false))
+            .unwrap();
+    }
+    (e, w)
+}
+
+#[test]
+fn unread_rows_skip_read_own_deleted_and_system_messages_and_keep_the_newest() {
+    let row = |id: &str, ms: i64, from: &str, kind: &str, deleted: bool| MessageRow {
+        id: id.into(),
+        conversation_id: "c".into(),
+        parent_id: None,
+        sender_mri: from.into(),
+        sender_name: String::new(),
+        compose_ms: ms,
+        edited_ms: None,
+        deleted,
+        message_type: kind.into(),
+        content_html: String::new(),
+        client_message_id: None,
+        reactions_json: "[]".into(),
+    };
+    let rows = [
+        row("old", 10, "8:x", "RichText/Html", false),
+        row("mine", 21, "8:me", "RichText/Html", false),
+        row("gone", 22, "8:x", "RichText/Html", true),
+        row("sys", 23, "8:x", "ThreadActivity/AddMember", false),
+        row("a", 24, "8:x", "RichText/Html", false),
+        row("b", 25, "8:x", "Text", false),
+    ];
+    let ids = |v: Vec<&MessageRow>| v.iter().map(|m| m.id.clone()).collect::<Vec<_>>();
+    assert_eq!(ids(unread_rows(&rows, "8:me", 20)), ["a", "b"]);
+    assert_eq!(ids(unread_rows(&rows, "8:me", 24)), ["b"]);
+    assert!(unread_rows(&rows, "8:me", 25).is_empty());
+
+    let many: Vec<_> = (1..=40)
+        .map(|i| row(&format!("m{i}"), 100 + i, "8:x", "Text", false))
+        .collect();
+    let kept = unread_rows(&many, "8:me", 0);
+    assert_eq!(kept.len(), 30, "only the newest are listed");
+    assert_eq!(kept[0].id, "m11", "still oldest first");
+    assert_eq!(kept[29].id, "m40");
+}
+
+#[test]
+fn unreads_group_by_conversation_newest_conversation_first_oldest_message_first() {
+    let (e, _w) = unread_engine();
+    e.load_unreads(0);
+    let f = e.find.lock().unwrap();
+    let shape: Vec<_> = f
+        .quick_hits
+        .iter()
+        .map(|h| (h.kind, h.conv.as_str(), h.message.as_str()))
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            ("unread-group", "chan", ""),
+            ("message", "chan", "c1"),
+            ("unread-group", "chat", ""),
+            ("message", "chat", "a2"),
+            ("message", "chat", "a4"),
+        ],
+        "a read conversation is not listed; the horizon and our own message are skipped"
+    );
+    let header = &f.quick_hits[2];
+    assert_eq!(header.name, "Sara Hassan");
+    assert_eq!(header.text, "2", "the count of the group");
+    assert_eq!(f.quick_hits[0].name, "Backend Team › General");
+}
+
+#[test]
+fn the_unreads_view_opens_through_quick_open() {
+    let (e, _w) = unread_engine();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(e.quick_open("unreads"));
+    let f = e.find.lock().unwrap();
+    assert_eq!(f.quick, Some("unreads"));
+    assert_eq!(f.quick_hits.len(), 5);
+}
+
+#[test]
+fn a_read_chat_leaves_the_open_unreads_view_but_other_views_are_left_alone() {
+    let (e, _w) = unread_engine();
+    // Not open: nothing is built.
+    e.refresh_unreads();
+    assert!(e.find.lock().unwrap().quick_hits.is_empty());
+
+    e.load_unreads(0);
+    e.find.lock().unwrap().quick = Some("unreads");
+    e.store.lock().unwrap().mark_read("chan", i64::MAX).unwrap();
+    e.refresh_unreads();
+    let convs: Vec<_> = e
+        .find
+        .lock()
+        .unwrap()
+        .quick_hits
+        .iter()
+        .filter(|h| h.kind == "unread-group")
+        .map(|h| h.conv.clone())
+        .collect();
+    assert_eq!(convs, ["chat"]);
+
+    // Another quick view is not replaced.
+    e.find.lock().unwrap().quick = Some("saved");
+    e.find.lock().unwrap().quick_hits.clear();
+    e.refresh_unreads();
+    assert!(e.find.lock().unwrap().quick_hits.is_empty());
+}
+
+#[test]
+fn marking_an_unknown_row_read_changes_nothing() {
+    let (e, _w) = unread_engine();
+    e.load_unreads(0);
+    let before = e.find.lock().unwrap().quick_hits.len();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(e.unreads_mark_read("nope")).unwrap();
+    assert_eq!(e.find.lock().unwrap().quick_hits.len(), before);
+    assert!(
+        e.store
+            .lock()
+            .unwrap()
+            .conversation("chan")
+            .unwrap()
+            .unwrap()
+            .unread
+    );
 }
