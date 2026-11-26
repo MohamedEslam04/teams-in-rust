@@ -15,6 +15,7 @@ Files:
 - `file_hover.rs`: `of(&WindowEvent) -> Option<bool>`: whether a file is dragged over the window; main.rs sets `AppWindow.file-hover` from it (no drag events on Wayland).
 - `external.rs`: Single gate for opening URLs/files in the desktop default handler; suppressed and recorded in demo mode and tests.
 - `find_data.rs`: Send data types for Search page/quick views/Find in chat/Shared tab (HitData, PickData, SharedData) plus query-term matching and Markdown snippet highlighting helpers.
+- `instance.rs`: Single-instance lock (`<data_dir>/instance.lock`, advisory, freed by a crash) plus a per-user local socket (Unix socket 0600, or a named pipe on Windows); a second launch sends `activate` to the running instance, which raises its window, then exits.
 - `key_layout.rs`: Ctrl/Cmd/Alt shortcuts by physical key on non-Latin layouts: `Shortcuts` (window event hook installed in main.rs), `us_key`, `latin`, `send`; typing without those modifiers is untouched.
 - `language.rs`: Applies the interface language: resolves it from GeneralPrefs and selects the Slint bundled translation (English = source text).
 - `lists_data.rs`: Plain view-data structs for chat list sections, channel post cards, threads, Adaptive Card rows, channel menu state and list options.
@@ -55,6 +56,8 @@ Files:
 - `[window_watch.rs:scale_pct]` pub fn(f32) -> u16; whole percent, NaN or <= 0 gives `DEFAULT_SCALE_PCT`
 - `[window_watch.rs:poll_every]` pub fn(Mode) -> Option<Duration>; 400 ms while Visible or Minimized, None while Hidden
 - `[window_watch.rs:update/shown/hidden/focus_changed]` pub fns reading or setting the window state; callers are `main.rs` (install, winit focus events) and `tray_wiring.rs` (show_and_raise, hide to tray, run)
+- `[instance.rs:acquire]` pub fn(&Path, Duration) -> io::Result<Acquired>; `Primary(Instance)` once the lock is taken, `Activated` after the running instance accepted `activate`; retries until `wait` (`WAIT`, 15 s) while the lock is held and the socket does not answer, then `TimedOut`
+- `[instance.rs:Instance]` pub struct; `listen(on_activate)` serves the socket on a std thread (the callback runs on that thread), `release()` and `Drop` stop it, remove the socket and free the lock; the socket reads one line (64 bytes, 1 s) and acts on `activate` only
 - `[logging.rs:init]` pub fn(Option<&Path>); starts the tracing subscriber (file and/or stdout)
 - `[renderer.rs:start]` pub fn(wanted, select) -> Result<Started, E>; `wanted(saved)` applies the env override, `record`/`running` keep what runs
 - `[offline_start.rs:on_refresh_error]` pub fn(&Error, has_cache: bool) -> OnRefreshError; `retry_delay(attempt)` pub fn(u32) -> Duration
