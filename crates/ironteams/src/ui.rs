@@ -115,6 +115,11 @@ fn rgb(c: u32) -> Color {
     Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
 
+/// A theme token colour, `0xRRGGBBAA`.
+fn rgba(c: u32) -> Color {
+    Color::from_argb_u8(c as u8, (c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8)
+}
+
 fn img(p: &Option<Pixels>) -> (Image, bool) {
     match p {
         Some(px) => (Image::from_rgba8(px.clone()), true),

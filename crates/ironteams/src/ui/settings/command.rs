@@ -56,9 +56,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             match name {
                 "theme" => {
                     a.theme = match arg {
-                        "light" => ThemeChoice::Light,
-                        "dark" => ThemeChoice::Dark,
-                        _ => ThemeChoice::System,
+                        "light" => LegacyTheme::Light,
+                        "dark" => LegacyTheme::Dark,
+                        _ => LegacyTheme::System,
                     }
                 }
                 "accent" => a.accent = Rgb::from_hex(arg),
@@ -82,7 +82,7 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 _ => a.set_font_scale(arg.parse().unwrap_or(1.0)),
             }
             let r = c.local.save_appearance();
-            apply_look(w, &c);
+            look_changed(w, &mut c);
             push_local(w, &c);
             saved(w, r);
         }
@@ -125,6 +125,8 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 // Rows already drawn show the old format until the engine draws them again.
                 let _ = tx.send(Cmd::Settings(SettingsCmd::Redraw));
             }
+            // The 24-hour clock is part of the look: every window's time labels follow it.
+            look_changed(w, &mut c);
             if let Some(on) = autostart
                 && r.is_ok()
             {
@@ -156,7 +158,7 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 }
             }
             let r = c.local.save_a11y();
-            apply_look(w, &c);
+            look_changed(w, &mut c);
             push_local(w, &c);
             saved(w, r);
         }

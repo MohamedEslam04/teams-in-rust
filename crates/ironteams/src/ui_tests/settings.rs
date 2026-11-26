@@ -1441,6 +1441,91 @@ fn theme_choice_changes_the_theme_global_live() {
 }
 
 #[test]
+fn regions_default_to_the_content_colours() {
+    let ui = window(Home::new("regions"));
+    let t = ui.app.global::<Theme>();
+    assert_eq!(t.get_call(), t.get_content());
+    assert_eq!(t.get_nav().bg, t.get_content().panel);
+    // The flat colours are the content's.
+    assert_eq!(t.get_main(), t.get_content().bg);
+    assert_eq!(t.get_sidebar(), t.get_content().panel);
+    assert_eq!(t.get_dark(), t.get_content().dark);
+}
+
+#[test]
+fn look_reaches_an_open_popout() {
+    let ui = window(Home::new("popout-look"));
+    let app = &ui.app;
+    let cw = crate::ChatWindow::new().unwrap();
+    crate::ui::popout::set_popout_for_test(cw.clone_strong());
+    open_page(app, "appearance");
+    press(app, "Accent colour: Blue");
+    let pt = cw.global::<Theme>();
+    assert_eq!(
+        pt.get_content().accent_strong,
+        slint::Color::from_rgb_u8(0x0f, 0x6c, 0xbd)
+    );
+    assert_eq!(pt.get_content(), app.global::<Theme>().get_content());
+    assert!(!pt.get_h24());
+    open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
+    press(app, "Time format: 24-hour (13:30)");
+    assert!(pt.get_h24(), "the popout's time labels follow");
+    assert!(app.global::<Theme>().get_h24());
+}
+
+#[test]
+fn a_mention_colour_change_asks_for_a_redraw() {
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("mention-redraw"), Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
+    while rx.try_recv().is_ok() {}
+    press(app, "Accent colour: Blue");
+    assert!(
+        matches!(rx.try_recv(), Ok(Cmd::Settings(SettingsCmd::Redraw))),
+        "the loaded messages are drawn again with the new mention colour"
+    );
+    assert!(rx.try_recv().is_err());
+    press(app, "Message density: Compact");
+    assert!(
+        rx.try_recv().is_err(),
+        "the mention colour did not change: nothing to draw again"
+    );
+}
+
+#[test]
+fn the_same_look_is_not_applied_twice() {
+    use appearance::{PortalChange, PortalScheme};
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("same-look"), Some(tx), false);
+    let app = &ui.app;
+    while rx.try_recv().is_ok() {}
+    let redraws = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>| {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|c| {
+                matches!(
+                    c,
+                    Cmd::Settings(crate::backend::settings::SettingsCmd::Redraw)
+                )
+            })
+            .count()
+    };
+    crate::ui::settings::portal_changed(app, PortalChange::ColorScheme(PortalScheme::Light));
+    assert!(
+        !app.global::<Theme>().get_dark(),
+        "the portal turned it light"
+    );
+    assert_eq!(redraws(&mut rx), 1);
+    crate::ui::settings::portal_changed(app, PortalChange::ColorScheme(PortalScheme::Light));
+    assert_eq!(redraws(&mut rx), 0, "the same look again: nothing to do");
+}
+
+#[test]
 fn font_size_and_larger_text_scale_the_theme_font() {
     let ui = window(Home::new("font"));
     let app = &ui.app;

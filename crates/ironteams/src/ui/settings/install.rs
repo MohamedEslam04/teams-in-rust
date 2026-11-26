@@ -90,11 +90,12 @@ pub fn install(
         status_until: None,
         status_before: None,
         switching: None,
+        last_look: None,
     }));
     CTL.with(|c| *c.borrow_mut() = Some(shared.clone()));
     {
-        let c = shared.borrow();
-        apply_look(window, &c);
+        let mut c = shared.borrow_mut();
+        look_changed(window, &mut c);
         push_local(window, &c);
         push_server(window, &c);
         push_accounts(window, &c);

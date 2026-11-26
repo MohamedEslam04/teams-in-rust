@@ -7,7 +7,7 @@ Files:
 - `accounts.rs`: Account/org row builders, ServerData (Teams-side settings snapshot), SettingsCmd enum, app-permission rows.
 - `engine.rs`: impl Engine: runs SettingsCmd, reloads/reads Teams settings, sets presence/work location, license refresh, 10-min notification-prefs poller.
 - `index.rs`: Settings page list, 'Find in Settings' keyword INDEX and find(), device list types and audio/camera row builders.
-- `look.rs`: Theme palettes (dark/light/high-contrast), accent mixing, Look resolution from local prefs + portal, font-scale stepping, slug converters.
+- `look.rs`: Theme palettes (dark/light/high-contrast) holding the full token set, accent mixing, Look resolution (content, nav and call regions, h24) from local prefs + portal, font-scale stepping, slug converters.
 - `notifications.rs`: Global remembered notification settings/priority people, incoming message kind classification, banner decision (mute/pause/delivery/preview), work-location pin helpers.
 - `prefs.rs`: Files/Calls prefs, link-previews flag, atomic JSON read/write, Local struct loading and saving every local preference file.
 - `rows.rs`: Pure builders of settings-page rows (toggles, notify, privacy, sound, meeting chat) from prefs/Teams settings, plus dry-run builders that clone settings, apply one change and return a PlannedRequest without sending.
@@ -61,9 +61,11 @@ Files:
 - `[index.rs:DeviceRow]` pub type (id,name)
 - `[index.rs:audio_rows]` pub fn(&[AudioDevice], all, chosen) -> Vec<DeviceRow>; hides raw ALSA hw ids unless all/chosen
 - `[index.rs:camera_rows]` pub fn(&[Camera]) -> Vec<DeviceRow> (bus,name)
-- `[look.rs:Palette/DARK/LIGHT/CONTRAST_DARK/CONTRAST_LIGHT]` pub 0xrrggbb palette struct and constants; fields include `code_bg` (code block background)
-- `[look.rs:palette]` pub fn(ResolvedTheme, high_contrast, Option<Rgb>) -> Palette
-- `[look.rs:Look/look]` pub struct and fn(&Local, Option<&PortalSettings>) -> Look
+- `[look.rs:Palette/DARK/LIGHT/CONTRAST_DARK/CONTRAST_LIGHT]` pub palette struct and constants: the 49 token colours of ui/tokens/types.slint `Tokens` in the same order, each 0xRRGGBBAA, and `dark`; `bg` (was main) and `panel` (was sidebar)
+- `[look.rs:opaque]` pub const fn(u32) -> u32; 0xRRGGBB to 0xRRGGBBAA with alpha ff
+- `[look.rs:nav_of]` pub fn(&Palette) -> Palette; the content palette with bg = panel (the nav of a literal palette)
+- `[look.rs:palette]` pub fn(ResolvedTheme, high_contrast, Option<Rgb>) -> Palette; the accent rules (mix on 0xRRGGBB, then opaque) apply only to DARK and LIGHT
+- `[look.rs:Look/look]` pub struct {content, nav, call: Palette, font_scale, compact, high_contrast, reduced_motion, h24, accent} and fn(&Local, Option<&PortalSettings>) -> Look; nav = nav_of(content), call = content, h24 from general.time_format == H24
 - `[look.rs:step_font_scale/FONT_STEP]` pub fn(f32,i32)->f32 and 0.05 step; plus pub slug fns switch_slug/switch_from_slug/date_slug/date_from_slug/time_slug/time_from_slug
 - `[notifications.rs:remember_notification_settings/remember_priority_people/is_priority_person]` pub store/query of global settings; plus pub(in super::super) remembered_notification_settings
 

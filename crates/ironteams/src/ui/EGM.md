@@ -25,7 +25,7 @@ Files:
 - `palette.rs`: Command palette ranking (score/rank), recent-actions list, row building with list geometry, wired to PaletteApi callbacks.
 - `ongoing_call.rs`: `UiHandle::ongoing_call` and `ongoing_call_elapsed` fill `OngoingCallStore`, the header's live-call strip.
 - `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
-- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; copies Theme, shows/updates messages.
+- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; follows the look Settings applies (popout_apply_look), shows/updates messages.
 - `chat_note.rs`: UiHandle::set_chat_note fills ChatNoteStore.text (the open chat's private note).
 - `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models; UiHandle::later fills `RemindStore.later` (the Later page rows).
 - `row_fingerprint.rs`: `of`, `of_chat`, `of_post`: hash of every drawn field of a `MsgData`, `ChatData` or `PostData`, used as the row print for `model_sync`.
@@ -97,7 +97,7 @@ Files:
 - `[people.rs:UiHandle::receipts_on]` pub fn(&self,bool)
 - `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
 - `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
-- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; copies the Theme (including code_bg) and SettingsStore.wheel_speed from the main window
+- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; applies the last look (thread-local LOOK) through settings::apply_look and copies SettingsStore.wheel_speed from the main window
 
 ## Invariants
 - `[activity.rs:fill]` rows updated in place via set_row_data when id sequence and length are unchanged (keeps scroll position); otherwise set_vec
@@ -126,7 +126,8 @@ Files:
 - `[call.rs:watch]` every 150 ms (`start_watch`): in a connected/reconnecting call, `view_plan::visible_roles` of the view state (view-mode, pinned, filmstrip-pos, gallery-page, gallery-per-page, fullscreen, someone else's share) over the last people goes through `ViewSend`, and a settled, changed plan is sent as CallStore.command("video-view", encoded lines `role mri`); while the camera menu is open CallStore.command("video-preview", "on"|"off") is invoked on open/close; while the devices menu is open a microphone level meter (`devices::mic_level`) is opened and CallStore.mic_level written; any other menu drops the meter and zeroes the level; a mic that failed to open is not retried until the menu closes
 - `[call.rs:set]` phase empty or prejoin resets minimized, menu, view_mode=gallery, gallery_page=0, pinned; panel cleared only when phase empty
 - `[message_toast.rs:TOASTS]` toast model set by install_local; message_toast silently returns if install_local has not run
-- `[popout.rs:copy_theme]` pop-out has its own Theme global, copied from main on each open (not live)
+- `[popout.rs:popout_apply_look]` pub(crate) fn(&Look); stores the look in thread-local LOOK and applies it to the open pop-out's own Theme global, so the pop-out follows every look change live (colours, regions, h24)
+- `[popout.rs:set_popout_for_test]` cfg(test) pub(crate) fn(ChatWindow); puts a window in POPOUT
 - `[call.rs:set]` feedback_open decided once, on the transition into phase ended (sampled by settings ask, roll, demo suppression); false in any other phase
 - `[message_toast.rs:NEXT_ID]` AtomicI32 starting at 1 gives unique, increasing card ids (Relaxed)
 - `[people.rs:card_details]` fill only if card or profile open and get_card().id equals c.person.id

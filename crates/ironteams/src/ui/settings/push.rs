@@ -40,47 +40,113 @@ pub(super) fn watch_portal(weak: slint::Weak<AppWindow>) {
         .ok();
 }
 
-pub(super) fn portal_changed(w: &AppWindow, change: PortalChange) {
+pub(crate) fn portal_changed(w: &AppWindow, change: PortalChange) {
     let Some(shared) = ctl() else { return };
     let mut c = shared.borrow_mut();
     c.portal.get_or_insert_with(Default::default).apply(change);
-    apply_look(w, &c);
+    look_changed(w, &mut c);
 }
 
-/// Sets the `Theme` global from the preferences and the portal.
-pub(super) fn apply_look(w: &AppWindow, c: &Ctl) {
-    let lk: Look = st::look(&c.local, c.portal.as_ref());
-    let t = w.global::<Theme>();
-    let p = lk.palette;
-    t.set_rail(rgb(p.rail));
-    t.set_sidebar(rgb(p.sidebar));
-    t.set_main(rgb(p.main));
-    t.set_topbar(rgb(p.topbar));
-    t.set_surface(rgb(p.surface));
-    t.set_surface_hover(rgb(p.surface_hover));
-    t.set_selected(rgb(p.selected));
-    t.set_border(rgb(p.border));
-    t.set_accent(rgb(p.accent));
-    t.set_accent_strong(rgb(p.accent_strong));
-    t.set_fg(rgb(p.fg));
-    t.set_fg_muted(rgb(p.fg_muted));
-    t.set_fg_subtle(rgb(p.fg_subtle));
-    t.set_bubble_mine(rgb(p.bubble_mine));
-    t.set_bubble_other(rgb(p.bubble_other));
-    t.set_mention(rgb(p.mention));
-    t.set_code_bg(rgb(p.code_bg));
-    // Rows drawn from now on show mentions in this colour (`markdown::spans_md`).
-    crate::markdown::set_mention_color(p.mention);
-    t.set_danger(rgb(p.danger));
-    t.set_unread_badge(rgb(p.unread_badge));
-    t.set_dark(lk.dark);
+/// The Slint `Tokens` of one region.
+fn ui_tokens(p: &st::Palette) -> crate::Tokens {
+    crate::Tokens {
+        bg: rgba(p.bg),
+        surface: rgba(p.surface),
+        surface_hover: rgba(p.surface_hover),
+        selected: rgba(p.selected),
+        border: rgba(p.border),
+        panel: rgba(p.panel),
+        rail: rgba(p.rail),
+        topbar: rgba(p.topbar),
+        bg_alt: rgba(p.bg_alt),
+        bg_sunk: rgba(p.bg_sunk),
+        grid_line: rgba(p.grid_line),
+        grid_line_soft: rgba(p.grid_line_soft),
+        fg: rgba(p.fg),
+        fg_muted: rgba(p.fg_muted),
+        fg_subtle: rgba(p.fg_subtle),
+        fg_strong: rgba(p.fg_strong),
+        accent: rgba(p.accent),
+        accent_strong: rgba(p.accent_strong),
+        on_accent: rgba(p.on_accent),
+        accent_soft: rgba(p.accent_soft),
+        accent_subtle: rgba(p.accent_subtle),
+        accent_muted: rgba(p.accent_muted),
+        accent_faint: rgba(p.accent_faint),
+        accent_wash: rgba(p.accent_wash),
+        accent_tint: rgba(p.accent_tint),
+        bubble_mine: rgba(p.bubble_mine),
+        bubble_other: rgba(p.bubble_other),
+        bubble_mention: rgba(p.bubble_mention),
+        mention: rgba(p.mention),
+        code_bg: rgba(p.code_bg),
+        danger: rgba(p.danger),
+        danger_hover: rgba(p.danger_hover),
+        on_danger: rgba(p.on_danger),
+        danger_text: rgba(p.danger_text),
+        danger_soft: rgba(p.danger_soft),
+        warning: rgba(p.warning),
+        warning_soft: rgba(p.warning_soft),
+        success: rgba(p.success),
+        success_soft: rgba(p.success_soft),
+        info_soft: rgba(p.info_soft),
+        unread_badge: rgba(p.unread_badge),
+        on_badge: rgba(p.on_badge),
+        presence_available: rgba(p.presence_available),
+        presence_busy: rgba(p.presence_busy),
+        presence_away: rgba(p.presence_away),
+        presence_offline: rgba(p.presence_offline),
+        scrim: rgba(p.scrim),
+        overlay_soft: rgba(p.overlay_soft),
+        shimmer: rgba(p.shimmer),
+        dark: p.dark,
+    }
+}
+
+/// Sets every property of a window's `Theme` global from a look. The main window and each chat
+/// popout get it, so a new token needs no change in window code beyond `ui_tokens`.
+pub(crate) fn apply_look(t: &Theme<'_>, lk: &Look) {
+    t.set_content(ui_tokens(&lk.content));
+    t.set_nav(ui_tokens(&lk.nav));
+    t.set_call(ui_tokens(&lk.call));
     t.set_font_scale(lk.font_scale);
     t.set_compact(lk.compact);
     t.set_high_contrast(lk.high_contrast);
     t.set_reduced_motion(lk.reduced_motion);
+    t.set_h24(lk.h24);
+}
 
+/// Works out the look from the preferences and the portal and, when it differs from the one
+/// applied last, applies it to the main window and the popout. A new mention colour makes the
+/// engine draw the loaded messages again, so they do not keep the old one.
+pub(super) fn look_changed(w: &AppWindow, c: &mut Ctl) {
+    let lk: Look = st::look(&c.local, c.portal.as_ref());
+    show_look(w, c, &lk);
+    if c.last_look.as_ref() == Some(&lk) {
+        return;
+    }
+    apply_look(&w.global::<Theme>(), &lk);
+    crate::ui::popout::popout_apply_look(&lk);
+    let before = c.last_look.as_ref().map(|l| l.content.mention);
+    if before != Some(lk.content.mention) {
+        // Rows drawn from now on show mentions in this colour (`markdown::spans_md`).
+        crate::markdown::set_mention_color(lk.content.mention >> 8);
+        // The rows already drawn have the old one baked in; the engine's message memo includes
+        // the mention colour (`backend/render.rs`), so a redraw builds them again. The first look
+        // is set before anything is drawn.
+        if before.is_some()
+            && let Some(tx) = &c.tx
+        {
+            let _ = tx.send(Cmd::Settings(SettingsCmd::Redraw));
+        }
+    }
+    c.last_look = Some(lk);
+}
+
+/// The Settings page's readouts of the look in use.
+fn show_look(w: &AppWindow, c: &Ctl, lk: &Look) {
     let g = w.global::<SettingsStore>();
-    g.set_theme_shown(s(if lk.dark { "dark" } else { "light" }));
+    g.set_theme_shown(s(if lk.content.dark { "dark" } else { "light" }));
     g.set_accent_shown(s(match (c.local.appearance.accent, lk.accent) {
         (Some(a), _) => a.to_hex(),
         (None, Some(a)) => format!("desktop accent {}", a.to_hex()),
@@ -123,9 +189,9 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     let l = &c.local;
     let a = &l.appearance;
     g.set_theme(s(match a.theme {
-        ThemeChoice::Light => "light",
-        ThemeChoice::Dark => "dark",
-        ThemeChoice::System => "system",
+        LegacyTheme::Light => "light",
+        LegacyTheme::Dark => "dark",
+        LegacyTheme::System => "system",
     }));
     g.set_accent(s(a.accent.map(Rgb::to_hex).unwrap_or_default()));
     g.set_density(s(match a.density {
@@ -156,8 +222,6 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_language_shown(s(appearance::effective_language(gp).english_name));
     g.set_date_format(s(st::date_slug(gp.date_format)));
     g.set_time_format(s(st::time_slug(gp.time_format)));
-    w.global::<Theme>()
-        .set_h24(gp.time_format == appearance::TimeFormat::H24);
     g.set_time_zone(s(gp.time_zone.clone().unwrap_or_default()));
     g.set_system_time_zone(s(iana_time_zone::get_timezone().unwrap_or_default()));
     g.set_startup(toggles(st::startup_rows(gp)));
