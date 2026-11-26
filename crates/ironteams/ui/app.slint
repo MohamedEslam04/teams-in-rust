@@ -168,6 +168,7 @@ export component AppWindow inherits Window {
         // Settings covers the page: going to a page leaves it, as in Teams (also for the page
         // already open under it).
         root.leave-settings();
+        RemindStore.later-open = false;
         // Leaving the call view keeps the call running in the small floating bar.
         if CallStore.phase != "" { CallStore.minimized = true; }
         let from = root.view;

@@ -240,6 +240,7 @@ fn the_activity_page_has_a_later_button_and_another_page_leaves_it() {
     h.app.set_view("activity".into());
     click(&by_y(&h.app, "Later")[0]);
     assert!(rs(&h.app).get_later_open());
-    h.app.set_view("chat".into());
+    // A click on a rail entry.
+    h.app.invoke_navigate("chat".into());
     assert!(!rs(&h.app).get_later_open(), "another page closes Later");
 }
