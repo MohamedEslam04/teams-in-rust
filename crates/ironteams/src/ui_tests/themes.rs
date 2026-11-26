@@ -456,6 +456,7 @@ fn copy_theme_puts_the_share_line_on_the_clipboard() {
 fn import_shows_each_refusal_sentence() {
     let ui = window(Home::new("theme-import-refusals"));
     let app = &ui.app;
+    appearance_page(app);
     let colours = "#1d2b45,#e6ecf5,#2f4a75,#ffffff,#1c2430,#2f6fd6,#1f57b8,#d93f3f";
     let long_name = "n".repeat(41);
     let cases = [
