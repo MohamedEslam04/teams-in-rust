@@ -18,6 +18,7 @@ use store::Store;
 use teams_proto::Client;
 
 mod activity;
+mod app_bar;
 mod appstore;
 mod cache;
 mod cache_first;

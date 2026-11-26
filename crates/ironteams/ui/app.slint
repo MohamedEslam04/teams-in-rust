@@ -117,7 +117,7 @@ import { AppKeys } from "organisms/app_keys.slint";
 import { NoticeBanner } from "organisms/notice_banner.slint";
 import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
-export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
+export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, RailFixed, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
 export { TopBarStore, TopRow } from "organisms/topbar.slint";
 
@@ -130,6 +130,10 @@ export component AppWindow inherits Window {
     min-height: 560px;
     background: Theme.main;
     default-font-size: 14px * Theme.font-scale;
+    // "Auto collapse app bar" needs the window's width (AppsStore.narrow-width is the
+    // `single-pane` breakpoint below).
+    init => { AppsStore.window-width = root.width; }
+    changed width => { AppsStore.window-width = root.width; }
 
     // --- state set from Rust ---
     in property <string> login-state: "checking"; // checking | code | error | ready
@@ -459,7 +463,7 @@ export component AppWindow inherits Window {
     // Narrow windows. Below 800px one pane shows at a time, as in Teams: an open chat takes the
     // window and its header's Back shows the list again. Above it the list gives way so the
     // conversation keeps 480px.
-    property <bool> single-pane: root.width < 800px;
+    property <bool> single-pane: root.width < AppsStore.narrow-width;
     in-out property <bool> pane-list: false;
     property <bool> list-only: root.single-pane && (root.current-id == "" || root.pane-list || root.teams-no-channel);
     property <bool> chat-only: root.single-pane && !root.list-only;

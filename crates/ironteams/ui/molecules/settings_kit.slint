@@ -18,7 +18,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
-import { SwitchTrack } from "../atoms/check.slint";
+import { CheckBox, SwitchTrack } from "../atoms/check.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { SChoice } from "settings_widgets.slint";
@@ -331,6 +331,39 @@ export component SettingsButtonRow inherits SettingsRow {
         enabled: root.button-enabled;
         clicked => { root.clicked(); }
     }
+}
+
+// One entry of a list the user orders: its name on the start side, Move up and Move down, and a
+// checkbox that shows or hides it (an entry that cannot be hidden keeps the room, without the
+// box). Each control is read out with the entry's name.
+export component SettingsOrderRow inherits SettingsRow {
+    in property <bool> shown: true;
+    in property <bool> can-hide: true;
+    in property <bool> first;
+    in property <bool> last;
+    callback up();
+    callback down();
+    callback toggled(bool);
+    Button {
+        variant: ButtonVariant.settings;
+        label: @tr("Move up");
+        accessible-label: @tr("Move up") + ": " + root.label;
+        enabled: !root.first;
+        clicked => { root.up(); }
+    }
+    Button {
+        variant: ButtonVariant.settings;
+        label: @tr("Move down");
+        accessible-label: @tr("Move down") + ": " + root.label;
+        enabled: !root.last;
+        clicked => { root.down(); }
+    }
+    if root.can-hide: CheckBox {
+        checked: root.shown;
+        label: @tr("Show") + ": " + root.label;
+        toggled(on) => { root.toggled(on); }
+    }
+    if !root.can-hide: Rectangle { width: 18px; height: 18px; accessible-role: none; }
 }
 
 // A name with one action on the end side (Unblock, Remove): the button is read out as

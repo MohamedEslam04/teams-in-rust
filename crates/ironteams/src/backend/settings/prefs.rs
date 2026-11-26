@@ -109,6 +109,7 @@ pub struct Local {
     pub appearance: AppearancePrefs,
     pub general: GeneralPrefs,
     pub a11y: AccessibilityPrefs,
+    pub rail: appearance::RailPrefs,
     pub devices: DevicePrefs,
     pub files: FilesPrefs,
     pub calls: CallsPrefs,
@@ -130,6 +131,7 @@ impl Local {
             appearance: AppearancePrefs::load_from(&dir.join(appearance::prefs::FILE_NAME)),
             general: GeneralPrefs::load_from(&dir.join(appearance::general::FILE_NAME)),
             a11y: AccessibilityPrefs::load_from(&dir.join(appearance::accessibility::FILE_NAME)),
+            rail: appearance::RailPrefs::load_from(&dir.join(appearance::rail::FILE_NAME)),
             devices: read_json(&dir.join(DEVICES_FILE)),
             files: read_json(&dir.join(FILES_FILE)),
             calls: read_json(&dir.join(CALLS_FILE)),
@@ -157,6 +159,12 @@ impl Local {
         Ok(self
             .a11y
             .save_to(&self.dir.join(appearance::accessibility::FILE_NAME))?)
+    }
+
+    pub fn save_rail(&self) -> anyhow::Result<()> {
+        Ok(self
+            .rail
+            .save_to(&self.dir.join(appearance::rail::FILE_NAME))?)
     }
 
     pub fn save_devices(&self) -> anyhow::Result<()> {

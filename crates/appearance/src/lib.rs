@@ -13,6 +13,7 @@ pub mod general;
 pub mod language;
 pub mod portal;
 pub mod prefs;
+pub mod rail;
 pub mod renderer;
 pub mod resolve;
 pub mod snippets;
@@ -28,6 +29,7 @@ pub use general::{
 };
 pub use portal::{PortalChange, PortalError, PortalScheme, PortalSettings, PortalStream};
 pub use prefs::{AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, Rgb, Theme};
+pub use rail::{RailItem, RailPrefs};
 pub use renderer::Renderer;
 pub use resolve::{
     Resolved, ResolvedTheme, resolve, resolve_accent, resolve_font_scale, resolve_theme,

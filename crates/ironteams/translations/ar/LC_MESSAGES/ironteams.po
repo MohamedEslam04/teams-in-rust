@@ -2463,3 +2463,29 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+# Settings > Appearance > App bar: names, auto collapse, order and the Show box of each entry.
+
+msgid "App bar"
+msgstr "شريط التطبيقات"
+
+msgid "Show app names"
+msgstr "إظهار أسماء التطبيقات"
+
+msgid "The names under the app bar's icons (the bar's own Collapse does the same)."
+msgstr "الأسماء أسفل أيقونات شريط التطبيقات (زر الطي في الشريط يفعل الشيء نفسه)."
+
+msgid "Auto collapse app bar"
+msgstr "طي شريط التطبيقات تلقائيًا"
+
+msgid "Shows only the icons while the window is narrow."
+msgstr "يعرض الأيقونات فقط عندما تكون النافذة ضيقة."
+
+msgid "App bar order"
+msgstr "ترتيب شريط التطبيقات"
+
+msgid "Move the app bar's icons up or down and hide the ones you do not use. Chat always stays. Apps pinned from Teams are moved with a right click on their icon."
+msgstr "انقل أيقونات شريط التطبيقات لأعلى أو لأسفل وأخفِ ما لا تستخدمه. تبقى الدردشة دائمًا. التطبيقات المثبّتة من Teams تُنقل بالنقر بزر الماوس الأيمن على أيقونتها."
+
+msgid "Show"
+msgstr "إظهار"

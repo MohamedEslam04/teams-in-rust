@@ -117,8 +117,27 @@ pub(super) fn toggles(rows: Vec<st::ToggleRow>) -> ModelRc<SToggle> {
     )
 }
 
+/// Pushes the app bar's order, hidden entries and auto collapse into `AppsStore`.
+pub(super) fn push_rail(w: &AppWindow, rail: &appearance::RailPrefs) {
+    let a = w.global::<AppsStore>();
+    a.set_rail_fixed(model(
+        rail.items()
+            .into_iter()
+            .map(|i| RailFixed {
+                key: s(i.key),
+                shown: !i.hidden,
+                locked: i.locked,
+                menu_up: i.shown_above,
+                menu_down: i.shown_below,
+            })
+            .collect(),
+    ));
+    a.set_auto_collapse(rail.auto_collapse);
+}
+
 /// Pushes every local preference into `SettingsStore`.
 pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
+    push_rail(w, &c.local.rail);
     let g = w.global::<SettingsStore>();
     let l = &c.local;
     let a = &l.appearance;

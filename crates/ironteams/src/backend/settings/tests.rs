@@ -10,6 +10,8 @@ fn local_prefs_round_trip_through_their_files() {
     l.appearance.theme = Theme::Dark;
     l.general.auto_start = true;
     l.a11y.larger_text = true;
+    l.rail.set_hidden("calls", true);
+    l.rail.auto_collapse = true;
     l.devices.microphone = Some("alsa:pipewire".into());
     l.files.open_office_in = OpenFilesIn::Desktop;
     l.calls.ask_feedback = call_feedback::Ask::Never;
@@ -17,6 +19,7 @@ fn local_prefs_round_trip_through_their_files() {
     l.save_appearance().unwrap();
     l.save_general().unwrap();
     l.save_a11y().unwrap();
+    l.save_rail().unwrap();
     l.save_devices().unwrap();
     l.save_files().unwrap();
     l.save_calls().unwrap();
@@ -155,6 +158,19 @@ fn find_matches_labels_pages_and_keywords() {
     assert!(find("CAPTIONS").iter().all(|f| f.page == "accessibility"));
     assert!(find("block calls").iter().any(|f| f.page == "privacy"));
     assert!(find("zzz").is_empty());
+}
+
+#[test]
+fn the_app_bar_settings_are_found_on_the_appearance_page() {
+    for q in ["app bar", "sidebar", "narrow icons"] {
+        let hits: Vec<_> = find(q)
+            .into_iter()
+            .filter(|f| f.label == "Auto collapse app bar")
+            .collect();
+        assert_eq!(hits.len(), 1, "{q}");
+        assert_eq!(hits[0].page, "appearance");
+    }
+    assert!(find("app bar").iter().any(|f| f.label == "Show app names"));
 }
 
 #[test]
