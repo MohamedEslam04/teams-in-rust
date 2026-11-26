@@ -86,22 +86,24 @@ component NotifyChoices inherits VerticalLayout {
 
 // "Sort by" of one section, shared by the fixed sections' menu and the sections' menu.
 component SortChoices inherits VerticalLayout {
+    in property <Tokens> c: Theme.nav;
     in property <string> target;
     in property <string> sort;
     callback done();
     HorizontalLayout {
         height: 24px;
         padding-left: 10px;
-        Text { text: @tr("Sort by"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
+        Text { text: @tr("Sort by"); color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
     }
-    MenuItem { variant: MenuItemVariant.list; label: @tr("Recent activity"); checked: root.sort == "recent"; clicked => { ListStore.command("sort", root.target + "\u{9}recent"); root.done(); } }
-    MenuItem { variant: MenuItemVariant.list; label: @tr("A to Z"); checked: root.sort == "alpha"; clicked => { ListStore.command("sort", root.target + "\u{9}alpha"); root.done(); } }
-    MenuItem { variant: MenuItemVariant.list; label: @tr("Unread first"); checked: root.sort == "unread"; clicked => { ListStore.command("sort", root.target + "\u{9}unread"); root.done(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Recent activity"); checked: root.sort == "recent"; clicked => { ListStore.command("sort", root.target + "\u{9}recent"); root.done(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("A to Z"); checked: root.sort == "alpha"; clicked => { ListStore.command("sort", root.target + "\u{9}alpha"); root.done(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Unread first"); checked: root.sort == "unread"; clicked => { ListStore.command("sort", root.target + "\u{9}unread"); root.done(); } }
 }
 
 // The header of Favorites, Chats or Teams and channels: the plain section header plus a "…" menu
 // with "Sort by".
 export component SortHeader inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> label;
     // favorites | chats | channels
     in property <string> target;
@@ -109,6 +111,7 @@ export component SortHeader inherits Rectangle {
     in-out property <bool> expanded: true;
     height: 32px;
     SectionHeader {
+        c: root.c;
         label: root.label;
         expanded <=> root.expanded;
         more: true;
@@ -122,13 +125,13 @@ export component SortHeader inherits Rectangle {
         width: 170px;
         height: sort-items.preferred-height + 2px;
         Rectangle {
-            background: Theme.surface;
+            background: root.c.surface;
             border-radius: 6px;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: root.c.border;
             sort-items := VerticalLayout {
                 padding: 4px;
-                SortChoices { target: root.target; sort: root.sort; done => { sort-menu.close(); } }
+                SortChoices { c: root.c; target: root.target; sort: root.sort; done => { sort-menu.close(); } }
             }
         }
     }
@@ -232,12 +235,12 @@ export component ItemMenu inherits Rectangle {
             MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Until next week (Monday 9:00)"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}week"); root.done(); } }
         }
         if root.view == "mute": VerticalLayout {
-            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Mute"); dim: true; clicked => { root.view = "main"; } }
-            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}1h"); root.done(); } }
-            MenuItem { variant: MenuItemVariant.list; label: @tr("For 8 hours"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}8h"); root.done(); } }
-            MenuItem { variant: MenuItemVariant.list; label: @tr("Until tomorrow 8:00"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}tomorrow"); root.done(); } }
-            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 week"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}week"); root.done(); } }
-            MenuItem { variant: MenuItemVariant.list; label: @tr("Until I turn it off"); clicked => { ListStore.command("mute", root.data.id); root.done(); } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("‹ Mute"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}1h"); root.done(); } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("For 8 hours"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}8h"); root.done(); } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Until tomorrow 8:00"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}tomorrow"); root.done(); } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("For 1 week"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}week"); root.done(); } }
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Until I turn it off"); clicked => { ListStore.command("mute", root.data.id); root.done(); } }
         }
         if root.view == "notify": VerticalLayout {
             MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
@@ -332,6 +335,7 @@ export component SectionHead inherits Rectangle {
             }
         }
         if root.sortable && head-touch.has-hover: IconButton {
+            c: root.c;
             x: parent.width - 30px;
             y: 4px;
             size: 22px;
