@@ -1,5 +1,6 @@
 // The IMPORTANT! or URGENT! tag above the composer's text, with its remove button.
 import { Theme } from "../tokens/theme.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component ImportanceTag inherits HorizontalLayout {
     in-out property <bool> important;
@@ -11,7 +12,7 @@ export component ImportanceTag inherits HorizontalLayout {
         height: 24px;
         width: important-text.preferred-width + 34px;
         border-radius: 12px;
-        background: #4d2024;
+        background: Fixed.importance-bg;
         border-width: 1px;
         border-color: Theme.danger;
         accessible-role: groupbox;
@@ -19,7 +20,7 @@ export component ImportanceTag inherits HorizontalLayout {
         important-text := Text {
             x: 10px;
             text: root.urgent ? @tr("URGENT!") : @tr("IMPORTANT!");
-            color: #ff7e83;
+            color: Fixed.importance-fg;
             font-size: 11px;
             font-weight: 800;
             vertical-alignment: center;
@@ -30,10 +31,10 @@ export component ImportanceTag inherits HorizontalLayout {
             height: 18px;
             y: 3px;
             border-radius: 9px;
-            background: important-x.has-hover ? #6b2f33 : transparent;
+            background: important-x.has-hover ? Fixed.importance-hover : transparent;
             accessible-role: button;
             accessible-label: root.urgent ? @tr("Remove urgent") : @tr("Remove important");
-            Text { text: "✕"; color: #ff7e83; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+            Text { text: "✕"; color: Fixed.importance-fg; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
             important-x := TouchArea {
                 mouse-cursor: pointer;
                 clicked => {

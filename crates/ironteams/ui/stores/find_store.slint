@@ -20,6 +20,9 @@ export struct HitRow {
     // The person the photo shows ("" when none), for the hover card.
     person: string,
     rtl: bool,
+    // The header of a conversation in the Unreads view (`kind` "unread-group"): how many of its
+    // messages are unread.
+    count: int,
 }
 
 // A suggestion of the "In" and "Person" filters.
@@ -71,7 +74,7 @@ export global FindStore {
 
     // --- Quick views ---
     in-out property <bool> quick-open: false;
-    in property <string> quick-kind;     // mentions | saved | followed | discover
+    in property <string> quick-kind;     // mentions | saved | followed | discover | unreads
     in property <[HitRow]> quick-rows;
     in property <bool> quick-loading;
     in property <bool> quick-more;
@@ -106,6 +109,13 @@ export global FindStore {
     // shared-new-folder, shared-new-doc (word | excel | powerpoint), channel-tab-open,
     // channel-tab-add, channel-tab-add-app (app id U+001F name), channel-tab-rename (tab id
     // U+001F name), channel-tab-remove, channel-tab-apps, details, follow, unfollow-msg,
-    // menu-follow, people-profile.
+    // menu-follow, people-profile, unreads-read (a row's id), unreads-read-all.
     callback command(string, string);
+
+    // The Unreads view's keyboard (src/ui/find.rs). Both take the rows as listed.
+    // the row the keyboard is on, 0 = keep it / 1 = next / -1 = previous, the rows -> the id of
+    // the message row to be on (the first one when the current one is not listed), or ""
+    pure callback unreads-step(string, int, [HitRow]) -> string;
+    // a row's id, the rows -> its position in the list, or -1
+    pure callback unreads-index(string, [HitRow]) -> int;
 }

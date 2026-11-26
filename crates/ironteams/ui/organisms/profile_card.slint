@@ -7,6 +7,7 @@ import { Avatar } from "../atoms/avatar.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { ProfileActions, ProfileBody } from "profile_parts.slint";
 import { ScrollView } from "std-widgets.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component ProfileCard inherits Rectangle {
     // Opened by hovering a name or photo: it closes once the pointer is on neither it nor that
@@ -31,7 +32,7 @@ export component ProfileCard inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: "Profile card";
 

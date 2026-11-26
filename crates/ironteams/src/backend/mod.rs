@@ -38,6 +38,7 @@ pub(crate) mod calls_page;
 mod cards;
 mod channel_tabs;
 mod channels;
+mod chat_note;
 mod clip_capture;
 pub(crate) mod composer_apps;
 mod dirty_stats;
@@ -127,7 +128,7 @@ pub use media::MediaCmd;
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
 pub use quit::{QUIT_WITHIN, QuitDone};
-pub use remind::{RemindCmd, ReminderData, SnoozedData};
+pub use remind::{LaterData, RemindCmd, ReminderData, SnoozedData};
 pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
@@ -234,6 +235,8 @@ pub enum Cmd {
     ClearAllCache,
     /// The composer text changed.
     DraftEdited(String),
+    /// The text of the open chat's private note changed (`chat_note`).
+    NoteEdited(String),
     /// IronTeams is quitting: write what is pending, end every live call (a connected one, one
     /// ringing out or being answered) and leave presence, then say so through the token.
     Quit(QuitDone),
@@ -402,6 +405,7 @@ pub struct Engine {
     engage: Mutex<engage::State>,
     lists: Mutex<lists::State>,
     remind: Mutex<remind::State>,
+    chat_note: Mutex<chat_note::State>,
     voice: Mutex<voice_messages::State>,
     clips: Mutex<video_clips::State>,
     channels: Mutex<channels::State>,
@@ -543,6 +547,7 @@ impl Engine {
             engage: Mutex::new(engage::State::default()),
             lists: Mutex::new(lists::State::default()),
             remind: Mutex::new(remind::State::default()),
+            chat_note: Mutex::default(),
             voice: Mutex::default(),
             clips: Mutex::default(),
             channels: Mutex::new(channels::State::default()),
@@ -714,6 +719,7 @@ impl Engine {
         self.start_my_presence();
         self.start_people_presence();
         self.start_reminders();
+        self.start_mute_expiry();
         self.start_ongoing_calls();
         let e = self.clone();
         tokio::spawn(async move { e.live_loop().await });
@@ -767,6 +773,7 @@ impl Engine {
     pub fn dispatch(self: &Arc<Self>, cmd: Cmd) {
         match cmd {
             Cmd::DraftEdited(text) => self.draft_edited(text),
+            Cmd::NoteEdited(text) => self.note_edited(text),
             // Only reads, and the switch waits for it: answered at once.
             Cmd::InFlight => self.answer_in_flight(),
             // Its own task: it waits on the calls' hang-ups.
@@ -1054,6 +1061,7 @@ impl Engine {
             Cmd::AddFile(path) => self.add_file(path).await?,
             Cmd::RemoveAttachment(i) => self.remove_attachment(i),
             Cmd::DraftEdited(text) => self.draft_edited(text),
+            Cmd::NoteEdited(text) => self.note_edited(text),
             Cmd::Quit(done) => self.quit(done).await,
             Cmd::InFlight => self.answer_in_flight(),
             Cmd::SetEnterSends(on) => {

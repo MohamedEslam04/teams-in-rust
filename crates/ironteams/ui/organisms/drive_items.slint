@@ -4,6 +4,7 @@ import { Icon } from "../atoms/widgets.slint";
 import { CheckBox, CheckBoxVariant } from "../atoms/check.slint";
 import { DriveLook, KindBadge } from "../atoms/file_kind.slint";
 import { DriveRow, DriveCard, DriveStore } from "../stores/drive_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The small square check box of a row or tile.
 // One row of the list: a file, a folder or a group header.
@@ -74,7 +75,7 @@ export component DriveListRow inherits Rectangle {
             height: 16px;
             x: 5px;
             y: 5px;
-            tint: root.r.favorite ? #f2c94c : Theme.fg-subtle;
+            tint: root.r.favorite ? Fixed.folder : Theme.fg-subtle;
         }
         star-touch := TouchArea { mouse-cursor: pointer; clicked => { root.favorite(); } }
     }
@@ -110,7 +111,7 @@ export component DriveTile inherits Rectangle {
     border-radius: 6px;
     border-width: 1px;
     border-color: root.r.selected ? Theme.accent : Theme.border;
-    background: root.r.selected ? Theme.selected : (root.hot ? Theme.surface-hover : Theme.sidebar);
+    background: root.r.selected ? Theme.selected : (root.hot ? Theme.surface-hover : Theme.panel);
     accessible-role: list-item;
     accessible-label: root.r.name;
     accessible-item-selected: root.r.selected;
@@ -125,7 +126,7 @@ export component DriveTile inherits Rectangle {
         y: 1px;
         width: parent.width - 2px;
         height: 112px;
-        background: Theme.sidebar;
+        background: Theme.panel;
         clip: true;
         if root.r.has-thumb: Image { source: root.r.thumb; width: parent.width; height: parent.height; image-fit: cover; }
         if !root.r.has-thumb: KindBadge { kind: root.r.kind; size: 48px; x: (parent.width - 48px) / 2; y: (parent.height - 48px) / 2; }
@@ -155,7 +156,7 @@ export component DriveTile inherits Rectangle {
         visible: root.hot || root.r.favorite;
         accessible-role: button;
         accessible-label: (root.r.favorite ? "Remove from favorites " : "Add to favorites ") + root.r.name;
-        Icon { source: @image-url("../icons/star.svg"); width: 16px; height: 16px; x: 5px; y: 5px; tint: root.r.favorite ? #f2c94c : Theme.fg-muted; }
+        Icon { source: @image-url("../icons/star.svg"); width: 16px; height: 16px; x: 5px; y: 5px; tint: root.r.favorite ? Fixed.folder : Theme.fg-muted; }
         star-touch := TouchArea { mouse-cursor: pointer; clicked => { root.favorite(); } }
     }
 }
@@ -169,7 +170,7 @@ export component ForYouCard inherits Rectangle {
     border-radius: 6px;
     border-width: 1px;
     border-color: touch.has-hover ? Theme.accent : Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    background: touch.has-hover ? Theme.surface-hover : Theme.panel;
     accessible-role: button;
     accessible-label: "For you " + root.c.title;
     accessible-description: root.c.reason;
@@ -182,7 +183,7 @@ export component ForYouCard inherits Rectangle {
         y: 1px;
         width: parent.width - 2px;
         height: 72px;
-        background: Theme.sidebar;
+        background: Theme.panel;
         clip: true;
         if root.c.has-thumb: Image { source: root.c.thumb; width: parent.width; height: parent.height; image-fit: cover; }
         if !root.c.has-thumb: KindBadge { kind: root.c.kind; size: 36px; x: (parent.width - 36px) / 2; y: (parent.height - 36px) / 2; }

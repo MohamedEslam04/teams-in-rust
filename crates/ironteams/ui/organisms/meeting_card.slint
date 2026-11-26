@@ -11,6 +11,7 @@ import { FindStore } from "../stores/find_store.slint";
 import { RecapsStore } from "../stores/apps_store.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // A recording's More options: Open in browser, the fallback when the player cannot be used.
 // Also on the Meeting Recaps page.
@@ -38,7 +39,7 @@ export component RecordingMenu inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 6px;
-            drop-shadow-color: #00000080;
+            drop-shadow-color: Fixed.black-80;
             Rectangle {
                 y: 1px;
                 height: 34px;
@@ -87,7 +88,7 @@ export component MeetingCardView inherits Rectangle {
             border-radius: 6px;
             border-width: 1px;
             border-color: Theme.border;
-            background: Theme.sidebar;
+            background: Theme.panel;
             VerticalLayout {
                 padding: root.slim ? 6px : 10px;
                 spacing: 8px;
@@ -104,7 +105,7 @@ export component MeetingCardView inherits Rectangle {
                                 source: root.recording ? @image-url("../icons/play.svg") : root.card.kind == "call" ? @image-url("../icons/video.svg") : @image-url("../icons/file.svg");
                                 width: root.slim ? 14px : 20px;
                                 height: self.width;
-                                tint: root.recording && root.card.state == "ready" ? #ffffff : Theme.fg-muted;
+                                tint: root.recording && root.card.state == "ready" ? Theme.on-accent : Theme.fg-muted;
                             }
                         }
                     }

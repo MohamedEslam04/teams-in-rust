@@ -1,8 +1,10 @@
 // One radio choice of a flyout or a panel: a radio dot, the label, a hover highlight. The row is
 // as wide as the list it sits in; the owner keeps which one is selected.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export component RadioRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     in property <bool> selected;
     // A choice shown but not offered (dimmed, not picked); `tip` says why.
@@ -11,7 +13,7 @@ export component RadioRow inherits Rectangle {
     callback picked();
     height: 32px;
     border-radius: 4px;
-    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    background: touch.has-hover && root.enabled ? root.c.surface-hover : transparent;
     opacity: root.enabled ? 1.0 : 0.45;
     accessible-role: radio-button;
     accessible-label: root.label;
@@ -31,12 +33,12 @@ export component RadioRow inherits Rectangle {
                 height: 16px;
                 border-radius: 8px;
                 border-width: 1.5px;
-                border-color: root.selected ? Theme.accent : Theme.fg-muted;
+                border-color: root.selected ? root.c.accent : root.c.fg-muted;
                 if root.selected: Rectangle {
                     width: 8px;
                     height: 8px;
                     border-radius: 4px;
-                    background: Theme.accent;
+                    background: root.c.accent;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                 }
@@ -44,7 +46,7 @@ export component RadioRow inherits Rectangle {
         }
         Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             overflow: elide;
             vertical-alignment: center;

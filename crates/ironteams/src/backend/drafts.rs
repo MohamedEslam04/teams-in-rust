@@ -2,6 +2,7 @@
 //! edit, and put back in the composer when the chat is opened again (also after a restart).
 
 use super::Engine;
+use crate::support::inline_images;
 use std::sync::Arc;
 use std::time::Duration;
 use store::MessageRow;
@@ -102,6 +103,9 @@ impl Engine {
             (draft, reply)
         };
         let text = draft.map(|d| d.text).unwrap_or_default();
+        // The images placed in the text live in memory: after a restart their lines are dropped.
+        let live = self.inline_slots(conv);
+        let text = inline_images::drop_dead(&text, |s| live.contains(&s));
         {
             let mut v = self.view.lock().unwrap();
             v.draft_text = text.clone();

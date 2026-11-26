@@ -8,6 +8,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { ScrollView } from "std-widgets.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The result of an action: the new text and selection (byte offsets). `ok` false: nothing changed.
 export struct FormatEdit { ok: bool, text: string, anchor: int, cursor: int }
@@ -147,7 +148,7 @@ export component FormatToggle inherits Rectangle {
 export component FormatPreview inherits Rectangle {
     in property <string> source;
     height: min(body.preferred-height + 22px, 150px);
-    background: Theme.sidebar;
+    background: Theme.panel;
     border-radius: 4px;
     clip: true;
     accessible-role: groupbox;
@@ -180,8 +181,8 @@ export component FormatBar inherits Rectangle {
     property <string> link-url;
     property <int> table-rows: 3;
     property <int> table-cols: 3;
-    property <color> last-color: #d13438;
-    property <color> last-highlight: #fdd472;
+    property <color> last-color: Fixed.font-colours-1[0];
+    property <color> last-highlight: Fixed.highlight-colours-1[2];
 
     public function open-link() {
         root.keep-anchor = root.sel-anchor;
@@ -251,14 +252,14 @@ export component FormatBar inherits Rectangle {
                 GridLayout {
                     spacing: 4px;
                     Row {
-                        for c[i] in [#d13438, #ca5010, #c19c00, #13a10e, #038387]: Swatch {
+                        for c[i] in Fixed.font-colours-1: Swatch {
                             tone: c;
                             hint: @tr("Color {}", i + 1);
                             clicked => { root.last-color = c; root.fire-kept("color:" + Colors.hex(c)); color-popup.close(); }
                         }
                     }
                     Row {
-                        for c[i] in [#0078d4, #8764b8, #c239b3, #ffffff, #8a8a8a]: Swatch {
+                        for c[i] in Fixed.font-colours-2: Swatch {
                             tone: c;
                             hint: @tr("Color {}", i + 6);
                             clicked => { root.last-color = c; root.fire-kept("color:" + Colors.hex(c)); color-popup.close(); }
@@ -288,14 +289,14 @@ export component FormatBar inherits Rectangle {
                 GridLayout {
                     spacing: 4px;
                     Row {
-                        for c[i] in [#df9299, #f4a593, #fdd472, #e5f18f]: Swatch {
+                        for c[i] in Fixed.highlight-colours-1: Swatch {
                             tone: c;
                             hint: @tr("Highlight {}", i + 1);
                             clicked => { root.last-highlight = c; root.fire-kept("bg:" + Colors.hex(c)); highlight-popup.close(); }
                         }
                     }
                     Row {
-                        for c[i] in [#82cda8, #9dd9db, #c7d4e8, #ebd3e1]: Swatch {
+                        for c[i] in Fixed.highlight-colours-2: Swatch {
                             tone: c;
                             hint: @tr("Highlight {}", i + 5);
                             clicked => { root.last-highlight = c; root.fire-kept("bg:" + Colors.hex(c)); highlight-popup.close(); }
@@ -408,10 +409,10 @@ export component FormatBar inherits Rectangle {
                 Rectangle {
                     height: 30px;
                     border-radius: 4px;
-                    background: table-ok.has-hover ? #6c71e0 : Theme.accent-strong;
+                    background: table-ok.has-hover ? Theme.accent : Theme.accent-strong;
                     accessible-role: button;
                     accessible-label: @tr("Insert table");
-                    Text { text: @tr("Insert"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                    Text { text: @tr("Insert"); color: Theme.on-accent; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
                     table-ok := TouchArea {
                         mouse-cursor: pointer;
                         clicked => {
@@ -443,7 +444,7 @@ export component FormatBar inherits Rectangle {
                     Rectangle {
                         height: 30px;
                         border-radius: 4px;
-                        background: Theme.sidebar;
+                        background: Theme.panel;
                         border-width: 1px;
                         border-color: link-input.has-focus ? Theme.accent : Theme.border;
                         link-input := TextInput {
@@ -465,10 +466,10 @@ export component FormatBar inherits Rectangle {
                         width: 64px;
                         height: 30px;
                         border-radius: 4px;
-                        background: link-ok.has-hover ? #6c71e0 : Theme.accent-strong;
+                        background: link-ok.has-hover ? Theme.accent : Theme.accent-strong;
                         accessible-role: button;
                         accessible-label: @tr("Insert link address");
-                        Text { text: @tr("Insert"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                        Text { text: @tr("Insert"); color: Theme.on-accent; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
                         link-ok := TouchArea { mouse-cursor: pointer; clicked => { root.insert-link(); } }
                     }
                 }

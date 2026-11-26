@@ -90,6 +90,7 @@ fn the_menu_has_the_teams_items_in_order() {
         [
             "Schedule a meeting",
             "Share screen",
+            "Open in split view",
             "Mark as unread",
             "Move to section",
             "Mute",

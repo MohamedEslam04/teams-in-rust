@@ -27,6 +27,9 @@ pub struct ChatData {
     pub group: bool,
     /// Notifications are off for this chat or channel.
     pub muted: bool,
+    /// When a timed mute ends, as the menu says it ("14:30", "Tomorrow 08:00"); `""` for a mute
+    /// with no end or no mute.
+    pub muted_until: String,
     /// A channel (its item menu has the channel items).
     pub channel: bool,
     /// The other person's availability in a 1:1 chat (`""`: no dot).
@@ -47,6 +50,13 @@ pub struct AttachmentData {
     pub name: String,
     pub detail: String,
     pub is_image: bool,
+    pub thumb: Option<Pixels>,
+}
+
+/// An image placed between the composer's lines, by slot: `live` false for a slot no image has.
+#[derive(Clone, Default)]
+pub struct InlineImageData {
+    pub live: bool,
     pub thumb: Option<Pixels>,
 }
 

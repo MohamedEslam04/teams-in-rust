@@ -44,6 +44,8 @@ pub struct SectionData {
     pub unread: i32,
     /// Made in IronTeams, so it can be renamed and deleted there.
     pub local: bool,
+    /// The order of the items: a `SortBy` name.
+    pub sort: &'static str,
     pub items: Vec<ChatData>,
 }
 

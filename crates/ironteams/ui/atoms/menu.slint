@@ -2,6 +2,8 @@
 // app used to draw its own rows; they are now variants of `MenuItem`, each drawn exactly like the
 // copy it replaces (ui/README.md maps the old names). The row carries the accessible name, so
 // its texts stay out of the accessibility tree.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Motion } from "../tokens/motion.slint";
 import { Icon } from "widgets.slint";
@@ -40,6 +42,7 @@ export enum MenuItemVariant {
 }
 
 export component MenuItem inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <MenuItemVariant> variant: MenuItemVariant.plain;
     in property <string> label;
     in property <image> icon;
@@ -54,7 +57,7 @@ export component MenuItem inherits Rectangle {
     // `calendar`, `kit`: the text on the right when not checked.
     in property <string> hint;
     // `calendar`: the label colour.
-    in property <color> tone: Theme.fg;
+    in property <color> tone: root.c.fg;
     // `message`: no icon, the label lines up with the labels after the icons.
     in property <bool> indent: false;
     // `spell`: a bold label.
@@ -76,7 +79,7 @@ export component MenuItem inherits Rectangle {
         : 32px;
     border-radius: root.variant == MenuItemVariant.share ? 3px : 4px;
     opacity: root.variant == MenuItemVariant.drive && !root.enabled ? 0.4 : 1.0;
-    background: touch.has-hover && (root.enabled || !(root.guarded || root.variant == MenuItemVariant.drive)) ? Theme.surface-hover : transparent;
+    background: touch.has-hover && (root.enabled || !(root.guarded || root.variant == MenuItemVariant.drive)) ? root.c.surface-hover : transparent;
     animate background {
         duration: root.variant == MenuItemVariant.plain || root.variant == MenuItemVariant.card || root.variant == MenuItemVariant.list ? Motion.quick : 0ms;
     }
@@ -105,23 +108,24 @@ export component MenuItem inherits Rectangle {
             : 10px;
         spacing: root.header-like || root.variant == MenuItemVariant.calendar || root.variant == MenuItemVariant.list ? 8px : 10px;
         if root.has-lead-icon: Icon {
+            c: root.c;
             source: root.icon;
             width: 16px;
             height: 16px;
             y: root.variant == MenuItemVariant.icon ? 10px : root.variant == MenuItemVariant.message ? 9px : 8px;
-            tint: root.variant == MenuItemVariant.icon ? Theme.fg-muted : (root.danger ? Theme.danger : Theme.fg-muted);
+            tint: root.variant == MenuItemVariant.icon ? root.c.fg-muted : (root.danger ? root.c.danger : root.c.fg-muted);
         }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
             Text {
                 text: root.label;
-                color: root.header-like ? (!root.enabled ? Theme.fg-subtle : root.danger ? Theme.danger : Theme.fg)
-                    : root.variant == MenuItemVariant.dialog ? (root.danger ? #ff7b7e : Theme.fg)
-                    : root.variant == MenuItemVariant.calendar ? (root.enabled ? root.tone : Theme.fg-subtle)
-                    : root.variant == MenuItemVariant.list ? (root.danger ? Theme.danger : (root.dim ? Theme.fg-subtle : Theme.fg))
-                    : root.variant == MenuItemVariant.file || root.variant == MenuItemVariant.kit || root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.drive ? (root.danger ? Theme.danger : Theme.fg)
-                    : Theme.fg;
+                color: root.header-like ? (!root.enabled ? root.c.fg-subtle : root.danger ? root.c.danger : root.c.fg)
+                    : root.variant == MenuItemVariant.dialog ? (root.danger ? root.c.danger-text : root.c.fg)
+                    : root.variant == MenuItemVariant.calendar ? (root.enabled ? root.tone : root.c.fg-subtle)
+                    : root.variant == MenuItemVariant.list ? (root.danger ? root.c.danger : (root.dim ? root.c.fg-subtle : root.c.fg))
+                    : root.variant == MenuItemVariant.file || root.variant == MenuItemVariant.kit || root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.drive ? (root.danger ? root.c.danger : root.c.fg)
+                    : root.c.fg;
                 font-size: root.variant == MenuItemVariant.icon ? Theme.font-body : 13px * Theme.font-scale;
                 font-weight: root.variant == MenuItemVariant.spell && root.strong ? 700 : 400;
                 horizontal-alignment: root.variant == MenuItemVariant.list ? Theme.start-align : TextHorizontalAlignment.left;
@@ -129,20 +133,21 @@ export component MenuItem inherits Rectangle {
                 overflow: root.variant == MenuItemVariant.plain || root.variant == MenuItemVariant.dialog || root.variant == MenuItemVariant.format || root.variant == MenuItemVariant.drive ? TextOverflow.clip : TextOverflow.elide;
                 accessible-role: none;
             }
-            if root.variant == MenuItemVariant.parity && root.note != "": Text { text: root.note; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+            if root.variant == MenuItemVariant.parity && root.note != "": Text { text: root.note; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
         }
-        if (root.variant == MenuItemVariant.header || root.variant == MenuItemVariant.list) && root.checked: Text { text: "✓"; color: Theme.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
-        if root.variant == MenuItemVariant.parity && root.checked: Icon { source: @image-url("../icons/check.svg"); tint: Theme.accent; width: 14px; height: 14px; y: (parent.height - 14px) / 2; }
+        if (root.variant == MenuItemVariant.header || root.variant == MenuItemVariant.list) && root.checked: Text { text: "✓"; color: root.c.accent; font-size: 13px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if root.variant == MenuItemVariant.parity && root.checked: Icon { c: root.c; source: @image-url("../icons/check.svg"); tint: root.c.accent; width: 14px; height: 14px; y: (parent.height - 14px) / 2; }
         if root.trailing-always: Text {
             text: root.checked ? "✓" : (root.variant == MenuItemVariant.drive ? "" : root.hint);
-            color: root.checked ? Theme.accent : Theme.fg-subtle;
+            color: root.checked ? root.c.accent : root.c.fg-subtle;
             font-size: (root.variant == MenuItemVariant.drive ? 13px : 12px) * Theme.font-scale;
             vertical-alignment: center;
             accessible-role: none;
         }
-        if root.header-like && root.keys != "": Text { text: root.keys; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
-        if root.header-like && root.chevron: Text { text: "›"; color: Theme.fg-muted; font-size: 15px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if root.header-like && root.keys != "": Text { text: root.keys; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
+        if root.header-like && root.chevron: Text { text: "›"; color: root.c.fg-muted; font-size: 15px * Theme.font-scale; vertical-alignment: center; horizontal-stretch: 0; accessible-role: none; }
         if (root.variant == MenuItemVariant.message || root.variant == MenuItemVariant.list) && root.chevron: Icon {
+            c: root.c;
             source: @image-url("../icons/chevron-right.svg");
             width: 14px;
             height: 14px;
@@ -169,27 +174,29 @@ export enum MenuFrameVariant {
 
 // The card a popup menu sits on; its content places itself.
 export component MenuFrame inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <MenuFrameVariant> variant: MenuFrameVariant.parity;
     property <bool> card: root.variant == MenuFrameVariant.card;
     border-radius: root.card ? 8px : 6px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     drop-shadow-blur: root.card ? 16px : 8px;
-    drop-shadow-color: root.card ? #000000a0 : #00000060;
+    drop-shadow-color: root.card ? Fixed.black-a0 : Fixed.black-60;
 }
 
 // The app screens' popup menu card: `menu-width` wide, its rows in a column, as tall as they are.
 export component MenuColumn inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <length> menu-width: 220px;
     width: root.menu-width;
     height: inner.preferred-height + 12px;
     border-radius: 6px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #00000090;
+    drop-shadow-color: Fixed.black-90;
     TouchArea { }
     inner := VerticalLayout {
         padding: 6px;

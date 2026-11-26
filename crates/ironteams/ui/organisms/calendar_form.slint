@@ -7,6 +7,7 @@ import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
 import { MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 
 
@@ -22,7 +23,7 @@ component SchedulerGrid inherits Rectangle {
     property <int> sel-end: CalForm.sel-end;
     height: 26px + CalForm.sched.length * root.row-h + 6px;
     border-radius: 4px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     border-width: 1px;
     border-color: Theme.border;
     clip: true;
@@ -49,7 +50,7 @@ component SchedulerGrid inherits Rectangle {
             width: root.label-w - 12px;
             alignment: center;
             Text { text: r.name; color: Theme.fg; font-size: 12px * Theme.font-scale; overflow: elide; }
-            Text { text: r.error != "" ? r.error : (r.tz != "" ? r.tz : (r.kind == "room" ? "Room" : "")); color: r.error != "" ? #ffb900 : Theme.fg-subtle; font-size: 9px * Theme.font-scale; overflow: elide; }
+            Text { text: r.error != "" ? r.error : (r.tz != "" ? r.tz : (r.kind == "room" ? "Room" : "")); color: r.error != "" ? Theme.warning : Theme.fg-subtle; font-size: 9px * Theme.font-scale; overflow: elide; }
         }
         for c[ci] in r.cells: Rectangle {
             x: root.label-w + ci * root.cell-w;
@@ -61,7 +62,7 @@ component SchedulerGrid inherits Rectangle {
             accessible-role: text;
             accessible-label: r.name + " " + CalFmt.hhmm(CalForm.sched-first-min + ci * CalForm.sched-slot-min) + " " + CalFmt.slot-name(c) + (r.work[ci] ? "" : ", outside their work hours");
             // Outside this person's own work hours
-            if !r.work[ci]: Rectangle { background: #00000080; border-radius: 2px; }
+            if !r.work[ci]: Rectangle { background: Fixed.black-80; border-radius: 2px; }
         }
     }
     // The slot the form holds
@@ -73,7 +74,7 @@ component SchedulerGrid inherits Rectangle {
         border-width: 2px;
         border-color: Theme.accent;
         border-radius: 3px;
-        background: #7f85f522;
+        background: Theme.accent-wash;
     }
     for ci in root.slots: TouchArea {
         x: root.label-w + ci * root.cell-w;
@@ -152,7 +153,7 @@ component RecurrencePicker inherits VerticalLayout {
 component RoomPicker inherits Rectangle {
     height: 40px + max(1, min(CalForm.rooms.length, 6)) * 34px + 44px;
     border-radius: 4px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     border-width: 1px;
     border-color: Theme.border;
     VerticalLayout {
@@ -183,7 +184,7 @@ component RoomPicker inherits Rectangle {
                     Text { text: r.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
                     Text { text: r.capacity != "" ? r.capacity + " seats" : ""; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                     Text { text: r.place; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
-                    Text { text: r.status == 0 ? "Free" : (r.status == 1 ? "Busy" : "?"); color: r.status == 0 ? #6bd69b : (r.status == 1 ? #ff8a8d : Theme.fg-subtle); font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
+                    Text { text: r.status == 0 ? "Free" : (r.status == 1 ? "Busy" : "?"); color: r.status == 0 ? Theme.success : (r.status == 1 ? Theme.danger-text : Theme.fg-subtle); font-size: 12px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
                 }
                 rt := TouchArea { mouse-cursor: pointer; clicked => { CalForm.pick-room(i); } }
             }
@@ -208,10 +209,10 @@ export component EventForm inherits MenuFrame { variant: MenuFrameVariant.card;
         if CalForm.error != "": Rectangle {
             height: 28px;
             border-radius: 4px;
-            background: #3b1f22;
+            background: Theme.danger-soft;
             accessible-role: text;
             accessible-label: CalForm.error;
-            Text { x: 10px; width: parent.width - 20px; text: CalForm.error; color: #ff8a8d; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+            Text { x: 10px; width: parent.width - 20px; text: CalForm.error; color: Theme.danger-text; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
         }
         ScrollView {
             vertical-stretch: 1;

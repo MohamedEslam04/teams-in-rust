@@ -125,7 +125,11 @@ pub struct Draft {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutboxKind {
     Text,
+    /// One image on its own (`payload_path`); items queued before `Images` existed.
     Image,
+    /// A message of its own `html` (the typed text) followed by images: `payload_path` is the
+    /// first image file and the others sit next to it, named `<NNN>-<name>` to keep their order.
+    Images,
     File,
     /// A message that carries app cards (`OutboxItem::cards`) and the typed text (`html`).
     Card,
@@ -142,6 +146,7 @@ impl OutboxKind {
         match self {
             OutboxKind::Text => "text",
             OutboxKind::Image => "image",
+            OutboxKind::Images => "images",
             OutboxKind::File => "file",
             OutboxKind::Card => "card",
             OutboxKind::Voice => "voice",
@@ -153,6 +158,7 @@ impl OutboxKind {
         Some(match s {
             "text" => OutboxKind::Text,
             "image" => OutboxKind::Image,
+            "images" => OutboxKind::Images,
             "file" => OutboxKind::File,
             "card" => OutboxKind::Card,
             "voice" => OutboxKind::Voice,

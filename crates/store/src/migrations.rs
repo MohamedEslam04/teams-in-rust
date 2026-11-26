@@ -161,6 +161,13 @@ pub(crate) const MIGRATIONS: &[&str] = &[
          older_ms        INTEGER NOT NULL,
          PRIMARY KEY (conversation_id, newer_ms)
      );",
+    // v9: the user's private note on a chat (`Store::set_chat_note`). Local to this computer: it
+    // is never sent to Teams. One row per conversation; no row means no note.
+    "CREATE TABLE chat_notes (
+         conversation_id TEXT PRIMARY KEY NOT NULL,
+         text            TEXT NOT NULL,
+         updated_ms      INTEGER NOT NULL
+     );",
 ];
 
 pub(crate) fn run(conn: &mut Connection) -> Result<()> {

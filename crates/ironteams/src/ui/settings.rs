@@ -7,9 +7,9 @@
 //! reads the settings again. Without an engine (tests) a write stays a dry run, logged and shown.
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
-//! open, close, page, query, profile, theme, accent, density, font-step, font-scale, skin-tone,
+//! open, close, page, query, profile, theme, accent, density, message-style, show-avatars, show-timestamps, show-reactions, font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
-//! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
+//! larger-text, a11y, rail-move, rail-show, rail-auto, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
 //! message-sound-file, urgent-sound, urgent-sound-preview, teams-sounds, open-files, perm, switch-account, switch-org, switch-confirm, switch-cancel, add-account, remove-account,
@@ -20,7 +20,7 @@
 //! photo-remove, check-updates-menu, beta-updates, restart-update,
 //! media-cache-limit, clear-media-cache, clear-all-cache, delete-update-backups.
 
-use super::{UiHandle, model, rgb};
+use super::{UiHandle, emoji_model, model, rgba};
 use crate::backend::Cmd;
 use crate::backend::call_feedback::Ask;
 use crate::backend::expiry;
@@ -34,11 +34,11 @@ use crate::backend::sounds::{self, Kind as SoundKind};
 use crate::update_check::{self, Release};
 use crate::updater::{self, Event, Phase};
 use crate::{
-    AppWindow, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg, SPerson, SToggle,
-    SettingsStore, Theme,
+    AppWindow, AppsStore, RailFixed, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg,
+    SPerson, SToggle, SettingsStore, Theme,
 };
 use app_store::DevicePermission;
-use appearance::{Density, PortalChange, PortalSettings, Rgb, Theme as ThemeChoice};
+use appearance::{Density, MessageStyle, PortalChange, PortalSettings, Rgb, Theme as LegacyTheme};
 use session::OpenChatAt;
 use slint::{ComponentHandle, ModelRc, SharedString};
 use std::cell::RefCell;
@@ -55,6 +55,9 @@ mod install;
 pub use install::*;
 mod push;
 pub(super) use push::*;
+// The UI tests play desktop portal changes.
+#[cfg(test)]
+pub(crate) use push::portal_changed;
 mod misc;
 use misc::*;
 mod updates;
@@ -105,6 +108,8 @@ struct Ctl {
     status_before: Option<(String, String, String)>,
     /// The account switch being decided (`switch`).
     switching: Option<switch::Pending>,
+    /// The last look applied to the windows (`look_changed`), `None` before the first.
+    last_look: Option<Look>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.

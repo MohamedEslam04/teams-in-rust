@@ -18,9 +18,10 @@ Files:
 - `[hooks.rs:PlaySound]` pub type Arc<dyn Fn(Option<String>)->Result<(),String>+Send+Sync>
 - `[push.rs:watch_portal]` pub(super) fn(Weak<AppWindow>); spawns thread 'ironteams-portal' streaming portal changes to portal_changed
 - `[hooks.rs:Autostart]` pub struct { set: Box<dyn Fn(bool)->Result<(),String>>, get: Box<dyn Fn()->bool> }
-- `[push.rs:portal_changed]` pub(super) fn(&AppWindow, PortalChange); applies change to ctl().portal then apply_look
+- `[push.rs:portal_changed]` pub(crate) fn(&AppWindow, PortalChange); applies change to ctl().portal then look_changed (re-exported under cfg(test) for the UI tests)
 - `[hooks.rs:Autostart::desktop]` pub fn(config_home: Option<PathBuf>) -> Autostart; XDG autostart entry launching with --hidden, or under config_home (tests)
-- `[push.rs:apply_look]` pub(super) fn(&AppWindow, &Ctl); sets Theme global colors/flags and SettingsStore theme/accent/a11y 'shown' strings
+- `[push.rs:apply_look]` pub(crate) fn(&Theme, &Look); sets every property of one window's Theme global: content, nav and call Tokens (ui_tokens, one rgba per field), font_scale, compact, high_contrast, reduced_motion, h24. Used for the main window and the chat popout
+- `[push.rs:look_changed]` pub(super) fn(&AppWindow, &mut Ctl); computes st::look, updates the SettingsStore theme/accent/a11y 'shown' strings, returns when the look equals Ctl.last_look; otherwise apply_look on the main window, popout::popout_apply_look, and on a new mention colour markdown::set_mention_color plus SettingsCmd::Redraw (only when a look was applied before and tx is set); stores last_look
 - `[hooks.rs:Hooks]` pub struct of seams: autostart, test_notification, open_url, restart, relaunch (Box<dyn Fn(String)>, the account `label[@tenant]`), signed_out, report_problem, enumerate, test_sound, play_sound, pick_sound_file, mic_level, check_update, updates, quit
 - `[push.rs:apply_general]` pub(super) fn(&GeneralPrefs); sets date/time formats, language, tray keep_running, link previews
 - `[hooks.rs:SettingsEnv]` pub struct { paths, tokens, portal, background, apply_globals, crash_loop, hooks }
@@ -89,13 +90,14 @@ Files:
 - `[switch.rs:go]` The switch writes `switch_account` (when the label differs) and `switch_tenant` (when given) in one paths.update_config, then calls hooks.relaunch with `AccountArg{label, tenant}` (the tenant left out when it is `organizations`) and closes the menu; it never sets restart_needed. A config error shows in accounts_status and the notice, clears busy and quits nothing. The process never switches live: the relaunch isolates accounts
 - `[push.rs:push_server]` Status text: None server -> 'Reading your Teams settings…', offline -> offline message; shown only when notifications/privacy missing or errors present
 - `[command.rs:"remove-account"]` Tokens are forgotten first (session::forget_account_tokens), then config updated; message cache removed only on success
-- `[push.rs:push_local]` Enabling check_spelling triggers spell::ensure_loaded; time format also mirrored to Theme.h24
+- `[push.rs:push_local]` Enabling check_spelling triggers spell::ensure_loaded; Theme.h24 is not set here (it comes with the look)
 - `[command.rs:"notify"|"pause"|"privacy"|"unblock"]` Teams settings writes require server data to have been read (with_server_note / privacy.is_some()); otherwise refused with a notice
 - `[push.rs:settings_status_failed]` c.status_until cleared and status_before taken (restored) on refusal
 - `[command.rs:"open"|"page"]` page `storage` calls open_storage; `check-updates-menu` (top bar) opens About and runs a forced check (or start_update when self-updating); `check-now` does the same without opening About
 - `[command.rs:"general" arm]` autostart entry is set only if saving general prefs succeeded (r.is_ok())
 - `[updates.rs:check_updates]` No check if hooks.updates is Some (self-updating), one already running (c.checking), or auto check already done and !force; there is no on/off switch
 - `[command.rs:"date-format"|"time-format"|"link-previews"]` Engine Redraw is sent so already drawn rows pick up the change; globals applied only when env.apply_globals
+- `[command.rs:"theme"|"accent"|"density"|"font-*"|"high-contrast"|"reduced-motion"|"larger-text"|"a11y"|"language"|"date-format"|"time-format"|"time-zone"|"startup"]` Call look_changed after saving, so a changed look (colours, h24) reaches the main window and the popout; an unchanged look is not applied again
 - `[updates.rs:check_updates]` update_auto_done set only for non-forced (automatic) checks, so at most one automatic check per start
 - `[command.rs:"pause"]` Legacy args "0"/"" mean off and "1" means tomorrow; unknown expiry returns an error notice and re-pushes server state
 - `[updates.rs:update_checked]` The answer is always applied (status text, info banner when newer); a failed check only sets "Could not check for updates"
@@ -114,7 +116,7 @@ Files:
 - `[hooks.rs:SettingsEnv::system test_notification]` Spawns a thread showing a desktop card (desktop_cards client) or notify_rust notification
 - `[push.rs:watch_portal]` Spawns thread 'ironteams-portal' with its own runtime subscribing to portal D-Bus change stream
 - `[hooks.rs:SettingsEnv::system restart|relaunch]` restart calls `relaunch::request(Relaunch::default())`, relaunch calls `relaunch::request(Relaunch { hidden: false, account: Some(label[@tenant]) })`; both quit the Slint event loop and spawn nothing themselves: `main` starts the new process after the full shutdown (`relaunch::run_if_requested`). signed_out and quit only quit the event loop
-- `[push.rs:apply_look]` Writes Theme (including code_bg) and SettingsStore Slint globals (UI state) and sets the process-global mention colour with crate::markdown::set_mention_color, which affects rows drawn afterwards
+- `[push.rs:look_changed]` Writes Theme and SettingsStore Slint globals (UI state) of the main window and the popout and sets the process-global mention colour with crate::markdown::set_mention_color; a changed mention colour sends SettingsCmd::Redraw so the engine draws the loaded rows again (its message memo version includes the mention colour)
 - `[hooks.rs:SettingsEnv::system open_url]` Opens URLs via crate::external::open; [command.rs:"view-account"] opens myaccount.microsoft.com
 - `[push.rs:apply_general]` Sets global state: appearance::formats, language, tray keep_running, link previews
 - `[hooks.rs:SettingsEnv::system pick_sound_file]` Blocking rfd native file dialog

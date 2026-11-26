@@ -4,11 +4,14 @@ import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { HeldBar } from "../molecules/call_held.slint";
 import { Tile } from "call_stage.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The call while the meeting chat is open: title, timer, mute, back to the call, leave.
 // The floating call's tiles: the latest speaker, or up to four people two by two, and how many
 // more are in the call.
 component MiniStage inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     property <bool> gallery: CallStore.mini-layout == "gallery" && CallStore.mini-people.length > 1;
     property <int> count: gallery ? CallStore.mini-people.length : min(1, CallStore.mini-people.length);
     property <length> gap: 4px;
@@ -17,13 +20,14 @@ component MiniStage inherits Rectangle {
     property <length> tile-w: (root.width - (cols - 1) * gap) / cols;
     property <length> tile-h: (root.height - (rows - 1) * gap) / rows;
     for person[i] in CallStore.mini-people: Tile {
+        c: root.c;
         visible: i < root.count;
         p: person;
         x: Math.mod(i, root.cols) * (root.tile-w + root.gap);
         y: Math.floor(i / root.cols) * (root.tile-h + root.gap);
         width: root.tile-w;
         height: root.tile-h;
-        background: Theme.main;
+        background: root.c.bg;
     }
     if CallStore.mini-more + CallStore.mini-people.length - root.count > 0: Rectangle {
         x: root.width - self.width - 6px;
@@ -31,10 +35,10 @@ component MiniStage inherits Rectangle {
         width: more.preferred-width + 12px;
         height: 20px;
         border-radius: 10px;
-        background: Theme.surface;
+        background: root.c.surface;
         more := Text {
             text: "+" + (CallStore.mini-more + CallStore.mini-people.length - root.count);
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 11px * Theme.font-scale;
             accessible-role: text;
             accessible-label: @tr("{} more in the call", CallStore.mini-more + CallStore.mini-people.length - root.count);
@@ -44,6 +48,7 @@ component MiniStage inherits Rectangle {
 
 // A small icon button of the floating call: icon only, its label for screen readers and tests.
 component MiniButton inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <image> icon;
     in property <string> label;
     in property <bool> enabled: true;
@@ -53,15 +58,16 @@ component MiniButton inherits Rectangle {
     width: 30px;
     height: 30px;
     border-radius: 4px;
-    background: touch.has-hover && root.enabled ? Theme.surface-hover : transparent;
+    background: touch.has-hover && root.enabled ? root.c.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.label;
     accessible-enabled: root.enabled;
     accessible-checked: root.active;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     Icon {
+        c: root.c;
         source: root.icon;
-        tint: root.danger ? Theme.danger : Theme.fg;
+        tint: root.danger ? root.c.danger : root.c.fg;
         width: 18px;
         height: 18px;
         opacity: root.enabled ? 1 : 0.4;
@@ -76,14 +82,15 @@ component MiniButton inherits Rectangle {
 // with the title and a button back to the full call, the timer and the call buttons, and the tile
 // of the person we talk to.
 export component CallMini inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     width: 360px;
     height: 280px;
     border-radius: 8px;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.surface;
+    border-color: root.c.border;
+    background: root.c.surface;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Fixed.black-80;
     // Drag it anywhere in the window by any free spot.
     TouchArea {
         mouse-cursor: move;
@@ -100,7 +107,7 @@ export component CallMini inherits Rectangle {
         spacing: 4px;
         Text {
             text: "⠿";
-            color: Theme.fg-muted;
+            color: root.c.fg-muted;
             font-size: 12px;
             horizontal-alignment: center;
             accessible-role: none;
@@ -110,13 +117,14 @@ export component CallMini inherits Rectangle {
             spacing: 4px;
             Text {
                 text: CallStore.title;
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 13px * Theme.font-scale;
                 overflow: elide;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
             MiniButton {
+                c: root.c;
                 icon: CallStore.mini-layout == "gallery" ? @image-url("../icons/people.svg") : @image-url("../icons/grid.svg");
                 label: CallStore.mini-layout == "gallery" ? "Show the speaker" : "Show more people";
                 enabled: CallStore.mini-people.length > 1;
@@ -125,6 +133,7 @@ export component CallMini inherits Rectangle {
                 }
             }
             MiniButton {
+                c: root.c;
                 icon: @image-url("../icons/expand.svg");
                 label: "Back to call";
                 clicked => { CallStore.minimized = false; }
@@ -135,12 +144,13 @@ export component CallMini inherits Rectangle {
             spacing: 2px;
             Text {
                 text: CallStore.phase == "ended" ? CallStore.ended : CallStore.timer;
-                color: Theme.fg-muted;
+                color: root.c.fg-muted;
                 font-size: 12px * Theme.font-scale;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
             MiniButton {
+                c: root.c;
                 icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
                 label: "Camera";
                 active: CallStore.camera;
@@ -148,12 +158,14 @@ export component CallMini inherits Rectangle {
                 clicked => { CallStore.command("camera", ""); }
             }
             MiniButton {
+                c: root.c;
                 icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
                 label: CallStore.muted ? "Unmute" : "Mute";
                 active: CallStore.muted;
                 clicked => { CallStore.command("mute", ""); }
             }
             MiniButton {
+                c: root.c;
                 icon: @image-url("../icons/screen-share.svg");
                 label: CallStore.sharing ? "Stop sharing" : "Share";
                 active: CallStore.sharing;
@@ -161,6 +173,7 @@ export component CallMini inherits Rectangle {
                 clicked => { CallStore.command("share", ""); }
             }
             if CallStore.phase != "ended": MiniButton {
+                c: root.c;
                 icon: @image-url("../icons/call-end.svg");
                 label: "Leave";
                 danger: true;
@@ -168,12 +181,13 @@ export component CallMini inherits Rectangle {
             }
             // The ended card closes like the full call-ended screen's Close.
             if CallStore.phase == "ended": MiniButton {
+                c: root.c;
                 icon: @image-url("../icons/close.svg");
                 label: "Close call";
                 clicked => { CallStore.command("close", ""); }
             }
         }
-        if CallStore.held-name != "": HeldBar { compact: true; }
-        MiniStage { vertical-stretch: 1; }
+        if CallStore.held-name != "": HeldBar { c: root.c; compact: true; }
+        MiniStage { c: root.c; vertical-stretch: 1; }
     }
 }

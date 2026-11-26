@@ -1,38 +1,40 @@
 // An Adaptive Card drawn like Teams does (plan 8.8): colored container bands, fact sets as two
 // columns, sized and colored text, column sets, images and action buttons. The rows come from
 // `teams_proto::chat_card` through `Msg.card`.
+import { Fixed } from "../tokens/fixed.slint";
 import { Theme } from "../tokens/theme.slint";
-import { CardRow } from "../tokens/types.slint";
+import { CardRow, Tokens } from "../tokens/types.slint";
 import { Skeleton } from "../tokens/motion.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export global CardColors {
-    pure public function band(b: string) -> color {
-        if b == "emphasis" { return Theme.surface-hover; }
-        if b == "good" { return #1d3b27; }
-        if b == "attention" { return #4d2024; }
-        if b == "warning" { return #4a3912; }
-        if b == "accent" { return #232b5c; }
+    pure public function band(b: string, c: Tokens) -> color {
+        if b == "emphasis" { return c.surface-hover; }
+        if b == "good" { return Fixed.card-band-good; }
+        if b == "attention" { return Fixed.card-band-attention; }
+        if b == "warning" { return Fixed.card-band-warning; }
+        if b == "accent" { return Fixed.card-band-accent; }
         return transparent;
     }
-    pure public function tone(t: string, subtle: bool) -> color {
-        if t == "accent" { return #9aa5ff; }
-        if t == "good" { return #6fd685; }
-        if t == "warning" { return #f5c451; }
-        if t == "attention" { return #ff7e83; }
-        if t == "light" { return #ffffff; }
-        return subtle ? Theme.fg-muted : Theme.fg;
+    pure public function tone(t: string, subtle: bool, c: Tokens) -> color {
+        if t == "accent" { return Fixed.card-tone-accent; }
+        if t == "good" { return Fixed.card-tone-good; }
+        if t == "warning" { return Fixed.card-tone-warning; }
+        if t == "attention" { return Fixed.card-tone-attention; }
+        if t == "light" { return Fixed.white; }
+        return subtle ? c.fg-muted : c.fg;
     }
 }
 
 export component CardView inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <[CardRow]> rows;
     callback open-url(string);
     height: lay.preferred-height + 2px;
     border-radius: 6px;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.sidebar;
+    border-color: root.c.border;
+    background: root.c.panel;
     clip: true;
     accessible-role: groupbox;
     accessible-label: "Card";
@@ -40,7 +42,7 @@ export component CardView inherits Rectangle {
     lay := VerticalLayout {
         for r in root.rows: Rectangle {
             height: content.preferred-height;
-            background: CardColors.band(r.band);
+            background: CardColors.band(r.band, root.c);
             content := VerticalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
@@ -48,7 +50,7 @@ export component CardView inherits Rectangle {
                 padding-bottom: r.kind == "banner" ? 14px : 5px;
                 if r.kind == "banner": Text {
                     text: r.plain;
-                    color: #ffffff;
+                    color: Fixed.white;
                     font-size: r.size;
                     font-weight: 700;
                     wrap: word-wrap;
@@ -57,9 +59,9 @@ export component CardView inherits Rectangle {
                 }
                 if r.kind == "text": StyledText {
                     text: r.text;
-                    default-color: CardColors.tone(r.tone, r.subtle);
+                    default-color: CardColors.tone(r.tone, r.subtle, root.c);
                     default-font-size: r.size;
-                    link-color: Theme.accent;
+                    link-color: root.c.accent;
                     selectable: true;
                     min-width: 0px;
                     link-clicked(url) => { root.open-url(url); }
@@ -68,7 +70,7 @@ export component CardView inherits Rectangle {
                     spacing: 12px;
                     Text {
                         text: r.label;
-                        color: Theme.fg-muted;
+                        color: root.c.fg-muted;
                         font-size: 13px * Theme.font-scale;
                         font-weight: 700;
                         width: 150px;
@@ -76,9 +78,9 @@ export component CardView inherits Rectangle {
                     }
                     StyledText {
                         text: r.text;
-                        default-color: Theme.fg;
+                        default-color: root.c.fg;
                         default-font-size: 13px * Theme.font-scale;
-                        link-color: Theme.accent;
+                        link-color: root.c.accent;
                         selectable: true;
                         horizontal-stretch: 1;
                         min-width: 0px;
@@ -93,9 +95,9 @@ export component CardView inherits Rectangle {
                         if c.has-img: Image { source: c.img; width: 40px; height: 40px; image-fit: contain; y: 0px; }
                         if c.plain != "": StyledText {
                             text: c.text;
-                            default-color: CardColors.tone(c.tone, false);
+                            default-color: CardColors.tone(c.tone, false, root.c);
                             default-font-size: c.size;
-                            link-color: Theme.accent;
+                            link-color: root.c.accent;
                             selectable: true;
                             min-width: 0px;
                             link-clicked(url) => { root.open-url(url); }
@@ -105,13 +107,13 @@ export component CardView inherits Rectangle {
                 if r.kind == "image": Rectangle {
                     height: r.img-h;
                     if r.has-img: Image { source: r.img; width: min(r.img-w, parent.width); height: parent.height; image-fit: contain; x: 0px; }
-                    if !r.has-img: Skeleton { x: 0px; width: min(r.img-w, parent.width); height: parent.height; accessible-role: image; accessible-label: "Loading image…"; }
+                    if !r.has-img: Skeleton { c: root.c; x: 0px; width: min(r.img-w, parent.width); height: parent.height; accessible-role: image; accessible-label: "Loading image…"; }
                 }
                 if r.kind == "actions": HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
                     padding-top: 4px;
-                    for b in r.buttons: Button { variant: ButtonVariant.accent-outline;
+                    for b in r.buttons: Button { c: root.c; variant: ButtonVariant.accent-outline;
                         label: b.title;
                         enabled: b.url != "";
                         clicked => { root.open-url(b.url); }

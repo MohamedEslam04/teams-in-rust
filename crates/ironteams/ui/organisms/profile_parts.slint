@@ -7,6 +7,7 @@ import { Avatar } from "../atoms/avatar.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { DirectCallStore } from "call_incoming.slint";
 import { SkeletonList } from "../tokens/motion.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // A flat icon button with a hover background and a tooltip below it.
 export component ActionIcon inherits Rectangle {
@@ -184,7 +185,7 @@ export component ProfileBody inherits Rectangle {
         if PeopleStore.card-ooo != "": Rectangle {
             height: 30px;
             border-radius: 4px;
-            background: #b4009e40;
+            background: Fixed.highlight-pink;
             accessible-role: text;
             accessible-label: @tr("Out of office");
             accessible-value: PeopleStore.card-ooo;

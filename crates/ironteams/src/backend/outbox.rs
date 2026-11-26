@@ -2,9 +2,11 @@
 //! error leaves it queued for the next reconnect; a rejection marks it failed (Retry or Delete).
 
 use super::Engine;
+use super::attach::INLINE_WIDTH;
+use crate::support::inline_images;
 use serde_json::{Value, json};
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
@@ -108,6 +110,15 @@ pub(super) fn row_from_outbox(item: &OutboxItem, me: &str, my_name: &str) -> Mes
     let content_html = match item.kind {
         OutboxKind::Text => item.html.clone(),
         OutboxKind::Image => render::text_to_teams_html(&format!("🖼 {}", payload_name(item))),
+        // The typed text with a line for each picture where the picture goes (the real pictures
+        // come with the echo).
+        OutboxKind::Images => {
+            let names: Vec<String> = image_files(item)
+                .iter()
+                .map(|file| render::text_to_teams_html(&format!("🖼 {}", shown_name(file))))
+                .collect();
+            inline_images::fill_placeholders(&item.html, &names)
+        }
         OutboxKind::File => render::text_to_teams_html(&format!("📎 {}", payload_name(item))),
         // The voice card, pointing at the local recording: the pending row already plays.
         OutboxKind::Voice => item.html.clone(),
@@ -156,10 +167,99 @@ fn owned_payload_dir(path: &str) -> Option<&Path> {
     (outbox.file_name()? == "outbox").then_some(dir)
 }
 
-fn remove_payload(item: &OutboxItem) {
+pub(super) fn remove_payload(item: &OutboxItem) {
     if let Some(dir) = item.payload_path.as_deref().and_then(owned_payload_dir) {
         let _ = std::fs::remove_dir_all(dir);
     }
+}
+
+/// The size an image is shown at inline: its own, or scaled down to `INLINE_WIDTH`. An image that
+/// cannot be decoded gets a default.
+fn inline_size(data: &[u8]) -> (u32, u32) {
+    let (w, h) = image::load_from_memory(data)
+        .map(|i| (i.width(), i.height()))
+        .unwrap_or((INLINE_WIDTH, 300));
+    if w > INLINE_WIDTH {
+        (INLINE_WIDTH, h * INLINE_WIDTH / w.max(1))
+    } else {
+        (w, h)
+    }
+}
+
+/// The file name of image number `index` of an `Images` item: the number keeps the order.
+fn image_file_name(index: usize, name: &str) -> String {
+    format!("{index:03}-{name}")
+}
+
+/// The name of a file written by `write_images`, without its order number.
+fn shown_name(path: &Path) -> String {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match name.split_once('-') {
+        Some((n, rest)) if n.len() == 3 && n.bytes().all(|b| b.is_ascii_digit()) => rest.into(),
+        _ => name,
+    }
+}
+
+/// Copies images (name, bytes) into `dir`, in order, for an `Images` item; returns the first
+/// file, which is the item's `payload_path`. The folder is removed again when a write fails.
+pub(super) fn write_images(dir: &Path, images: &[(&str, &[u8])]) -> std::io::Result<PathBuf> {
+    if images.is_empty() {
+        return Err(std::io::Error::other("no images"));
+    }
+    let written = std::fs::create_dir_all(dir).and_then(|()| {
+        images
+            .iter()
+            .enumerate()
+            .map(|(i, (name, data))| {
+                // Keep only the file name: it is shown in the row and used as the upload name.
+                let name = Path::new(name)
+                    .file_name()
+                    .map_or_else(|| "image".into(), |n| n.to_string_lossy().into_owned());
+                let path = dir.join(image_file_name(i, &name));
+                std::fs::write(&path, data).map(|()| path)
+            })
+            .collect::<std::io::Result<Vec<_>>>()
+    });
+    match written {
+        Ok(files) => Ok(files[0].clone()),
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(dir);
+            Err(err)
+        }
+    }
+}
+
+/// The image files of an `Images` item, in the order they were attached.
+fn image_files(item: &OutboxItem) -> Vec<PathBuf> {
+    let Some(dir) = item
+        .payload_path
+        .as_deref()
+        .and_then(|p| Path::new(p).parent())
+    else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    files.sort();
+    files
+}
+
+/// The message of an `Images` item: the typed text's HTML with every image, in order, where its
+/// placeholder is (docs/designs/composer-inline-images.md); images without one follow the text.
+fn images_message_html(text_html: &str, uploaded: &[(String, u32, u32)]) -> String {
+    let images: Vec<String> = uploaded
+        .iter()
+        .map(|(id, w, h)| teams_proto::ams::image_html(id, *w, *h))
+        .collect();
+    inline_images::fill_placeholders(text_html, &images)
 }
 
 impl Engine {
@@ -288,6 +388,61 @@ impl Engine {
         outcome
     }
 
+    /// Sends `html` as the text message of `item`: with its importance, mentions, quote reply
+    /// and subject, the same client message id on every retry.
+    async fn deliver_text(&self, item: &OutboxItem, html: &str) -> teams_proto::Result<()> {
+        let cmid = &item.client_message_id;
+        let target = &item.conversation_id;
+        let subject = item.subject.as_deref();
+        let mentions = || super::mentions::from_property(item.mentions.as_deref().unwrap_or(""));
+        if !item.importance.is_empty() {
+            // "Mark as important" or "Set delivery options" (Important, Urgent): sent with the
+            // delivery property; mentions and a quote reply travel along.
+            return self
+                .client
+                .send_outgoing_delivery_as(
+                    target,
+                    html,
+                    &self.my_name,
+                    subject,
+                    &mentions(),
+                    item.reply_to.as_deref(),
+                    &delivery_of(&item.importance),
+                    cmid,
+                )
+                .await;
+        }
+        if item.mentions.is_some() {
+            // The mentions property makes the people named in the text get notified; a
+            // quote reply carries its `qtdMsgs` next to it.
+            return self
+                .client
+                .send_message_with_mentions_as(
+                    target,
+                    html,
+                    &self.my_name,
+                    subject,
+                    &mentions(),
+                    item.reply_to.as_deref(),
+                    cmid,
+                )
+                .await;
+        }
+        match item.reply_to.as_deref() {
+            // "Reply with quote": the property links the quote block to its original.
+            Some(qtd) => {
+                self.client
+                    .send_quote_reply_as(target, html, &self.my_name, qtd, cmid)
+                    .await
+            }
+            None => {
+                self.client
+                    .send_message_as(target, html, &self.my_name, subject, cmid)
+                    .await
+            }
+        }
+    }
+
     /// Posts one item to the server.
     async fn deliver(&self, item: &OutboxItem) -> teams_proto::Result<()> {
         let cmid = &item.client_message_id;
@@ -295,55 +450,7 @@ impl Engine {
         let (chat, _) = split_target(target);
         let subject = item.subject.as_deref();
         match item.kind {
-            // "Mark as important" or "Set delivery options" (Important, Urgent): sent with the
-            // delivery property, the same client message id on every retry; mentions and a
-            // quote reply travel along.
-            OutboxKind::Text if !item.importance.is_empty() => {
-                let mentions =
-                    super::mentions::from_property(item.mentions.as_deref().unwrap_or(""));
-                self.client
-                    .send_outgoing_delivery_as(
-                        target,
-                        &item.html,
-                        &self.my_name,
-                        subject,
-                        &mentions,
-                        item.reply_to.as_deref(),
-                        &delivery_of(&item.importance),
-                        cmid,
-                    )
-                    .await
-            }
-            OutboxKind::Text if item.mentions.is_some() => {
-                // The mentions property makes the people named in the text get notified; a
-                // quote reply carries its `qtdMsgs` next to it.
-                let mentions =
-                    super::mentions::from_property(item.mentions.as_deref().unwrap_or(""));
-                self.client
-                    .send_message_with_mentions_as(
-                        target,
-                        &item.html,
-                        &self.my_name,
-                        subject,
-                        &mentions,
-                        item.reply_to.as_deref(),
-                        cmid,
-                    )
-                    .await
-            }
-            OutboxKind::Text => match item.reply_to.as_deref() {
-                // "Reply with quote": the property links the quote block to its original.
-                Some(qtd) => {
-                    self.client
-                        .send_quote_reply_as(target, &item.html, &self.my_name, qtd, cmid)
-                        .await
-                }
-                None => {
-                    self.client
-                        .send_message_as(target, &item.html, &self.my_name, subject, cmid)
-                        .await
-                }
-            },
+            OutboxKind::Text => self.deliver_text(item, &item.html).await,
             // A message with app cards from the composer's apps picker: the typed text is the
             // body, `properties.cards` holds the cards. Mentions, a quote reply and the
             // importance travel along; the same client message id on every retry.
@@ -375,18 +482,37 @@ impl Engine {
             }
             OutboxKind::Image => {
                 let (name, data) = read_payload(item)?;
-                let (w, h) = image::load_from_memory(&data)
-                    .map(|i| (i.width(), i.height()))
-                    .unwrap_or((400, 300));
-                let (w, h) = if w > 400 {
-                    (400, h * 400 / w.max(1))
-                } else {
-                    (w, h)
-                };
+                let (w, h) = inline_size(&data);
                 let id = self.client.upload_image(chat, &name, data).await?;
                 let html = teams_proto::ams::image_html(&id, w, h);
                 self.client
                     .send_message_as(target, &html, &self.my_name, None, cmid)
+                    .await
+            }
+            // The typed text and every attached image in ONE message: each image is uploaded,
+            // then the text's HTML is sent followed by the images, in the order they were
+            // attached. A failed upload fails the item (Retry sends it all again under the
+            // same client message id).
+            OutboxKind::Images => {
+                let files = image_files(item);
+                if files.is_empty() {
+                    return Err(teams_proto::Error::Protocol(
+                        "outbox image message has no images".into(),
+                    ));
+                }
+                let mut uploaded = Vec::with_capacity(files.len());
+                for path in &files {
+                    let data = std::fs::read(path).map_err(|e| {
+                        teams_proto::Error::Protocol(format!("cannot read {}: {e}", path.display()))
+                    })?;
+                    let (w, h) = inline_size(&data);
+                    let id = self
+                        .client
+                        .upload_image(chat, &shown_name(path), data)
+                        .await?;
+                    uploaded.push((id, w, h));
+                }
+                self.deliver_text(item, &images_message_html(&item.html, &uploaded))
                     .await
             }
             OutboxKind::File => {
@@ -454,11 +580,14 @@ impl Engine {
                 .map(|v| v.iter().any(|i| i.client_message_id == cmid))
                 .unwrap_or(false);
             let _ = st.remove(&cmid);
-            let plain = render::plain_text(&render::parse_teams_html(&item.html));
+            let plain = render::plain_text(&render::parse_teams_html(&item.html))
+                .replace(inline_images::PLACEHOLDER, "");
             let preview = match item.kind {
                 OutboxKind::Text => format!("You: {plain}"),
                 OutboxKind::Card if plain.trim().is_empty() => "You: 🗂 Card".to_owned(),
                 OutboxKind::Card => format!("You: {plain}"),
+                OutboxKind::Images if plain.trim().is_empty() => "You: 🖼 Image".to_owned(),
+                OutboxKind::Images => format!("You: {plain}"),
                 OutboxKind::Voice => "You: 🎤 Voice message".to_owned(),
                 OutboxKind::VideoClip => "You: 🎬 Video clip".to_owned(),
                 _ => format!("You: 📎 {}", payload_name(item)),
@@ -705,6 +834,224 @@ mod tests {
             "{}",
             row.content_html
         );
+    }
+
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::RgbaImage::from_pixel(w, h, image::Rgba([1, 2, 3, 255]))
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn inline_images_are_clamped_to_400_wide() {
+        assert_eq!(inline_size(&png(800, 200)), (400, 100));
+        assert_eq!(
+            inline_size(&png(40, 20)),
+            (40, 20),
+            "small ones stay as they are"
+        );
+        assert_eq!(inline_size(&[1, 2, 3]), (400, 300), "unreadable: a default");
+    }
+
+    #[test]
+    fn one_message_holds_the_text_then_every_image_in_order() {
+        let uploaded = vec![
+            ("0-weu-d1-first".to_string(), 400, 100),
+            ("0-weu-d1-second".to_string(), 40, 20),
+        ];
+        let html = images_message_html("<p>look at these</p>", &uploaded);
+        let at = |needle: &str| {
+            html.find(needle)
+                .unwrap_or_else(|| panic!("{needle} in {html}"))
+        };
+        assert!(html.starts_with("<p>look at these</p>"), "{html}");
+        assert!(at("look at these") < at("0-weu-d1-first"));
+        assert!(at("0-weu-d1-first") < at("0-weu-d1-second"));
+        assert!(html.contains(r#"width="400" height="100""#), "{html}");
+        assert_eq!(html.matches("AMSImage").count(), 2);
+        // Without text it is just the images.
+        let only = images_message_html("", &uploaded);
+        assert!(only.starts_with("<p><img"), "{only}");
+        assert_eq!(
+            html,
+            format!(
+                "<p>look at these</p>{}{}",
+                teams_proto::ams::image_html("0-weu-d1-first", 400, 100),
+                teams_proto::ams::image_html("0-weu-d1-second", 40, 20)
+            )
+        );
+    }
+
+    #[test]
+    fn images_are_written_and_read_back_in_the_order_they_were_attached() {
+        let dir = tempfile::tempdir().unwrap();
+        let item_dir = dir.path().join("outbox").join("77");
+        // More than ten, so a plain "1, 10, 2" name sort would show.
+        let names: Vec<String> = (0..12).map(|i| format!("p{}.png", 11 - i)).collect();
+        let images: Vec<(&str, &[u8])> =
+            names.iter().map(|n| (n.as_str(), &[1u8, 2][..])).collect();
+        let first = write_images(&item_dir, &images).unwrap();
+        assert_eq!(first, item_dir.join("000-p11.png"));
+        let mut it = item("77", OutboxKind::Images);
+        it.payload_path = Some(first.to_string_lossy().into_owned());
+        let back: Vec<String> = image_files(&it).iter().map(|p| shown_name(p)).collect();
+        assert_eq!(back, names, "same order, order numbers hidden");
+        // The folder is one IronTeams owns, so it is deleted with the item.
+        assert_eq!(
+            owned_payload_dir(it.payload_path.as_deref().unwrap()),
+            Some(item_dir.as_path())
+        );
+        remove_payload(&it);
+        assert!(!item_dir.exists());
+    }
+
+    #[test]
+    fn an_image_name_cannot_leave_its_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let item_dir = dir.path().join("outbox").join("5");
+        let first = write_images(&item_dir, &[("../../evil.png", &[1][..])]).unwrap();
+        assert_eq!(first, item_dir.join("000-evil.png"));
+        assert!(!dir.path().join("evil.png").exists());
+    }
+
+    #[test]
+    fn a_failed_image_write_leaves_no_folder_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        // The folder cannot be made: its parent is a file.
+        let blocker = dir.path().join("outbox");
+        std::fs::write(&blocker, b"x").unwrap();
+        assert!(write_images(&blocker.join("9"), &[("a.png", &[1][..])]).is_err());
+        assert!(
+            write_images(&dir.path().join("empty"), &[]).is_err(),
+            "no images, no item"
+        );
+        assert!(!dir.path().join("empty").exists());
+    }
+
+    #[test]
+    fn the_pending_row_of_an_images_message_shows_the_text_and_each_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let item_dir = dir.path().join("outbox").join("31");
+        let first = write_images(&item_dir, &[("a.png", &[1][..]), ("b.png", &[2][..])]).unwrap();
+        let mut it = item("31", OutboxKind::Images);
+        it.html = "<p>holiday</p>".into();
+        it.payload_path = Some(first.to_string_lossy().into_owned());
+        let row = row_from_outbox(&it, "8:me", "Me");
+        let html = &row.content_html;
+        assert!(html.starts_with("<p>holiday</p>"), "{html}");
+        let (a, b) = (html.find("a.png").unwrap(), html.find("b.png").unwrap());
+        assert!(a < b, "{html}");
+        assert!(
+            !html.contains("000-"),
+            "the order number is not shown: {html}"
+        );
+    }
+
+    /// Chips for the open chat, added the way a paste or a drop adds them.
+    async fn chips(e: &Arc<Engine>, names: &[&str]) {
+        for n in names {
+            e.add_attachment((*n).into(), png(10, 10)).await.unwrap();
+        }
+    }
+
+    fn chip_names(e: &Engine) -> Vec<String> {
+        let v = e.view.lock().unwrap();
+        v.attachments
+            .get("48:notes")
+            .map(|l| l.iter().map(|a| a.name.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn images_are_carried_into_the_text_message_instead_of_queued_one_by_one() {
+        let e = engine();
+        chips(&e, &["a.png", "b.png", "c.png"]).await;
+        let carried = e.queue_attachments(true).unwrap();
+        let names: Vec<_> = carried.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["a.png", "b.png", "c.png"]);
+        assert!(outbox(&e).is_empty(), "no message of their own");
+        assert!(chip_names(&e).is_empty(), "taken off the chips");
+    }
+
+    #[tokio::test]
+    async fn carried_images_come_back_as_chips_in_front_when_the_message_fails() {
+        let e = engine();
+        chips(&e, &["a.png", "b.png"]).await;
+        let carried = e.queue_attachments(true).unwrap();
+        chips(&e, &["late.png"]).await;
+        e.restore_attachments("48:notes", carried);
+        assert_eq!(chip_names(&e), ["a.png", "b.png", "late.png"]);
+    }
+
+    #[test]
+    fn images_placed_between_lines_are_sent_between_them() {
+        let m = inline_images::marker;
+        let draft = format!("first\n{}\nsecond\n{}", m(3), m(1));
+        let (body, slots) = inline_images::to_placeholders(&draft);
+        assert_eq!(slots, [3, 1]);
+        let uploaded = vec![("0-a".to_string(), 10, 10), ("0-b".to_string(), 20, 20)];
+        let html = images_message_html(&render::markdown_to_composer_html(&body), &uploaded);
+        assert_eq!(
+            html,
+            format!(
+                "<p>first</p>{}<p>second</p>{}",
+                teams_proto::ams::image_html("0-a", 10, 10),
+                teams_proto::ams::image_html("0-b", 20, 20)
+            ),
+            "text, image, text, image"
+        );
+    }
+
+    #[tokio::test]
+    async fn images_in_the_text_have_slots_and_images_without_a_line_are_forgotten() {
+        let e = engine();
+        chips(&e, &["a.png", "b.png"]).await;
+        let slots = e.inline_slots("48:notes");
+        assert_eq!(slots.len(), 2, "both images are in the text, not chips");
+        assert_ne!(slots[0], slots[1]);
+        let m = inline_images::marker;
+        // The user removed b's line; a line of an image that is not there is dropped.
+        let text = format!("hi\n{}\n{}\n", m(slots[0]), m(inline_images::SLOTS - 1));
+        let sent = e.settle_inline_images("48:notes", &text, false);
+        assert_eq!(sent, format!("hi\n{}", m(slots[0])));
+        assert_eq!(chip_names(&e), ["a.png"]);
+        // An edit of a sent message takes no images: their lines go, the images stay.
+        let edit = e.settle_inline_images("48:notes", &format!("x\n{}", m(slots[0])), true);
+        assert_eq!(edit, "x");
+        assert_eq!(chip_names(&e), ["a.png"]);
+    }
+
+    #[tokio::test]
+    async fn text_and_images_between_its_lines_are_one_message_in_that_order() {
+        let e = engine();
+        e.connected.store(false, Ordering::Relaxed);
+        chips(&e, &["one.png", "two.png"]).await;
+        let slots = e.inline_slots("48:notes");
+        let m = inline_images::marker;
+        let draft = format!("first\n{}\nsecond\n{}\n", m(slots[0]), m(slots[1]));
+        e.clone()
+            .handle(crate::backend::Cmd::Send(draft, String::new()))
+            .await;
+        let q = outbox(&e);
+        assert_eq!(q.len(), 1, "one message: {q:?}");
+        let it = &q[0];
+        assert_eq!(it.kind, OutboxKind::Images);
+        let names: Vec<String> = image_files(it).iter().map(|p| shown_name(p)).collect();
+        assert_eq!(names, ["one.png", "two.png"]);
+        let row = row_from_outbox(it, "8:me", "Me").content_html;
+        let at = |needle: &str| {
+            row.find(needle)
+                .unwrap_or_else(|| panic!("{needle} in {row}"))
+        };
+        assert!(at("first") < at("one.png"), "{row}");
+        assert!(at("one.png") < at("second"), "{row}");
+        assert!(at("second") < at("two.png"), "{row}");
+        assert!(chip_names(&e).is_empty(), "taken off the composer");
+        for it in &q {
+            remove_payload(it);
+        }
     }
 
     #[test]

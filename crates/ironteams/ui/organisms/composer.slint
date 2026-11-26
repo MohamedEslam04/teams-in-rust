@@ -11,7 +11,8 @@ import { ComposerAppsButton } from "composer_apps.slint";
 import { GifPicker, GifStore } from "../molecules/gif_picker.slint";
 import { SendStore, SendButton, SendMenu, SchedulePicker, ScheduleBanner } from "composer_send.slint";
 import { SpellApi, SpellOverlay, SpellWord } from "../molecules/spelling.slint";
-import { LineEditor } from "../molecules/line_editor.slint";
+import { LineApi, LineEditor } from "../molecules/line_editor.slint";
+import { InlineImageStore } from "../stores/inline_image_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { ClipStore, ClipRecorderPanel } from "video_clip.slint";
 import { LoopStore, LoopEditor } from "../molecules/loop_editor.slint";
@@ -96,6 +97,11 @@ export component Composer inherits Rectangle {
     changed snippet-matches => { root.snippet-index = 0; }
 
     changed cursor-tick => { composer-input.set-selection-offsets(2000000000, 2000000000); }
+    // Images go in at the cursor (src/ui.rs `insert_inline_image`), which puts it after them.
+    property <int> caret-now: composer-input.cursor-position-byte-offset;
+    changed caret-now => { InlineImageStore.caret = root.caret-now; }
+    property <int> place-tick: InlineImageStore.place-tick;
+    changed place-tick => { composer-input.set-selection-offsets(InlineImageStore.place, InlineImageStore.place); }
     changed suggestions => { root.sug-index = 0; }
     changed mention-active => { if root.mention-active { PeopleStore.command("mention-query", root.mention-query); } }
     changed mention-query => { if root.mention-active { PeopleStore.command("mention-query", root.mention-query); } }
@@ -121,7 +127,8 @@ export component Composer inherits Rectangle {
     // underlines of words the draft no longer has in place hide until the next check.
     property <string> spell-text;
     property <int> spell-cursor;
-    property <[SpellWord]> spell-words: SettingsStore.check-spelling && root.spell-text != "" ? SpellApi.check(root.spell-text, root.mention-names, root.spell-cursor, SpellApi.generation) : [];
+    // Off while the draft has images: the underlines are placed as if every line were text.
+    property <[SpellWord]> spell-words: SettingsStore.check-spelling && root.spell-text != "" && !LineApi.has-images(root.spell-text) ? SpellApi.check(root.spell-text, root.mention-names, root.spell-cursor, SpellApi.generation) : [];
     property <int> spell-stable: SpellApi.stable(root.spell-text, root.draft);
     spell-timer := Timer {
         interval: 500ms;
@@ -280,7 +287,7 @@ export component Composer inherits Rectangle {
             border-color: Theme.border;
             VerticalLayout {
                 if root.reply-preview != "": Rectangle {
-                    background: Theme.sidebar;
+                    background: Theme.panel;
                     border-radius: 4px;
                     HorizontalLayout {
                         padding: 8px;
@@ -449,6 +456,7 @@ export component Composer inherits Rectangle {
                             width: parent.width - 28px;
                             height: parent.height - 10px;
                             text <=> root.draft;
+                            images: InlineImageStore.images;
                             font-size: 14px * Theme.font-scale;
                             edited => {
                                 root.typing-tick();

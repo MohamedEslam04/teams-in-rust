@@ -15,18 +15,20 @@ Files:
 - `composer_apps.rs`: Fills the ComposerApps global from PickerData and wires its command callback to Cmd::ComposerApps.
 - `drive.rs`: Maps OneDrive backend view data (rows, cards, share, picker, versions, preview, info dialogs) into DriveStore; keeps rows in a thread-local VecModel updated in place.
 - `engage.rs`: Fills EngageStore (Viva Engage feed) and StorylineStore (profile, counts, posts) from backend data.
-- `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state.
+- `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state. Also the Unreads view's keyboard helpers (`unreads_step`, `unreads_index`, wired as pure FindStore callbacks).
 - `gifs.rs`: Fills GifStore items and status from GifRow results.
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
 - `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
-- `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs` and the chat lists in `ui.rs`.
+- `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs`, `split.rs` and the chat lists in `ui.rs`.
 - `motion.rs`: Sets TypingStore names and chats models for the typing indicator and list-row dots.
 - `palette.rs`: Command palette ranking (score/rank), recent-actions list, row building with list geometry, wired to PaletteApi callbacks.
 - `ongoing_call.rs`: `UiHandle::ongoing_call` and `ongoing_call_elapsed` fill `OngoingCallStore`, the header's live-call strip.
 - `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
-- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; copies Theme, shows/updates messages.
-- `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models.
+- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; follows the look Settings applies (popout_apply_look), shows/updates messages; `patch_rows` (shared with `split.rs`).
+- `split.rs`: Split view: a second chat in the main window's pane right of the open one (`SplitStore`); open, messages, close.
+- `chat_note.rs`: UiHandle::set_chat_note fills ChatNoteStore.text (the open chat's private note).
+- `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models; UiHandle::later fills `RemindStore.later` (the Later page rows).
 - `row_fingerprint.rs`: `of`, `of_chat`, `of_post`: hash of every drawn field of a `MsgData`, `ChatData` or `PostData`, used as the row print for `model_sync`.
 - `settings.rs`: Settings UI controller root: Ctl state, thread-local CTL, submodule declarations/re-exports, MicPoll/OpenMic types, command list docs.
 - `teams.rs`: UiHandle methods converting TeamsData/DialogData into the TeamsStore global models and opening dialogs.
@@ -96,7 +98,8 @@ Files:
 - `[people.rs:UiHandle::receipts_on]` pub fn(&self,bool)
 - `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
 - `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
-- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; copies the Theme (including code_bg) and SettingsStore.wheel_speed from the main window
+- `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; applies the last look (thread-local LOOK) through settings::apply_look and copies SettingsStore.wheel_speed from the main window
+- `[split.rs:UiHandle::split_open]` pub fn(&self,conv:String,title:String); `[split.rs:UiHandle::split_messages]` pub fn(&self,msgs:Vec<MsgData>); `[split.rs:UiHandle::split_close]` pub fn(&self)
 
 ## Invariants
 - `[activity.rs:fill]` rows updated in place via set_row_data when id sequence and length are unchanged (keeps scroll position); otherwise set_vec
@@ -117,7 +120,10 @@ Files:
 - `[appstore.rs:set_recaps]` query written only when it differs from the search box text
 - `[message_toast.rs:MAX_CARDS]` at most 3 cards; a new card removes the oldest first
 - `[popout.rs:popout_open]` switching conv clears draft and sets an empty messages model (so the retained ROWS model is no longer the one shown and `popout_messages` restarts it); scroll_tick bumped to land on newest
-- `[popout.rs:popout_messages]` messages are patched into the thread-local ROWS model through `model_sync::patch` (fingerprint per row) instead of a new model each time; scroll_tick bumped only for the first fill of a chat
+- `[popout.rs:popout_messages]` messages are patched into the thread-local ROWS model through `patch_rows` / `model_sync::patch` (fingerprint per row) instead of a new model each time; scroll_tick bumped only for the first fill of a chat
+- `[split.rs:split_open]` switching conv clears the draft and messages; sets active, open, scroll_tick and focus_tick; shows a "make the window wider" banner when AppWindow.split_fits is false (the pane then shows once the window is wide enough)
+- `[split.rs:split_messages]` ignored while SplitStore.open is false; same patching as the pop-out (own thread-local ROWS)
+- `[split.rs:split_close]` clears SplitStore (open, active, conv, draft, messages) and drops ROWS
 - `[channels.rs:posts]` the POSTS model is replaced only when `model_sync::is_shown` is false (a test or the store default is shown); the thread post is written only when its fingerprint or id changed
 - `[row_fingerprint.rs:of]` MsgData is destructured without `..`, so a new field fails to compile until the fingerprint covers it
 - `[model_sync.rs:patch]` rows both lists share stay and only those whose print changed are written; a list that is mostly reordered is written row by row; returns the number of rows written
@@ -125,7 +131,8 @@ Files:
 - `[call.rs:watch]` every 150 ms (`start_watch`): in a connected/reconnecting call, `view_plan::visible_roles` of the view state (view-mode, pinned, filmstrip-pos, gallery-page, gallery-per-page, fullscreen, someone else's share) over the last people goes through `ViewSend`, and a settled, changed plan is sent as CallStore.command("video-view", encoded lines `role mri`); while the camera menu is open CallStore.command("video-preview", "on"|"off") is invoked on open/close; while the devices menu is open a microphone level meter (`devices::mic_level`) is opened and CallStore.mic_level written; any other menu drops the meter and zeroes the level; a mic that failed to open is not retried until the menu closes
 - `[call.rs:set]` phase empty or prejoin resets minimized, menu, view_mode=gallery, gallery_page=0, pinned; panel cleared only when phase empty
 - `[message_toast.rs:TOASTS]` toast model set by install_local; message_toast silently returns if install_local has not run
-- `[popout.rs:copy_theme]` pop-out has its own Theme global, copied from main on each open (not live)
+- `[popout.rs:popout_apply_look]` pub(crate) fn(&Look); stores the look in thread-local LOOK and applies it to the open pop-out's own Theme global, so the pop-out follows every look change live (colours, regions, h24)
+- `[popout.rs:set_popout_for_test]` cfg(test) pub(crate) fn(ChatWindow); puts a window in POPOUT
 - `[call.rs:set]` feedback_open decided once, on the transition into phase ended (sampled by settings ask, roll, demo suppression); false in any other phase
 - `[message_toast.rs:NEXT_ID]` AtomicI32 starting at 1 gives unique, increasing card ids (Relaxed)
 - `[people.rs:card_details]` fill only if card or profile open and get_card().id equals c.person.id

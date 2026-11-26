@@ -54,7 +54,7 @@ export component OngoingCallStrip inherits Rectangle {
                 width: root.face + 4px;
                 height: self.width;
                 border-radius: self.width / 2;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 Avatar {
                     x: 2px;
                     y: 2px;
@@ -74,7 +74,7 @@ export component OngoingCallStrip inherits Rectangle {
                 border-radius: self.height / 2;
                 background: Theme.surface-hover;
                 border-width: 2px;
-                border-color: Theme.sidebar;
+                border-color: Theme.panel;
                 Text {
                     text: "+" + OngoingCallStore.more;
                     color: Theme.fg;

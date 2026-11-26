@@ -229,7 +229,15 @@ impl Engine {
         match presence {
             Ok(p) => {
                 if let Some(p) = p.into_iter().next() {
-                    d.me_status = p.note.map(|n| n.text).filter(|t| !t.trim().is_empty());
+                    // A message whose end has passed is gone, even before the service says so.
+                    let note = p.note.filter(|n| {
+                        let ends = crate::backend::expiry::note_ends_ms(n.expiry.as_deref());
+                        !crate::backend::expiry::note_is_over(ends, teams_proto::time::now_ms())
+                    });
+                    d.me_status_ends = note
+                        .as_ref()
+                        .and_then(|n| crate::backend::expiry::note_ends_ms(n.expiry.as_deref()));
+                    d.me_status = note.map(|n| n.text).filter(|t| !t.trim().is_empty());
                     d.me_presence = Some(p.availability);
                     d.me_activity = Some(p.activity);
                     d.me_work_location = p.work_location;

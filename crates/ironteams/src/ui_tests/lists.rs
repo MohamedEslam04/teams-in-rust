@@ -6,6 +6,7 @@
 use super::*;
 use crate::ListStore;
 use crate::backend::ListsCmd;
+use crate::lists_sort::SortBy;
 use serde_json::json;
 use store::{ConvKind, ConversationRow};
 use teams_proto::sections::{Folder, FolderItem, FolderKind, Folders};
@@ -375,6 +376,7 @@ fn the_item_menu_of_a_chat_has_the_teams_entries() {
             "Mark as unread",
             "Favorite",
             "Pop out chat",
+            "Open in split view",
             "Move to section",
             "Snooze",
             "Mute",
@@ -555,8 +557,10 @@ fn mute_marks_the_row_silences_notifications_and_offers_unmute() {
     let log = wire(&h);
     open_item_menu(&h.app, "Ahmed Ali");
     click(&menu_row(&h.app, "Mute"));
+    click(&menu_row(&h.app, "Until I turn it off"));
     assert_eq!(*log.borrow(), vec![format!("mute {AHMED}")]);
     assert!(h.engine.test_is_muted(AHMED));
+    assert_eq!(h.engine.test_mute_until(AHMED), None, "no end time");
     assert!(
         h.engine.test_silenced(AHMED),
         "no desktop notification for it"
@@ -567,6 +571,49 @@ fn mute_marks_the_row_silences_notifications_and_offers_unmute() {
     click(&menu_row(&h.app, "Unmute"));
     assert!(!h.engine.test_is_muted(AHMED));
     assert!(!h.chats().into_iter().find(|c| c.id == AHMED).unwrap().muted);
+}
+
+#[test]
+fn mute_offers_durations_and_a_timed_mute_says_when_it_ends() {
+    let h = harness();
+    let log = wire(&h);
+    open_item_menu(&h.app, "Ahmed Ali");
+    click(&menu_row(&h.app, "Mute"));
+    assert_eq!(
+        menu_rows(&h.app),
+        vec![
+            "‹ Mute",
+            "For 1 hour",
+            "For 8 hours",
+            "Until tomorrow 8:00",
+            "For 1 week",
+            "Until I turn it off"
+        ]
+    );
+    click(&menu_row(&h.app, "For 8 hours"));
+    assert_eq!(*log.borrow(), vec![format!("mute-for {AHMED} | 8h")]);
+    assert!(h.engine.test_is_muted(AHMED));
+    let until = h.engine.test_mute_until(AHMED).expect("an end time");
+    let eight_hours = 8 * 3_600_000;
+    assert!((until - teams_proto::time::now_ms() - eight_hours).abs() < 60_000);
+    let row = h.chats().into_iter().find(|c| c.id == AHMED).unwrap();
+    assert!(row.muted && !row.muted_until.is_empty());
+    // The menu names the end and still unmutes.
+    open_item_menu(&h.app, "Ahmed Ali");
+    let rows = menu_rows(&h.app);
+    let unmute = format!("Unmute (muted until {})", row.muted_until);
+    assert!(rows.contains(&unmute), "{unmute:?} in {rows:?}");
+    click(&menu_row(&h.app, &unmute));
+    assert!(!h.engine.test_is_muted(AHMED));
+    assert_eq!(h.engine.test_mute_until(AHMED), None);
+    assert!(
+        h.chats()
+            .into_iter()
+            .find(|c| c.id == AHMED)
+            .unwrap()
+            .muted_until
+            .is_empty()
+    );
 }
 
 #[test]
@@ -705,6 +752,80 @@ fn list_options_hide_previews_and_time_stamps_and_combine_chats_and_channels() {
     h.runner()(Cmd::Lists(ListsCmd::Option("previews".into(), true)));
     assert!(h.app.get_chats_channels().row_count() > 0);
     assert_eq!(find_label(&h.app, preview).len(), 1);
+}
+
+/// The heights of every chat row in the list.
+fn row_heights(app: &AppWindow) -> Vec<f32> {
+    ElementHandle::find_by_element_type_name(app, "ChatItem")
+        .map(|r| r.size().height)
+        .collect()
+}
+
+#[test]
+fn with_the_previews_off_each_chat_row_is_one_line_tall() {
+    let h = harness();
+    wire(&h);
+    let full = row_heights(&h.app);
+    assert!(
+        !full.is_empty() && full.iter().all(|&y| y == 56.),
+        "{full:?}"
+    );
+    h.runner()(Cmd::Lists(ListsCmd::Option("previews".into(), false)));
+    let compact = row_heights(&h.app);
+    assert_eq!(compact.len(), full.len());
+    assert!(compact.iter().all(|&y| y == 40.), "{compact:?}");
+    h.runner()(Cmd::Lists(ListsCmd::Option("previews".into(), true)));
+    assert_eq!(row_heights(&h.app), full, "and they grow back");
+}
+
+/// The button or switch labelled `label` on the Settings page (the list's own menu is closed, so
+/// it is the only one).
+fn settings_control(app: &AppWindow, label: &str) -> ElementHandle {
+    find_label(app, label)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("no {label:?} on the Settings page"))
+}
+
+#[test]
+fn settings_chats_has_the_chat_list_options_and_new_section() {
+    let h = harness();
+    let log = wire(&h);
+    let settings = h.app.global::<crate::SettingsStore>();
+    settings.set_open(true);
+    settings.set_page("chats".into());
+    let on = |label: &str| settings_control(&h.app, label).accessible_checked() == Some(true);
+    assert!(on("Show message previews"));
+    assert!(on("Show time stamps"));
+    assert!(!on("Chats and channels together"));
+
+    // The same state and commands as the list's "Customize view" menu.
+    settings_control(&h.app, "Show message previews").invoke_accessible_default_action();
+    assert!(!ls(&h.app).get_show_previews());
+    assert!(!on("Show message previews"));
+    settings_control(&h.app, "Show time stamps").invoke_accessible_default_action();
+    assert!(!ls(&h.app).get_show_times());
+    settings_control(&h.app, "Chats and channels together").invoke_accessible_default_action();
+    assert!(ls(&h.app).get_combined());
+    assert_eq!(
+        *log.borrow(),
+        vec![
+            "option previews | off",
+            "option times | off",
+            "option combined | on"
+        ]
+    );
+    assert!(row_heights(&h.app).iter().all(|&y| y == 40.));
+
+    // New section opens the name dialog for an empty section.
+    assert_eq!(ls(&h.app).get_dialog(), "");
+    settings_control(&h.app, "New section").invoke_accessible_default_action();
+    assert_eq!(ls(&h.app).get_dialog(), "new-section");
+    assert_eq!(ls(&h.app).get_dialog_target(), "");
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&h.app, "SectionDialog").count(),
+        1
+    );
 }
 
 // ---- 8.5 channel menu --------------------------------------------------------------------
@@ -1119,4 +1240,139 @@ fn each_kind_of_row_has_its_own_avatar() {
     // A channel without its team's picture shows the team's initials, not the channel's.
     let general = h.chats().into_iter().find(|c| c.id == GENERAL).unwrap();
     assert_eq!(general.initials, "CL");
+}
+
+// ---- "Sort by" of a section --------------------------------------------------------------
+
+const SARA: &str =
+    "19:00000000-0000-0000-0000-000000000001_00000000-0000-0000-0000-000000000003@unq.gbl.spaces";
+const ADMIN: &str = "19:admin@thread.v2";
+const PRODBUGS: &str = "19:prodbugs@thread.v2";
+
+fn sort_cmd(h: &Harness, id: &str, by: SortBy) {
+    h.runner()(Cmd::Lists(ListsCmd::Sort(id.into(), by)));
+}
+
+/// The lowest element labelled `name`: "Chats" is also a filter pill above the list.
+fn section_header(app: &AppWindow, name: &str) -> ElementHandle {
+    find_label(app, name)
+        .into_iter()
+        .max_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y))
+        .unwrap_or_else(|| panic!("a header labelled {name:?}"))
+}
+
+/// Hovers the header, opens its "…" menu and picks `choice`.
+fn pick_sort(app: &AppWindow, header: &str, choice: &str) {
+    hover(app, &section_header(app, header));
+    let more = find_label(app, "Section options");
+    assert_eq!(more.len(), 1, "one \"…\" on the hovered header");
+    click(&more[0]);
+    let rows = menu_rows(app);
+    for want in ["Recent activity", "A to Z", "Unread first"] {
+        assert!(rows.contains(&want.to_string()), "{want:?} in {rows:?}");
+    }
+    click(&menu_row(app, choice));
+}
+
+#[test]
+fn chats_sort_from_the_header_menu_a_to_z_unread_first_and_back_to_recent() {
+    let h = harness();
+    let log = wire(&h);
+    let recent = ids_in(h.app.get_chats_main());
+    assert_eq!(recent[..5], [AHMED, SARA, STANDUP, ADMIN, PRODBUGS]);
+    assert_eq!(ls(&h.app).get_chats_sort(), "recent");
+
+    pick_sort(&h.app, "Chats", "A to Z");
+    assert_eq!(log.borrow().last().unwrap(), "sort chats | alpha");
+    assert_eq!(ls(&h.app).get_chats_sort(), "alpha");
+    // Latin names first, ignoring case; the Arabic one after them.
+    assert_eq!(
+        ids_in(h.app.get_chats_main())[..5],
+        [AHMED, STANDUP, PRODBUGS, SARA, ADMIN]
+    );
+    // Saved, and only for this section.
+    let saved = h.engine.test_lists().0.sort;
+    assert_eq!(saved.get("chats"), Some(&SortBy::Alpha));
+    assert_eq!(saved.len(), 1);
+    assert_eq!(ls(&h.app).get_favorites_sort(), "recent");
+
+    pick_sort(&h.app, "Chats", "Unread first");
+    assert_eq!(log.borrow().last().unwrap(), "sort chats | unread");
+    // Sara has unread messages: she moves above Ahmed, the rest stay newest first.
+    assert_eq!(
+        ids_in(h.app.get_chats_main())[..5],
+        [SARA, AHMED, STANDUP, ADMIN, PRODBUGS]
+    );
+
+    pick_sort(&h.app, "Chats", "Recent activity");
+    assert_eq!(ids_in(h.app.get_chats_main()), recent);
+    assert!(h.engine.test_lists().0.sort.is_empty());
+}
+
+#[test]
+fn favorites_and_channels_have_their_own_sort() {
+    let h = harness();
+    wire(&h);
+    let favorites = || ids_in(h.app.get_chats_favorites());
+    assert_eq!(favorites(), [NOTES, BACKEND]);
+    pick_sort(&h.app, "Favorites", "A to Z");
+    assert_eq!(favorites(), [BACKEND, NOTES]);
+    assert_eq!(ls(&h.app).get_favorites_sort(), "alpha");
+    // The Chats section was not touched.
+    assert_eq!(ls(&h.app).get_chats_sort(), "recent");
+    assert_eq!(ids_in(h.app.get_chats_main())[0], AHMED);
+    // Unread first: Backend Team is unread, the notes chat is not.
+    sort_cmd(&h, "favorites", SortBy::Unread);
+    assert_eq!(favorites(), [BACKEND, NOTES]);
+    sort_cmd(&h, "favorites", SortBy::Recent);
+    assert_eq!(favorites(), [NOTES, BACKEND]);
+    // Teams and channels sorts on its own too.
+    sort_cmd(&h, "channels", SortBy::Alpha);
+    assert_eq!(ls(&h.app).get_channels_sort(), "alpha");
+    assert_eq!(ids_in(h.app.get_chats_channels()), [GENERAL, TECH]);
+}
+
+#[test]
+fn a_section_of_the_account_sorts_instead_of_keeping_teams_order_and_forgets_it_when_deleted() {
+    let h = harness();
+    wire(&h);
+    h.engine
+        .test_set_folders(&folders(vec![("s1", "Dev", vec![STANDUP, SARA, AHMED])]));
+    h.runner()(Cmd::SetFilter("all".into()));
+    assert_eq!(section_items(&h.app, "Dev"), [STANDUP, SARA, AHMED]);
+    assert_eq!(
+        ls(&h.app).get_sections().row_data(0).unwrap().sort,
+        "recent"
+    );
+
+    pick_sort(&h.app, "Dev, expanded", "A to Z");
+    // Ahmed Ali, Morning Standup, Sara Hassan.
+    assert_eq!(section_items(&h.app, "Dev"), [AHMED, STANDUP, SARA]);
+    assert_eq!(ls(&h.app).get_sections().row_data(0).unwrap().sort, "alpha");
+
+    pick_sort(&h.app, "Dev, expanded", "Unread first");
+    assert_eq!(section_items(&h.app, "Dev"), [SARA, AHMED, STANDUP]);
+    // The count of unread chats is not changed by the order.
+    assert_eq!(ls(&h.app).get_sections().row_data(0).unwrap().unread, 1);
+
+    // A section made here sorts too, and deleting it drops its choice.
+    h.runner()(Cmd::Lists(ListsCmd::NewSection {
+        move_chat: Some(PRODBUGS.into()),
+        name: "Later".into(),
+    }));
+    let id = h.engine.test_lists().0.sections[0].0.clone();
+    sort_cmd(&h, &id, SortBy::Alpha);
+    assert_eq!(h.engine.test_lists().0.sort.len(), 2);
+    h.runner()(Cmd::Lists(ListsCmd::DeleteSection(id)));
+    let saved = h.engine.test_lists().0.sort;
+    assert_eq!(saved.len(), 1);
+    assert!(saved.contains_key("s1"));
+}
+
+#[test]
+fn the_meetings_section_has_no_sort_menu() {
+    let h = meetings_harness();
+    let header = section_header(&h.app, "Meetings, collapsed");
+    hover(&h.app, &header);
+    assert!(find_label(&h.app, "Section options").is_empty());
 }

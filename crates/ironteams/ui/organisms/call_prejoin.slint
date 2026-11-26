@@ -9,9 +9,11 @@ import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { RadioRow } from "../atoms/radio_row.slint";
+import { Tokens } from "../tokens/types.slint";
 
 export component PreJoin inherits Rectangle {
-    background: Theme.main;
+    in property <Tokens> c: Theme.call;
+    background: root.c.bg;
     VerticalLayout {
         alignment: center;
         HorizontalLayout {
@@ -21,35 +23,35 @@ export component PreJoin inherits Rectangle {
                 spacing: 14px;
                 Text {
                     text: "Choose your video and audio options";
-                    color: Theme.fg-muted;
+                    color: root.c.fg-muted;
                     font-size: 13px * Theme.font-scale;
                 }
                 Text {
                     text: CallStore.title;
-                    color: Theme.fg;
+                    color: root.c.fg;
                     font-size: 20px * Theme.font-scale;
                     font-weight: 600;
                     wrap: word-wrap;
                 }
-                VideoPreview { }
+                VideoPreview { c: root.c; }
                 Text {
                     text: "Join as " + CallStore.my-name;
-                    color: Theme.fg;
+                    color: root.c.fg;
                     font-size: 13px * Theme.font-scale;
                     overflow: elide;
                 }
                 // Teams' audio choices. Phone and Room audio need a phone bridge and a Teams Room,
                 // which IronTeams cannot use, so they are shown but not offered.
                 VerticalLayout {
-                    RadioRow { label: "Computer audio"; selected: CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "computer"); } }
-                    RadioRow { label: "Phone audio"; enabled: false; tip: "Phone audio isn't available yet"; }
-                    RadioRow { label: "Room audio"; enabled: false; tip: "Room audio isn't available yet"; }
-                    RadioRow { label: "Don't use audio"; selected: !CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "none"); } }
+                    RadioRow { c: root.c; label: "Computer audio"; selected: CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "computer"); } }
+                    RadioRow { c: root.c; label: "Phone audio"; enabled: false; tip: "Phone audio isn't available yet"; }
+                    RadioRow { c: root.c; label: "Room audio"; enabled: false; tip: "Room audio isn't available yet"; }
+                    RadioRow { c: root.c; label: "Don't use audio"; selected: !CallStore.prejoin-audio; picked => { CallStore.command("prejoin-audio", "none"); } }
                 }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: start;
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: CallStore.prejoin-camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
                         label: "Camera";
                         checkable: true;
@@ -58,23 +60,23 @@ export component PreJoin inherits Rectangle {
                         tip: CallStore.camera-available ? "" : "Video isn't available yet";
                         clicked => { CallStore.command("prejoin-camera", CallStore.prejoin-camera ? "off" : "on"); }
                     }
-                    if CallStore.prejoin-audio: Switch { variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
+                    if CallStore.prejoin-audio: Switch { c: root.c; variant: SwitchVariant.icon; width: self.natural-width; icon: CallStore.prejoin-mic ? @image-url("../icons/mic.svg") : @image-url("../icons/mic-off.svg"); label: CallStore.prejoin-mic ? "Mic on" : "Mic off"; accessible-label: "Microphone"; checked: CallStore.prejoin-mic; toggled => { CallStore.command("prejoin-mic", CallStore.prejoin-mic ? "off" : "on"); } }
                 }
-                if CallStore.prejoin-audio: DeviceSettings { prefix: "prejoin"; }
+                if CallStore.prejoin-audio: DeviceSettings { c: root.c; prefix: "prejoin"; }
                 if CallStore.error != "": Text {
                     text: CallStore.error;
-                    color: Theme.danger;
+                    color: root.c.danger;
                     font-size: 13px * Theme.font-scale;
                     wrap: word-wrap;
                 }
                 HorizontalLayout {
                     alignment: end;
                     spacing: 8px;
-                    Button { variant: ButtonVariant.action;
+                    Button { c: root.c; variant: ButtonVariant.action;
                         label: "Cancel";
                         clicked => { CallStore.command("cancel", ""); }
                     }
-                    Button { variant: ButtonVariant.action;
+                    Button { c: root.c; variant: ButtonVariant.action;
                         label: "Join now";
                         primary: true;
                         clicked => { CallStore.command("join-now", ""); }
@@ -85,6 +87,7 @@ export component PreJoin inherits Rectangle {
     }
     // The effects panel, at the right (over the column when the window is narrow).
     if VideoFxStore.open: VideoEffectsPanel {
+        c: root.c;
         width: min(340px, root.width);
         x: root.width - self.width;
         height: root.height;
