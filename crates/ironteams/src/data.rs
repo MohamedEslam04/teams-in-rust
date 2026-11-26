@@ -50,6 +50,13 @@ pub struct AttachmentData {
     pub thumb: Option<Pixels>,
 }
 
+/// An image placed between the composer's lines, by slot: `live` false for a slot no image has.
+#[derive(Clone, Default)]
+pub struct InlineImageData {
+    pub live: bool,
+    pub thumb: Option<Pixels>,
+}
+
 #[derive(Clone)]
 pub struct ImgData {
     pub url: String,

@@ -2,6 +2,7 @@
 
 use super::Engine;
 use super::mentions;
+use crate::support::inline_images;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use store::OutboxKind;
@@ -17,6 +18,16 @@ impl Engine {
         // The importance applies to this one message (and never to an edit or a chip).
         let importance = std::mem::take(&mut self.view.lock().unwrap().importance);
         let editing_now = self.view.lock().unwrap().editing.is_some();
+        let current = self
+            .view
+            .lock()
+            .unwrap()
+            .current
+            .clone()
+            .unwrap_or_default();
+        // Images placed in the text: the lines of images that are gone are dropped, and images
+        // the text no longer has are forgotten (docs/designs/composer-inline-images.md).
+        let text = self.settle_inline_images(&current, &text, editing_now);
         // Files go first, each as its own outbox item (a file card). The images go in the message
         // of the typed text (one message: the text, then the images), or on their own without it.
         let images = if editing_now {
@@ -39,13 +50,6 @@ impl Engine {
         };
         // The cards chosen in the apps picker go in the message of this send: the typed text is
         // its body. They come back to the picker if the message cannot be queued.
-        let current = self
-            .view
-            .lock()
-            .unwrap()
-            .current
-            .clone()
-            .unwrap_or_default();
         let cards = if editing_now {
             Vec::new()
         } else {
@@ -56,10 +60,13 @@ impl Engine {
             self.flush_outbox(false).await;
             return Ok(());
         }
+        // Each image line becomes a placeholder that its image replaces when it is sent; the
+        // images are put in the order of their lines.
+        let (body, images) = super::attach::order_images(&text, images);
         // The @Name tokens the user picked become mention spans; the entries are used up.
         let prepared = {
             let mut p = self.people.lock().unwrap();
-            let prepared = mentions::prepare(&text, &p.entries);
+            let prepared = mentions::prepare(&body, &p.entries);
             p.entries.clear();
             prepared
         };
@@ -169,6 +176,8 @@ impl Engine {
         let queued = if images.is_empty() {
             self.enqueue(item)
         } else if item.kind == OutboxKind::Card {
+            let mut item = item;
+            item.html = inline_images::fill_placeholders(&item.html, &[]);
             let own = self.queue_images(item.conversation_id.clone(), String::new(), &images);
             if own.is_ok() {
                 // Queued already: they must not come back as chips if the card message fails.
@@ -368,7 +377,8 @@ impl Engine {
         queued
     }
 
-    /// Picks an image and adds it as a chip; it goes through the outbox when the message is sent.
+    /// Picks an image and puts it in the text at the cursor; it goes through the outbox when the
+    /// message is sent.
     pub(super) async fn attach_image(self: &Arc<Self>) -> anyhow::Result<()> {
         let Some(file) = rfd::AsyncFileDialog::new()
             .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp"])

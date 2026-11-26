@@ -28,7 +28,7 @@ the cursor is, between two lines of text, and the message keeps that order. A me
 ## Chosen approach: an image is a line of the draft
 
 Instead of a new block model, the draft string stays the single source of truth, and an image is
-a line holding exactly one marker character: `U+E000 + slot` (Private Use Area). Everything that
+a line holding exactly one marker character: `U+E100 + slot` (Private Use Area). Everything that
 already works on the draft (cursor offsets, undo of a line, mentions, emoji, snippets, drafts per
 chat, the send path) keeps working, and the order of text and images is simply the order of the
 lines.
@@ -54,10 +54,12 @@ lines.
 
 `attach::Attachment` gets `slot: Option<u32>`. An image with a slot is not a chip; it is drawn in
 the text. `push_attachments` sends the chips (attachments without a slot) and the inline images
-(`[InlineImage { preview, live }]`, indexed by slot) to the UI. Slots are per chat, the next one is
-one past the highest in use, and they start over once the chat has none (after a send).
+(`[InlineImage { preview, live }]`, indexed by slot) to the UI. Slots come from a counter
+that runs while the app runs and skips the slots the chat still uses, so an image put back after
+a failed send never meets a newer image with the same slot.
 
-The marker range is `U+E000..U+EFFF` (4096 slots); it stays clear of `U+F700..U+F7FF`, where
+The marker range is `U+E100..U+F0FF` (4096 slots). It stays clear of `U+E000` and `U+E001`,
+which the mention code uses around its placeholders, and of `U+F700..U+F7FF`, where
 Slint encodes special keys.
 
 ### Send format

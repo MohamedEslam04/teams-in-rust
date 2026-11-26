@@ -3,6 +3,7 @@
 
 use super::Engine;
 use super::attach::INLINE_WIDTH;
+use crate::support::inline_images;
 use serde_json::{Value, json};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -109,16 +110,14 @@ pub(super) fn row_from_outbox(item: &OutboxItem, me: &str, my_name: &str) -> Mes
     let content_html = match item.kind {
         OutboxKind::Text => item.html.clone(),
         OutboxKind::Image => render::text_to_teams_html(&format!("🖼 {}", payload_name(item))),
-        // The typed text, then a line for each picture (the real pictures come with the echo).
+        // The typed text with a line for each picture where the picture goes (the real pictures
+        // come with the echo).
         OutboxKind::Images => {
-            let mut html = item.html.clone();
-            for file in image_files(item) {
-                html.push_str(&render::text_to_teams_html(&format!(
-                    "🖼 {}",
-                    shown_name(&file)
-                )));
-            }
-            html
+            let names: Vec<String> = image_files(item)
+                .iter()
+                .map(|file| render::text_to_teams_html(&format!("🖼 {}", shown_name(file))))
+                .collect();
+            inline_images::fill_placeholders(&item.html, &names)
         }
         OutboxKind::File => render::text_to_teams_html(&format!("📎 {}", payload_name(item))),
         // The voice card, pointing at the local recording: the pending row already plays.
@@ -253,13 +252,14 @@ fn image_files(item: &OutboxItem) -> Vec<PathBuf> {
     files
 }
 
-/// The message of an `Images` item: the typed text's HTML, then every image, in order.
+/// The message of an `Images` item: the typed text's HTML with every image, in order, where its
+/// placeholder is (docs/designs/composer-inline-images.md); images without one follow the text.
 fn images_message_html(text_html: &str, uploaded: &[(String, u32, u32)]) -> String {
-    let mut html = text_html.to_owned();
-    for (id, w, h) in uploaded {
-        html.push_str(&teams_proto::ams::image_html(id, *w, *h));
-    }
-    html
+    let images: Vec<String> = uploaded
+        .iter()
+        .map(|(id, w, h)| teams_proto::ams::image_html(id, *w, *h))
+        .collect();
+    inline_images::fill_placeholders(text_html, &images)
 }
 
 impl Engine {
@@ -580,7 +580,8 @@ impl Engine {
                 .map(|v| v.iter().any(|i| i.client_message_id == cmid))
                 .unwrap_or(false);
             let _ = st.remove(&cmid);
-            let plain = render::plain_text(&render::parse_teams_html(&item.html));
+            let plain = render::plain_text(&render::parse_teams_html(&item.html))
+                .replace(inline_images::PLACEHOLDER, "");
             let preview = match item.kind {
                 OutboxKind::Text => format!("You: {plain}"),
                 OutboxKind::Card if plain.trim().is_empty() => "You: 🗂 Card".to_owned(),
@@ -982,6 +983,75 @@ mod tests {
         chips(&e, &["late.png"]).await;
         e.restore_attachments("48:notes", carried);
         assert_eq!(chip_names(&e), ["a.png", "b.png", "late.png"]);
+    }
+
+    #[test]
+    fn images_placed_between_lines_are_sent_between_them() {
+        let m = inline_images::marker;
+        let draft = format!("first\n{}\nsecond\n{}", m(3), m(1));
+        let (body, slots) = inline_images::to_placeholders(&draft);
+        assert_eq!(slots, [3, 1]);
+        let uploaded = vec![("0-a".to_string(), 10, 10), ("0-b".to_string(), 20, 20)];
+        let html = images_message_html(&render::markdown_to_composer_html(&body), &uploaded);
+        assert_eq!(
+            html,
+            format!(
+                "<p>first</p>{}<p>second</p>{}",
+                teams_proto::ams::image_html("0-a", 10, 10),
+                teams_proto::ams::image_html("0-b", 20, 20)
+            ),
+            "text, image, text, image"
+        );
+    }
+
+    #[tokio::test]
+    async fn images_in_the_text_have_slots_and_images_without_a_line_are_forgotten() {
+        let e = engine();
+        chips(&e, &["a.png", "b.png"]).await;
+        let slots = e.inline_slots("48:notes");
+        assert_eq!(slots.len(), 2, "both images are in the text, not chips");
+        assert_ne!(slots[0], slots[1]);
+        let m = inline_images::marker;
+        // The user removed b's line; a line of an image that is not there is dropped.
+        let text = format!("hi\n{}\n{}\n", m(slots[0]), m(inline_images::SLOTS - 1));
+        let sent = e.settle_inline_images("48:notes", &text, false);
+        assert_eq!(sent, format!("hi\n{}", m(slots[0])));
+        assert_eq!(chip_names(&e), ["a.png"]);
+        // An edit of a sent message takes no images: their lines go, the images stay.
+        let edit = e.settle_inline_images("48:notes", &format!("x\n{}", m(slots[0])), true);
+        assert_eq!(edit, "x");
+        assert_eq!(chip_names(&e), ["a.png"]);
+    }
+
+    #[tokio::test]
+    async fn text_and_images_between_its_lines_are_one_message_in_that_order() {
+        let e = engine();
+        e.connected.store(false, Ordering::Relaxed);
+        chips(&e, &["one.png", "two.png"]).await;
+        let slots = e.inline_slots("48:notes");
+        let m = inline_images::marker;
+        let draft = format!("first\n{}\nsecond\n{}\n", m(slots[0]), m(slots[1]));
+        e.clone()
+            .handle(crate::backend::Cmd::Send(draft, String::new()))
+            .await;
+        let q = outbox(&e);
+        assert_eq!(q.len(), 1, "one message: {q:?}");
+        let it = &q[0];
+        assert_eq!(it.kind, OutboxKind::Images);
+        let names: Vec<String> = image_files(it).iter().map(|p| shown_name(p)).collect();
+        assert_eq!(names, ["one.png", "two.png"]);
+        let row = row_from_outbox(it, "8:me", "Me").content_html;
+        let at = |needle: &str| {
+            row.find(needle)
+                .unwrap_or_else(|| panic!("{needle} in {row}"))
+        };
+        assert!(at("first") < at("one.png"), "{row}");
+        assert!(at("one.png") < at("second"), "{row}");
+        assert!(at("second") < at("two.png"), "{row}");
+        assert!(chip_names(&e).is_empty(), "taken off the composer");
+        for it in &q {
+            remove_payload(it);
+        }
     }
 
     #[test]

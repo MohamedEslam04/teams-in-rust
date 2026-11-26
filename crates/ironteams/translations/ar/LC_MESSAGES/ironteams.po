@@ -339,6 +339,9 @@ msgstr "هل تريد إزالة سجل الدردشة؟"
 msgid "Remove from view"
 msgstr "إزالة من العرض"
 
+msgid "Remove image"
+msgstr "إزالة الصورة"
+
 msgid "Remove photo"
 msgstr "إزالة الصورة"
 
