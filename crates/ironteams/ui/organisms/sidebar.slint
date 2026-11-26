@@ -16,14 +16,17 @@ import { NewChatSplit } from "web_parity.slint";
 import { ChatHeaderStore } from "chat_header.slint";
 import { Motion, PopIn, Reveal, SkeletonList, TypingDots, TypingStore } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // "See all" / "Show less" under the Meetings section.
 component MoreRow inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> label;
     callback clicked();
     height: 28px;
     border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover ? root.c.surface-hover : transparent;
     animate background { duration: Motion.quick; }
     accessible-role: button;
     accessible-label: root.label;
@@ -34,7 +37,7 @@ component MoreRow inherits Rectangle {
         width: parent.width - 64px;
         height: parent.height;
         text: root.label;
-        color: Theme.accent;
+        color: root.c.accent;
         font-size: 12px * Theme.font-scale;
         vertical-alignment: center;
         horizontal-alignment: Theme.start-align;
@@ -45,6 +48,7 @@ component MoreRow inherits Rectangle {
 }
 
 component ChatItem inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <ChatRow> data;
     in property <bool> selected;
     // Bottom of the list in window coordinates: the menu opens upwards when it would not fit.
@@ -72,7 +76,7 @@ component ChatItem inherits Rectangle {
     callback leave();
     height: 56px;
     border-radius: 4px;
-    background: selected ? Theme.selected : (t.has-hover ? Theme.surface-hover : transparent);
+    background: selected ? root.c.selected : (t.has-hover ? root.c.surface-hover : transparent);
     animate background { duration: Motion.quick; }
     Rectangle {
         visible: root.in-view;
@@ -85,6 +89,7 @@ component ChatItem inherits Rectangle {
             // presence, a people glyph for a group chat, a calendar for a meeting chat and the team's
             // square picture with a "#" badge for a channel.
             if !root.data.channel && root.data.kind != "meeting" && !(root.data.group && !root.data.has-avatar): Avatar {
+                c: root.c;
                 initials: root.data.initials;
                 tone: root.data.color;
                 img: root.data.avatar;
@@ -94,17 +99,19 @@ component ChatItem inherits Rectangle {
                 y: (parent.height - 32px) / 2;
             }
             if root.data.group && !root.data.has-avatar: GlyphAvatar {
+                c: root.c;
                 y: (parent.height - 32px) / 2;
                 icon: @image-url("../icons/people.svg");
-                tone: Theme.surface-hover;
-                tint: Theme.fg-muted;
+                tone: root.c.surface-hover;
+                tint: root.c.fg-muted;
                 accessible-label: @tr("Group chat");
             }
             if !root.data.channel && root.data.kind == "meeting": GlyphAvatar {
+                c: root.c;
                 y: (parent.height - 32px) / 2;
                 icon: @image-url("../icons/calendar.svg");
-                tone: Theme.accent.transparentize(0.8);
-                tint: Theme.accent;
+                tone: root.c.accent.transparentize(0.8);
+                tint: root.c.accent;
                 accessible-label: @tr("Meeting chat");
             }
             if root.data.channel: Rectangle {
@@ -115,6 +122,7 @@ component ChatItem inherits Rectangle {
                 accessible-label: @tr("Channel");
                 // The team's picture, square like in Teams.
                 Avatar {
+                    c: root.c;
                     size: 32px;
                     corner: 6px;
                     tone: root.data.color;
@@ -130,8 +138,8 @@ component ChatItem inherits Rectangle {
                     width: 13px;
                     height: 13px;
                     border-radius: 4px;
-                    background: Theme.sidebar;
-                    Icon { source: @image-url("../icons/hash.svg"); width: 9px; height: 9px; tint: Theme.fg-muted; }
+                    background: root.c.bg;
+                    Icon { c: root.c; source: @image-url("../icons/hash.svg"); width: 9px; height: 9px; tint: root.c.fg-muted; }
                 }
             }
             VerticalLayout {
@@ -141,7 +149,7 @@ component ChatItem inherits Rectangle {
                     spacing: 6px;
                     Text {
                         text: root.data.title;
-                        color: Theme.fg;
+                        color: root.c.fg;
                         font-size: 14px * Theme.font-scale;
                         font-weight: root.data.unread ? 700 : 400;
                         overflow: elide;
@@ -150,11 +158,12 @@ component ChatItem inherits Rectangle {
                         horizontal-alignment: root.data.rtl-title ? right : left;
                     }
                     if root.data.private: Icon {
+                        c: root.c;
                         source: @image-url("../icons/lock.svg");
                         width: 12px;
                         height: 12px;
                         y: (parent.height - 12px) / 2;
-                        tint: Theme.fg-subtle;
+                        tint: root.c.fg-subtle;
                         accessible-role: image;
                         accessible-label: @tr("Private channel");
                     }
@@ -164,23 +173,24 @@ component ChatItem inherits Rectangle {
                         width: tc == root.data.id ? 18px : 0px;
                         horizontal-stretch: 0;
                         if tc == root.data.id: TypingDots {
-                            tint: Theme.accent;
+                            c: root.c;
+                            tint: root.c.accent;
                             dot: 3px;
                             y: (parent.height - self.height) / 2;
                             accessible-role: image;
                             accessible-label: @tr("Typing");
                         }
                     }
-                    if root.data.mention: Text { text: "@"; color: Theme.accent; font-size: 13px * Theme.font-scale; font-weight: 700; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("You were mentioned"); }
-                    if ListStore.show-times: Text { text: root.data.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; }
-                    if root.data.muted: Text { text: "🔕"; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("Muted"); }
+                    if root.data.mention: Text { text: "@"; color: root.c.accent; font-size: 13px * Theme.font-scale; font-weight: 700; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("You were mentioned"); }
+                    if ListStore.show-times: Text { text: root.data.time; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; }
+                    if root.data.muted: Text { text: "🔕"; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; horizontal-stretch: 0; vertical-alignment: center; accessible-role: text; accessible-label: @tr("Muted"); }
                 }
                 if ListStore.show-previews: HorizontalLayout {
                     spacing: 4px;
-                    if root.data.draft: Text { text: @tr("Draft:"); color: #e97a5f; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
+                    if root.data.draft: Text { text: @tr("Draft:"); color: Fixed.draft; font-size: 12px * Theme.font-scale; horizontal-stretch: 0; }
                     Text {
                         text: root.data.preview;
-                        color: root.data.unread ? Theme.fg : Theme.fg-subtle;
+                        color: root.data.unread ? root.c.fg : root.c.fg-subtle;
                         font-weight: root.data.unread ? 600 : 400;
                         font-size: 12px * Theme.font-scale;
                         overflow: elide;
@@ -193,7 +203,7 @@ component ChatItem inherits Rectangle {
                 width: 8px;
                 height: 8px;
                 border-radius: 4px;
-                background: Theme.accent;
+                background: root.c.accent;
                 y: (parent.height - 8px) / 2;
             }
         }
@@ -228,15 +238,17 @@ component ChatItem inherits Rectangle {
                 }
             }
             if t.has-hover: IconButton {
+                c: root.c;
                 x: parent.width - 30px;
                 y: 30px;
                 size: 22px;
                 icon: @image-url("../icons/star.svg");
-                tint: root.data.favorite ? #ffd335 : Theme.fg-subtle;
+                tint: root.data.favorite ? Fixed.favorite : root.c.fg-subtle;
                 clicked => { root.toggle-favorite(); }
             }
             // The same menu as a right click.
             if t.has-hover: IconButton {
+                c: root.c;
                 x: parent.width - 54px;
                 y: 30px;
                 size: 22px;
@@ -258,6 +270,7 @@ component ChatItem inherits Rectangle {
         height: menu.menu-height;
         close-policy: close-on-click-outside;
         menu := ItemMenu {
+            c: Theme.content;
             data: root.data;
             in-section: root.in-section;
             mark-unread => { root.mark-unread(); }
@@ -271,9 +284,10 @@ component ChatItem inherits Rectangle {
 
 // The row of the chat being started in the New chat pane: "New message", selected.
 component NewMessageRow inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     height: 56px;
     border-radius: 4px;
-    background: Theme.selected;
+    background: root.c.selected;
     accessible-role: list-item;
     accessible-label: @tr("New message");
     accessible-item-selected: true;
@@ -286,24 +300,25 @@ component NewMessageRow inherits Rectangle {
             height: 32px;
             y: 12px;
             border-radius: 16px;
-            background: Theme.surface-hover;
-            Icon { source: @image-url("../icons/compose.svg"); width: 16px; height: 16px; }
+            background: root.c.surface-hover;
+            Icon { c: root.c; source: @image-url("../icons/compose.svg"); width: 16px; height: 16px; }
         }
-        Text { text: @tr("New message"); color: Theme.fg; font-size: 14px * Theme.font-scale; font-italic: true; vertical-alignment: center; overflow: elide; accessible-role: none; }
+        Text { text: @tr("New message"); color: root.c.fg; font-size: 14px * Theme.font-scale; font-italic: true; vertical-alignment: center; overflow: elide; accessible-role: none; }
     }
 }
 
 // "While you were away": shown once after start-up when chats are unread (dismissed for the session).
 // The message counts are not known cheaply, so it counts chats.
 component AwayCard inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> summary;
     callback begin();
     callback dismiss();
     height: lay.preferred-height;
     border-radius: 6px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     accessible-role: groupbox;
     accessible-label: @tr("While you were away");
     lay := VerticalLayout {
@@ -311,18 +326,19 @@ component AwayCard inherits Rectangle {
         spacing: 6px;
         HorizontalLayout {
             spacing: 6px;
-            Text { text: @tr("While you were away"); color: Theme.fg; font-size: 12px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-alignment: Theme.start-align; overflow: elide; horizontal-stretch: 1; }
-            IconButton { icon: @image-url("../icons/close.svg"); size: 24px; tooltip: @tr("Dismiss"); clicked => { root.dismiss(); } }
+            Text { text: @tr("While you were away"); color: root.c.fg; font-size: 12px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-alignment: Theme.start-align; overflow: elide; horizontal-stretch: 1; }
+            IconButton { c: root.c; icon: @image-url("../icons/close.svg"); size: 24px; tooltip: @tr("Dismiss"); clicked => { root.dismiss(); } }
         }
-        Text { text: root.summary; color: Theme.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; horizontal-alignment: Theme.start-align; }
+        Text { text: root.summary; color: root.c.fg-muted; font-size: 12px * Theme.font-scale; wrap: word-wrap; horizontal-alignment: Theme.start-align; }
         HorizontalLayout {
             alignment: start;
-            Pill { label: @tr("Start catching up"); active: true; clicked => { root.begin(); } }
+            Pill { c: root.c; label: @tr("Start catching up"); active: true; clicked => { root.begin(); } }
         }
     }
 }
 
 export component Sidebar inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> view;
     in-out property <string> filter: "all";
     in property <[ChatRow]> chats-favorites;
@@ -367,7 +383,7 @@ export component Sidebar inherits Rectangle {
         + (root.catch-mentions == 0 ? "" : ", " + (root.catch-mentions == 1 ? @tr("1 mention") : @tr("{} mentions", root.catch-mentions)));
 
     width: 320px;
-    background: Theme.sidebar;
+    background: root.c.bg;
     border-width: 0px;
 
     // A section the user just opened or closed has had its moment: later rows are placed at once.
@@ -382,25 +398,29 @@ export component Sidebar inherits Rectangle {
             height: 56px;
             padding-left: 16px;
             padding-right: 12px;
-            Text { text: root.view == "chat" ? @tr("Chat") : @tr("Teams"); color: Theme.fg; font-size: 20px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; }
+            Text { text: root.view == "chat" ? @tr("Chat") : @tr("Teams"); color: root.c.fg; font-size: 20px * Theme.font-scale; font-weight: 700; vertical-alignment: center; overflow: elide; }
             Rectangle { horizontal-stretch: 1; }
             if root.view == "chat" && root.catch-chats > 0: Pill {
+                c: root.c;
                 label: @tr("Catch up · {}", root.catch-chats);
                 active: root.catch-mentions > 0;
                 y: 15px;
                 clicked => { root.catch-up(); }
             }
             if root.view == "teams": Pill {
+                c: root.c;
                 label: @tr("Your teams and channels");
                 y: 15px;
                 clicked => { root.manage-teams(); }
             }
             if root.view == "chat": NewChatSplit {
+                c: root.c;
                 y: 12px;
                 new-chat => { root.new-chat(); }
                 meet-now => { root.meet-now(); }
             }
             if root.view == "chat": IconButton {
+                c: root.c;
                 icon: @image-url("../icons/more.svg");
                 tooltip: @tr("Chat list options");
                 y: 12px;
@@ -414,27 +434,28 @@ export component Sidebar inherits Rectangle {
             HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                Pill { label: @tr("Unread"); active: root.filter == "unread"; clicked => { root.filter = root.filter == "unread" ? "all" : "unread"; root.set-filter(root.filter); } }
-                Pill { label: @tr("Channels"); active: root.filter == "channels"; clicked => { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); } }
-                Pill { label: @tr("Chats"); active: root.filter == "chats"; clicked => { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: @tr("Unread"); active: root.filter == "unread"; clicked => { root.filter = root.filter == "unread" ? "all" : "unread"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: @tr("Channels"); active: root.filter == "channels"; clicked => { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: @tr("Chats"); active: root.filter == "chats"; clicked => { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); } }
             }
             HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                Pill { label: @tr("Meeting chats"); active: root.filter == "meetings"; clicked => { root.filter = root.filter == "meetings" ? "all" : "meetings"; root.set-filter(root.filter); } }
-                Pill { label: @tr("Drafts"); active: root.filter == "drafts"; clicked => { root.filter = root.filter == "drafts" ? "all" : "drafts"; root.set-filter(root.filter); } }
-                Pill { label: root.more-filters ? "‹" : "›"; accessible-label: root.more-filters ? @tr("Fewer filters") : @tr("More filters"); clicked => { root.more-filters = !root.more-filters; } }
+                Pill { c: root.c; label: @tr("Meeting chats"); active: root.filter == "meetings"; clicked => { root.filter = root.filter == "meetings" ? "all" : "meetings"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: @tr("Drafts"); active: root.filter == "drafts"; clicked => { root.filter = root.filter == "drafts" ? "all" : "drafts"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: root.more-filters ? "‹" : "›"; accessible-label: root.more-filters ? @tr("Fewer filters") : @tr("More filters"); clicked => { root.more-filters = !root.more-filters; } }
             }
             if root.more-filters: HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                Pill { label: @tr("Communities"); active: root.filter == "communities"; clicked => { root.filter = root.filter == "communities" ? "all" : "communities"; root.set-filter(root.filter); } }
+                Pill { c: root.c; label: @tr("Communities"); active: root.filter == "communities"; clicked => { root.filter = root.filter == "communities" ? "all" : "communities"; root.set-filter(root.filter); } }
             }
         }
-        Rectangle { height: 1px; background: Theme.border; }
+        Rectangle { height: 1px; background: root.c.border; }
         if root.view == "chat" && root.away-visible: HorizontalLayout {
             padding: 8px;
             AwayCard {
+                c: root.c;
                 summary: root.away-summary;
                 begin => { root.catch-up(); }
                 dismiss => { root.dismiss-away(); }
@@ -462,6 +483,7 @@ export component Sidebar inherits Rectangle {
                         spacing: 1px;
                         alignment: start;
                         QuickViewsSection {
+                            c: root.c;
                             mentions: root.catch-mentions;
                             drafts-on: root.filter == "drafts";
                             open(kind) => {
@@ -475,9 +497,10 @@ export component Sidebar inherits Rectangle {
                             }
                         }
                         // The chat being started in the New chat pane, as Teams lists it.
-                        if PeopleStore.new-chat-open: NewMessageRow { }
-                        if root.filter != "communities": SectionHeader { label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
+                        if PeopleStore.new-chat-open: NewMessageRow { c: root.c; }
+                        if root.filter != "communities": SectionHeader { c: root.c; label: @tr("Favorites"); expanded <=> ListStore.favorites-open; }
                         if ListStore.favorites-open: Reveal { for c in root.chats-favorites: ChatItem {
+                            c: root.c;
                             data: c;
                             selected: c.id == root.current-id;
                             limit: root.absolute-position.y + root.height;
@@ -488,8 +511,9 @@ export component Sidebar inherits Rectangle {
                             leave => { root.leave-chat(c.id); }
                         } }
                         for sec in ListStore.sections: VerticalLayout {
-                            SectionHead { section: sec; toggle => { Motion.toggled = true; ListStore.command("section-toggle", sec.id); } }
+                            SectionHead { c: root.c; section: sec; toggle => { Motion.toggled = true; ListStore.command("section-toggle", sec.id); } }
                             if sec.expanded: Reveal { for c in sec.items: ChatItem {
+                                c: root.c;
                                 data: c;
                                 selected: c.id == root.current-id;
                                 limit: root.absolute-position.y + root.height;
@@ -500,9 +524,10 @@ export component Sidebar inherits Rectangle {
                                 leave => { root.leave-chat(c.id); }
                             } }
                         }
-                        if root.filter != "communities": SectionHeader { label: @tr("Chats"); expanded <=> ListStore.chats-open; }
+                        if root.filter != "communities": SectionHeader { c: root.c; label: @tr("Chats"); expanded <=> ListStore.chats-open; }
                         if ListStore.chats-open: Reveal { for c in root.chats-main: VerticalLayout {
                             if c.section != "meetings": ChatItem {
+                                c: root.c;
                                 data: c;
                                 selected: c.id == root.current-id;
                                 limit: root.absolute-position.y + root.height;
@@ -515,11 +540,13 @@ export component Sidebar inherits Rectangle {
                         } }
                         // Meeting chats, collapsed by default: the newest five, then "See all".
                         if ListStore.meetings-count > 0: SectionHead {
+                            c: root.c;
                             section: { id: "meetings", name: @tr("Meetings"), expanded: ListStore.meetings-open, unread: ListStore.meetings-unread, local: false };
                             toggle => { Motion.toggled = true; ListStore.meetings-open = !ListStore.meetings-open; }
                         }
                         if ListStore.meetings-count > 0 && ListStore.meetings-open: Reveal { for c[i] in root.chats-main: VerticalLayout {
                             if c.section == "meetings" && (ListStore.meetings-all || i < root.meetings-start + 5): ChatItem {
+                                c: root.c;
                                 data: c;
                                 selected: c.id == root.current-id;
                                 limit: root.absolute-position.y + root.height;
@@ -531,11 +558,13 @@ export component Sidebar inherits Rectangle {
                             }
                         } }
                         if ListStore.meetings-open && ListStore.meetings-count > 5: MoreRow {
+                            c: root.c;
                             label: ListStore.meetings-all ? @tr("Show less") : @tr("See all ({})", ListStore.meetings-count);
                             clicked => { ListStore.meetings-all = !ListStore.meetings-all; }
                         }
-                        if !ListStore.combined && root.filter != "communities": SectionHeader { label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
+                        if !ListStore.combined && root.filter != "communities": SectionHeader { c: root.c; label: @tr("Teams and channels"); expanded <=> ListStore.channels-open; }
                         if ListStore.channels-open && !ListStore.combined: Reveal { for c in root.chats-channels: ChatItem {
+                            c: root.c;
                             data: c;
                             selected: c.id == root.current-id;
                             limit: root.absolute-position.y + root.height;
@@ -545,18 +574,18 @@ export component Sidebar inherits Rectangle {
                             mark-unread => { root.mark-unread(c.id); }
                             leave => { root.leave-chat(c.id); }
                         } }
-                        if TeamsStore.communities.length > 0: SectionHeader { label: @tr("Communities"); expanded <=> root.communities-open; }
-                        if TeamsStore.communities.length > 0 && root.communities-open: CommunitiesSection { open(id) => { root.open-community(id); } }
+                        if TeamsStore.communities.length > 0: SectionHeader { c: root.c; label: @tr("Communities"); expanded <=> root.communities-open; }
+                        if TeamsStore.communities.length > 0 && root.communities-open: CommunitiesSection { c: root.c; open(id) => { root.open-community(id); } }
                         if TeamsStore.communities.length == 0 && root.filter == "communities": Text {
                             text: @tr("You are not in any community.");
-                            color: Theme.fg-subtle;
+                            color: root.c.fg-subtle;
                             font-size: 13px * Theme.font-scale;
                             horizontal-alignment: center;
                             height: 40px;
                             vertical-alignment: center;
                         }
                         // Under everything else, so it never moves a row.
-                        if root.loading: SkeletonList { count: 8; label: @tr("Loading chats"); }
+                        if root.loading: SkeletonList { c: root.c; count: 8; label: @tr("Loading chats"); }
                     }
                 }
             }
@@ -579,13 +608,14 @@ export component Sidebar inherits Rectangle {
                             Rectangle {
                                 height: 44px;
                                 border-radius: 4px;
-                                background: tt.has-hover ? Theme.surface-hover : transparent;
+                                background: tt.has-hover ? root.c.surface-hover : transparent;
                                 HorizontalLayout {
                                     padding-left: 8px;
                                     spacing: 10px;
-                                    Icon { source: t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 15px; }
+                                    Icon { c: root.c; source: t.expanded ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg"); width: 14px; height: 14px; y: 15px; }
                                     // The team's picture when it is known, else its initials.
                                     Avatar {
+                                        c: root.c;
                                         size: 28px;
                                         y: 8px;
                                         corner: 4px;
@@ -598,7 +628,7 @@ export component Sidebar inherits Rectangle {
                                         has-img: t.has-avatar;
                                         photo-label: @tr("Team picture");
                                     }
-                                    Text { text: t.name; color: Theme.fg; font-size: 14px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
+                                    Text { text: t.name; color: root.c.fg; font-size: 14px * Theme.font-scale; font-weight: 600; vertical-alignment: center; overflow: elide; }
                                     Rectangle { width: 30px; }
                                 }
                                 tt := TouchArea {
@@ -610,6 +640,7 @@ export component Sidebar inherits Rectangle {
                                         }
                                     }
                                     if tt.has-hover: IconButton {
+                                        c: root.c;
                                         x: parent.width - 30px;
                                         y: 11px;
                                         size: 22px;
@@ -626,10 +657,10 @@ export component Sidebar inherits Rectangle {
                                     height: team-items.preferred-height + 10px;
                                     close-policy: close-on-click-outside;
                                     Rectangle {
-                                        background: Theme.surface;
+                                        background: Theme.content.surface;
                                         border-radius: 6px;
                                         border-width: 1px;
-                                        border-color: Theme.border;
+                                        border-color: Theme.content.border;
                                         team-items := VerticalLayout {
                                             padding: 4px;
                                             for full in TeamsStore.all-teams: VerticalLayout {
@@ -647,14 +678,14 @@ export component Sidebar inherits Rectangle {
                                 for ch in t.channels: Rectangle {
                                     height: 34px;
                                     border-radius: 4px;
-                                    background: ch.id == root.current-id ? Theme.selected : (ct.has-hover ? Theme.surface-hover : transparent);
+                                    background: ch.id == root.current-id ? root.c.selected : (ct.has-hover ? root.c.surface-hover : transparent);
                                     HorizontalLayout {
                                         padding-left: 50px;
                                         padding-right: 32px;
                                         spacing: 6px;
                                         Text {
                                             text: ch.hidden ? @tr("{} (hidden)", ch.name) : ch.name;
-                                            color: ch.hidden ? Theme.fg-subtle : Theme.fg;
+                                            color: ch.hidden ? root.c.fg-subtle : root.c.fg;
                                             font-size: 13px * Theme.font-scale;
                                             font-weight: ch.unread ? 700 : 400;
                                             font-italic: ch.hidden;
@@ -664,11 +695,12 @@ export component Sidebar inherits Rectangle {
                                             horizontal-stretch: ch.private ? 0 : 1;
                                         }
                                         if ch.private: Icon {
+                                            c: root.c;
                                             source: @image-url("../icons/lock.svg");
                                             width: 12px;
                                             height: 12px;
                                             y: (parent.height - 12px) / 2;
-                                            tint: Theme.fg-subtle;
+                                            tint: root.c.fg-subtle;
                                             accessible-role: image;
                                             accessible-label: @tr("Private channel");
                                         }
@@ -685,6 +717,7 @@ export component Sidebar inherits Rectangle {
                                         }
                                         // The same menu as a right click.
                                         if ct.has-hover: IconButton {
+                                            c: root.c;
                                             x: parent.width - 28px;
                                             y: 6px;
                                             size: 22px;
@@ -702,7 +735,7 @@ export component Sidebar inherits Rectangle {
                                         width: 190px;
                                         height: cm.menu-height;
                                         close-policy: close-on-click-outside;
-                                        cm := ChannelMenu { channel: ch.id; is-private: ch.private; done => { ch-menu.close(); } }
+                                        cm := ChannelMenu { c: Theme.content; channel: ch.id; is-private: ch.private; done => { ch-menu.close(); } }
                                     }
                                 }
                             }
@@ -713,7 +746,7 @@ export component Sidebar inherits Rectangle {
         }
     }
 
-    if root.view == "chat": ChatTipLayer { x: 0px; y: 0px; width: root.width; height: root.height; }
+    if root.view == "chat": ChatTipLayer { c: Theme.content; x: 0px; y: 0px; width: root.width; height: root.height; }
 
     list-menu := PopupWindow {
         // Customize view unfolds inside the menu, so a click must not close it by itself.
@@ -723,23 +756,23 @@ export component Sidebar inherits Rectangle {
         width: 228px;
         height: list-items.preferred-height + 2px;
         Rectangle {
-            background: Theme.surface;
+            background: Theme.content.surface;
             border-radius: 6px;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: Theme.content.border;
             list-items := VerticalLayout {
                 padding: 4px;
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
                 // Teams' "Customize view": the list's display options, behind a chevron.
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }
-                if root.customize-open: OptionRow { label: @tr("Show message previews"); checked: ListStore.show-previews; clicked => { ListStore.command("option", "previews\u{9}" + (ListStore.show-previews ? "off" : "on")); } }
-                if root.customize-open: OptionRow { label: @tr("Show time stamps"); checked: ListStore.show-times; clicked => { ListStore.command("option", "times\u{9}" + (ListStore.show-times ? "off" : "on")); } }
-                if root.customize-open: OptionRow { label: @tr("Chats and channels together"); checked: ListStore.combined; clicked => { ListStore.command("option", "combined\u{9}" + (ListStore.combined ? "off" : "on")); } }
-                Rectangle { height: 1px; background: Theme.border; }
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("Your teams and channels"); clicked => { list-menu.close(); root.manage-teams(); } }
-                MenuItem { variant: MenuItemVariant.parity;
+                MenuItem { c: Theme.content; variant: MenuItemVariant.parity; label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }
+                if root.customize-open: OptionRow { c: Theme.content; label: @tr("Show message previews"); checked: ListStore.show-previews; clicked => { ListStore.command("option", "previews\u{9}" + (ListStore.show-previews ? "off" : "on")); } }
+                if root.customize-open: OptionRow { c: Theme.content; label: @tr("Show time stamps"); checked: ListStore.show-times; clicked => { ListStore.command("option", "times\u{9}" + (ListStore.show-times ? "off" : "on")); } }
+                if root.customize-open: OptionRow { c: Theme.content; label: @tr("Chats and channels together"); checked: ListStore.combined; clicked => { ListStore.command("option", "combined\u{9}" + (ListStore.combined ? "off" : "on")); } }
+                Rectangle { height: 1px; background: Theme.content.border; }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.parity; label: @tr("Your teams and channels"); clicked => { list-menu.close(); root.manage-teams(); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.parity;
                     label: @tr("Your communities");
                     clicked => {
                         list-menu.close();
@@ -752,12 +785,12 @@ export component Sidebar inherits Rectangle {
                 HorizontalLayout {
                     height: 24px;
                     padding-left: 10px;
-                    Text { text: @tr("Quick views"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
+                    Text { text: @tr("Quick views"); color: Theme.content.fg-subtle; font-size: 11px * Theme.font-scale; vertical-alignment: bottom; }
                 }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("Reminders"); clicked => { list-menu.close(); RemindStore.open = true; RemindStore.command("refresh", ""); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Mentions"); clicked => { list-menu.close(); root.quick-view("mentions"); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Saved"); clicked => { list-menu.close(); root.quick-view("saved"); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Followed threads"); clicked => { list-menu.close(); root.quick-view("followed"); } }
+                MenuItem { c: Theme.content; variant: MenuItemVariant.plain; label: @tr("Reminders"); clicked => { list-menu.close(); RemindStore.open = true; RemindStore.command("refresh", ""); } }
             }
         }
     }

@@ -4,6 +4,8 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon, SectionHeader } from "../atoms/widgets.slint";
 import { FindStore } from "../stores/find_store.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global QuickViewsStore {
     // The section is expanded. Remembered across restarts with the window state.
@@ -22,6 +24,7 @@ export global ChatTipStore {
 }
 
 component QuickRow inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> label;
     in property <string> a11y-label: root.label;
     in property <image> icon;
@@ -32,7 +35,7 @@ component QuickRow inherits Rectangle {
     callback clicked();
     height: 32px;
     border-radius: 4px;
-    background: root.active ? Theme.selected : (t.has-hover ? Theme.surface-hover : transparent);
+    background: root.active ? root.c.selected : (t.has-hover ? root.c.surface-hover : transparent);
     accessible-role: button;
     accessible-label: root.a11y-label;
     accessible-value: root.count > 0 ? root.count : "";
@@ -41,10 +44,10 @@ component QuickRow inherits Rectangle {
         padding-left: 16px;
         padding-right: 12px;
         spacing: 10px;
-        Icon { source: root.icon; width: 16px; height: 16px; y: (parent.height - 16px) / 2; tint: root.active ? Theme.accent : Theme.fg-muted; }
+        Icon { c: root.c; source: root.icon; width: 16px; height: 16px; y: (parent.height - 16px) / 2; tint: root.active ? root.c.accent : root.c.fg-muted; }
         Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             font-weight: root.strong && root.count > 0 ? 700 : 400;
             vertical-alignment: center;
@@ -59,10 +62,10 @@ component QuickRow inherits Rectangle {
             width: max(18px, badge.preferred-width + 10px);
             horizontal-stretch: 0;
             border-radius: 9px;
-            background: root.strong ? Theme.accent : transparent;
+            background: root.strong ? root.c.accent : transparent;
             badge := Text {
                 text: root.count > 99 ? "99+" : root.count;
-                color: root.strong ? #ffffff : Theme.fg-subtle;
+                color: root.strong ? root.c.on-accent : root.c.fg-subtle;
                 font-size: 11px * Theme.font-scale;
                 font-weight: root.strong ? 700 : 400;
                 horizontal-alignment: center;
@@ -77,14 +80,16 @@ component QuickRow inherits Rectangle {
 // The section itself. `open(kind)` asks for a quick view ("mentions", "followed", "discover") or
 // the Drafts filter ("drafts").
 export component QuickViewsSection inherits VerticalLayout {
+    in property <Tokens> c: Theme.nav;
     // Unread chats that mention me.
     in property <int> mentions;
     in property <bool> drafts-on;
     callback open(string);
     property <string> showing: FindStore.quick-open ? FindStore.quick-kind : "";
-    qv-header := SectionHeader { label: @tr("Quick views"); expanded <=> QuickViewsStore.open; }
+    qv-header := SectionHeader { c: root.c; label: @tr("Quick views"); expanded <=> QuickViewsStore.open; }
     if QuickViewsStore.open: VerticalLayout {
         QuickRow {
+            c: root.c;
             label: @tr("Mentions");
             icon: @image-url("../icons/at.svg");
             count: root.mentions;
@@ -93,12 +98,14 @@ export component QuickViewsSection inherits VerticalLayout {
             clicked => { root.open("mentions"); }
         }
         QuickRow {
+            c: root.c;
             label: @tr("Followed threads");
             icon: @image-url("../icons/thread.svg");
             active: root.showing == "followed";
             clicked => { root.open("followed"); }
         }
         QuickRow {
+            c: root.c;
             label: @tr("Discover");
             a11y-label: @tr("Discover: popular posts from your teams");
             icon: @image-url("../icons/compass.svg");
@@ -106,6 +113,7 @@ export component QuickViewsSection inherits VerticalLayout {
             clicked => { root.open("discover"); }
         }
         QuickRow {
+            c: root.c;
             label: @tr("Drafts");
             icon: @image-url("../icons/edit.svg");
             count: QuickViewsStore.drafts;
@@ -119,6 +127,7 @@ export component QuickViewsSection inherits VerticalLayout {
 // over the whole sidebar (it takes no input); the card shows a moment after the pointer rests on
 // the row, below it, or above it near the bottom of the list.
 export component ChatTipLayer inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     property <string> hovered: ChatTipStore.id;
     property <string> shown-for;
     property <bool> shown: root.hovered != "" && root.hovered == root.shown-for;
@@ -135,23 +144,23 @@ export component ChatTipLayer inherits Rectangle {
         width: min(root.width - 64px, max(120px, lay.preferred-width));
         height: lay.preferred-height;
         border-radius: 4px;
-        background: Theme.sidebar;
+        background: root.c.panel;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: root.c.border;
         drop-shadow-blur: 8px;
-        drop-shadow-color: #00000060;
+        drop-shadow-color: Fixed.black-60;
         accessible-role: text;
         accessible-label: ChatTipStore.title;
         accessible-description: ChatTipStore.private ? @tr("Private") : @tr("Standard");
         lay := VerticalLayout {
             padding: 8px;
             spacing: 2px;
-            Text { text: ChatTipStore.title; color: Theme.fg; font-size: 12px * Theme.font-scale; font-weight: 600; overflow: elide; horizontal-alignment: Theme.start-align; accessible-role: none; }
+            Text { text: ChatTipStore.title; color: root.c.fg; font-size: 12px * Theme.font-scale; font-weight: 600; overflow: elide; horizontal-alignment: Theme.start-align; accessible-role: none; }
             HorizontalLayout {
                 spacing: 4px;
                 alignment: start;
-                if ChatTipStore.private: Icon { source: @image-url("../icons/lock.svg"); width: 12px; height: 12px; y: 2px; tint: Theme.fg-subtle; }
-                Text { text: ChatTipStore.private ? @tr("Private") : @tr("Standard"); color: Theme.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
+                if ChatTipStore.private: Icon { c: root.c; source: @image-url("../icons/lock.svg"); width: 12px; height: 12px; y: 2px; tint: root.c.fg-subtle; }
+                Text { text: ChatTipStore.private ? @tr("Private") : @tr("Standard"); color: root.c.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; accessible-role: none; }
             }
         }
     }

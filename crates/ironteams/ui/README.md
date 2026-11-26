@@ -65,9 +65,11 @@ screen is the content set.
   may not read the flat colour aliases or `Theme.dark`; they read their `c` input. The names
   are read from `tokens/theme.slint`. Areas: `atoms` (with `tokens/motion.slint`), `molecules`,
   `nav`, `call`. The rule is switched on area by area as the components take `c`; today the
-  `atoms` and `molecules` areas are on. Every atom, `tokens/motion.slint` and every molecule that
-  reads a colour or instantiates a component with a `c` input takes `c` (an `in property
-  <Tokens>`, default `Theme.content`), reads its colours from `root.c` and passes `c: root.c` on.
+  `atoms`, `molecules` and `nav` areas are on. Every atom, `tokens/motion.slint`, every molecule
+  and every nav component that reads a colour or instantiates a component with a `c` input takes
+  `c` (an `in property <Tokens>`, default `Theme.content`, or `Theme.nav` for the nav), reads its
+  colours from `root.c` and passes `c: root.c` on. The popups of the sidebar and the menus and
+  dialogs of the chat list float over the content area and read `Theme.content`.
 
 ## Atom catalog
 

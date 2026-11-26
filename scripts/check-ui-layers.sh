@@ -24,7 +24,7 @@ allowlist="$repo/scripts/ui-hex-allowlist.txt"
 fail=0
 
 # Rule 3 is switched on area by area, as the sweep reaches each (docs/designs/theme-engine.md).
-rule3_areas="atoms molecules"
+rule3_areas="atoms molecules nav"
 # The nav: the rail, the sidebar and the chat list.
 nav_set=(organisms/app_rail.slint organisms/apps_rail.slint organisms/sidebar.slint
     organisms/lists.slint organisms/chat_list_extras.slint organisms/communities_section.slint
