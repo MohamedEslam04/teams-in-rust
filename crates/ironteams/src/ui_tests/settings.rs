@@ -668,7 +668,9 @@ fn an_emoji_picked_for_the_status_message_goes_first() {
         .ch;
     ids(app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
     assert_eq!(
-        value_of(app, "New status message"),
+        control(app, "New status message")
+            .accessible_value()
+            .unwrap_or_default(),
         format!("{first} Heads down")
     );
 }
