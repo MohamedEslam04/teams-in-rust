@@ -68,6 +68,10 @@ impl Call {
         let mut standing_asked: HashSet<String> = HashSet::new();
         // Joined with the camera on: it starts once the call can send it.
         let mut camera_wanted = opts.camera;
+        // Looks each second whether the service took the role-sized subscriptions
+        // (`RemoteVideo::check_fallback`).
+        let mut video_check = tokio::time::interval(std::time::Duration::from_secs(1));
+        video_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let ended: Option<String> = loop {
             let mut roster_changed = false;
             let mut standing_changed = false;
@@ -84,6 +88,11 @@ impl Call {
                     Some(c) => self.control(c, &mut audio, &sink).await,
                 },
                 Some(m) = share_rx.recv() => self.share_msg(m, &share_tx, &sink).await,
+                // Role sizes refused or a resized line stalled: the slots go back to the gallery
+                // size, re-planned below like a view change.
+                _ = video_check.tick() => {
+                    view_changed = self.video.check_fallback(std::time::Instant::now());
+                }
                 Some(frame) = data_rx.recv() => {
                     if let Some(msg) = depacketizer.push(&frame) {
                         if msg.data_id == CONTROL_DATA_ID {
