@@ -198,7 +198,8 @@ fn up_and_down_move_between_the_messages_and_enter_opens_the_one_it_is_on() {
     h.select(NOTES);
     open_unreads(&h);
 
-    // The first message is chosen to begin with; Down skips the next conversation's header.
+    // The first message is chosen to begin with; Down skips the next conversation's header and
+    // stops at the last message (three messages: Down x4 ends on the third), Up goes back one.
     press(&h.app, Key::DownArrow);
     press(&h.app, Key::DownArrow);
     press(&h.app, Key::DownArrow);
@@ -212,7 +213,7 @@ fn up_and_down_move_between_the_messages_and_enter_opens_the_one_it_is_on() {
     );
     let flashed = flashed(&h.app);
     assert_eq!(flashed.len(), 1, "the message is highlighted");
-    assert!(flashed[0].contains("second unread"), "{flashed:?}");
+    assert!(flashed[0].contains("first unread"), "{flashed:?}");
 }
 
 #[test]
