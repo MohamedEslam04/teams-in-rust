@@ -14,15 +14,17 @@ import { Heading, HeadingVariant } from "../atoms/heading.slint";
 import { RadioRow } from "../atoms/radio_row.slint";
 import { BackgroundTile } from "../molecules/background_tile.slint";
 import { InfoTip } from "../molecules/info_tip.slint";
+import { Tokens } from "../tokens/types.slint";
 
 // "Add new": a picture of your own.
 component AddTile inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     width: 88px;
     height: 54px;
     border-radius: 6px;
     border-width: 1px;
-    border-color: touch.has-hover ? Theme.fg-subtle : Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.surface;
+    border-color: touch.has-hover ? root.c.fg-subtle : root.c.border;
+    background: touch.has-hover ? root.c.surface-hover : root.c.surface;
     accessible-role: button;
     accessible-label: "Add new background";
     accessible-action-default => { CallStore.command("fx-add-background", ""); }
@@ -31,11 +33,11 @@ component AddTile inherits Rectangle {
         spacing: 2px;
         HorizontalLayout {
             alignment: center;
-            Icon { source: @image-url("../icons/plus.svg"); tint: Theme.fg; width: 16px; height: 16px; }
+            Icon { c: root.c; source: @image-url("../icons/plus.svg"); tint: root.c.fg; width: 16px; height: 16px; }
         }
         Text {
             text: "Add new";
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 11px * Theme.font-scale;
             horizontal-alignment: center;
         }
@@ -49,11 +51,13 @@ component AddTile inherits Rectangle {
 // The tiles in rows of three: None, Standard blur, "Add new", then Teams' pictures (as they
 // download), the bundled ones and your own. (The blur's strength is chosen under the grid.)
 component BackgroundGrid inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     property <int> cols: 3;
     property <int> count: VideoFxStore.backgrounds.length + 1;
     width: root.cols * 88px + (root.cols - 1) * 8px;
     height: ceil(root.count / root.cols) * 62px - 8px;
     for c[i] in VideoFxStore.backgrounds: BackgroundTile {
+        c: root.c;
         x: mod(i < 2 ? i : i + 1, root.cols) * 96px;
         y: floor((i < 2 ? i : i + 1) / root.cols) * 62px;
         choice: c;
@@ -61,6 +65,7 @@ component BackgroundGrid inherits Rectangle {
         picked => { CallStore.command("fx-background", c.id); }
     }
     AddTile {
+        c: root.c;
         x: mod(2, root.cols) * 96px;
         y: floor(2 / root.cols) * 62px;
     }
@@ -68,6 +73,7 @@ component BackgroundGrid inherits Rectangle {
 
 // A filter: a chip, checked when in use.
 component FilterChip inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> key;
     in property <string> label;
     in property <string> description: root.label;
@@ -76,8 +82,8 @@ component FilterChip inherits Rectangle {
     height: 28px;
     border-radius: 14px;
     border-width: 1px;
-    border-color: root.selected ? Theme.accent : Theme.border;
-    background: root.selected ? Theme.selected : touch.has-hover ? Theme.surface-hover : Theme.surface;
+    border-color: root.selected ? root.c.accent : root.c.border;
+    background: root.selected ? root.c.selected : touch.has-hover ? root.c.surface-hover : root.c.surface;
     accessible-role: button;
     accessible-label: root.description;
     accessible-checkable: true;
@@ -85,7 +91,7 @@ component FilterChip inherits Rectangle {
     accessible-action-default => { CallStore.command("fx-filter", root.key); }
     txt := Text {
         text: root.label;
-        color: root.selected ? Theme.accent : Theme.fg;
+        color: root.selected ? root.c.accent : root.c.fg;
         font-size: 12px * Theme.font-scale;
     }
     touch := TouchArea {
@@ -96,13 +102,14 @@ component FilterChip inherits Rectangle {
 
 // A tab of the panel.
 component PanelTab inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> label;
     in property <bool> selected;
     callback picked();
     height: 32px;
     horizontal-stretch: 1;
     border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover ? root.c.surface-hover : transparent;
     accessible-role: tab;
     accessible-label: root.label;
     accessible-checkable: true;
@@ -110,7 +117,7 @@ component PanelTab inherits Rectangle {
     accessible-action-default => { root.picked(); }
     Text {
         text: root.label;
-        color: root.selected ? Theme.fg : Theme.fg-muted;
+        color: root.selected ? root.c.fg : root.c.fg-muted;
         font-size: 13px * Theme.font-scale;
         font-weight: root.selected ? 600 : 400;
         horizontal-alignment: center;
@@ -119,7 +126,7 @@ component PanelTab inherits Rectangle {
     Rectangle {
         y: root.height - self.height;
         height: 2px;
-        background: root.selected ? Theme.accent : transparent;
+        background: root.selected ? root.c.accent : transparent;
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -129,11 +136,12 @@ component PanelTab inherits Rectangle {
 
 // The header of a section that folds: a chevron and its name.
 component SectionHeader inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> label;
     in-out property <bool> open: true;
     height: 32px;
     border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover ? root.c.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.label + " section";
     accessible-expandable: true;
@@ -145,15 +153,16 @@ component SectionHeader inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Icon {
+                c: root.c;
                 source: root.open ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg");
-                tint: Theme.fg;
+                tint: root.c.fg;
                 width: 14px;
                 height: 14px;
             }
         }
         Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 14px * Theme.font-scale;
             font-weight: 600;
             vertical-alignment: center;
@@ -166,12 +175,13 @@ component SectionHeader inherits Rectangle {
 }
 
 export component VideoEffectsPanel inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     property <string> tab: "effects";
     // In a call the panel shows how we look; the pre-join screen has its own preview beside it.
     property <bool> shows-preview: CallStore.phase != "prejoin";
     // Our camera is already on (shown or being sent): nothing to preview.
     property <bool> camera-on: CallStore.phase == "prejoin" ? CallStore.prejoin-camera : CallStore.camera;
-    background: Theme.sidebar;
+    background: root.c.panel;
     function close() {
         VideoFxStore.open = false;
         CallStore.command("video-preview", "off");
@@ -183,7 +193,7 @@ export component VideoEffectsPanel inherits Rectangle {
             height: 32px;
             Text {
                 text: "Video effects and settings";
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 15px * Theme.font-scale;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -191,6 +201,7 @@ export component VideoEffectsPanel inherits Rectangle {
                 overflow: elide;
             }
             IconButton {
+                c: root.c;
                 icon: @image-url("../icons/close.svg");
                 tooltip: "Close video effects";
                 size: 28px;
@@ -201,7 +212,7 @@ export component VideoEffectsPanel inherits Rectangle {
             height: 120px;
             border-radius: 6px;
             clip: true;
-            background: Theme.rail;
+            background: root.c.rail;
             if VideoFxStore.has-preview: Image {
                 width: parent.width;
                 height: parent.height;
@@ -222,7 +233,7 @@ export component VideoEffectsPanel inherits Rectangle {
                 width: parent.width - 24px;
                 x: 12px;
                 text: VideoFxStore.preview-status != "" ? VideoFxStore.preview-status : "Select Preview to see how you look";
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: 12px * Theme.font-scale;
                 horizontal-alignment: center;
                 vertical-alignment: center;
@@ -232,11 +243,13 @@ export component VideoEffectsPanel inherits Rectangle {
         HorizontalLayout {
             spacing: 4px;
             PanelTab {
+                c: root.c;
                 label: "Video effects";
                 selected: root.tab == "effects";
                 picked => { root.tab = "effects"; }
             }
             PanelTab {
+                c: root.c;
                 label: "Settings";
                 selected: root.tab == "settings";
                 picked => { root.tab = "settings"; }
@@ -248,29 +261,31 @@ export component VideoEffectsPanel inherits Rectangle {
                 width: parent.width;
                 alignment: start;
                 spacing: 10px;
-                Heading { variant: HeadingVariant.caption; text: "Background"; }
+                Heading { c: root.c; variant: HeadingVariant.caption; text: "Background"; }
                 // The blur's strength: neither is checked until a blur is chosen.
                 VerticalLayout {
                     spacing: 2px;
-                    Heading { variant: HeadingVariant.caption; text: "Blur strength"; }
+                    Heading { c: root.c; variant: HeadingVariant.caption; text: "Blur strength"; }
                     HorizontalLayout {
                         spacing: 4px;
                         RadioRow {
+                            c: root.c;
                             label: "Standard";
                             selected: VideoFxStore.background == "blur";
                             picked => { CallStore.command("fx-background", "blur"); }
                         }
                         RadioRow {
+                            c: root.c;
                             label: "Strong";
                             selected: VideoFxStore.background == "strong-blur";
                             picked => { CallStore.command("fx-background", "strong-blur"); }
                         }
                     }
                 }
-                BackgroundGrid { }
+                BackgroundGrid { c: root.c; }
                 if VideoFxStore.teams-note != "": Text {
                     text: VideoFxStore.teams-note;
-                    color: Theme.fg-subtle;
+                    color: root.c.fg-subtle;
                     font-size: 12px * Theme.font-scale;
                     wrap: word-wrap;
                 }
@@ -280,13 +295,13 @@ export component VideoEffectsPanel inherits Rectangle {
                         width: rm.preferred-width + 16px;
                         height: 26px;
                         border-radius: 4px;
-                        background: rmt.has-hover ? Theme.surface-hover : transparent;
+                        background: rmt.has-hover ? root.c.surface-hover : transparent;
                         accessible-role: button;
                         accessible-label: "Remove this background";
                         accessible-action-default => { CallStore.command("fx-remove-background", VideoFxStore.background); }
                         rm := Text {
                             text: "Remove this background";
-                            color: Theme.accent;
+                            color: root.c.accent;
                             font-size: 12px * Theme.font-scale;
                         }
                         rmt := TouchArea {
@@ -303,19 +318,20 @@ export component VideoEffectsPanel inherits Rectangle {
                 width: parent.width;
                 alignment: start;
                 spacing: 4px;
-                cam-head := SectionHeader { label: "Camera"; }
+                cam-head := SectionHeader { c: root.c; label: "Camera"; }
                 if cam-head.open: VerticalLayout {
                     for cam[i] in VideoFxStore.cameras: RadioRow {
+                        c: root.c;
                         label: cam;
                         selected: i == VideoFxStore.camera;
                         picked => { CallStore.command("camera-device", "" + i); }
                     }
                 }
-                look-head := SectionHeader { label: "Appearance"; }
+                look-head := SectionHeader { c: root.c; label: "Appearance"; }
                 if look-head.open: VerticalLayout {
                     spacing: 4px;
                     HorizontalLayout {
-                        Switch { variant: SwitchVariant.panel;
+                        Switch { c: root.c; variant: SwitchVariant.panel;
                             horizontal-stretch: 1;
                             label: "Adjust brightness";
                             checked: VideoFxStore.brighten;
@@ -323,11 +339,11 @@ export component VideoEffectsPanel inherits Rectangle {
                         }
                         VerticalLayout {
                             alignment: center;
-                            InfoTip { tip: "Brightens your video in low light."; }
+                            InfoTip { c: root.c; tip: "Brightens your video in low light."; }
                         }
                     }
                     HorizontalLayout {
-                        Switch { variant: SwitchVariant.panel;
+                        Switch { c: root.c; variant: SwitchVariant.panel;
                             horizontal-stretch: 1;
                             label: "Mirror my video";
                             checked: VideoFxStore.mirror;
@@ -335,11 +351,11 @@ export component VideoEffectsPanel inherits Rectangle {
                         }
                         VerticalLayout {
                             alignment: center;
-                            InfoTip { tip: "Only you see your video mirrored. Others see it as it is."; }
+                            InfoTip { c: root.c; tip: "Only you see your video mirrored. Others see it as it is."; }
                         }
                     }
                     HorizontalLayout {
-                        Switch { variant: SwitchVariant.panel;
+                        Switch { c: root.c; variant: SwitchVariant.panel;
                             horizontal-stretch: 1;
                             label: "Soft focus";
                             checked: VideoFxStore.soft-focus;
@@ -347,22 +363,22 @@ export component VideoEffectsPanel inherits Rectangle {
                         }
                         VerticalLayout {
                             alignment: center;
-                            InfoTip { tip: "Smooths your appearance a little."; }
+                            InfoTip { c: root.c; tip: "Smooths your appearance a little."; }
                         }
                     }
-                    Heading { variant: HeadingVariant.caption; text: "Filters"; }
+                    Heading { c: root.c; variant: HeadingVariant.caption; text: "Filters"; }
                     HorizontalLayout {
                         alignment: start;
                         spacing: 6px;
-                        FilterChip { key: "none"; label: "Original"; description: "No filter"; }
-                        FilterChip { key: "warm"; label: "Warm"; }
-                        FilterChip { key: "cool"; label: "Cool"; }
+                        FilterChip { c: root.c; key: "none"; label: "Original"; description: "No filter"; }
+                        FilterChip { c: root.c; key: "warm"; label: "Warm"; }
+                        FilterChip { c: root.c; key: "cool"; label: "Cool"; }
                     }
                     HorizontalLayout {
                         alignment: start;
                         spacing: 6px;
-                        FilterChip { key: "mono"; label: "B&W"; description: "Black and white"; }
-                        FilterChip { key: "vivid"; label: "Vivid"; }
+                        FilterChip { c: root.c; key: "mono"; label: "B&W"; description: "Black and white"; }
+                        FilterChip { c: root.c; key: "vivid"; label: "Vivid"; }
                     }
                 }
             }
@@ -371,19 +387,19 @@ export component VideoEffectsPanel inherits Rectangle {
             spacing: 8px;
             Text {
                 text: "Others won't see your video while you preview.";
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: 12px * Theme.font-scale;
                 wrap: word-wrap;
             }
             HorizontalLayout {
                 spacing: 8px;
                 alignment: start;
-                Button { variant: ButtonVariant.action;
+                Button { c: root.c; variant: ButtonVariant.action;
                     label: "Preview";
                     enabled: !root.camera-on;
                     clicked => { CallStore.command("video-preview", "on"); }
                 }
-                Button { variant: ButtonVariant.action;
+                Button { c: root.c; variant: ButtonVariant.action;
                     label: "Apply and turn on video";
                     primary: true;
                     clicked => {

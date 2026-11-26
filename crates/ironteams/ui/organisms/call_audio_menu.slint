@@ -13,18 +13,20 @@ import { RadioRow } from "../atoms/radio_row.slint";
 import { LinkRow } from "../atoms/link_row.slint";
 import { RangeSlider } from "../atoms/range_slider.slint";
 import { LevelMeter } from "../molecules/level_meter.slint";
+import { Tokens } from "../tokens/types.slint";
 
 export component AudioMenu inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // The tallest it may be (the window under the top bar).
     in property <length> avail-height: 600px;
     width: 300px;
     height: min(col.preferred-height, root.avail-height);
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.surface;
+    border-color: root.c.border;
+    background: root.c.surface;
     drop-shadow-blur: 12px;
-    drop-shadow-color: Theme.scrim;
+    drop-shadow-color: root.c.scrim;
     accessible-role: list;
     accessible-label: "Audio settings";
     ScrollView {
@@ -35,8 +37,9 @@ export component AudioMenu inherits Rectangle {
             width: parent.width;
             padding: 12px;
             spacing: 4px;
-            Heading { variant: HeadingVariant.caption; text: "Speaker"; height: 24px; vertical-alignment: center; }
+            Heading { c: root.c; variant: HeadingVariant.caption; text: "Speaker"; height: 24px; vertical-alignment: center; }
             for name[i] in CallStore.speakers: RadioRow {
+                c: root.c;
                 label: name;
                 selected: i == CallStore.speaker;
                 picked => { CallStore.command("speaker", "" + i); }
@@ -48,12 +51,13 @@ export component AudioMenu inherits Rectangle {
                 spacing: 10px;
                 VerticalLayout {
                     alignment: center;
-                    Icon { source: @image-url("../icons/volume.svg"); tint: Theme.fg; width: 18px; height: 18px; }
+                    Icon { c: root.c; source: @image-url("../icons/volume.svg"); tint: root.c.fg; width: 18px; height: 18px; }
                 }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;
                     RangeSlider {
+                        c: root.c;
                         label: "Speaker volume";
                         value: SettingsStore.speaker-volume;
                         edited(v) => {
@@ -64,9 +68,10 @@ export component AudioMenu inherits Rectangle {
                     }
                 }
             }
-            Rectangle { height: 1px; background: Theme.border; }
-            Heading { variant: HeadingVariant.caption; text: "Microphone"; height: 24px; vertical-alignment: center; }
+            Rectangle { height: 1px; background: root.c.border; }
+            Heading { c: root.c; variant: HeadingVariant.caption; text: "Microphone"; height: 24px; vertical-alignment: center; }
             for name[i] in CallStore.mics: RadioRow {
+                c: root.c;
                 label: name;
                 selected: i == CallStore.mic;
                 picked => { CallStore.command("mic", "" + i); }
@@ -79,8 +84,9 @@ export component AudioMenu inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     Icon {
+                        c: root.c;
                         source: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
-                        tint: CallStore.muted ? Theme.danger : Theme.fg;
+                        tint: CallStore.muted ? root.c.danger : root.c.fg;
                         width: 18px;
                         height: 18px;
                     }
@@ -89,13 +95,14 @@ export component AudioMenu inherits Rectangle {
                     horizontal-stretch: 1;
                     alignment: center;
                     LevelMeter {
+                        c: root.c;
                         level: CallStore.mic-level;
                         muted: CallStore.muted;
                     }
                 }
             }
-            Rectangle { height: 1px; background: Theme.border; }
-            Switch { variant: SwitchVariant.panel;
+            Rectangle { height: 1px; background: root.c.border; }
+            Switch { c: root.c; variant: SwitchVariant.panel;
                 label: "Noise suppression";
                 checked: SettingsStore.noise-suppression;
                 toggled(on) => {
@@ -106,6 +113,7 @@ export component AudioMenu inherits Rectangle {
                 }
             }
             LinkRow {
+                c: root.c;
                 label: "More audio settings";
                 clicked => {
                     CallStore.menu = "";
