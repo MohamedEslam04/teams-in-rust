@@ -1,37 +1,181 @@
+import { Tokens } from "types.slint";
+
 export global Theme {
-    in-out property <color> rail: #0f0f0f;
-    in-out property <color> sidebar: #1f1f1f;
-    in-out property <color> main: #141414;
-    in-out property <color> topbar: #0f0f0f;
-    in-out property <color> surface: #292929;
-    in-out property <color> surface-hover: #333333;
-    in-out property <color> selected: #2e2e2e;
-    in-out property <color> border: #3d3d3d;
-    in-out property <color> accent: #7f85f5;
-    in-out property <color> accent-strong: #5b5fc7;
-    in-out property <color> fg: #ffffff;
-    in-out property <color> fg-muted: #adadad;
-    in-out property <color> fg-subtle: #8a8a8a;
-    in-out property <color> bubble-mine: #2f2f4a;
-    in-out property <color> bubble-other: #292929;
-    in-out property <color> mention: #b4b8ff;
-    // The box a code block in a message sits in.
-    in-out property <color> code-bg: #1b1b1b;
-    in-out property <color> danger: #d13438;
-    in-out property <color> unread-badge: #c4314b;
-    // The presence dot and icons: Available, Busy / Do not disturb, Be right back / Away, Offline.
-    in-out property <color> presence-available: #6bb700;
-    in-out property <color> presence-busy: #c4314b;
-    in-out property <color> presence-away: #ffaa44;
-    in-out property <color> presence-offline: #8a8886;
-    // The dimmed backdrop behind a dialog or an overlay.
-    in-out property <color> scrim: #00000080;
-    in-out property <length> radius: 6px;
+    // The colours of each region (ui/README.md, "Theme regions"), set at runtime from the
+    // appearance and accessibility settings (`apply_look` in src/ui/settings/push.rs). The
+    // defaults are the dark palette.
+    // The content area: chat, pages, dialogs.
+    in-out property <Tokens> content: {
+        bg: #141414,
+        surface: #292929,
+        surface-hover: #333333,
+        selected: #2e2e2e,
+        border: #3d3d3d,
+        panel: #1f1f1f,
+        rail: #0f0f0f,
+        topbar: #0f0f0f,
+        bg-alt: #181818,
+        bg-sunk: #101010,
+        grid-line: #3a3a3a,
+        grid-line-soft: #262626,
+        fg: #ffffff,
+        fg-muted: #adadad,
+        fg-subtle: #8a8a8a,
+        fg-strong: #ffffff,
+        accent: #7f85f5,
+        accent-strong: #5b5fc7,
+        on-accent: #ffffff,
+        accent-soft: #3b3d6b,
+        accent-subtle: #34365c,
+        accent-muted: #2b2d52,
+        accent-faint: #17172a,
+        accent-wash: #7f85f526,
+        accent-tint: #7f85f540,
+        bubble-mine: #2f2f4a,
+        bubble-other: #292929,
+        bubble-mention: #3a3a63,
+        mention: #b4b8ff,
+        // The box a code block in a message sits in.
+        code-bg: #1b1b1b,
+        danger: #d13438,
+        danger-hover: #e04a4f,
+        on-danger: #ffffff,
+        danger-text: #ff8a8d,
+        danger-soft: #3b1f22,
+        warning: #ffb900,
+        warning-soft: #3a3320,
+        success: #6bd69b,
+        success-soft: #1e2f27,
+        info-soft: #1f2a3b,
+        unread-badge: #c4314b,
+        on-badge: #ffffff,
+        // The presence dot and icons: Available, Busy / Do not disturb, Be right back / Away, Offline.
+        presence-available: #6bb700,
+        presence-busy: #c4314b,
+        presence-away: #ffaa44,
+        presence-offline: #8a8886,
+        // The dimmed backdrop behind a dialog or an overlay.
+        scrim: #00000080,
+        overlay-soft: #ffffff10,
+        shimmer: #ffffff14,
+        dark: true,
+    };
+    // The nav: the rail, the sidebar, the chat list. Its background is the content's panel.
+    in-out property <Tokens> nav: {
+        bg: #1f1f1f,
+        surface: #292929,
+        surface-hover: #333333,
+        selected: #2e2e2e,
+        border: #3d3d3d,
+        panel: #1f1f1f,
+        rail: #0f0f0f,
+        topbar: #0f0f0f,
+        bg-alt: #181818,
+        bg-sunk: #101010,
+        grid-line: #3a3a3a,
+        grid-line-soft: #262626,
+        fg: #ffffff,
+        fg-muted: #adadad,
+        fg-subtle: #8a8a8a,
+        fg-strong: #ffffff,
+        accent: #7f85f5,
+        accent-strong: #5b5fc7,
+        on-accent: #ffffff,
+        accent-soft: #3b3d6b,
+        accent-subtle: #34365c,
+        accent-muted: #2b2d52,
+        accent-faint: #17172a,
+        accent-wash: #7f85f526,
+        accent-tint: #7f85f540,
+        bubble-mine: #2f2f4a,
+        bubble-other: #292929,
+        bubble-mention: #3a3a63,
+        mention: #b4b8ff,
+        code-bg: #1b1b1b,
+        danger: #d13438,
+        danger-hover: #e04a4f,
+        on-danger: #ffffff,
+        danger-text: #ff8a8d,
+        danger-soft: #3b1f22,
+        warning: #ffb900,
+        warning-soft: #3a3320,
+        success: #6bd69b,
+        success-soft: #1e2f27,
+        info-soft: #1f2a3b,
+        unread-badge: #c4314b,
+        on-badge: #ffffff,
+        presence-available: #6bb700,
+        presence-busy: #c4314b,
+        presence-away: #ffaa44,
+        presence-offline: #8a8886,
+        scrim: #00000080,
+        overlay-soft: #ffffff10,
+        shimmer: #ffffff14,
+        dark: true,
+    };
+    // The call screen and its menus: the content colours by default.
+    in-out property <Tokens> call: content;
+
+    // Read-only aliases of `content`, for the pages outside the nav and the call screen. Atoms,
+    // molecules, the nav set and the call set read their `c` input instead (scripts/check-ui-layers.sh,
+    // rule 3, reads the names from the lines below: keep one alias per line).
+    out property <color> main: content.bg;
+    out property <color> sidebar: content.panel;
     // A group of settings (a card on the page): one step off the page background, in every
     // palette (dark, light, high contrast).
-    out property <color> card: sidebar;
+    out property <color> card: content.panel;
+    out property <color> surface: content.surface;
+    out property <color> surface-hover: content.surface-hover;
+    out property <color> selected: content.selected;
+    out property <color> border: content.border;
+    out property <color> panel: content.panel;
+    out property <color> rail: content.rail;
+    out property <color> topbar: content.topbar;
+    out property <color> bg-alt: content.bg-alt;
+    out property <color> bg-sunk: content.bg-sunk;
+    out property <color> grid-line: content.grid-line;
+    out property <color> grid-line-soft: content.grid-line-soft;
+    out property <color> fg: content.fg;
+    out property <color> fg-muted: content.fg-muted;
+    out property <color> fg-subtle: content.fg-subtle;
+    out property <color> fg-strong: content.fg-strong;
+    out property <color> accent: content.accent;
+    out property <color> accent-strong: content.accent-strong;
+    out property <color> on-accent: content.on-accent;
+    out property <color> accent-soft: content.accent-soft;
+    out property <color> accent-subtle: content.accent-subtle;
+    out property <color> accent-muted: content.accent-muted;
+    out property <color> accent-faint: content.accent-faint;
+    out property <color> accent-wash: content.accent-wash;
+    out property <color> accent-tint: content.accent-tint;
+    out property <color> bubble-mine: content.bubble-mine;
+    out property <color> bubble-other: content.bubble-other;
+    out property <color> bubble-mention: content.bubble-mention;
+    out property <color> mention: content.mention;
+    out property <color> code-bg: content.code-bg;
+    out property <color> danger: content.danger;
+    out property <color> danger-hover: content.danger-hover;
+    out property <color> on-danger: content.on-danger;
+    out property <color> danger-text: content.danger-text;
+    out property <color> danger-soft: content.danger-soft;
+    out property <color> warning: content.warning;
+    out property <color> warning-soft: content.warning-soft;
+    out property <color> success: content.success;
+    out property <color> success-soft: content.success-soft;
+    out property <color> info-soft: content.info-soft;
+    out property <color> unread-badge: content.unread-badge;
+    out property <color> on-badge: content.on-badge;
+    out property <color> presence-available: content.presence-available;
+    out property <color> presence-busy: content.presence-busy;
+    out property <color> presence-away: content.presence-away;
+    out property <color> presence-offline: content.presence-offline;
+    out property <color> scrim: content.scrim;
+    out property <color> overlay-soft: content.overlay-soft;
+    out property <color> shimmer: content.shimmer;
+    out property <bool> dark: content.dark;
+
+    in-out property <length> radius: 6px;
     // Set at runtime from the appearance and accessibility settings (backend/settings.rs).
-    in-out property <bool> dark: true;
     in-out property <float> font-scale: 1.0;
     in-out property <bool> compact: false;
     in-out property <bool> high-contrast: false;

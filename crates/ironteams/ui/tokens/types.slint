@@ -203,3 +203,69 @@ export struct ActivityRow {
     // Who did it: the photo opens their hover card.
     person: string,
 }
+
+// The colours of one region of the window (content area, nav, call screen): `Theme.content`,
+// `Theme.nav` and `Theme.call` hold one each (ui/README.md, "Theme regions"). The Rust side is
+// `backend::settings::Palette`, with the same fields in the same order.
+export struct Tokens {
+    // Backgrounds.
+    bg: color,
+    surface: color,
+    surface-hover: color,
+    selected: color,
+    border: color,
+    panel: color,
+    rail: color,
+    topbar: color,
+    bg-alt: color,
+    bg-sunk: color,
+    grid-line: color,
+    grid-line-soft: color,
+    // Text.
+    fg: color,
+    fg-muted: color,
+    fg-subtle: color,
+    fg-strong: color,
+    // Accent.
+    accent: color,
+    accent-strong: color,
+    on-accent: color,
+    accent-soft: color,
+    accent-subtle: color,
+    accent-muted: color,
+    accent-faint: color,
+    accent-wash: color,
+    accent-tint: color,
+    // Messages.
+    bubble-mine: color,
+    bubble-other: color,
+    bubble-mention: color,
+    mention: color,
+    code-bg: color,
+    // Status.
+    danger: color,
+    danger-hover: color,
+    on-danger: color,
+    danger-text: color,
+    danger-soft: color,
+    warning: color,
+    warning-soft: color,
+    success: color,
+    success-soft: color,
+    info-soft: color,
+    unread-badge: color,
+    on-badge: color,
+    presence-available: color,
+    presence-busy: color,
+    presence-away: color,
+    presence-offline: color,
+    // Overlays.
+    scrim: color,
+    overlay-soft: color,
+    shimmer: color,
+    // The region is dark.
+    dark: bool,
+}
+
+// One fixed accent colour of Settings > Appearance: its value (`v`, "#rrggbb"), name and colour.
+export struct AccentChoice { v: string, l: string, c: color }

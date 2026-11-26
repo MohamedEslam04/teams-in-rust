@@ -20,7 +20,7 @@
 //! photo-remove, check-updates-menu, beta-updates, restart-update,
 //! media-cache-limit, clear-media-cache, clear-all-cache, delete-update-backups.
 
-use super::{UiHandle, model, rgb};
+use super::{UiHandle, model, rgba};
 use crate::backend::Cmd;
 use crate::backend::call_feedback::Ask;
 use crate::backend::expiry;
@@ -38,7 +38,7 @@ use crate::{
     SettingsStore, Theme,
 };
 use app_store::DevicePermission;
-use appearance::{Density, PortalChange, PortalSettings, Rgb, Theme as ThemeChoice};
+use appearance::{Density, PortalChange, PortalSettings, Rgb, Theme as LegacyTheme};
 use session::OpenChatAt;
 use slint::{ComponentHandle, ModelRc, SharedString};
 use std::cell::RefCell;
@@ -55,6 +55,9 @@ mod install;
 pub use install::*;
 mod push;
 pub(super) use push::*;
+// The UI tests play desktop portal changes.
+#[cfg(test)]
+pub(crate) use push::portal_changed;
 mod misc;
 use misc::*;
 mod updates;
@@ -105,6 +108,8 @@ struct Ctl {
     status_before: Option<(String, String, String)>,
     /// The account switch being decided (`switch`).
     switching: Option<switch::Pending>,
+    /// The last look applied to the windows (`look_changed`), `None` before the first.
+    last_look: Option<Look>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.

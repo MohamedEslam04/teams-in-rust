@@ -46,14 +46,252 @@ fn palettes_follow_theme_contrast_and_accent() {
         CONTRAST_LIGHT
     );
     let p = palette(ResolvedTheme::Dark, false, Some(Rgb::new(0x0f, 0x6c, 0xbd)));
-    assert_eq!(p.accent_strong, 0x0f6cbd);
+    assert_eq!(p.accent_strong, 0x0f6cbdff);
     assert_ne!(p.accent, DARK.accent);
     let l = palette(
         ResolvedTheme::Light,
         false,
         Some(Rgb::new(0x0f, 0x6c, 0xbd)),
     );
-    assert_eq!(l.accent, 0x0f6cbd);
+    assert_eq!(l.accent, 0x0f6cbdff);
+}
+
+/// Every token of the four literal palettes, in `Tokens` order: DARK, LIGHT, CONTRAST_DARK,
+/// CONTRAST_LIGHT, as `0xRRGGBBAA` (docs/designs/theme-engine.md, "Values in the four literal
+/// palettes"). These are the colours the screens drew before the tokens, so nothing moves.
+#[test]
+fn literal_palettes_hold_todays_colours() {
+    let token = |p: &Palette, name: &str| -> u32 {
+        match name {
+            "bg" => p.bg,
+            "surface" => p.surface,
+            "surface-hover" => p.surface_hover,
+            "selected" => p.selected,
+            "border" => p.border,
+            "panel" => p.panel,
+            "rail" => p.rail,
+            "topbar" => p.topbar,
+            "bg-alt" => p.bg_alt,
+            "bg-sunk" => p.bg_sunk,
+            "grid-line" => p.grid_line,
+            "grid-line-soft" => p.grid_line_soft,
+            "fg" => p.fg,
+            "fg-muted" => p.fg_muted,
+            "fg-subtle" => p.fg_subtle,
+            "fg-strong" => p.fg_strong,
+            "accent" => p.accent,
+            "accent-strong" => p.accent_strong,
+            "on-accent" => p.on_accent,
+            "accent-soft" => p.accent_soft,
+            "accent-subtle" => p.accent_subtle,
+            "accent-muted" => p.accent_muted,
+            "accent-faint" => p.accent_faint,
+            "accent-wash" => p.accent_wash,
+            "accent-tint" => p.accent_tint,
+            "bubble-mine" => p.bubble_mine,
+            "bubble-other" => p.bubble_other,
+            "bubble-mention" => p.bubble_mention,
+            "mention" => p.mention,
+            "code-bg" => p.code_bg,
+            "danger" => p.danger,
+            "danger-hover" => p.danger_hover,
+            "on-danger" => p.on_danger,
+            "danger-text" => p.danger_text,
+            "danger-soft" => p.danger_soft,
+            "warning" => p.warning,
+            "warning-soft" => p.warning_soft,
+            "success" => p.success,
+            "success-soft" => p.success_soft,
+            "info-soft" => p.info_soft,
+            "unread-badge" => p.unread_badge,
+            "on-badge" => p.on_badge,
+            "presence-available" => p.presence_available,
+            "presence-busy" => p.presence_busy,
+            "presence-away" => p.presence_away,
+            "presence-offline" => p.presence_offline,
+            "scrim" => p.scrim,
+            "overlay-soft" => p.overlay_soft,
+            "shimmer" => p.shimmer,
+            _ => panic!("no token {name}"),
+        }
+    };
+    let table: [(&str, [u32; 4]); 49] = [
+        ("bg", [0x141414ff, 0xffffffff, 0x000000ff, 0xffffffff]),
+        ("surface", [0x292929ff, 0xf0f0f0ff, 0x000000ff, 0xffffffff]),
+        (
+            "surface-hover",
+            [0x333333ff, 0xe0e0e0ff, 0x1f1f1fff, 0xe6e6e6ff],
+        ),
+        ("selected", [0x2e2e2eff, 0xe8ebfaff, 0x3d3d00ff, 0xd6e4ffff]),
+        ("border", [0x3d3d3dff, 0xd1d1d1ff, 0xffffffff, 0x000000ff]),
+        ("panel", [0x1f1f1fff, 0xf5f5f5ff, 0x000000ff, 0xffffffff]),
+        ("rail", [0x0f0f0fff, 0xebebebff, 0x000000ff, 0xffffffff]),
+        ("topbar", [0x0f0f0fff, 0xebebebff, 0x000000ff, 0xffffffff]),
+        ("bg-alt", [0x181818ff, 0x181818ff, 0x181818ff, 0x181818ff]),
+        ("bg-sunk", [0x101010ff, 0x101010ff, 0x101010ff, 0x101010ff]),
+        (
+            "grid-line",
+            [0x3a3a3aff, 0x3a3a3aff, 0x3a3a3aff, 0x3a3a3aff],
+        ),
+        (
+            "grid-line-soft",
+            [0x262626ff, 0x262626ff, 0x262626ff, 0x262626ff],
+        ),
+        ("fg", [0xffffffff, 0x242424ff, 0xffffffff, 0x000000ff]),
+        ("fg-muted", [0xadadadff, 0x5c5c5cff, 0xffffffff, 0x000000ff]),
+        (
+            "fg-subtle",
+            [0x8a8a8aff, 0x6e6e6eff, 0xe6e6e6ff, 0x1a1a1aff],
+        ),
+        (
+            "fg-strong",
+            [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff],
+        ),
+        ("accent", [0x7f85f5ff, 0x5b5fc7ff, 0xffff00ff, 0x00009fff]),
+        (
+            "accent-strong",
+            [0x5b5fc7ff, 0x4f52b2ff, 0x1aebffff, 0x00009fff],
+        ),
+        (
+            "on-accent",
+            [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff],
+        ),
+        (
+            "accent-soft",
+            [0x3b3d6bff, 0x3b3d6bff, 0x3b3d6bff, 0x3b3d6bff],
+        ),
+        (
+            "accent-subtle",
+            [0x34365cff, 0x34365cff, 0x34365cff, 0x34365cff],
+        ),
+        (
+            "accent-muted",
+            [0x2b2d52ff, 0x2b2d52ff, 0x2b2d52ff, 0x2b2d52ff],
+        ),
+        (
+            "accent-faint",
+            [0x17172aff, 0x17172aff, 0x17172aff, 0x17172aff],
+        ),
+        (
+            "accent-wash",
+            [0x7f85f526, 0x7f85f526, 0x7f85f526, 0x7f85f526],
+        ),
+        (
+            "accent-tint",
+            [0x7f85f540, 0x7f85f540, 0x7f85f540, 0x7f85f540],
+        ),
+        (
+            "bubble-mine",
+            [0x2f2f4aff, 0xe8ebfaff, 0x000000ff, 0xffffffff],
+        ),
+        (
+            "bubble-other",
+            [0x292929ff, 0xf5f5f5ff, 0x000000ff, 0xffffffff],
+        ),
+        (
+            "bubble-mention",
+            [0x3a3a63ff, 0x3a3a63ff, 0x3a3a63ff, 0x3a3a63ff],
+        ),
+        ("mention", [0xb4b8ffff, 0x4f52b2ff, 0xffff00ff, 0x00009fff]),
+        ("code-bg", [0x1b1b1bff, 0xebebebff, 0x000000ff, 0xffffffff]),
+        ("danger", [0xd13438ff, 0xc4314bff, 0xff6b6bff, 0xa80000ff]),
+        (
+            "danger-hover",
+            [0xe04a4fff, 0xe04a4fff, 0xe04a4fff, 0xe04a4fff],
+        ),
+        (
+            "on-danger",
+            [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff],
+        ),
+        (
+            "danger-text",
+            [0xff8a8dff, 0xff8a8dff, 0xff8a8dff, 0xff8a8dff],
+        ),
+        (
+            "danger-soft",
+            [0x3b1f22ff, 0x3b1f22ff, 0x3b1f22ff, 0x3b1f22ff],
+        ),
+        ("warning", [0xffb900ff, 0xffb900ff, 0xffb900ff, 0xffb900ff]),
+        (
+            "warning-soft",
+            [0x3a3320ff, 0xfff4ceff, 0x3a3320ff, 0xfff4ceff],
+        ),
+        ("success", [0x6bd69bff, 0x6bd69bff, 0x6bd69bff, 0x6bd69bff]),
+        (
+            "success-soft",
+            [0x1e2f27ff, 0x1e2f27ff, 0x1e2f27ff, 0x1e2f27ff],
+        ),
+        (
+            "info-soft",
+            [0x1f2a3bff, 0x1f2a3bff, 0x1f2a3bff, 0x1f2a3bff],
+        ),
+        (
+            "unread-badge",
+            [0xc4314bff, 0xc4314bff, 0xffff00ff, 0xa80000ff],
+        ),
+        ("on-badge", [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]),
+        (
+            "presence-available",
+            [0x6bb700ff, 0x6bb700ff, 0x6bb700ff, 0x6bb700ff],
+        ),
+        (
+            "presence-busy",
+            [0xc4314bff, 0xc4314bff, 0xc4314bff, 0xc4314bff],
+        ),
+        (
+            "presence-away",
+            [0xffaa44ff, 0xffaa44ff, 0xffaa44ff, 0xffaa44ff],
+        ),
+        (
+            "presence-offline",
+            [0x8a8886ff, 0x8a8886ff, 0x8a8886ff, 0x8a8886ff],
+        ),
+        ("scrim", [0x00000080, 0x00000080, 0x00000080, 0x00000080]),
+        (
+            "overlay-soft",
+            [0xffffff10, 0x0000000f, 0xffffff10, 0x0000000f],
+        ),
+        ("shimmer", [0xffffff14, 0xffffffb0, 0xffffff14, 0xffffffb0]),
+    ];
+    let palettes = [DARK, LIGHT, CONTRAST_DARK, CONTRAST_LIGHT];
+    for (name, values) in table {
+        for (p, want) in palettes.iter().zip(values) {
+            assert_eq!(
+                token(p, name),
+                want,
+                "{name}: {:08x} != {want:08x}",
+                token(p, name)
+            );
+        }
+    }
+    assert_eq!(palettes.map(|p| p.dark), [true, false, true, false]);
+}
+
+#[test]
+fn nav_of_takes_the_panel_as_background() {
+    for p in [DARK, LIGHT, CONTRAST_DARK, CONTRAST_LIGHT] {
+        let nav = nav_of(&p);
+        assert_eq!(nav.bg, p.panel);
+        assert_eq!(Palette { bg: p.bg, ..nav }, p, "only the background moves");
+    }
+    assert_eq!(nav_of(&DARK).bg, opaque(0x1f1f1f));
+}
+
+#[test]
+fn look_carries_h24_and_three_regions() {
+    let mut l = Local::load(&tempfile_dir("regions"));
+    l.appearance.theme = Theme::Light;
+    l.appearance.accent = Some(Rgb::new(0x0f, 0x6c, 0xbd));
+    let lk = look(&l, None);
+    assert_eq!(lk.call, lk.content);
+    assert_eq!(lk.nav.bg, lk.content.panel);
+    assert_eq!(lk.nav, nav_of(&lk.content));
+    assert!(!lk.content.dark);
+    assert!(!lk.h24, "12-hour is the default");
+    l.general.time_format = TimeFormat::H24;
+    assert!(look(&l, None).h24);
+    l.general.time_format = TimeFormat::H12;
+    assert!(!look(&l, None).h24);
 }
 
 #[test]
@@ -73,16 +311,19 @@ fn look_resolves_system_theme_contrast_motion_and_text_scale() {
         ..Default::default()
     };
     let lk = look(&l, Some(&dark_portal));
-    assert!(lk.dark && lk.reduced_motion && !lk.high_contrast);
-    assert!(look(&l, None).dark, "no portal: dark, the built-in look");
+    assert!(lk.content.dark && lk.reduced_motion && !lk.high_contrast);
+    assert!(
+        look(&l, None).content.dark,
+        "no portal: dark, the built-in look"
+    );
     l.appearance.theme = Theme::Dark;
     l.appearance.set_font_scale(1.2);
     l.a11y.larger_text = true;
     l.a11y.high_contrast = AutoSwitch::On;
     let lk = look(&l, None);
-    assert!(lk.dark && lk.high_contrast);
+    assert!(lk.content.dark && lk.high_contrast);
     assert!((lk.font_scale - 1.5).abs() < 1e-6);
-    assert_eq!(lk.palette, CONTRAST_DARK);
+    assert_eq!(lk.content, CONTRAST_DARK);
 }
 
 #[test]

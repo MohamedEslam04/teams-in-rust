@@ -73,6 +73,7 @@ Files:
 - `[spell.rs:Speller]` pub struct (Default) holding english/arabic Dictionary, personal word set, optional words file
 - `[topbar.rs:HELP_URL]` pub const &str, target of Help menu and /help
 - `[ui.rs:install_local]` pub fn(window:&AppWindow) wires UI-only handlers: loop_compose, palette, message_toast, reaction picker search
+- `[ui.rs:rgb/rgba]` private fn(u32)->slint::Color; `rgb` takes 0xRRGGBB, `rgba` a theme token colour as 0xRRGGBBAA (used by settings::push::ui_tokens)
 - `[window_state.rs:SAVE_INTERVAL]` pub const Duration = 500ms; minimum spacing between writes
 - `[main.rs:main]` fn main() -> anyhow::Result<()>: process entry point
 - `[demo.rs:seed]` pub fn seed(st: &Store, now: i64) -> anyhow::Result<()>: fills store with 5 users, 1 team, 9 conversations (favorites notes + backend) and sample messages/threads/reactions
