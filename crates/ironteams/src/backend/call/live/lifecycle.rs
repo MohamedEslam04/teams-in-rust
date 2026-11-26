@@ -221,16 +221,20 @@ impl Call {
         }
         self.pending_offer = None;
         self.answered = true;
+        self.camera.settled();
         match reoffer {
             Reoffer::Hold(on) => audio.held.store(!on, Ordering::Relaxed),
+            // Refused either way: not offered again (the camera stays off, or stopped).
+            Reoffer::Camera(false) => self.camera.told(false),
             Reoffer::Camera(true) => {
+                self.camera.told(false);
                 self.camera.stop(sink).await;
             }
             Reoffer::Share(true) => {
                 self.share.stop().await;
                 share::leave_session(&self.ngc, &self.s, &mut self.share).await;
             }
-            Reoffer::Camera(false) | Reoffer::Share(false) => {}
+            Reoffer::Share(false) => {}
         }
         for ev in reoffer.refused() {
             sink.send(ev);

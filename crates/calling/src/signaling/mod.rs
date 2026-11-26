@@ -72,6 +72,48 @@ fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+/// An error and every error under it, as one line ("error sending request: client error
+/// (SendRequest): connection error: connection reset").
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut text = e.to_string();
+    let mut source = e.source();
+    while let Some(s) = source {
+        let line = s.to_string();
+        if !text.contains(&line) {
+            text.push_str(": ");
+            text.push_str(&line);
+        }
+        source = s.source();
+    }
+    text
+}
+
+/// The requests sent once more when their connection was lost: the media negotiation's (the
+/// answer to the other side's offer, our re-offer, its acknowledgement) and the mute state, which
+/// the service takes the same way twice. Placing a call or adding a person is never repeated.
+fn retries_on_lost_connection(op: &str) -> bool {
+    matches!(
+        op,
+        "media_answer" | "media_renegotiation" | "media_acknowledgement" | "update_endpoint_state"
+    )
+}
+
+/// Whether a request failed because its connection went away (reset, closed, aborted), not
+/// because the service answered.
+fn connection_lost(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    [
+        "connection reset",
+        "connection closed",
+        "connection aborted",
+        "broken pipe",
+        "incomplete message",
+        "unexpected eof",
+    ]
+    .iter()
+    .any(|s| e.contains(s))
+}
+
 /// A media leg id shaped like the web client's: 32 upper-case hex digits.
 fn new_media_leg_id() -> String {
     uuid::Uuid::new_v4().simple().to_string().to_uppercase()
@@ -234,22 +276,34 @@ impl NgcClient {
         let target = endpoints::routed_url(url)?;
         let ic3 = self.client.token_for(&Audience::Ic3).await?;
         let message_id = new_id();
-        let mut req = self.client.http().request(method.clone(), &target);
-        for (k, v) in endpoints::call_headers(&self.endpoints, &s.chain_id, &message_id, &ic3) {
-            req = req.header(k, v);
-        }
-        for (k, v) in extra {
-            req = req.header(*k, *v);
-        }
-        req = match body {
-            Some(b) => req.body(serde_json::to_vec(b)?),
-            None => req.header("Content-Length", "0"),
-        };
-        let resp = match req.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                self.observe(op, &method, &target, body, 0, &e.to_string());
-                return Err(teams_proto::Error::from(e).into());
+        let mut retried = false;
+        let resp = loop {
+            let mut req = self.client.http().request(method.clone(), &target);
+            for (k, v) in endpoints::call_headers(&self.endpoints, &s.chain_id, &message_id, &ic3) {
+                req = req.header(k, v);
+            }
+            for (k, v) in extra {
+                req = req.header(*k, *v);
+            }
+            req = match body {
+                Some(b) => req.body(serde_json::to_vec(b)?),
+                None => req.header("Content-Length", "0"),
+            };
+            match req.send().await {
+                Ok(r) => break r,
+                Err(e) => {
+                    let why = error_chain(&e);
+                    self.observe(op, &method, &target, body, 0, &why);
+                    // A pooled connection the server or the network had dropped (live
+                    // 2026-11-26: the media answer waited 7-15 s, then "connection reset"):
+                    // once more, on a new connection.
+                    if !retried && retries_on_lost_connection(op) && connection_lost(&why) {
+                        retried = true;
+                        tracing::info!(op, error = %why, "connection lost: request sent again");
+                        continue;
+                    }
+                    return Err(teams_proto::Error::from(e).into());
+                }
             }
         };
         let status = resp.status().as_u16();
@@ -911,6 +965,46 @@ fn merge(opened: Conversation, joined: &NgcResponse) -> Conversation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Live 2026-11-26: the answer to the other side's camera offer failed on a dropped pooled
+    // connection and showed "The media update was refused." instead of being sent again.
+    #[test]
+    fn a_media_request_on_a_lost_connection_is_sent_again() {
+        let live = "http: error sending request: client error (SendRequest): connection error: connection reset";
+        assert!(connection_lost(live));
+        assert!(connection_lost(
+            "connection closed before message completed"
+        ));
+        assert!(connection_lost("Broken pipe (os error 32)"));
+        assert!(!connection_lost("media_answer: status 403: Forbidden"));
+        assert!(!connection_lost("operation timed out"));
+        assert!(retries_on_lost_connection("media_answer"));
+        assert!(retries_on_lost_connection("media_renegotiation"));
+        assert!(retries_on_lost_connection("update_endpoint_state"));
+        assert!(!retries_on_lost_connection("place_call"));
+        assert!(!retries_on_lost_connection("add_participant"));
+    }
+
+    #[test]
+    fn an_error_chain_is_one_line() {
+        #[derive(Debug)]
+        struct E(&'static str, Option<Box<E>>);
+        impl std::fmt::Display for E {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+        impl std::error::Error for E {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                self.1.as_deref().map(|e| e as _)
+            }
+        }
+        let e = E(
+            "error sending request",
+            Some(Box::new(E("connection reset", None))),
+        );
+        assert_eq!(error_chain(&e), "error sending request: connection reset");
+    }
 
     #[test]
     fn controller_operations_keep_the_query() {

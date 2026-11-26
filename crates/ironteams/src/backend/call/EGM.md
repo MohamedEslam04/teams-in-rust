@@ -99,7 +99,7 @@ Files:
 - `[share.rs:Share::sender_control]` pub fn(&self, &serde_json::Value); forwards keyframe requests to encoder
 
 ## Invariants
-- `[camera.rs:Camera::open]` no-op while `opening` or already on; guards against double open
+- `[camera.rs:Camera::open]` no-op while `opening` or already on; guards against double open; `Camera::stop` clears `opening`, and a capture that arrives once it was cleared is stopped, not started (live `camera_msg`)
 - `[model_state.rs:CallModel::prejoin]` refused with ALREADY_IN_CALL (and error set) while phase.active(); on success the whole model is reset except my_name
 - `[remote_control.rs:DOUBLE_ESCAPE]` two Escapes within 1000 ms take control back
 - `[share.rs:Share::pick_via]` no-op when already picking or sharing; picker always ShareKind::Any (sharing never asks for control; control is asked on grant via ask_input)
@@ -119,7 +119,9 @@ Files:
 - `[model_state.rs:CallModel::react]` only while Phase::Connected and at least REACTION_EVERY since last send; floating list capped by MAX_FLOATING and REACTION_SHOWN expiry
 - `[remote_control.rs:Machine::context]` Controlled/Incoming end with Revoke sent when can_give is lost; Controlling/Requested end quietly when the presenter changes or leaves
 - `[share.rs:meeting_mid]` a meeting line is switchable only if the join declared its mid AND media server answered it live (not port 0); otherwise server refuses (400/1047) and ends call (410/301999)
-- `[camera.rs:Camera::changed]` returns Some only when (available,on) differs from last shown state
+- `[camera.rs:Camera::changed]` returns Some only when (available,on) differs from last shown state; `on` is `Camera::wanted` (opening or sending), so the button says "on" from the click on, the next toggle turns it off, and the menu preview (which needs `!camera`) never opens the device the call's camera is opening
+- `[camera.rs:reoffer_due/Camera::reoffer_due]` a 1:1 camera re-offer goes out only when the camera's state differs from what the service was last told (`told`) and no re-offer of ours waits for its answer (one waiting `ANSWER_WAIT` = 30 s or longer no longer holds it back); `told` follows our re-offer, our answer to their offer (`camera.on()`), and is `false` after a failed or refused re-offer and after a media restart's takeover
+- `[camera.rs:in_use/open_error_text]` a camera another app holds (V4L2 "is busy" / "Device or resource busy") is "Your camera is being used by another app." (`IN_USE`); the live call shows it as `Event::Notice`, not an error
 - `[model_state.rs:CallModel::caption]` dropped unless captions on and non-blank; list capped at CAPTION_LINES, same id updates in place
 - `[remote_control.rs:outgoing]` pointer coordinates clamped to 10_000 and normalized to 0..1; unknown button or keysym yields None (dropped)
 - `[share.rs:meeting_update]` description lists only declared+live mids, receive-only except those in Sending
