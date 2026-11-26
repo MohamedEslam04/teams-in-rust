@@ -114,8 +114,8 @@ async fn a_re_offer_after_answering_keeps_the_negotiated_lines() {
         .unwrap();
     session.accept_offer(OFFER).await.unwrap();
     let ours = session.create_offer().await.unwrap();
-    // Hold, camera on/off (`camera::reoffer_direct`) and share (`share::reoffer_direct`) only
-    // rewrite directions of this offer.
+    // Hold, camera on/off and share (the GUI's `live::reoffers::reoffer_sdp`) only rewrite
+    // directions of this offer.
     let hold = hold_offer(&ours);
     let camera = with_role_direction(
         &with_role_direction(&ours, VideoRole::MainVideo, "recvonly"),

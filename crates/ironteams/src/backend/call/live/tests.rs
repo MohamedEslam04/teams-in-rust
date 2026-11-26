@@ -91,6 +91,281 @@ fn the_superseded_re_offer_is_refused_before_one_made_on_the_new_session() {
     );
 }
 
+fn said(held: bool, camera: bool, share: bool) -> Said {
+    Said {
+        held,
+        camera,
+        share,
+    }
+}
+
+fn secs(n: u64) -> Duration {
+    Duration::from_secs(n)
+}
+
+/// Our offer as webrtc-rs makes it on a 1:1 call: audio, the camera line (`sendonly` though the
+/// camera is off, as webrtc-rs leaves it) and the sharing line.
+const OURS: &str = "v=0\r\n\
+m=audio 9 RTP/SAVP 111\r\na=mid:0\r\na=sendrecv\r\n\
+m=video 9 RTP/SAVP 107\r\na=mid:1\r\na=sendonly\r\na=label:main-video\r\n\
+m=video 9 RTP/SAVP 107\r\na=mid:2\r\na=inactive\r\na=label:applicationsharing-video\r\n";
+
+/// Each line's direction, in order.
+fn line_directions(sdp: &str) -> Vec<&str> {
+    sdp.lines()
+        .filter(|l| ["a=sendrecv", "a=sendonly", "a=recvonly", "a=inactive"].contains(l))
+        .collect()
+}
+
+/// Live 2026-11-26 (PR #61): two re-offers went out back to back and an answer was applied to the
+/// wrong one. A share started while the camera's re-offer waits for its answer waits too, then
+/// one re-offer says both.
+#[test]
+fn a_share_started_while_a_camera_re_offer_is_pending_waits_then_goes_with_it() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let camera = said(false, true, false);
+    assert_eq!(r.due(camera, false, t0), Some(camera));
+    let id = r.send(camera, Some("p;v_2".into()), OURS.into(), t0);
+    // The share starts: the camera's answer is due, nothing goes out.
+    let both = said(false, true, true);
+    assert_eq!(r.due(both, false, t0 + secs(2)), None);
+    // The camera's answer: it is the camera re-offer's.
+    let Answered::Pending(sent) = r.answer(None) else {
+        panic!("the camera re-offer is answered")
+    };
+    assert_eq!((sent.id, sent.to), (id, camera));
+    assert!(
+        !sent.holds(),
+        "applied as a media answer, not mirrored like a hold's"
+    );
+    // One re-offer now says both: the share is what changed, so it carries the share's tag.
+    assert_eq!(r.due(both, false, t0 + secs(3)), Some(both));
+    r.send(both, None, OURS.into(), t0 + secs(3));
+    let pending = r.pending.as_ref().expect("the share re-offer is out");
+    assert_eq!(pending.from, camera);
+    assert_eq!(pending.changes(), [Reoffer::Share(true)]);
+    assert_eq!(
+        tag_line(camera, both),
+        Some((calling::video::VideoRole::ApplicationSharing, true))
+    );
+    assert_eq!(
+        line_directions(&reoffer_sdp(OURS, both, false, true)),
+        ["a=sendrecv", "a=sendrecv", "a=sendonly"],
+        "the camera line still sends beside the share"
+    );
+    assert_eq!(r.due(both, false, t0 + secs(4)), None, "said once");
+}
+
+/// Hold while a share re-offer waits for its answer: the hold goes once that is answered, as a
+/// hold (every line `inactive`, no tag, its answer mirrored), and still says the share.
+#[test]
+fn hold_while_a_share_re_offer_is_pending_waits_then_holds_the_share_too() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let share = said(false, false, true);
+    r.send(share, Some("p;ss_1".into()), OURS.into(), t0);
+    let held = said(true, false, true);
+    assert_eq!(
+        r.due(held, false, t0 + secs(1)),
+        None,
+        "the share's answer is due"
+    );
+    assert!(matches!(r.answer(Some("p;ss_1")), Answered::Pending(_)));
+    assert_eq!(r.due(held, false, t0 + secs(2)), Some(held));
+    assert_eq!(tag_line(share, held), None, "a hold carries no tag");
+    assert_eq!(
+        line_directions(&reoffer_sdp(OURS, held, false, true)),
+        ["a=inactive", "a=inactive", "a=inactive"]
+    );
+    r.send(held, None, OURS.into(), t0 + secs(2));
+    let pending = r.pending.as_ref().unwrap();
+    assert!(pending.holds());
+    assert_eq!(pending.changes(), [Reoffer::Hold(true)]);
+    // Resumed: the camera line says what the camera does, not webrtc-rs's `sendonly`.
+    assert_eq!(
+        line_directions(&reoffer_sdp(OURS, share, false, true)),
+        ["a=sendrecv", "a=recvonly", "a=sendonly"]
+    );
+    // A meeting's re-offer is the hold alone: its lines go by UpdateMediaDescriptions.
+    assert_eq!(
+        line_directions(&reoffer_sdp(OURS, said(false, true, true), true, true)),
+        ["a=sendrecv", "a=sendonly", "a=inactive"]
+    );
+}
+
+/// Clicks faster than the answers come: only the state when the answer arrives is said, once.
+#[test]
+fn rapid_toggles_coalesce_into_the_latest_state() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let off = said(false, false, false);
+    let on = said(false, true, false);
+    // Hold and resume before anything went out: nothing to say.
+    assert_eq!(r.due(off, false, t0), None);
+    // Camera on: out. Off, on, off, on before its answer: nothing more goes.
+    r.send(on, Some("p;v_2".into()), OURS.into(), t0);
+    for (i, want) in [off, on, off, on].into_iter().enumerate() {
+        assert_eq!(r.due(want, false, t0 + secs(i as u64 + 1)), None);
+    }
+    assert!(matches!(r.answer(None), Answered::Pending(_)));
+    assert_eq!(
+        r.due(on, false, t0 + secs(6)),
+        None,
+        "on was said: nothing to send"
+    );
+    // Off, then share and hold too, all while nothing is out: one re-offer with everything.
+    let all = said(true, false, true);
+    assert_eq!(r.due(all, false, t0 + secs(7)), Some(all));
+    r.send(all, None, OURS.into(), t0 + secs(7));
+    assert_eq!(
+        r.pending.as_ref().unwrap().changes(),
+        [
+            Reoffer::Hold(true),
+            Reoffer::Camera(false),
+            Reoffer::Share(true)
+        ]
+    );
+}
+
+/// Nothing goes while the media moves to a new session, nor while their offer's superseded one
+/// may still be answered; an answer that never comes holds the next one back only so long.
+#[test]
+fn a_re_offer_waits_for_a_media_move_and_a_lost_answer_only_so_long() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let on = said(false, true, false);
+    assert_eq!(r.due(on, true, t0), None, "the media is moving");
+    r.send(on, Some("p;v_2".into()), OURS.into(), t0);
+    r.supersede();
+    assert!(r.pending.is_none());
+    let off = said(false, false, false);
+    assert_eq!(
+        r.due(off, false, t0 + secs(5)),
+        None,
+        "its answer may still come"
+    );
+    assert_eq!(r.due(off, false, t0 + ANSWER_WAIT), Some(off));
+    r.send(off, Some("p;v_1".into()), OURS.into(), t0 + ANSWER_WAIT);
+    let on_again = t0 + ANSWER_WAIT + secs(1);
+    assert_eq!(r.due(on, false, on_again), None);
+    assert_eq!(
+        r.due(on, false, t0 + ANSWER_WAIT * 2),
+        Some(on),
+        "never answered"
+    );
+}
+
+/// An answer is applied to the re-offer it answers: by its `negotiationTag` when it names one,
+/// else to the pending one (the only one out, but after a lost answer).
+#[test]
+fn answers_are_matched_to_their_negotiation_tag() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    assert_eq!(r.answer(None), Answered::Call, "nothing of ours is out");
+    let on = said(false, true, false);
+    r.send(on, Some("p;v_2".into()), OURS.into(), t0);
+    r.supersede();
+    r.send(
+        said(false, true, true),
+        Some("p;ss_1".into()),
+        OURS.into(),
+        t0 + ANSWER_WAIT,
+    );
+    // Someone else's negotiation: neither of ours is touched.
+    assert_eq!(r.answer(Some("p;v_9")), Answered::Unknown);
+    assert!(r.pending.is_some() && r.superseded.is_some());
+    // The superseded one's answer, by its tag: ignored, and the pending one still waits.
+    assert!(matches!(r.answer(Some("p;v_2")), Answered::Superseded(s) if s.to == on));
+    assert!(matches!(r.answer(Some("p;ss_1")), Answered::Pending(s) if s.to.share));
+    assert_eq!(r.answer(Some("p;ss_1")), Answered::Call);
+    // A hold has no tag: any answer may be its.
+    r.send(
+        said(true, true, true),
+        None,
+        OURS.into(),
+        t0 + ANSWER_WAIT * 2,
+    );
+    assert!(matches!(r.answer(Some("p;v_2")), Answered::Pending(_)));
+
+    let tagged = json!({"mediaAnswer": {"mediaContent": {"blob": "x", "negotiationTag": "p;v_2"}}});
+    assert_eq!(answer_tag(&tagged).as_deref(), Some("p;v_2"));
+    assert_eq!(
+        answer_tag(&json!({"mediaAnswer": {"negotiationTag": "p;ss_1"}})).as_deref(),
+        Some("p;ss_1")
+    );
+    assert_eq!(
+        answer_tag(&json!({"mediaAnswer": {"mediaContent": {}}})),
+        None
+    );
+}
+
+/// A refused re-offer undoes everything it carried, and the service is taken to know what is
+/// left, so the same change is not offered again.
+#[test]
+fn a_refused_re_offer_is_undone_whole_and_not_offered_again() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let both = said(false, true, true);
+    r.send(both, Some("p;ss_1".into()), OURS.into(), t0);
+    let Some(Refused::Pending(sent)) = r.rejected() else {
+        panic!("the pending re-offer is refused")
+    };
+    assert_eq!(
+        sent.changes(),
+        [Reoffer::Camera(true), Reoffer::Share(true)]
+    );
+    // Both are stopped: what is left is what the service knows.
+    assert_eq!(r.told, said(false, false, false));
+    assert_eq!(r.due(said(false, false, false), false, t0), None);
+
+    // A refused hold keeps the camera it did not change.
+    r.told = said(false, true, false);
+    r.send(said(true, true, false), None, OURS.into(), t0);
+    assert!(matches!(r.rejected(), Some(Refused::Pending(_))));
+    assert_eq!(r.told, said(false, true, false));
+    // A refused camera-off is not offered again: it stays off.
+    r.send(
+        said(false, false, false),
+        Some("p;v_1".into()),
+        OURS.into(),
+        t0,
+    );
+    assert!(matches!(r.rejected(), Some(Refused::Pending(_))));
+    assert_eq!(r.told, said(false, false, false));
+    assert_eq!(r.rejected(), None, "a later rejection is the call's own");
+}
+
+/// The re-offer's request runs off the loop: its result applies only to the re-offer it sent.
+#[test]
+fn a_request_s_result_applies_only_to_its_own_re_offer() {
+    let t0 = Instant::now();
+    let mut r = Reoffers::default();
+    let on = said(false, true, false);
+    let first = r.send(on, Some("p;v_2".into()), OURS.into(), t0);
+    // Answered on `call/mediaAnswer` before the request came back: its inline answer is late.
+    assert!(matches!(r.answer(None), Answered::Pending(_)));
+    assert_eq!(r.returned(first, false), None);
+    // A failed request refuses its re-offer: the camera it turned on is not told.
+    let second = r.send(
+        said(false, true, true),
+        Some("p;ss_1".into()),
+        OURS.into(),
+        t0,
+    );
+    assert_eq!(r.returned(first, true), None, "not the pending one");
+    assert_eq!(r.returned(second, true).map(|s| s.id), Some(second));
+    assert_eq!(r.told, on);
+    // Their offer superseded it while the request ran: done with, nothing undone.
+    let third = r.send(said(true, true, false), None, OURS.into(), t0);
+    r.supersede();
+    assert_eq!(r.returned(third, true), None);
+    assert!(
+        r.superseded.is_none(),
+        "its answer no longer holds the next one back"
+    );
+}
+
 /// A media server's restart offer (structure only): audio, camera, sharing, the data line.
 const RESTART_OFFER: &str = "v=0\r\no=- 1 0 IN IP4 198.51.100.20\r\ns=session\r\nt=0 0\r\n\
 a=group:BUNDLE 1 2 3\r\n\

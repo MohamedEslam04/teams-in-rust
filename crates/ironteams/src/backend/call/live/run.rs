@@ -61,6 +61,8 @@ impl Call {
         let mut hang_up = false;
         let (share_tx, mut share_rx) = mpsc::unbounded_channel();
         let (camera_tx, mut camera_rx) = mpsc::unbounded_channel();
+        // Our re-offers' requests run off the loop; their results come back here.
+        let (posted_tx, mut posted_rx) = mpsc::unbounded_channel();
         // Who the roster leaves unlabelled is looked up once per person (profile lookups run
         // off the loop and come back here).
         let (standing_tx, mut standing_rx) = mpsc::unbounded_channel::<Vec<Profile>>();
@@ -109,6 +111,9 @@ impl Call {
                     }
                 }
                 Some(m) = camera_rx.recv() => self.camera_msg(m, &camera_tx, &sink).await,
+                Some(p) = posted_rx.recv() => {
+                    roster_changed |= self.reoffer_posted(p, &audio, &sink).await;
+                }
                 Some(found) = standing_rx.recv() => {
                     for p in &found {
                         standing.insert(p.mri.clone(), Standing::from(p));
@@ -157,8 +162,8 @@ impl Call {
                             // So was the camera: it comes back on the new session's line (and
                             // is offered there again).
                             camera_wanted |= self.camera.stop(&sink).await;
-                            self.camera.told(false);
-                            self.camera.settled();
+                            self.reoffers.told.camera = false;
+                            self.reoffers.told.share = false;
                             let _ = old.close().await;
                             self.video.negotiated(&self.media, &offer, remote_video::Phase::Restart).await;
                             self.video.show(ev.video, &sink);
@@ -212,21 +217,21 @@ impl Call {
                             }
                             self.start_keep_alive(keep_alive_interval_s);
                         }
-                        // The answer to a re-offer their offer superseded: its session moved on.
-                        CallEvent::MediaAnswer { links, .. }
-                            if self.reoffer.is_none() && self.superseded.is_some() =>
-                        {
-                            let superseded = self.superseded.take();
-                            self.camera.settled();
-                            tracing::info!(?superseded, "answer to a superseded re-offer ignored");
-                            self.links.0.extend(links.0);
-                        }
+                        // Applied to the re-offer it answers (by its tag, when it names one); the
+                        // answer to one their offer superseded changes nothing.
                         CallEvent::MediaAnswer { answer, links } => {
-                            self.reoffer = None;
-                            self.camera.settled();
-                            match self.pending_offer.take() {
-                                Some(ours) => self.apply_reoffer_answer(&answer, &ours, &links, &sink).await,
-                                None => roster_changed |= self.apply_answer(&answer).await,
+                            let tag = answer_tag(&p.body);
+                            match self.reoffers.answer(tag.as_deref()) {
+                                Answered::Pending(sent) => {
+                                    roster_changed |= self.apply_reoffer(&sent, &answer, &links, &sink).await;
+                                }
+                                Answered::Superseded(sent) => {
+                                    tracing::info!(to = ?sent.to, "answer to a superseded re-offer ignored");
+                                }
+                                Answered::Unknown => {
+                                    tracing::info!(?tag, "answer to none of our re-offers ignored");
+                                }
+                                Answered::Call => roster_changed |= self.apply_answer(&answer).await,
                             }
                             self.links.0.extend(links.0);
                         }
@@ -245,13 +250,15 @@ impl Call {
                         // other side's recovery offer comes as `call/mediaRenegotiation`. One their
                         // offer superseded (live 2026-11-23: a resume met a media restart, then was
                         // refused) puts nothing back: the answer to theirs said what it asked for.
-                        CallEvent::Rejected(r) if self.reoffer.is_some() || self.superseded.is_some() => {
+                        CallEvent::Rejected(r)
+                            if self.reoffers.pending.is_some() || self.reoffers.superseded.is_some() =>
+                        {
                             tracing::warn!(code = r.code, sub = r.sub_code, phrase = %r.phrase, "re-offer refused");
-                            match refused_reoffer(&mut self.superseded, &mut self.reoffer) {
-                                Some(Refused::Pending(reoffer)) => self.refused(reoffer, &audio, &sink).await,
-                                Some(Refused::Superseded(reoffer)) => tracing::info!(
-                                    ?reoffer,
-                                    "the refused re-offer was for the session the media restart replaced: nothing undone"
+                            match self.reoffers.rejected() {
+                                Some(Refused::Pending(sent)) => self.refused(&sent, &audio, &sink).await,
+                                Some(Refused::Superseded(sent)) => tracing::info!(
+                                    to = ?sent.to,
+                                    "the refused re-offer was one their offer superseded: nothing undone"
                                 ),
                                 None => {}
                             }
@@ -449,8 +456,9 @@ impl Call {
             if can_camera && std::mem::take(&mut camera_wanted) {
                 self.camera.open(&camera_tx);
             }
-            // A 1:1 call learns what the camera does now, one re-offer at a time.
-            self.sync_camera(&sink).await;
+            // The other side learns the hold, and a 1:1 call's camera and share, one re-offer at
+            // a time.
+            self.sync_reoffer(&audio, &posted_tx, &sink).await;
             if let Some((available, on)) = self.camera.changed(can_camera) {
                 sink.send(Event::Camera { available, on });
             }
