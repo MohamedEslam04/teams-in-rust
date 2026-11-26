@@ -46,6 +46,10 @@ component InCall inherits Rectangle {
         property <bool> live: CallStore.in-call-phase();
         init => { self.focus(); }
         changed live => { if self.live { self.focus(); } }
+        // The shared-screen scope holds the focus while controlling; when control ends that
+        // scope goes away with the focus, so take it back or the in-call shortcuts go dead.
+        property <bool> controlling: CallStore.control-mode == "controlling" && CallStore.has-content;
+        changed controlling => { if !self.controlling && self.live { self.focus(); } }
         capture-key-pressed(event) => {
             if CallStore.in-call-phase() {
                 // Esc leaves immersive full screen before anything else can take it.

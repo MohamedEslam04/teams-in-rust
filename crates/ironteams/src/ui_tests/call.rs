@@ -2494,7 +2494,7 @@ fn a_share_shows_the_people_in_a_filmstrip_the_view_menu_moves_and_hides() {
         strip.absolute_position().x
     );
     assert!(
-        tiles(&c).len() >= 1,
+        !tiles(&c).is_empty(),
         "the strip holds camera tiles, not the share"
     );
 
@@ -2537,13 +2537,18 @@ fn controlling_a_shrunk_share(c: &CallHarness) {
     let s = cs(&c.h.app);
     s.set_filmstrip_pos("right".into());
     s.set_view_mode("content".into());
-    s.set_presenter("Ada Lovelace".into());
+    // Through the call, not the store: every command the window sends pushes the call's state
+    // back, which would drop a presenter or control mode set on the store alone.
+    c.fake.emit(Event::Presenter("Ada Lovelace".into()));
+    c.fake.emit(Event::Control {
+        mode: "controlling",
+        name: "Ada Lovelace".into(),
+    });
     s.set_content_video(slint::Image::from_rgb8(slint::SharedPixelBuffer::<
         slint::Rgb8Pixel,
     >::new(160, 90)));
     s.set_has_content(true);
-    s.set_remote_control(true);
-    s.set_control_mode("controlling".into());
+    assert_eq!(s.get_control_mode(), "controlling");
 }
 
 #[test]
@@ -2669,5 +2674,16 @@ fn call_chords_fire_even_while_controlling_a_shared_screen() {
     assert!(
         cs(&c.h.app).get_muted(),
         "the chord mutes even while controlling"
+    );
+
+    // Control ends: the shared-screen scope goes with the focus, and the chords still work.
+    c.fake.emit(Event::Control {
+        mode: "",
+        name: String::new(),
+    });
+    call_chord(&c, &[Key::Control, Key::Shift], "m");
+    assert!(
+        !cs(&c.h.app).get_muted(),
+        "the chord unmutes after control ends"
     );
 }
