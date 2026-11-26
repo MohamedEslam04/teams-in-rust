@@ -169,6 +169,7 @@ fn team_section(team_id: &str) -> String {
 /// Replaces the collapsed teams in `s` with `teams`, leaving other sections alone.
 pub fn set_collapsed_teams(s: &mut WindowState, teams: &HashSet<String>) {
     let old: Vec<String> = s
+        .active_view()
         .collapsed_sections
         .iter()
         .filter(|x| x.starts_with(TEAM_PREFIX))
@@ -194,7 +195,8 @@ pub fn set_quick_views_open(s: &mut WindowState, open: bool) {
 
 /// The team ids collapsed in `s`.
 pub fn collapsed_teams_of(s: &WindowState) -> HashSet<String> {
-    s.collapsed_sections
+    s.active_view()
+        .collapsed_sections
         .iter()
         .filter_map(|x| x.strip_prefix(TEAM_PREFIX))
         .map(str::to_owned)
@@ -464,8 +466,8 @@ pub fn install(
         WindowState::default()
     };
     let plan = restore_plan(&state);
-    let last_chat = state.last_chat.clone();
-    let last_channel = state.last_channel.clone();
+    let last_chat = state.active_view().last_chat.clone();
+    let last_channel = state.active_view().last_channel.clone();
     let sidebar = state.sidebar_width;
     let filmstrip = state.filmstrip_pos.clone();
     if persist {
@@ -608,7 +610,7 @@ mod tests {
         assert!(collapsed_teams_of(&s).is_empty());
         set_quick_views_open(&mut s, true);
         assert!(quick_views_open(&s));
-        assert!(s.collapsed_sections.is_empty());
+        assert!(s.active_view().collapsed_sections.is_empty());
     }
 
     fn saved() -> WindowState {

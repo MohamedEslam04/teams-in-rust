@@ -633,7 +633,10 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
         }
         "remove-account" => {
             let c = shared.borrow();
-            let Some(acct) = config(&c).and_then(|cfg| cfg.account_by_label(arg).cloned()) else {
+            // An account of a kind this version does not know is not listed and never removed.
+            let Some(acct) = config(&c)
+                .and_then(|cfg| cfg.account_by_label(arg).filter(|a| a.is_usable()).cloned())
+            else {
                 g.set_accounts_status(s("That account is not in the list."));
                 push_accounts(w, &c);
                 return;

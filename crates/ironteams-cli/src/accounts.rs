@@ -18,8 +18,7 @@ fn when(ms: Option<i64>) -> String {
 
 /// One line per account.
 fn list(cfg: &Config, store: &dyn TokenStore) -> Result<Vec<String>> {
-    cfg.accounts
-        .iter()
+    cfg.usable_accounts()
         .map(|a| {
             let probe = Config {
                 account: a.label.clone(),
@@ -108,6 +107,7 @@ pub async fn run(paths: &Paths, args: &[String]) -> Result<()> {
             let label = args.get(1).context("usage: accounts remove <label>")?;
             let account = cfg
                 .account_by_label(label)
+                .filter(|a| a.is_usable())
                 .with_context(|| format!("no account {label:?}"))?
                 .clone();
             session::forget_account_tokens(&store, &account)?;
