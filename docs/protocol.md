@@ -258,7 +258,7 @@ messages were deleted afterwards.
 | Saved list | `GET …/conversations/48:saved/messages` | ❌ 404 `LocationLookupFailed` for this tenant, and the Teams web app no longer shows a Saved view. IronTeams keeps its own saved list in the store and still sends the server flag |
 | Pin for everyone | CSA `POST/DELETE /api/csa/api/v1/chats/<chat>/pinbar` `{pinbarItemType:"pinmsg", pinbarOperation:"add"\|"remove", …}`; list `GET` same URL (`children[]`, folders nest) | ✅ pin, list, unpin |
 | Mark as unread | `PUT …/properties?name=consumptionHorizonBookmark` `"<prevId>;<nowMs>;<cmid>"`. `mark_read` now also writes `"0;<nowMs>;0"`, because a read horizon alone does not clear the bookmark | ✅ 200 |
-| Mute | `PUT …/properties?name=alerts` `{"alerts":"false"}` (`"true"` unmutes) | unit-tested |
+| Mute | `PUT …/properties?name=alerts` `{"alerts":"false"}` (`"true"` unmutes). The property is a plain on/off flag: no end time, duration or "muted until" field is known in it, in the aggregator's `isMuted`, or in the web client's mute menu. "Mute for 1 hour / 8 hours / until tomorrow 08:00 / 1 week" is therefore kept on this computer (`Local.mute_until` in the `lists` KV) and IronTeams sends the unmute itself when the time passes, checked at start and every 15 s | unit-tested |
 | Hide | `PUT …/properties?name=unpinnedTime` `{unpinnedTime:<ms>}` then `historyHiddenTime` `"<ms>"`; unhide `{unpinnedTime:null}`. A hidden chat comes back with its next message | unit-tested |
 | Share to Outlook | Graph `POST /me/messages` `{subject, body:{contentType:"HTML", content}}` (Mail.ReadWrite, in the Graph `.default` token per plans/README.md) creates an unsent draft; its `webLink` opens in Outlook on the web. `Client::create_mail_draft` | documented Graph call, not tried live |
 | Report this message | **UNVERIFIED**: the call Teams makes was never captured. `report_message_unverified` (backend/media/extras.rs) sends nothing and tells the user to report it in Teams on the web | not built |
@@ -657,7 +657,7 @@ Writing the sections back needs a capture of the web client's mutation requests 
 the plan item.
 
 ### Chat item menu and list state (8.2, 8.3)
-- Mute: `PUT chat/v1/users/ME/conversations/<id>/properties?name=alerts` (`teams_proto::actions::set_muted`, from 5.x). The state is read from the aggregator: `chats[].members[].isMuted` of our own member entry (`ChatMeta::muted_by`), channels from `isMuted`.
+- Mute: `PUT chat/v1/users/ME/conversations/<id>/properties?name=alerts` (`teams_proto::actions::set_muted`, from 5.x). The state is read from the aggregator: `chats[].members[].isMuted` of our own member entry (`ChatMeta::muted_by`), channels from `isMuted`. The flag has no end time, so a timed mute ("Mute" submenu: 1 hour, 8 hours, until tomorrow 08:00, 1 week) is a normal mute plus a local end time per chat (`Local.mute_until`); `Engine::lists_expire_mutes` runs the same path as Unmute once the end has passed. The menu shows "Unmute (muted until 14:30)". A chat muted and unmuted in another client keeps no end time once unmuted here; one unmuted elsewhere keeps its saved end time until it passes (the unmute then changes nothing).
 - Hide: `unpinnedTime` property (`set_hidden`); IronTeams also keeps a local "hidden until a newer message".
 - Meeting chats: `chats[].chatType` is `meeting` and the chat service kind is the meeting thread (`ConvKind::Meeting`).
 - Chat link: `https://teams.microsoft.com/l/chat/<id>/0`. Channel link: `https://teams.microsoft.com/l/channel/<id>/<name>?groupId=<group>&tenantId=<tenant>`.

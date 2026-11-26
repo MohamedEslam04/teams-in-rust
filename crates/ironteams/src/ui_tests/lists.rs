@@ -555,8 +555,10 @@ fn mute_marks_the_row_silences_notifications_and_offers_unmute() {
     let log = wire(&h);
     open_item_menu(&h.app, "Ahmed Ali");
     click(&menu_row(&h.app, "Mute"));
+    click(&menu_row(&h.app, "Until I turn it off"));
     assert_eq!(*log.borrow(), vec![format!("mute {AHMED}")]);
     assert!(h.engine.test_is_muted(AHMED));
+    assert_eq!(h.engine.test_mute_until(AHMED), None, "no end time");
     assert!(
         h.engine.test_silenced(AHMED),
         "no desktop notification for it"
@@ -567,6 +569,49 @@ fn mute_marks_the_row_silences_notifications_and_offers_unmute() {
     click(&menu_row(&h.app, "Unmute"));
     assert!(!h.engine.test_is_muted(AHMED));
     assert!(!h.chats().into_iter().find(|c| c.id == AHMED).unwrap().muted);
+}
+
+#[test]
+fn mute_offers_durations_and_a_timed_mute_says_when_it_ends() {
+    let h = harness();
+    let log = wire(&h);
+    open_item_menu(&h.app, "Ahmed Ali");
+    click(&menu_row(&h.app, "Mute"));
+    assert_eq!(
+        menu_rows(&h.app),
+        vec![
+            "‹ Mute",
+            "For 1 hour",
+            "For 8 hours",
+            "Until tomorrow 8:00",
+            "For 1 week",
+            "Until I turn it off"
+        ]
+    );
+    click(&menu_row(&h.app, "For 8 hours"));
+    assert_eq!(*log.borrow(), vec![format!("mute-for {AHMED} | 8h")]);
+    assert!(h.engine.test_is_muted(AHMED));
+    let until = h.engine.test_mute_until(AHMED).expect("an end time");
+    let eight_hours = 8 * 3_600_000;
+    assert!((until - teams_proto::time::now_ms() - eight_hours).abs() < 60_000);
+    let row = h.chats().into_iter().find(|c| c.id == AHMED).unwrap();
+    assert!(row.muted && !row.muted_until.is_empty());
+    // The menu names the end and still unmutes.
+    open_item_menu(&h.app, "Ahmed Ali");
+    let rows = menu_rows(&h.app);
+    let unmute = format!("Unmute (muted until {})", row.muted_until);
+    assert!(rows.contains(&unmute), "{unmute:?} in {rows:?}");
+    click(&menu_row(&h.app, &unmute));
+    assert!(!h.engine.test_is_muted(AHMED));
+    assert_eq!(h.engine.test_mute_until(AHMED), None);
+    assert!(
+        h.chats()
+            .into_iter()
+            .find(|c| c.id == AHMED)
+            .unwrap()
+            .muted_until
+            .is_empty()
+    );
 }
 
 #[test]

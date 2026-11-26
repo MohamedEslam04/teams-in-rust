@@ -750,6 +750,13 @@ impl Engine {
                 unread,
                 favorite: placement == super::lists::Placement::Favorites,
                 muted: ov.is_muted(&r.id),
+                muted_until: ov
+                    .mute_ends(&r.id)
+                    .filter(|_| ov.is_muted(&r.id))
+                    .map(|t| {
+                        super::lists::until_label(t, teams_proto::time::now_ms(), &chrono::Local)
+                    })
+                    .unwrap_or_default(),
                 channel: r.kind == ConvKind::Channel,
                 section: match &placement {
                     super::lists::Placement::Favorites => "favorites",

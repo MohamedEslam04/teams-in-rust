@@ -170,6 +170,7 @@ fn chat_row(c: ChatData) -> ChatRow {
         mention: c.mention,
         group: c.group,
         muted: c.muted,
+        muted_until: c.muted_until.into(),
         channel: c.channel,
         presence: c.presence.into(),
         person: c.person.into(),

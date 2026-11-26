@@ -206,6 +206,7 @@ pub(crate) fn of_chat(c: &ChatData) -> u64 {
         mention,
         group,
         muted,
+        muted_until,
         channel,
         presence,
         person,
@@ -215,7 +216,17 @@ pub(crate) fn of_chat(c: &ChatData) -> u64 {
     } = c;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (
-        id, title, preview, time, initials, section, presence, person, kind, notify,
+        id,
+        title,
+        preview,
+        time,
+        initials,
+        section,
+        presence,
+        person,
+        kind,
+        notify,
+        muted_until,
     )
         .hash(&mut h);
     (
