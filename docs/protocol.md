@@ -132,6 +132,7 @@ The response has `teams[].channels[]` and `chats[]` (`title`, `isOneOnOne`, `mem
   1. `POST as-prod.asyncgw.teams.microsoft.com/v1/objects/` `{type:"pish/image", permissions:{<conv>:["read"]}, filename, sharingMode:"Inline"}` → `id`
   2. `PUT …/v1/objects/{id}/content/imgpsh` with the bytes
   3. Send `<img itemtype="http://schema.skype.com/AMSImage" src=".../views/imgo">` ✅ (self notes)
+  Several images, or text with images, are ONE message: the text's HTML first, then one `<p><img …></p>` per uploaded object, in the order attached (`OutboxKind::Images`; each image is uploaded, then a single send under one client message id). 🧪 not yet sent live with more than one image.
 - **Upload a voice message** (`teams_proto::ams::upload_voice`, `voice::voice_message_body`) ✅ type
   confirmed 2026-11-21 with `ironteams-cli ams-meta` on a voice message Teams mobile sent to the own
   notes chat: the object is `{"type":"sharing/audio", "contents":{"audio":{…},

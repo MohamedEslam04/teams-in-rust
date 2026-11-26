@@ -738,6 +738,7 @@ fn every_outbox_kind_roundtrips() {
     for (i, k) in [
         OutboxKind::Text,
         OutboxKind::Image,
+        OutboxKind::Images,
         OutboxKind::File,
         OutboxKind::Card,
         OutboxKind::Voice,

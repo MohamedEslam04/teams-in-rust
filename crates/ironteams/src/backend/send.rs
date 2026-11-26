@@ -17,17 +17,26 @@ impl Engine {
         // The importance applies to this one message (and never to an edit or a chip).
         let importance = std::mem::take(&mut self.view.lock().unwrap().importance);
         let editing_now = self.view.lock().unwrap().editing.is_some();
-        // Chips go first, each as its own outbox item (an image or a file card), then the text.
-        if !editing_now && let Err(err) = self.queue_attachments() {
-            // Whatever could not be queued is still a chip; the text goes back to the composer.
-            if !text.is_empty() {
-                self.ui.set_draft(text.clone());
-                self.view.lock().unwrap().draft_text = text;
-                self.schedule_draft_save();
+        // Files go first, each as its own outbox item (a file card). The images go in the message
+        // of the typed text (one message: the text, then the images), or on their own without it.
+        let images = if editing_now {
+            Vec::new()
+        } else {
+            match self.queue_attachments(!text.is_empty()) {
+                Ok(images) => images,
+                Err(err) => {
+                    // Whatever could not be queued is still a chip; the text goes back to the
+                    // composer.
+                    if !text.is_empty() {
+                        self.ui.set_draft(text.clone());
+                        self.view.lock().unwrap().draft_text = text;
+                        self.schedule_draft_save();
+                    }
+                    self.flush_outbox(false).await;
+                    return Err(err);
+                }
             }
-            self.flush_outbox(false).await;
-            return Err(err);
-        }
+        };
         // The cards chosen in the apps picker go in the message of this send: the typed text is
         // its body. They come back to the picker if the message cannot be queued.
         let current = self
@@ -66,6 +75,7 @@ impl Engine {
         self.ui.reply_bar(String::new(), String::new(), false);
         let Some(target) = target else {
             self.restore_composer_cards(&current, cards);
+            self.restore_attachments(&current, images);
             return Ok(());
         };
         if let Some(id) = editing {
@@ -153,8 +163,27 @@ impl Engine {
             }
         }
         self.ui.clear_subject();
-        if let Err(err) = self.enqueue(item) {
+        // The images go in this message; a message with app cards cannot hold them, so they go
+        // just before it as a message of their own.
+        let mut images = images;
+        let queued = if images.is_empty() {
+            self.enqueue(item)
+        } else if item.kind == OutboxKind::Card {
+            let own = self.queue_images(item.conversation_id.clone(), String::new(), &images);
+            if own.is_ok() {
+                // Queued already: they must not come back as chips if the card message fails.
+                images.clear();
+            }
+            own.and_then(|()| self.enqueue(item))
+        } else {
+            let mut item = item;
+            self.attach_images(&mut item, &images)
+                .and_then(|()| self.enqueue(item.clone()))
+                .inspect_err(|_| super::outbox::remove_payload(&item))
+        };
+        if let Err(err) = queued {
             self.restore_composer_cards(&current, cards);
+            self.restore_attachments(&current, images);
             self.ui.set_draft(text.clone());
             self.view.lock().unwrap().draft_text = text;
             self.schedule_draft_save();
@@ -298,6 +327,43 @@ impl Engine {
             .and_then(|()| self.enqueue(item));
         if queued.is_err() {
             let _ = std::fs::remove_dir_all(dir);
+        }
+        queued
+    }
+
+    /// Copies the chips' bytes into the cache and makes `item` an `Images` message: its own
+    /// `html` (the typed text), then the images, in order. Nothing is queued yet.
+    pub(super) fn attach_images(
+        &self,
+        item: &mut store::OutboxItem,
+        images: &[super::attach::Attachment],
+    ) -> anyhow::Result<()> {
+        let dir = super::cache::current_account_dir()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory"))?
+            .join("outbox")
+            .join(&item.client_message_id);
+        let files: Vec<(&str, &[u8])> = images
+            .iter()
+            .map(|a| (a.name.as_str(), a.data.as_slice()))
+            .collect();
+        let first = super::outbox::write_images(&dir, &files)?;
+        item.kind = OutboxKind::Images;
+        item.payload_path = Some(first.to_string_lossy().into_owned());
+        Ok(())
+    }
+
+    /// Queues the images as one message of their own, with `html` as its text (empty for none).
+    pub(super) fn queue_images(
+        &self,
+        target: String,
+        html: String,
+        images: &[super::attach::Attachment],
+    ) -> anyhow::Result<()> {
+        let mut item = self.new_outbox_item(target, OutboxKind::Images, html, None, None, None);
+        self.attach_images(&mut item, images)?;
+        let queued = self.enqueue(item.clone());
+        if queued.is_err() {
+            super::outbox::remove_payload(&item);
         }
         queued
     }
