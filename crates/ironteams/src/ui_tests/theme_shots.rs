@@ -22,7 +22,7 @@ use crate::ui::settings::install;
 use crate::{CalStore, CallPerson, CallStore, ChatRow, SettingsStore, Theme};
 use serde_json::json;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::{Color, PhysicalSize, StyledText};
+use slint::{Color, PhysicalSize, Rgb8Pixel, StyledText};
 
 const W: u32 = 1280;
 const H: u32 = 800;
@@ -221,6 +221,18 @@ fn calendar_day(app: &AppWindow) {
     app.set_view("calendar".into());
 }
 
+/// Draws the window once without keeping the picture. Slint makes what an `if` or a timer adds (the
+/// message menu, which fades in after a timer) when it first draws it; `shoot` then lets the
+/// animations run before the picture that is kept.
+fn warm_up(window: &MinimalSoftwareWindow) {
+    window.set_size(PhysicalSize::new(W, H));
+    let mut buf = vec![Rgb8Pixel::default(); (W * H) as usize];
+    window.request_redraw();
+    window.draw_if_needed(|r| {
+        r.render(&mut buf, W as usize);
+    });
+}
+
 #[test]
 #[ignore = "writes PNGs; run by .github/workflows/ui-compare.yml"]
 fn theme_screens_to_png() {
@@ -251,7 +263,10 @@ fn theme_screens_to_png() {
         ..Default::default()
     });
     let settings = app.global::<SettingsStore>();
-    let shot = |name: &str| shoot(&window, W, H, false, &dir.join(format!("{name}.png")));
+    let shot = |name: &str| {
+        warm_up(&window);
+        shoot(&window, W, H, false, &dir.join(format!("{name}.png")));
+    };
 
     for theme in ["dark", "light"] {
         // Applying the look also sets the colour mentions are drawn in, so the messages below
