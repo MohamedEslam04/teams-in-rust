@@ -325,7 +325,9 @@ mod decoding {
     use super::packet;
     use calling::video::I420Frame;
     use calling::video::h264::{EncoderSettings, H264Encoder, is_keyframe, nal_type, split_annexb};
-    use calling::video::receive::{KeyframeRequest, VideoPacket, spawn_decoder};
+    use calling::video::receive::{
+        KeyframeRequest, VideoPacket, spawn_decoder, spawn_decoder_sized,
+    };
     use tokio::sync::mpsc;
 
     const MTU: usize = 1000;
@@ -445,6 +447,38 @@ mod decoding {
         assert!(is_keyframe(&units[0]) && !units[1..].iter().any(|u| is_keyframe(u)));
         assert!(packetize(&units[0]).len() > 3, "a keyframe of many packets");
         assert_eq!(decode(&units, |_, _| false), (true, false));
+    }
+
+    /// A line whose tile changes size (its subscription asked for another one) is drawn at the
+    /// new width from its next picture on, without a new decoder.
+    #[test]
+    fn a_line_s_width_can_change_while_it_decodes() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let units = encoded(&mut encoder(), &mut 0, 4);
+        let width = Arc::new(AtomicUsize::new(320));
+        let (tx, rx) = mpsc::channel(4096);
+        let mut frames = spawn_decoder_sized(rx, None, Arc::clone(&width));
+        let ask = KeyframeRequest::default();
+        let mut sequence = 0u16;
+        let mut send = |i: usize, unit: &[u8]| {
+            let payloads = packetize(unit);
+            let last = payloads.len() - 1;
+            for (j, payload) in payloads.iter().enumerate() {
+                sequence = sequence.wrapping_add(1);
+                let timestamp = 6000 * u32::try_from(i).unwrap();
+                tx.blocking_send(VideoPacket {
+                    keyframe: ask.clone(),
+                    ..packet(sequence, timestamp, j == last, payload)
+                })
+                .unwrap();
+            }
+        };
+        send(0, &units[0]);
+        assert_eq!(frames.blocking_recv().unwrap().width, 320, "whole");
+        width.store(160, Ordering::Relaxed);
+        send(1, &units[1]);
+        assert_eq!(frames.blocking_recv().unwrap().width, 160, "halved");
     }
 
     #[test]

@@ -68,18 +68,31 @@ impl Call {
         let mut standing_asked: HashSet<String> = HashSet::new();
         // Joined with the camera on: it starts once the call can send it.
         let mut camera_wanted = opts.camera;
+        // Looks each second whether the service took the role-sized subscriptions
+        // (`RemoteVideo::check_fallback`).
+        let mut video_check = tokio::time::interval(std::time::Duration::from_secs(1));
+        video_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let ended: Option<String> = loop {
             let mut roster_changed = false;
             let mut standing_changed = false;
+            // The window shows other people, or the same ones at other sizes (it sends a
+            // settled view, already coalesced: `view_plan::ViewSend`).
+            let mut view_changed = false;
             tokio::select! {
                 c = ctl.recv() => match c {
                     None | Some(Control::Leave) => break None,
                     Some(Control::Share(on)) => self.share_control(on, &share_tx, &sink).await,
                     Some(Control::Camera(on)) => self.camera_control(on, &camera_tx, &sink).await,
                     Some(Control::Remote(a)) => self.control_action(a, &share_tx, &sink).await,
+                    Some(Control::VideoView(view)) => view_changed = self.video.set_view(view),
                     Some(c) => self.control(c, &mut audio, &sink).await,
                 },
                 Some(m) = share_rx.recv() => self.share_msg(m, &share_tx, &sink).await,
+                // Role sizes refused or a resized line stalled: the slots go back to the gallery
+                // size, re-planned below like a view change.
+                _ = video_check.tick() => {
+                    view_changed = self.video.check_fallback(std::time::Instant::now());
+                }
                 Some(frame) = data_rx.recv() => {
                     if let Some(msg) = depacketizer.push(&frame) {
                         if msg.data_id == CONTROL_DATA_ID {
@@ -344,6 +357,21 @@ impl Call {
             }
             // Our own share changes who the stage may show (never our own screen).
             let own_share_changed = self.video.set_own_share(self.share.sharing());
+            // Only the view changed: the slots follow it (the roster change below does the same
+            // with the view it keeps), and the tiles learn their new slots.
+            if view_changed && !roster_changed && !own_share_changed && self.video.subscribes() {
+                let spoke = |m: &str| talk.last.get(m).copied().unwrap_or(0);
+                self.video
+                    .reselect(&self.ngc, &self.s, &self.links, &self.roster, spoke, &sink);
+                sink.send(Event::Roster(people(
+                    &self.roster,
+                    &me,
+                    own_tenant.as_deref(),
+                    &standing,
+                    &talk,
+                    &self.video,
+                )));
+            }
             if roster_changed || own_share_changed {
                 // A meeting, or a 1:1 call whose media a server took over: its lines carry
                 // only what we subscribe to.
