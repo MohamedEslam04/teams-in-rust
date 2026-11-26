@@ -663,9 +663,14 @@ fn an_emoji_picked_for_the_status_message_goes_first() {
         ElementHandle::find_by_accessible_label(app, "Add emoji to status message")
             .next()
             .is_some(),
-        "IconButton labels: {labels:?}"
+        "IconButton labels: {labels:?}, fields: {}, rows: {}",
+        ElementHandle::find_by_element_type_name(app, "Field").count(),
+        ElementHandle::find_by_element_type_name(app, "SRadio").count()
     );
     press(app, "Add emoji to status message");
+    for _ in 0..3 {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    }
     let first = app
         .global::<crate::EmojiApi>()
         .invoke_list(0, "".into(), 0)
