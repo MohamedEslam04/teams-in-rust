@@ -1515,6 +1515,21 @@ msgstr "فقاعات"
 msgid "Flat"
 msgstr "مسطّح"
 
+msgid "Show avatars"
+msgstr "إظهار الصور الرمزية"
+
+msgid "The sender's photo beside each message. The name still opens the profile."
+msgstr "صورة المرسل بجانب كل رسالة. يظل الاسم يفتح الملف الشخصي."
+
+msgid "The time beside the sender's name. Resting the pointer on a message shows it."
+msgstr "الوقت بجانب اسم المرسل. يظهر عند تمرير المؤشر فوق الرسالة."
+
+msgid "Show reactions"
+msgstr "إظهار التفاعلات"
+
+msgid "The reactions under a message. Hiding them keeps them; you can still react from the message's hover bar."
+msgstr "التفاعلات أسفل الرسالة. إخفاؤها لا يحذفها، ويمكنك التفاعل من شريط الرسالة عند تمرير المؤشر."
+
 msgid "Larger text in Accessibility adds to this."
 msgstr "خيار «نص أكبر» في إمكانية الوصول يضاف إلى هذا."
 

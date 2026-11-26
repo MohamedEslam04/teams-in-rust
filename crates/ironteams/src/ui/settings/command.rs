@@ -49,7 +49,8 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             ));
         }
         // --- Appearance ---
-        "theme" | "accent" | "density" | "font-step" | "font-scale" | "message-style" => {
+        "theme" | "accent" | "density" | "font-step" | "font-scale" | "message-style"
+        | "show-avatars" | "show-timestamps" | "show-reactions" => {
             let mut c = shared.borrow_mut();
             let a = &mut c.local.appearance;
             match name {
@@ -71,6 +72,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 "message-style" => {
                     a.message_style = MessageStyle::from_slug(arg).unwrap_or_default();
                 }
+                "show-avatars" => a.show_avatars = bit(arg),
+                "show-timestamps" => a.show_timestamps = bit(arg),
+                "show-reactions" => a.show_reactions = bit(arg),
                 "font-step" => {
                     let v = st::step_font_scale(a.font_scale, arg.parse().unwrap_or(0));
                     a.set_font_scale(v);
