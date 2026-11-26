@@ -32,7 +32,9 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   saved either way. Each account reopens on its own last chat, channel and collapsed sections and
   keeps its own media cache; window size, sidebar width and the call filmstrip position are shared.
   IronTeams starts from the saved chats at once and signs in in the background, and shows
-  "Offline — showing saved messages" only when Teams cannot be reached. Starting IronTeams a second
+  "Offline — showing saved messages" only when Teams cannot be reached. A photo or team picture
+  asked for before the first sign-in finishes is asked for again instead of leaving initials until
+  the next start (people without a photo are not asked again). Starting IronTeams a second
   time raises the running window instead of opening another one. `--account label[@tenant]` starts
   on a given account or organization (see [Command line](#command-line)).
 - **Chat:**
@@ -50,6 +52,37 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
     the wheel over a short card scrolls the list behind it
   - image grid and viewer, link previews, translation, voice messages and videos; a forwarded
     picture or GIF shows as a picture
+  - the text and every attached image go out as one message: paste (Ctrl+V), drop or attach an image
+    while you type and it appears in the text at the cursor, on a line of its own with an X
+    (Backspace or Delete on it removes it), and the message is sent in that order. Files stay as
+    chips above the text, and an edit takes no images. A pasted image stays with its chat while
+    IronTeams runs, not across a restart
+  - hover one of your own messages and press E (or choose Edit) to edit it in place: the message
+    turns into an editor that is the full composer (formatting, @mentions, emoji, snippets, spell
+    check), opened with the message's formatting. Enter saves (Ctrl+Enter when "Enter sends" is
+    off), Esc cancels. E only edits when the focus is outside text boxes or in an empty composer;
+    otherwise it types an "e"
+  - unread chats: Alt+Shift+Down and Alt+Shift+Up open the next and previous unread chat in list
+    order and wrap around, never landing on the open chat (Alt+Down and Alt+Up stop at the ends); the
+    Unreads view (first row of the list's Quick views, `/unreads` in the top bar, Alt+Shift+U) lists
+    every unread message IronTeams has stored, grouped by chat with Mark as read, Mark all as read,
+    Up and Down or K and J to move, Enter to open the message and R to mark its chat read
+  - mute a chat for 1 hour, 8 hours, until tomorrow 8:00, 1 week or until you turn it off. Teams has no
+    end time for a mute, so IronTeams keeps it on this computer and unmutes when it passes (at start
+    and while it runs); the menu shows "Unmute (muted until 14:30)"
+  - Later: one page for your pending reminders and saved messages (from the Later pill in the Activity
+    header or Open Later in the command palette), overdue or soon-due reminders first. Open jumps to the
+    message, Mark done cancels the reminder or unsaves the message, and reminders can be snoozed for an
+    hour or until tomorrow 9:00
+  - a private note per chat, in the chat details pane under "Private note": plain text, each line in its
+    own direction, kept on this computer and never sent to Teams (a note icon shows in the chat header
+    while the chat has one)
+  - split view: More chat options (…) and the chat list's right-click menu have Open in split view, which
+    shows a second chat right of the open one with its own header, messages and message box. Drag the
+    divider, click the pane to make it active (Esc closes it, Alt+Shift+R goes to its box). The pane
+    has the pop-out window's features (reactions, links, pictures, a plain-text box; no message menu,
+    attachments or formatting), takes chats only, hides when the window is narrow and is not kept across
+    a restart
   - emoji follow Teams' own catalog (about 1,650 emoticons with skin tones): reactions such as
     `muscle-tone1`, emoticons in messages, previews and notifications show as Teams shows them,
     and the reaction picker sends the same ids as the official client and finds emoji by name or
@@ -111,6 +144,9 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
     and the call window's microphone meter can no longer freeze the window. In a 1:1 call the
     camera stays on from the click until you turn it off, a media update lost to a dropped
     connection is sent again, and a camera another app holds says so instead of failing quietly.
+    Hold, resume, camera and screen-share changes in a 1:1 call go out one at a time and their answers
+    are matched to the right change (an answer could land on the wrong one and turn the camera off),
+    a hold during a media restart waits instead of failing, and sending one no longer stalls the call.
 - **Settings:** theme: a gallery of ten built-in themes (IronTeams Dark and Light, Dusk, Harbor,
   Moss, Sandstone, Ember, Glacier, Graphite, Orchard), shown as one theme, a light and a dark theme
   that follow the system, or a light and a dark theme on a schedule (switched within a minute of
@@ -123,6 +159,26 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; storage (the active account's media and the total over all accounts,
   with Clear media for the active account only); accessibility; updates (always on).
+- **Make it yours:**
+  - Settings › Chats: a Chat list section with the list's view options (message previews, time
+    stamps, chats and channels together, New section; with previews off, rows are one line) and Quick
+    reactions, six slots for the message hover bar that you can replace or add to (Reset to default
+    brings back like, heart, laugh and surprised)
+  - Settings › General › Start: open Activity, Chat (the default), Teams, Calendar or where you left off
+    when IronTeams starts
+  - Settings › Appearance › Messages: Message style (Bubbles, Flat with a line per message like a
+    chat app, or Compact with tighter spacing and a smaller photo) and switches for Show avatars, Show
+    time stamps (the time shows again while the pointer is on the message) and Show reactions (the
+    reactions stay on the message and you can still react from the hover bar)
+  - Settings › Keyboard shortcuts: 27 window shortcuts with their keys; click the keys of a row, press
+    the new combination, Esc cancels, Reset puts one back and Reset all shortcuts all of them. A key is
+    refused, with the reason, when another shortcut has it, when it is a plain letter or Shift+letter,
+    or when it belongs to text editing, the call keys, Find in Settings or the app bar (Ctrl+Shift+1 to 9)
+  - the app bar: Settings › Appearance › App bar order moves and hides the built-in entries (Activity,
+    Chat, Teams, Calendar, Calls, OneDrive; Chat cannot be hidden), also from a right click on an icon;
+    Auto collapse app bar now shows icons only while the window is narrower than 800 px
+  - your status message has an Emoji button, a 30 minutes option next to 1 hour, 4 hours, Today and This
+    week, and shows "Clears at 14:30" (a message that has expired is hidden)
 - **Desktop:** your status follows your calls and goes Away after five idle minutes (also on
   Wayland, where IronTeams watches the compositor's idle notification); tray icon
   with unread badge, close to tray, autostart, window state, desktop
@@ -345,6 +401,12 @@ The ADRs in [`docs/adr/`](docs/adr/) explain the toolkit, the web host and the c
 Parallel builds on a small machine: run cargo through `flock /tmp/ironteams-build.lock cargo …` so only one
 build compiles the large `ironteams` crate at a time. GitHub CI runs fmt, clippy and the whole test
 suite on Linux on every push to `dev`, `feat/**` and `fix/**` and on pull requests.
+
+UI colours: every colour on screen comes from region tokens (`Theme.content`, `Theme.nav`, `Theme.call`;
+`ui/tokens/`), and `scripts/check-ui-layers.sh` refuses colour literals elsewhere. A pull request that touches
+the UI is drawn with its base in CI (`ui-compare.yml`) and the pictures are compared pixel by pixel; a
+deliberate change needs the `visual-change` label. The theme model (tokens, OKLCH derivation, `themes.json`)
+is in `crates/appearance`.
 
 Translations: interface strings are wrapped in `@tr()` and compiled in from
 `crates/ironteams/translations/<lang>/LC_MESSAGES/ironteams.po`.
