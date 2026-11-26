@@ -157,6 +157,28 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_themes(w, &c);
             saved(w, r);
         }
+        // The theme of one account (label, id or "" for the app's) and of the call screen (id or "").
+        // The active account's theme shows at once; another account's at its next start.
+        "account-theme" | "call-theme" => {
+            let mut c = shared.borrow_mut();
+            if name == "call-theme" {
+                c.local.themes.call = if arg.is_empty() {
+                    appearance::CallChoice::SameAsApp
+                } else {
+                    appearance::CallChoice::Fixed(arg.to_string())
+                };
+            } else {
+                let id = parts.get(1).copied().unwrap_or("");
+                c.local
+                    .themes
+                    .set_account(parts[0], (!id.is_empty()).then_some(id));
+            }
+            let r = c.local.save_themes();
+            look_changed(w, &mut c);
+            push_themes(w, &c);
+            push_accounts(w, &c);
+            saved(w, r);
+        }
         "accent" | "density" | "font-step" | "font-scale" | "message-style" | "show-avatars"
         | "show-timestamps" | "show-reactions" => {
             let mut c = shared.borrow_mut();
@@ -740,7 +762,7 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_accounts(w, &c);
         }
         "remove-account" => {
-            let c = shared.borrow();
+            let mut c = shared.borrow_mut();
             // An account of a kind this version does not know is not listed and never removed.
             let Some(acct) = config(&c)
                 .and_then(|cfg| cfg.account_by_label(arg).filter(|a| a.is_usable()).cloned())
@@ -757,6 +779,12 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             match r {
                 Ok(()) => {
                     remove_account_cache(&c.env.paths, &acct);
+                    // Its theme goes with it.
+                    if c.local.themes.remove_account(arg)
+                        && let Err(e) = c.local.save_themes()
+                    {
+                        tracing::warn!(error = %e, "settings: could not save themes.json");
+                    }
                     // The engine runs on the account that was active at start: when that one is
                     // gone, IronTeams has to start again on another.
                     if was_active {

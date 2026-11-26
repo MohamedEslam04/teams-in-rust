@@ -951,3 +951,27 @@ fn grants_from_the_first_settings_build_are_still_read_once() {
     write_json(&dir.join("app-grants.json"), &Grants::default().to_json()).unwrap();
     assert_eq!(Local::load(&dir).grants, Grants::default());
 }
+
+#[test]
+fn account_rows_carry_the_theme() {
+    let mut cfg = session::Config::default();
+    cfg.normalize();
+    cfg.add_account("work").unwrap();
+    let mut themes = appearance::ThemesFile::default();
+    themes.set_account("work", Some("builtin:moss"));
+    let rows = account_rows(&cfg, &themes);
+    assert_eq!(rows.len(), 2);
+    let theme_of = |label: &str| {
+        rows.iter()
+            .find(|r| r.label == label)
+            .unwrap()
+            .theme
+            .clone()
+    };
+    assert_eq!(theme_of("work"), "builtin:moss");
+    assert_eq!(
+        theme_of(&cfg.accounts[0].label),
+        "",
+        "no entry: the app's theme"
+    );
+}
