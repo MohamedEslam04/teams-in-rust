@@ -156,6 +156,17 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "Message style",
         "bubble bubbles flat lines slack irc layout chat",
     ),
+    ("appearance", "Show avatars", "photo picture profile hide"),
+    (
+        "appearance",
+        "Show time stamps",
+        "timestamp time clock hide message",
+    ),
+    (
+        "appearance",
+        "Show reactions",
+        "reaction emoji like hide message",
+    ),
     ("appearance", "Font size", "text zoom scale bigger smaller"),
     ("appearance", "Skin tone", "emoji"),
     ("accessibility", "High contrast", "contrast"),

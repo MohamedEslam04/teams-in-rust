@@ -321,7 +321,7 @@ export component MessageRow inherits TouchArea {
             alignment: root.post-style || root.flat ? stretch : (root.m.mine && !root.card-style ? end : start);
             spacing: 10px;
 
-            if (!root.m.mine || root.left-side) && !root.post-style: Rectangle {
+            if (!root.m.mine || root.left-side) && !root.post-style && SettingsStore.show-avatars: Rectangle {
                 width: root.photo;
                 if root.m.show-header: Avatar {
                     y: 0;
@@ -374,7 +374,9 @@ export component MessageRow inherits TouchArea {
                         photo-hover(id, on, x, y, w, h) => { root.photo-hover(id, on, x, y, w, h); }
                     }
 
-                    if (root.m.show-header || (root.m.mine && !root.flat)) && !root.post-style: HorizontalLayout {
+                    // My bubble's header is only its time (and "Edited"): with no time it has nothing
+                    // to show, so it is left out rather than drawn as an empty line.
+                    if !root.post-style && (root.m.mine && !root.left-side ? (SettingsStore.show-timestamps || root.m.edited) : (root.m.show-header || (root.m.mine && !root.flat))): HorizontalLayout {
                         spacing: 8px;
                         alignment: root.m.mine && !root.left-side ? end : start;
                         if !root.m.mine || root.left-side: Rectangle {
@@ -393,7 +395,8 @@ export component MessageRow inherits TouchArea {
                                 }
                             }
                         }
-                        Text { text: root.m.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+                        // With time stamps off the time still shows while the pointer is on the row.
+                        if SettingsStore.show-timestamps || root.has-hover: row-time := Text { text: root.m.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                         if root.m.edited: Text { text: @tr("Edited"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                     }
 
@@ -590,7 +593,8 @@ export component MessageRow inherits TouchArea {
                         action(a) => { MediaStore.command("file", a + "\u{1f}" + f.url); }
                     }
 
-                    if root.m.reactions.length > 0 && !root.post-style: HorizontalLayout {
+                    // Hidden reactions stay on the message: only their row is left out.
+                    if root.m.reactions.length > 0 && !root.post-style && SettingsStore.show-reactions: HorizontalLayout {
                         spacing: 4px;
                         alignment: start;
                         for r in root.m.reactions: ReactionChip {

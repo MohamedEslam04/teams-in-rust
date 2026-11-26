@@ -7,7 +7,7 @@
 //! reads the settings again. Without an engine (tests) a write stays a dry run, logged and shown.
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
-//! open, close, page, query, profile, theme, accent, density, message-style, font-step, font-scale, skin-tone,
+//! open, close, page, query, profile, theme, accent, density, message-style, show-avatars, show-timestamps, show-reactions, font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
 //! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,

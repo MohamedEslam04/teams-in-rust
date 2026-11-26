@@ -827,6 +827,24 @@ export component AppearancePage inherits SettingsSections {
             value: SettingsStore.message-style;
             picked(v) => { SettingsStore.message-style = v; SettingsStore.command("message-style", v); }
         }
+        SettingsSwitchRow {
+            label: @tr("Show avatars");
+            description: @tr("The sender's photo beside each message. The name still opens the profile.");
+            checked: SettingsStore.show-avatars;
+            toggled(on) => { SettingsStore.command("show-avatars", on ? "1" : "0"); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show time stamps");
+            description: @tr("The time beside the sender's name. Resting the pointer on a message shows it.");
+            checked: SettingsStore.show-timestamps;
+            toggled(on) => { SettingsStore.command("show-timestamps", on ? "1" : "0"); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show reactions");
+            description: @tr("The reactions under a message. Hiding them keeps them; you can still react from the message's hover bar.");
+            checked: SettingsStore.show-reactions;
+            toggled(on) => { SettingsStore.command("show-reactions", on ? "1" : "0"); }
+        }
     }
     SettingsSection {
         title: @tr("App bar");

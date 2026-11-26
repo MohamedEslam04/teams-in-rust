@@ -170,6 +170,23 @@ fn the_message_style_is_found_on_the_appearance_page() {
 }
 
 #[test]
+fn what_a_message_shows_is_found_on_the_appearance_page() {
+    for (q, label) in [
+        ("avatar", "Show avatars"),
+        ("photo", "Show avatars"),
+        ("timestamp", "Show time stamps"),
+        ("reactions", "Show reactions"),
+    ] {
+        assert!(
+            find(q)
+                .iter()
+                .any(|f| f.page == "appearance" && f.label == label),
+            "{q}"
+        );
+    }
+}
+
+#[test]
 fn the_graphics_setting_is_found_on_the_general_page() {
     for q in ["graphics", "gpu", "cpu", "memory"] {
         assert!(

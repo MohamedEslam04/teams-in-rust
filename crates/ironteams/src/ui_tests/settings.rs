@@ -1502,6 +1502,44 @@ fn the_appearance_page_sets_the_message_style_and_keeps_it() {
     std::mem::forget(again.home); // `ui.home` removes the directory
 }
 
+/// Appearance > Messages: photos, time stamps and reactions start on, each switch is saved to
+/// appearance.json, and the next window starts with the choices.
+#[test]
+fn the_appearance_page_switches_photos_times_and_reactions_and_keeps_them() {
+    let home = Home::new("message-switches");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    tall_window(app);
+    for label in ["Show avatars", "Show time stamps", "Show reactions"] {
+        assert!(checked(app, label), "{label} starts on");
+    }
+    assert!(store(app).get_show_avatars() && store(app).get_show_timestamps());
+
+    press(app, "Show avatars");
+    assert!(!store(app).get_show_avatars());
+    assert!(!checked(app, "Show avatars"));
+    let saved = Local::load(&dir).appearance;
+    assert!(!saved.show_avatars && saved.show_timestamps && saved.show_reactions);
+
+    press(app, "Show time stamps");
+    press(app, "Show reactions");
+    assert!(!store(app).get_show_timestamps() && !store(app).get_show_reactions());
+    let saved = Local::load(&dir).appearance;
+    assert!(!saved.show_avatars && !saved.show_timestamps && !saved.show_reactions);
+    // The style is a separate setting and stays as it was.
+    assert_eq!(saved.message_style, appearance::MessageStyle::Bubbles);
+    assert!(ui.log.borrow().is_empty());
+
+    let again = window(Home(ui.home.0.clone()));
+    assert!(!store(&again.app).get_show_avatars());
+    assert!(!store(&again.app).get_show_timestamps());
+    assert!(!store(&again.app).get_show_reactions());
+
+    std::mem::forget(again.home); // `ui.home` removes the directory
+}
+
 #[test]
 fn local_preferences_round_trip_through_the_temp_home() {
     let home = Home::new("roundtrip");

@@ -134,6 +134,9 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     }));
     g.set_font_scale(a.font_scale);
     g.set_message_style(s(a.message_style.slug()));
+    g.set_show_avatars(a.show_avatars);
+    g.set_show_timestamps(a.show_timestamps);
+    g.set_show_reactions(a.show_reactions);
     g.set_skin_tone(w.get_skin_tone());
 
     let gp = &l.general;

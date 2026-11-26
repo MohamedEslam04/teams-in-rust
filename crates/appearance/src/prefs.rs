@@ -130,6 +130,11 @@ fn de_font_scale<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
     Ok(clamp_font_scale(v))
 }
 
+/// A switch that is on unless the file says otherwise: a value of the wrong shape reads as on.
+fn de_true<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(lenient::<D, Option<bool>>(d)?.unwrap_or(true))
+}
+
 /// Appearance preferences. Every field has a default, so an old or partial file still loads.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -147,6 +152,15 @@ pub struct AppearancePrefs {
     /// Bubbles, flat lines or compact lines in a chat.
     #[serde(deserialize_with = "lenient")]
     pub message_style: MessageStyle,
+    /// The sender's photo beside a message. The name still opens the profile.
+    #[serde(deserialize_with = "de_true")]
+    pub show_avatars: bool,
+    /// The time beside the sender's name (shown while the pointer is on the message).
+    #[serde(deserialize_with = "de_true")]
+    pub show_timestamps: bool,
+    /// The row of reactions under a message. Hiding it keeps the reactions themselves.
+    #[serde(deserialize_with = "de_true")]
+    pub show_reactions: bool,
 }
 
 impl Default for AppearancePrefs {
@@ -157,6 +171,9 @@ impl Default for AppearancePrefs {
             density: Density::Comfy,
             font_scale: default_font_scale(),
             message_style: MessageStyle::Bubbles,
+            show_avatars: true,
+            show_timestamps: true,
+            show_reactions: true,
         }
     }
 }
@@ -351,6 +368,40 @@ mod tests {
     }
 
     #[test]
+    fn photos_times_and_reactions_are_on_unless_turned_off() {
+        let d = AppearancePrefs::default();
+        assert!(d.show_avatars && d.show_timestamps && d.show_reactions);
+        // A file written before the switches existed keeps today's look.
+        let old: AppearancePrefs = serde_json::from_str(r#"{"message_style":"flat"}"#).unwrap();
+        assert!(old.show_avatars && old.show_timestamps && old.show_reactions);
+        let off: AppearancePrefs = serde_json::from_str(
+            r#"{"show_avatars":false,"show_timestamps":false,"show_reactions":false}"#,
+        )
+        .unwrap();
+        assert!(!off.show_avatars && !off.show_timestamps && !off.show_reactions);
+        // A value of the wrong shape reads as on, and the other fields still load.
+        let bad: AppearancePrefs = serde_json::from_str(
+            r#"{"show_avatars":"no","show_timestamps":3,"show_reactions":false,"density":"compact"}"#,
+        )
+        .unwrap();
+        assert!(bad.show_avatars && bad.show_timestamps && !bad.show_reactions);
+        assert_eq!(bad.density, Density::Compact);
+    }
+
+    #[test]
+    fn the_switches_are_saved_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let saved = AppearancePrefs {
+            show_timestamps: false,
+            show_reactions: false,
+            ..Default::default()
+        };
+        saved.save_to(&path).unwrap();
+        assert_eq!(AppearancePrefs::load_from(&path), saved);
+    }
+
+    #[test]
     fn message_style_slugs_round_trip() {
         for s in [
             MessageStyle::Bubbles,
@@ -375,5 +426,8 @@ mod tests {
         assert_eq!(v["density"], "comfy");
         assert_eq!(v["font_scale"], 1.0);
         assert_eq!(v["message_style"], "bubbles");
+        assert_eq!(v["show_avatars"], true);
+        assert_eq!(v["show_timestamps"], true);
+        assert_eq!(v["show_reactions"], true);
     }
 }
