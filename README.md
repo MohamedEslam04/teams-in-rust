@@ -50,6 +50,10 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
     the wheel over a short card scrolls the list behind it
   - image grid and viewer, link previews, translation, voice messages and videos; a forwarded
     picture or GIF shows as a picture
+  - emoji follow Teams' own catalog (about 1,650 emoticons with skin tones): reactions such as
+    `muscle-tone1`, emoticons in messages, previews and notifications show as Teams shows them,
+    and the reaction picker sends the same ids as the official client and finds emoji by name or
+    shortcut (`flex`, `(flex)`)
   - a message's right-click menu also has Copy image, Open in Browser, Download and Share for its
     pictures, and Open file, Download file, Copy file link and Share file for its files
   - bot and workflow cards (Adaptive Cards), and the composer's apps: message extension search,
@@ -104,7 +108,9 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
     share starts again on a new line, and stopping your own share no longer leaves the peer's
     share waiting. Meeting gallery slots survive a media restart (lobby admission) and a camera
     picture shows only in its sender's tile. Quitting IronTeams leaves the call on the service,
-    and the call window's microphone meter can no longer freeze the window.
+    and the call window's microphone meter can no longer freeze the window. In a 1:1 call the
+    camera stays on from the click until you turn it off, a media update lost to a dropped
+    connection is sent again, and a camera another app holds says so instead of failing quietly.
 - **Settings:** theme (light, dark, system), accent, density and text size; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
@@ -361,4 +367,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit c96a9357 ("Merge pull request #56 from MohamedEslam04/feat/accounts-switch", 2026-11-26)
+Docs synced to commit 19b4adf0 ("Merge pull request #62 from MohamedEslam04/fix/cache-first-chat-service", 2026-11-26)
