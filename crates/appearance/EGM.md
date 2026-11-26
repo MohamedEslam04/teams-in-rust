@@ -4,11 +4,12 @@
 IronTeams appearance and general preferences: theme, accent, density, font scale, accessibility switches, text snippets, language and date/time format state, plus a reader for the XDG desktop portal (D-Bus) settings. Each preferences type loads leniently from a JSON file in the config directory and saves atomically.
 
 ## Interface
-- Modules (all `pub` except `store`): `accessibility`, `formats`, `general`, `language`, `portal`, `prefs`, `renderer`, `resolve`, `snippets` [lib.rs].
-- Re-exports at the crate root [lib.rs]: `AccessibilityPrefs, AutoSwitch, effective_font_scale, resolve_high_contrast, resolve_reduced_motion`; `DateFormat, GeneralPrefs, Language, NotificationStyle, TimeFormat, available_languages, effective_language, resolve_language, system_language`; `PortalChange, PortalError, PortalScheme, PortalSettings, PortalStream`; `AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, Rgb, Theme`; `Renderer`; `Resolved, ResolvedTheme, resolve, resolve_accent, resolve_font_scale, resolve_theme`; `Snippet, SnippetPrefs`; `store::{Error, config_dir}`.
+- Modules (all `pub` except `store`): `accessibility`, `formats`, `general`, `language`, `portal`, `prefs`, `renderer`, `resolve`, `shortcuts`, `snippets` [lib.rs].
+- Re-exports at the crate root [lib.rs]: `AccessibilityPrefs, AutoSwitch, effective_font_scale, resolve_high_contrast, resolve_reduced_motion`; `DateFormat, GeneralPrefs, Language, NotificationStyle, TimeFormat, available_languages, effective_language, resolve_language, system_language`; `PortalChange, PortalError, PortalScheme, PortalSettings, PortalStream`; `AppearancePrefs, Density, FONT_SCALE_MAX, FONT_SCALE_MIN, Rgb, Theme`; `Renderer`; `Resolved, ResolvedTheme, resolve, resolve_accent, resolve_font_scale, resolve_theme`; `ShortcutPrefs`; `Snippet, SnippetPrefs`; `store::{Error, config_dir}`.
 - `prefs`: `Theme {Light, Dark, System}`, `Density {Comfy, Compact}`, `Rgb` (`from_hex`, `to_hex`, `from_unit`), `AppearancePrefs` (`load`, `load_from`, `save`, `save_to`, `path`, `set_font_scale`), `clamp_font_scale`, `FILE_NAME = "appearance.json"` [prefs.rs].
 - `accessibility`: `AccessibilityPrefs`, `AutoSwitch {Auto, On, Off}`, `resolve_high_contrast`, `resolve_reduced_motion`, `effective_font_scale`, `LARGER_TEXT_FACTOR = 1.25`, `EFFECTIVE_SCALE_MAX = 2.5`, `FILE_NAME = "accessibility.json"` [accessibility.rs].
 - `resolve`: `resolve(&AppearancePrefs, Option<&PortalSettings>) -> Resolved`, `resolve_theme`, `resolve_accent`, `resolve_font_scale` [resolve.rs].
+- `shortcuts`: `ShortcutPrefs { bindings: BTreeMap<action id, chord text> }` (only the chords the user changed), `FILE_NAME = "shortcuts.json"` [shortcuts.rs]; what a chord means is decided in the app (`ironteams/src/shortcut_keys.rs`).
 - `snippets`: `Snippet`, `SnippetPrefs` (`effective`), `builtin()`, `FILE_NAME = "snippets.json"` [snippets.rs].
 - `general`: `GeneralPrefs` (fields include `renderer`, `check_updates`, `auto_update`, `beta_updates` and `wheel_speed`), `QuietHoursPrefs`, `Language`, `DateFormat`, `TimeFormat`, `NotificationStyle`, `FocusDuration`, `FOCUS_FOREVER`, `FALLBACK_LANGUAGE = "en"`, `normalize_tag`, `best_match`, `resolve_language`, `effective_language`, `system_language`, `system_language_from`, `is_rtl`, `tag_from_posix`, `WHEEL_SPEED_MIN = 1.0`, `WHEEL_SPEED_MAX = 5.0`, `WHEEL_SPEED_DEFAULT = 2.5`, `clamp_wheel_speed`, `FILE_NAME = "general.json"` [general.rs].
 - `renderer`: `Renderer {Cpu, Gpu}` (`parse`, `slug`, `slint_name`) and `resolve(env: Option<&str>, saved) -> Renderer` [renderer.rs].
@@ -33,7 +34,7 @@ IronTeams appearance and general preferences: theme, accent, density, font scale
 - `config_dir`: `IRONTEAMS_HOME` (or the legacy `KELMA_HOME`, via `compat::var`) overrides to `<home>/config`, else `ProjectDirs("ironteams")`, else `Error::NoHome` [store.rs:config_dir].
 
 ## Side Effects
-- Disk read and write of `appearance.json`, `accessibility.json`, `snippets.json`, `general.json` in the config dir (create_dir_all, temp write, fsync, rename) [store.rs:save_json].
+- Disk read and write of `appearance.json`, `accessibility.json`, `snippets.json`, `shortcuts.json`, `general.json` in the config dir (create_dir_all, temp write, fsync, rename) [store.rs:save_json].
 - Calls `compat::migrate_legacy_dirs()` on every `config_dir()` call when `IRONTEAMS_HOME` is unset [store.rs:config_dir].
 - D-Bus: session bus connection to `org.freedesktop.portal.Desktop` (`ReadOne`, fallback `Read`, and `SettingChanged` subscription) [portal.rs:connect, read_key, watch].
 - Global state: `static CURRENT` RwLock in `language`, `CHOICE` and `ZONE` RwLocks in `formats`; poisoning is ignored [language.rs, formats.rs].

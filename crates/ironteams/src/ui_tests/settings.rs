@@ -2147,6 +2147,7 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         "notifications",
         "appearance",
         "accessibility",
+        "shortcuts",
         "devices",
         "files",
         "storage",

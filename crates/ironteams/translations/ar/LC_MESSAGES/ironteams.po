@@ -2463,3 +2463,107 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+# Settings: Keyboard shortcuts page and the shortcut list's link to it.
+
+msgid "Show keyboard shortcuts"
+msgstr "عرض اختصارات لوحة المفاتيح"
+
+msgid "Back"
+msgstr "رجوع"
+
+msgid "Go to the search box"
+msgstr "الانتقال إلى مربع البحث"
+
+msgid "Show the list of commands"
+msgstr "عرض قائمة الأوامر"
+
+msgid "Filter the chat list"
+msgstr "تصفية قائمة المحادثات"
+
+msgid "Unread filter"
+msgstr "تصفية غير المقروء"
+
+msgid "Chats filter"
+msgstr "تصفية المحادثات"
+
+msgid "Channels filter"
+msgstr "تصفية القنوات"
+
+msgid "Clear filters"
+msgstr "مسح عوامل التصفية"
+
+msgid "Next unread chat or channel"
+msgstr "المحادثة أو القناة التالية غير المقروءة"
+
+msgid "Previous unread chat or channel"
+msgstr "المحادثة أو القناة السابقة غير المقروءة"
+
+msgid "Focus the compose box"
+msgstr "التركيز على مربع الكتابة"
+
+msgid "Focus the message pane"
+msgstr "التركيز على لوحة الرسائل"
+
+msgid "Expand the composer"
+msgstr "توسيع مربع الكتابة"
+
+msgid "Attach a file"
+msgstr "إرفاق ملف"
+
+msgid "Audio call (1:1 chat)"
+msgstr "مكالمة صوتية (محادثة فردية)"
+
+msgid "Video call (1:1 chat)"
+msgstr "مكالمة فيديو (محادثة فردية)"
+
+msgid "Share screen (1:1 chat)"
+msgstr "مشاركة الشاشة (محادثة فردية)"
+
+msgid "Default: {}"
+msgstr "الافتراضي: {}"
+
+msgid "Press the new keys…"
+msgstr "اضغط المفاتيح الجديدة…"
+
+msgid "Change shortcut: {}"
+msgstr "تغيير الاختصار: {}"
+
+msgid "Reset"
+msgstr "إعادة ضبط"
+
+msgid "Reset shortcut: {}"
+msgstr "إعادة ضبط الاختصار: {}"
+
+msgid "Already used by {}."
+msgstr "مستخدم بالفعل في: {}."
+
+msgid "Use Ctrl or Alt with the key, or a function key."
+msgstr "استخدم Ctrl أو Alt مع المفتاح، أو مفتاح وظيفي."
+
+msgid "IronTeams already uses that combination for editing, formatting or calls."
+msgstr "يستخدم IronTeams هذه التوليفة بالفعل للتحرير أو التنسيق أو المكالمات."
+
+msgid "That key cannot be used."
+msgstr "لا يمكن استخدام هذا المفتاح."
+
+msgid "Click the keys of a shortcut, then press the new ones. Esc cancels. Keys that another shortcut already uses are refused."
+msgstr "انقر على مفاتيح الاختصار ثم اضغط المفاتيح الجديدة. يلغي Esc التغيير. لا تُقبل المفاتيح التي يستخدمها اختصار آخر."
+
+msgid "Reset all shortcuts"
+msgstr "إعادة ضبط كل الاختصارات"
+
+msgid "Go back to the keys IronTeams comes with."
+msgstr "العودة إلى المفاتيح التي يأتي بها IronTeams."
+
+msgid "Reset all"
+msgstr "إعادة ضبط الكل"
+
+msgid "Shortcut error"
+msgstr "خطأ في الاختصار"
+
+msgid "Customize"
+msgstr "تخصيص"
+
+msgid "Change these shortcuts in Settings"
+msgstr "غيّر هذه الاختصارات من الإعدادات"

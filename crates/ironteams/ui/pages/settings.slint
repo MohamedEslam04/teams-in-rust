@@ -10,6 +10,7 @@ import { SettingsStore, SFind } from "../stores/settings_store.slint";
 import { SNavItem, SRadio } from "../molecules/settings_widgets.slint";
 import { SettingsLinkRow, SettingsMetrics, SettingsNote, SettingsSection } from "../molecules/settings_kit.slint";
 import { Space } from "../tokens/space.slint";
+import { ShortcutsPage } from "settings_shortcuts.slint";
 import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettingsPage, ChatsPage, DevicesPage, FilesPage, GeneralPage, NotificationsPage, PermissionsPage, PrivacyPage, StoragePage } from "settings_pages.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
@@ -110,6 +111,7 @@ export component SettingsPage inherits Rectangle {
                         {key: "notifications", label: @tr("Notifications and activity"), icon: @image-url("../icons/activity.svg")},
                         {key: "appearance", label: @tr("Appearance"), icon: @image-url("../icons/eye.svg")},
                         {key: "accessibility", label: @tr("Accessibility"), icon: @image-url("../icons/people.svg")},
+                        {key: "shortcuts", label: @tr("Keyboard shortcuts"), icon: @image-url("../icons/shortcut.svg")},
                         {key: "devices", label: @tr("Devices"), icon: @image-url("../icons/video.svg")},
                         {key: "calls", label: @tr("Calls"), icon: @image-url("../icons/call-direct.svg")},
                         {key: "files", label: @tr("Files and links"), icon: @image-url("../icons/file.svg")},
@@ -159,7 +161,7 @@ export component SettingsPage inherits Rectangle {
                             }
                             if SettingsStore.query == "": Text {
                                 horizontal-alignment: Theme.start-align;
-                                text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
+                                text: SettingsStore.page == "general" ? @tr("General") : SettingsStore.page == "chats" ? @tr("Chats and channels") : SettingsStore.page == "accounts" ? @tr("Accounts and orgs") : SettingsStore.page == "privacy" ? @tr("Privacy") : SettingsStore.page == "notifications" ? @tr("Notifications and activity") : SettingsStore.page == "appearance" ? @tr("Appearance") : SettingsStore.page == "accessibility" ? @tr("Accessibility") : SettingsStore.page == "shortcuts" ? @tr("Keyboard shortcuts") : SettingsStore.page == "devices" ? @tr("Devices") : SettingsStore.page == "calls" ? @tr("Calls") : SettingsStore.page == "files" ? @tr("Files and links") : SettingsStore.page == "storage" ? @tr("Storage") : SettingsStore.page == "permissions" ? @tr("App permissions") : @tr("About");
                                 color: Theme.fg;
                                 font-size: Theme.font-title;
                                 font-weight: 700;
@@ -177,6 +179,7 @@ export component SettingsPage inherits Rectangle {
                             if SettingsStore.query == "" && SettingsStore.page == "notifications": NotificationsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "appearance": AppearancePage { }
                             if SettingsStore.query == "" && SettingsStore.page == "accessibility": AccessibilityPage { }
+                            if SettingsStore.query == "" && SettingsStore.page == "shortcuts": ShortcutsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "devices": DevicesPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "calls": CallsSettingsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "files": FilesPage { }

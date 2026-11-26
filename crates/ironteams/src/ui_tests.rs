@@ -75,6 +75,7 @@ mod seen_by;
 mod settings;
 mod settings_layout;
 mod settings_shots;
+mod shortcut_keys;
 mod shortcuts;
 mod snippets;
 mod splash;

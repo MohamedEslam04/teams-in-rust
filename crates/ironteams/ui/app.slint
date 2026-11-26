@@ -78,6 +78,7 @@ export { SpellApi, SpellWord } from "molecules/spelling.slint";
 export { LineApi } from "molecules/line_editor.slint";
 export { FormatApi, FormatEdit } from "organisms/composer_format.slint";
 export { ShortcutApi } from "organisms/shortcuts.slint";
+export { ShortcutStore, ShortcutItem } from "stores/shortcut_store.slint";
 export { PaletteApi, PaletteStore, PaletteAction, PaletteItem } from "pages/palette.slint";
 export { MentionApi } from "molecules/mention_picker.slint";
 export { SnippetApi, SnippetStore, SnippetItem } from "molecules/snippet_picker.slint";
@@ -1102,6 +1103,7 @@ export component AppWindow inherits Window {
         height: root.height;
         close => { root.shortcuts-open = false; }
         open-palette => { root.shortcuts-open = false; PaletteStore.open = true; }
+        open-settings => { root.shortcuts-open = false; SettingsStore.show("shortcuts"); }
     }
 
     if root.login-state == "ready" && PaletteStore.open: CommandPalette {

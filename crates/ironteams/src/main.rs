@@ -34,6 +34,7 @@ mod reactions;
 mod relaunch;
 mod renderer;
 mod send_options;
+mod shortcut_keys;
 mod shortcuts;
 mod sign_in_failure;
 mod snippets;
@@ -774,6 +775,7 @@ fn main() -> anyhow::Result<()> {
     ui::message_toast::install(&window, tx.clone());
     ui::settings::install_system(&window, tx.clone());
     snippets::install_system(&window);
+    shortcut_keys::install_system(&window);
     ui::topbar::install(&window, session::Paths::new().ok().map(|p| p.config_dir));
     #[cfg(feature = "calls")]
     ui::call_direct::install(&window, tx.clone());

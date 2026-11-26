@@ -1,0 +1,174 @@
+// The Keyboard shortcuts page of Settings: the window's shortcuts with the keys each one has now.
+// A click on the keys waits for the new ones (Esc cancels), a chord that another shortcut or a
+// text box already uses is refused with the reason, Reset brings back one default and Reset all
+// every default. The table, the checks and the saving are in src/shortcut_keys.rs; this file only
+// reads and drives `ShortcutStore`.
+import { Theme } from "../tokens/theme.slint";
+import { ShortcutStore } from "../stores/shortcut_store.slint";
+import { SettingsButtonRow, SettingsMetrics, SettingsRow, SettingsSection, SettingsSections } from "../molecules/settings_kit.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+
+// One shortcut: its name, a button with its keys (a click waits for new ones) and Reset when the
+// keys are not the default. While it waits it takes the keyboard (the zero-size FocusScope).
+component ShortcutRow inherits Rectangle {
+    in property <string> label;
+    in property <string> keys;
+    in property <string> default-keys;
+    in property <bool> custom;
+    in property <bool> recording;
+    callback start();
+    callback cancel();
+    callback reset();
+    // A key press while waiting: key text, ctrl, alt, shift, meta.
+    callback capture(string, bool, bool, bool, bool);
+    // Gives this row the keyboard.
+    public function listen() { fs.focus(); }
+    height: row.height;
+    row := SettingsRow {
+        width: parent.width;
+        // The Reset all row is above, so every shortcut row has a line above it.
+        divider: true;
+        label: root.label;
+        description: root.custom ? @tr("Default: {}", root.default-keys) : "";
+        Button {
+            variant: ButtonVariant.settings;
+            label: root.recording ? @tr("Press the new keys…") : root.keys;
+            accessible-label: @tr("Change shortcut: {}", root.label);
+            accessible-description: root.keys;
+            clicked => { root.start(); }
+        }
+        if root.custom && !root.recording: Button {
+            variant: ButtonVariant.settings;
+            label: @tr("Reset");
+            accessible-label: @tr("Reset shortcut: {}", root.label);
+            clicked => { root.reset(); }
+        }
+    }
+    fs := FocusScope {
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        // A click elsewhere that moves the keyboard away ends the wait.
+        focus-changed-event(reason) => {
+            if !self.has-focus && root.recording { root.cancel(); }
+        }
+        key-pressed(event) => {
+            if !root.recording { return reject; }
+            if event.text == Key.Escape && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift && !event.modifiers.meta {
+                root.cancel();
+                return accept;
+            }
+            root.capture(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift, event.modifiers.meta);
+            return accept;
+        }
+    }
+}
+
+export component ShortcutsPage inherits SettingsSections {
+    // A wait that was cut short by leaving the page (its row is gone) is not still going.
+    init => { ShortcutStore.recording-id = ""; }
+    // The refused chord's answer ("taken", "needs-modifier", "reserved", "unsupported") and the
+    // shortcut it was meant for.
+    property <string> error;
+    property <string> error-id;
+    // What each shortcut does, by the id in ACTIONS (src/shortcut_keys.rs).
+    pure function label(id: string) -> string {
+        return id == "shortcuts" ? @tr("Show keyboard shortcuts")
+            : id == "palette" ? @tr("Command palette")
+            : id == "search" ? @tr("Search")
+            : id == "goto" ? @tr("Go to a chat or channel")
+            : id == "new-chat" ? @tr("New chat")
+            : id == "settings" ? @tr("Open Settings")
+            : id == "back" ? @tr("Back")
+            : id == "forward" ? @tr("Forward")
+            : id == "search-box" ? @tr("Go to the search box")
+            : id == "commands" ? @tr("Show the list of commands")
+            : id == "filter-box" ? @tr("Filter the chat list")
+            : id == "filter-unread" ? @tr("Unread filter")
+            : id == "filter-chats" ? @tr("Chats filter")
+            : id == "filter-channels" ? @tr("Channels filter")
+            : id == "filter-clear" ? @tr("Clear filters")
+            : id == "collapse-all" ? @tr("Collapse all sections")
+            : id == "next-unread" ? @tr("Next unread chat or channel")
+            : id == "prev-unread" ? @tr("Previous unread chat or channel")
+            : id == "focus-composer" ? @tr("Focus the compose box")
+            : id == "focus-messages" ? @tr("Focus the message pane")
+            : id == "find" ? @tr("Find in chat or channel")
+            : id == "jump-first" ? @tr("Jump to the first message of the chat")
+            : id == "expand-composer" ? @tr("Expand the composer")
+            : id == "attach-file" ? @tr("Attach a file")
+            : id == "audio-call" ? @tr("Audio call (1:1 chat)")
+            : id == "video-call" ? @tr("Video call (1:1 chat)")
+            : id == "share-screen" ? @tr("Share screen (1:1 chat)")
+            : id;
+    }
+    pure function message(code: string) -> string {
+        return code == "taken" ? @tr("Already used by {}.", root.label(ShortcutStore.conflict))
+            : code == "needs-modifier" ? @tr("Use Ctrl or Alt with the key, or a function key.")
+            : code == "reserved" ? @tr("IronTeams already uses that combination for editing, formatting or calls.")
+            : @tr("That key cannot be used.");
+    }
+    SettingsSection {
+        title: @tr("Keyboard shortcuts");
+        description: @tr("Click the keys of a shortcut, then press the new ones. Esc cancels. Keys that another shortcut already uses are refused.");
+        SettingsButtonRow {
+            label: @tr("Reset all shortcuts");
+            description: @tr("Go back to the keys IronTeams comes with.");
+            button-label: @tr("Reset all");
+            button-enabled: ShortcutStore.customized;
+            clicked => {
+                root.error-id = "";
+                ShortcutStore.recording-id = "";
+                ShortcutStore.reset-all();
+            }
+        }
+        for s in ShortcutStore.items: VerticalLayout {
+            ShortcutRow {
+                label: root.label(s.id);
+                keys: s.keys;
+                default-keys: s.default-keys;
+                custom: s.custom;
+                recording: ShortcutStore.recording-id == s.id;
+                start => {
+                    root.error-id = "";
+                    ShortcutStore.recording-id = s.id;
+                    self.listen();
+                }
+                cancel => {
+                    if ShortcutStore.recording-id == s.id { ShortcutStore.recording-id = ""; }
+                    root.error-id = "";
+                }
+                reset => {
+                    root.error-id = "";
+                    ShortcutStore.recording-id = "";
+                    ShortcutStore.reset(s.id);
+                }
+                capture(key, ctrl, alt, shift, meta) => {
+                    let answer = ShortcutStore.rebind(s.id, key, ctrl, alt, shift, meta);
+                    if answer == "" {
+                        ShortcutStore.recording-id = "";
+                        root.error-id = "";
+                    } else if answer != "wait" {
+                        root.error = answer;
+                        root.error-id = s.id;
+                    }
+                }
+            }
+            if root.error-id == s.id: HorizontalLayout {
+                padding-left: SettingsMetrics.row-pad-x;
+                padding-right: SettingsMetrics.row-pad-x;
+                padding-bottom: SettingsMetrics.row-pad-y;
+                Text {
+                    horizontal-alignment: Theme.start-align;
+                    text: root.message(root.error);
+                    color: Theme.danger;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                    accessible-label: @tr("Shortcut error");
+                    accessible-value: self.text;
+                }
+            }
+        }
+    }
+}
