@@ -1,0 +1,37 @@
+# Font spike (docs/designs/theme-engine.md, Open Question 1): spikes/font-spike on Linux, Windows
+# and macOS. Lives on the spike/theme-fonts branch only; never merged.
+name: Font spike
+
+on:
+  push:
+    branches: ['spike/theme-fonts']
+  workflow_dispatch:
+
+jobs:
+  spike:
+    name: font spike (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: System libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev fonts-dejavu fonts-liberation
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: spikes/font-spike
+      - name: Run the spike
+        working-directory: spikes/font-spike
+        env:
+          FONT_SPIKE_OUT: ${{ github.workspace }}/font-spike-out
+        run: cargo run
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: font-spike-${{ matrix.os }}
+          path: font-spike-out
