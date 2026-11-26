@@ -361,17 +361,6 @@ export component AccountsPage inherits SettingsSections {
         }
     }
     SettingsSection {
-        title: @tr("Theme for each account");
-        description: @tr("Give an account its own theme to tell the accounts apart. Same as app uses the theme chosen in Appearance. The theme of the account in use shows at once; another account's shows when IronTeams starts with it.");
-        for a in SettingsStore.accounts: ThemeChoiceRow {
-            label: a.name != "" ? a.name : a.label;
-            themes: SettingsStore.themes;
-            with-same: true;
-            value: a.theme;
-            picked(id) => { SettingsStore.command("account-theme", SettingsStore.j2(a.label, id)); }
-        }
-    }
-    SettingsSection {
         title: @tr("Add an account");
         description: @tr("Pick a short name (letters, digits, - _ .), then restart IronTeams: it shows a code to sign in with, on this computer, for the new account. The accounts stay separate.");
         SettingsBlock {
@@ -421,6 +410,17 @@ export component AccountsPage inherits SettingsSections {
                 checked: o.active;
                 picked => { SettingsStore.command("switch-org", o.tenant); }
             }
+        }
+    }
+    SettingsSection {
+        title: @tr("Theme for each account");
+        description: @tr("Give an account its own theme to tell the accounts apart. Same as app uses the theme chosen in Appearance. The theme of the account in use shows at once; another account's shows when IronTeams starts with it.");
+        for a in SettingsStore.accounts: ThemeChoiceRow {
+            label: a.name != "" ? a.name : a.label;
+            themes: SettingsStore.themes;
+            with-same: true;
+            value: a.theme;
+            picked(id) => { SettingsStore.command("account-theme", SettingsStore.j2(a.label, id)); }
         }
     }
     SettingsSection {

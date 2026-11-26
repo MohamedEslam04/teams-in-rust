@@ -258,6 +258,15 @@ fn a_stale_id_falls_back_and_is_logged_once() {
     assert_eq!(logged_fallback_count(), 1, "logged once");
 }
 
+/// The Accounts page in a window tall enough for all of it.
+fn accounts_page(app: &AppWindow) {
+    open_page(app, "accounts");
+    app.window().set_size(LogicalSize::new(1000., 4000.));
+    for _ in 0..3 {
+        testing::mock_elapsed_time(Duration::from_millis(16));
+    }
+}
+
 /// The unit-separator argument of "account-theme".
 fn account_arg(label: &str, id: &str) -> slint::SharedString {
     format!("{label}\u{1f}{id}").into()
@@ -320,7 +329,7 @@ fn another_accounts_theme_waits_for_its_start() {
         Some("builtin:moss")
     );
     // Removing the active account makes "second" the one the next start uses.
-    open_page(app, "accounts");
+    accounts_page(app);
     press(app, "Remove Test User");
     press(app, "Yes, remove the account");
     assert_eq!(
@@ -347,7 +356,7 @@ fn removing_an_account_removes_its_theme() {
         account_arg("second", "builtin:ember"),
     );
     assert!(Local::load(&dir).themes.accounts.contains_key("second"));
-    open_page(app, "accounts");
+    accounts_page(app);
     press(app, "Remove second");
     press(app, "Yes, remove the account");
     assert!(!Local::load(&dir).themes.accounts.contains_key("second"));
