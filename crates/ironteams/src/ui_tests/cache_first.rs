@@ -182,3 +182,38 @@ fn names_asked_for_before_the_refresh_are_asked_for_again_later() {
     );
     assert_eq!(h.app.get_banner(), "");
 }
+
+#[test]
+fn photos_asked_for_before_the_refresh_are_asked_for_again_later() {
+    // A photo that could not be fetched yet must not stay an empty entry: the person would show
+    // initials for the whole run.
+    let h = before_the_refresh();
+    h.rt.block_on(async {
+        h.engine.test_avatar_lookup("8:orgid:nopic");
+    });
+    assert!(
+        h.engine.test_avatar_placeholder("8:orgid:nopic"),
+        "the lookup is marked while it runs"
+    );
+    let_spawned_tasks_run(&h);
+    assert!(
+        !h.engine.test_avatar_placeholder("8:orgid:nopic"),
+        "a fetch that was not ready is forgotten, so the next draw asks again"
+    );
+    assert_eq!(h.app.get_banner(), "");
+}
+
+#[test]
+fn team_pictures_asked_for_before_the_refresh_are_asked_for_again_later() {
+    let h = before_the_refresh();
+    let key = "team:19:abc@thread.tacv2";
+    h.rt.block_on(async {
+        h.engine.test_team_avatar("19:abc@thread.tacv2");
+    });
+    assert!(h.engine.test_avatar_placeholder(key));
+    let_spawned_tasks_run(&h);
+    assert!(
+        !h.engine.test_avatar_placeholder(key),
+        "a read that was not ready is forgotten, so the next draw asks again"
+    );
+}

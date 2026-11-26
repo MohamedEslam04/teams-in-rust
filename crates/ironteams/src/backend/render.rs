@@ -287,7 +287,20 @@ impl Engine {
 
     /// Downloads a person's photo into the cache and the store, and marks the views showing it.
     async fn fetch_avatar(self: Arc<Self>, mri: String, size: u32) {
-        if let Ok(bytes) = self.client.avatar(&self.me, &mri).await
+        let fetched = self.client.avatar(&self.me, &mri).await;
+        // Not ready (before the first refresh of a cache-first start), a timeout, a dropped
+        // connection: the empty entry of the lookup goes, so the next draw asks again instead of
+        // the person showing initials for the whole run. A refusal (no photo: 404) keeps it.
+        if let Err(err) = &fetched
+            && err.is_transient()
+        {
+            let key = avatar_key(&mri, size);
+            let mut cache = self.avatars.lock().unwrap();
+            if matches!(cache.get(&*key), Some(None)) {
+                cache.remove(&*key);
+            }
+        }
+        if let Ok(bytes) = fetched
             && self.is_photo(&mri, &bytes)
             && let Some((px, bytes)) =
                 decode_limited(move || decode_image(&bytes, size, size).map(|px| (px, bytes)))
@@ -354,6 +367,19 @@ impl Engine {
     #[cfg(test)]
     pub(crate) fn test_avatar_cached(&self, mri: &str) -> bool {
         matches!(self.avatars.lock().unwrap().get(mri), Some(Some(_)))
+    }
+
+    /// Whether the avatar cache holds the empty entry of a lookup (in progress or failed) for
+    /// `key` (`avatar_key` of the list size, or a team's `team_key`).
+    #[cfg(test)]
+    pub(crate) fn test_avatar_placeholder(&self, key: &str) -> bool {
+        matches!(self.avatars.lock().unwrap().get(key), Some(None))
+    }
+
+    /// Tests: the chat list's lookup of a person's photo (`avatar_deferred`).
+    #[cfg(test)]
+    pub(crate) fn test_avatar_lookup(self: &Arc<Self>, mri: &str) {
+        let _ = self.avatar_deferred(mri);
     }
 
     /// Puts a decoded photo in the avatar cache, as a finished lookup would.

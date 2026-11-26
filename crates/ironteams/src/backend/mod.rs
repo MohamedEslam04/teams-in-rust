@@ -683,6 +683,13 @@ impl Engine {
         self.start_online();
         // The chat restored before the refresh could not read from the service yet.
         self.chat_online_reads();
+        // Photos asked for before the refresh were forgotten (`fetch_avatar`): drawing the
+        // views again asks for them again.
+        self.mark(|d| {
+            d.chats = true;
+            d.messages = true;
+            d.header = true;
+        });
         crate::start_timing::mark(crate::start_timing::Stage::Online);
     }
 

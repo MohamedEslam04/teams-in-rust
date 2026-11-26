@@ -43,9 +43,25 @@ impl Engine {
                         });
                     }
                 }
-                Err(err) => tracing::debug!(%err, "no team picture"),
+                Err(err) => {
+                    tracing::debug!(%err, "no team picture");
+                    // Not ready or a dropped connection: ask again at the next draw. A refusal
+                    // keeps the empty entry (initials).
+                    if err.is_transient() {
+                        let mut cache = e.avatars.lock().unwrap();
+                        if matches!(cache.get(&key), Some(None)) {
+                            cache.remove(&key);
+                        }
+                    }
+                }
             }
         });
         None
+    }
+
+    /// Tests: `team_avatar` for a team the cache does not know.
+    #[cfg(test)]
+    pub(crate) fn test_team_avatar(self: &Arc<Self>, group_id: &str) {
+        let _ = self.team_avatar(group_id, "Team");
     }
 }
