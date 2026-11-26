@@ -1,3 +1,4 @@
+use super::unreads::unread_rows;
 use super::*;
 
 fn hit(kind: &'static str, conv: &str, message: &str, ms: i64) -> Hit {

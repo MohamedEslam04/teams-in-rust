@@ -194,10 +194,10 @@ component UnreadsList inherits FocusScope {
     // Keeps the row the keyboard is on in view (every row is 74px).
     changed selected-index => {
         if root.selected-index >= 0 {
-            if root.selected-index * 74px < -lv.viewport-y {
-                lv.viewport-y = -(root.selected-index * 74px);
-            } else if (root.selected-index + 1) * 74px > -lv.viewport-y + lv.visible-height {
-                lv.viewport-y = -((root.selected-index + 1) * 74px - lv.visible-height);
+            if root.selected-index * 74px < -lv.content-y {
+                lv.content-y = -(root.selected-index * 74px);
+            } else if (root.selected-index + 1) * 74px > -lv.content-y + lv.visible-height {
+                lv.content-y = -((root.selected-index + 1) * 74px - lv.visible-height);
             }
         }
     }
