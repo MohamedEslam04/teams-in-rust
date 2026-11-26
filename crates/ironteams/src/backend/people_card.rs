@@ -306,6 +306,10 @@ impl Engine {
                 .map(|s| avail_from(&s, now)),
             Err(err) => {
                 tracing::debug!(%err, "profile card schedule");
+                // Not ready or a dropped connection: not remembered, the next card asks again.
+                if err.is_transient() {
+                    return cached.and_then(|(a, _)| a);
+                }
                 None
             }
         };
