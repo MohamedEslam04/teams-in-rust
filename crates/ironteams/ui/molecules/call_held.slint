@@ -1,17 +1,19 @@
 // Call waiting: the call on hold, as a bar at the top of the call window and in the floating
 // call, like Teams': "<name> · On hold" with Resume (the held call comes back and the shown one
 // goes on hold) and End. Shown while `CallStore.held-name` is set.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export component HeldBar inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     // The floating call's slimmer bar.
     in property <bool> compact;
     height: root.compact ? 34px : 40px;
     border-radius: root.compact ? 4px : 0px;
-    background: Theme.dark ? #3a3320 : #fff4ce;
+    background: root.c.warning-soft;
     accessible-role: groupbox;
     accessible-label: CallStore.held-name + " · On hold";
     HorizontalLayout {
@@ -22,15 +24,16 @@ export component HeldBar inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Icon {
+                c: root.c;
                 source: @image-url("../icons/call-direct.svg");
-                tint: Theme.fg-muted;
+                tint: root.c.fg-muted;
                 width: 16px;
                 height: 16px;
             }
         }
         Text {
             text: CallStore.held-name + " · On hold";
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
@@ -40,7 +43,7 @@ export component HeldBar inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Button { variant: ButtonVariant.solid; base-width: 64px;
+            Button { c: root.c; variant: ButtonVariant.solid; base-width: 64px;
                 label: "Resume";
                 accessible-label: "Resume the call on hold";
                 primary: true;
@@ -49,7 +52,7 @@ export component HeldBar inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Button { variant: ButtonVariant.solid; base-width: 64px;
+            Button { c: root.c; variant: ButtonVariant.solid; base-width: 64px;
                 label: "End";
                 accessible-label: "End the call on hold";
                 clicked => { CallStore.command("end-held", ""); }

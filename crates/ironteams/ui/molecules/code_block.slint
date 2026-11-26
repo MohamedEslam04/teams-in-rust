@@ -1,18 +1,20 @@
 // A code block of a message: the code in a monospace box that wraps long lines, with a Copy button
 // in its top corner that shows while the pointer is over the block. The owner copies the code
 // (`copy(code)`); the block never touches the clipboard itself.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Motion } from "../tokens/motion.slint";
 import { Icon } from "../atoms/widgets.slint";
 
 export component CodeBlock inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> code;
     callback copy(string);
 
-    background: Theme.code-bg;
+    background: root.c.code-bg;
     border-radius: 4px;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
 
     // Only to know the pointer is over the block (the button is above it).
     block-hover := TouchArea { }
@@ -25,7 +27,7 @@ export component CodeBlock inherits Rectangle {
         padding-right: 38px;
         code-text := Text {
             text: root.code;
-            color: Theme.fg;
+            color: root.c.fg;
             font-family: "monospace";
             font-size: 13px * Theme.font-scale;
             wrap: char-wrap;
@@ -40,17 +42,18 @@ export component CodeBlock inherits Rectangle {
         width: 26px;
         height: 26px;
         border-radius: 4px;
-        background: copy-touch.has-hover ? Theme.surface-hover : Theme.surface;
+        background: copy-touch.has-hover ? root.c.surface-hover : root.c.surface;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: root.c.border;
         opacity: block-hover.has-hover || copy-touch.has-hover ? 1.0 : 0.0;
         animate opacity { duration: Motion.quick; }
         accessible-role: button;
         accessible-label: @tr("Copy code");
         accessible-action-default => { root.copy(root.code); }
         Icon {
+            c: root.c;
             source: @image-url("../icons/copy.svg");
-            tint: copy-touch.has-hover ? Theme.accent : Theme.fg-muted;
+            tint: copy-touch.has-hover ? root.c.accent : root.c.fg-muted;
             width: 14px;
             height: 14px;
             x: (parent.width - self.width) / 2;

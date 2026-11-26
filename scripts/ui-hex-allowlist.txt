@@ -6,39 +6,6 @@
 # palettes (composer_format.slint), drop-shadow colours, brand colours (Loop, file kinds,
 # calendar categories) and the call window's always-dark video surfaces. The rest should move
 # into Theme tokens or atom variants over time; this list may only shrink, never grow.
-molecules/apps_kit.slint #ffffff
-molecules/apps_kit.slint #ffffff10
-molecules/call_captions.slint #000000c0
-molecules/call_captions.slint #ffffff
-molecules/call_captions.slint #ffffffb0
-molecules/call_held.slint #3a3320
-molecules/call_held.slint #fff4ce
-molecules/call_reactions.slint #00000080
-molecules/call_reactions.slint #000000a0
-molecules/call_reactions.slint #ffffff
-molecules/cards.slint #00000080
-molecules/cards.slint #141414
-molecules/cards.slint #2f8be6
-molecules/cards.slint #6b4ce6
-molecules/cards.slint #ffffff
-molecules/card_view.slint #1d3b27
-molecules/card_view.slint #232b5c
-molecules/card_view.slint #4a3912
-molecules/card_view.slint #4d2024
-molecules/card_view.slint #6fd685
-molecules/card_view.slint #9aa5ff
-molecules/card_view.slint #f5c451
-molecules/card_view.slint #ff7e83
-molecules/card_view.slint #ffffff
-molecules/loop_editor.slint #2f8be6
-molecules/loop_editor.slint #6b4ce6
-molecules/loop_editor.slint #ffffff
-molecules/message_menu.slint #00000090
-molecules/reaction_picker.slint #00000090
-molecules/seen_by.slint #00000090
-molecules/select_bar.slint #ffffff
-molecules/spelling.slint #00000060
-molecules/teams_widgets.slint #3b3d6b
 organisms/app_rail.slint #ffffff
 organisms/apps_rail.slint #000000a0
 organisms/app_top_bar.slint #ffb900

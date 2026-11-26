@@ -65,8 +65,9 @@ screen is the content set.
   may not read the flat colour aliases or `Theme.dark`; they read their `c` input. The names
   are read from `tokens/theme.slint`. Areas: `atoms` (with `tokens/motion.slint`), `molecules`,
   `nav`, `call`. The rule is switched on area by area as the components take `c`; today the
-  `atoms` area is on. Every atom, and `tokens/motion.slint`, takes `c` (an `in property <Tokens>`,
-  default `Theme.content`) and reads its colours from `root.c`.
+  `atoms` and `molecules` areas are on. Every atom, `tokens/motion.slint` and every molecule that
+  reads a colour or instantiates a component with a `c` input takes `c` (an `in property
+  <Tokens>`, default `Theme.content`), reads its colours from `root.c` and passes `c: root.c` on.
 
 ## Atom catalog
 

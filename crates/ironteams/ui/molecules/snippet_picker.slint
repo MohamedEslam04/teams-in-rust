@@ -2,7 +2,7 @@
 // is being typed, and the globals the Rust side (src/snippets.rs) fills. Same shape as the
 // @mention picker.
 import { Theme } from "../tokens/theme.slint";
-import { Edited } from "../tokens/types.slint";
+import { Edited, Tokens } from "../tokens/types.slint";
 
 // `preview` is the text on one line, for lists.
 export struct SnippetItem { name: string, text: string, preview: string }
@@ -27,16 +27,17 @@ export global SnippetApi {
 }
 
 export component SnippetPicker inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <[SnippetItem]> items;
     in property <int> index: 0;
     callback picked(int);
 
     width: 340px;
     height: min(items.length, 8) * 40px + 8px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-radius: 6px;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     accessible-role: list;
     accessible-label: @tr("Snippets");
     VerticalLayout {
@@ -44,7 +45,7 @@ export component SnippetPicker inherits Rectangle {
         for s[i] in root.items: Rectangle {
             height: 40px;
             border-radius: 4px;
-            background: i == root.index || row.has-hover ? Theme.surface-hover : transparent;
+            background: i == root.index || row.has-hover ? root.c.surface-hover : transparent;
             accessible-role: list-item;
             accessible-label: "/" + s.name;
             accessible-description: s.preview;
@@ -52,8 +53,8 @@ export component SnippetPicker inherits Rectangle {
                 padding-left: 10px;
                 padding-right: 10px;
                 alignment: center;
-                Text { text: "/" + s.name; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; horizontal-alignment: Theme.start-align; }
-                Text { text: s.preview; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
+                Text { text: "/" + s.name; color: root.c.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; horizontal-alignment: Theme.start-align; }
+                Text { text: s.preview; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; horizontal-alignment: Theme.start-align; }
             }
             row := TouchArea { mouse-cursor: pointer; clicked => { root.picked(i); } }
         }

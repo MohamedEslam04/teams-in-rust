@@ -2,18 +2,20 @@
 // in this call on another device too (the roster lists a second device of ours) and whether this
 // device plays the call's sound, with the toggle. "Add this device" on the pre-join screen joins
 // with the sound off, so a phone and a laptop in one room do not echo.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export component DeviceBar inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     property <string> message: CallStore.other-device
         ? (CallStore.sound-off ? "You're also in this call on another device. Sound is off here." : "You're also in this call on another device.")
         : "Sound is off on this device.";
     height: 40px;
     // A light wash of the accent, so the bar reads as information in both themes.
-    background: Theme.accent.transparentize(0.82);
+    background: root.c.accent.transparentize(0.82);
     accessible-role: groupbox;
     accessible-label: root.message;
     HorizontalLayout {
@@ -24,15 +26,16 @@ export component DeviceBar inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Icon {
+                c: root.c;
                 source: @image-url("../icons/volume.svg");
-                tint: Theme.fg-muted;
+                tint: root.c.fg-muted;
                 width: 16px;
                 height: 16px;
             }
         }
         Text {
             text: root.message;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
@@ -42,7 +45,7 @@ export component DeviceBar inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            Button { variant: ButtonVariant.solid; base-width: 120px;
+            Button { c: root.c; variant: ButtonVariant.solid; base-width: 120px;
                 label: CallStore.sound-off ? "Turn on sound" : "Turn off sound";
                 primary: CallStore.sound-off;
                 clicked => { CallStore.command("sound", ""); }

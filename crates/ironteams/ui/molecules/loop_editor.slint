@@ -5,6 +5,8 @@
 // A live, collaborative Loop component cannot be made from IronTeams (it needs Microsoft Loop), so the
 // paragraph is sent as a formatted message and the card says so. The rows live in `LoopStore`,
 // edited through `src/loop_compose.rs`, which also builds the message.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { Pill } from "../atoms/chip.slint";
@@ -39,6 +41,7 @@ export global LoopStore {
 
 // A one-line field with a placeholder.
 component LoopInput inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in-out property <string> text;
     in property <string> placeholder;
     in property <bool> bold;
@@ -56,7 +59,7 @@ component LoopInput inherits Rectangle {
         width: parent.width - 8px;
         y: (parent.height - self.height) / 2;
         text <=> root.text;
-        color: Theme.fg;
+        color: root.c.fg;
         font-size: root.size * Theme.font-scale;
         font-weight: root.bold ? 700 : 400;
         single-line: true;
@@ -69,7 +72,7 @@ component LoopInput inherits Rectangle {
         x: 4px;
         width: parent.width - 8px;
         text: root.placeholder;
-        color: Theme.fg-subtle;
+        color: root.c.fg-subtle;
         font-size: root.size * Theme.font-scale;
         font-weight: root.bold ? 700 : 400;
         vertical-alignment: center;
@@ -80,10 +83,11 @@ component LoopInput inherits Rectangle {
 }
 
 export component LoopEditor inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.sidebar;
+    border-color: root.c.border;
+    background: root.c.panel;
     accessible-role: groupbox;
     accessible-label: @tr("Loop paragraph");
     VerticalLayout {
@@ -96,12 +100,12 @@ export component LoopEditor inherits Rectangle {
                 height: 20px;
                 y: 4px;
                 border-radius: 4px;
-                background: @linear-gradient(135deg, #6b4ce6 0%, #2f8be6 100%);
-                Icon { source: @image-url("../icons/loop.svg"); width: 14px; height: 14px; tint: #ffffff; }
+                background: @linear-gradient(135deg, Fixed.loop-from 0%, Fixed.loop-to 100%);
+                Icon { c: root.c; source: @image-url("../icons/loop.svg"); width: 14px; height: 14px; tint: Fixed.white; }
             }
             Text {
                 text: @tr("Loop paragraph");
-                color: Theme.fg-muted;
+                color: root.c.fg-muted;
                 font-size: 12px * Theme.font-scale;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -109,6 +113,7 @@ export component LoopEditor inherits Rectangle {
                 overflow: elide;
             }
             IconButton {
+                c: root.c;
                 icon: @image-url("../icons/trash.svg");
                 tooltip: @tr("Delete Loop paragraph");
                 size: 28px;
@@ -116,6 +121,7 @@ export component LoopEditor inherits Rectangle {
             }
         }
         LoopInput {
+            c: root.c;
             text <=> LoopStore.title;
             placeholder: @tr("Add a title");
             bold: true;
@@ -123,6 +129,7 @@ export component LoopEditor inherits Rectangle {
             min-height: 30px;
         }
         LoopInput {
+            c: root.c;
             text <=> LoopStore.body;
             placeholder: @tr("Add some text");
         }
@@ -132,10 +139,11 @@ export component LoopEditor inherits Rectangle {
             spacing: 0px;
             Rectangle {
                 border-width: 1px;
-                border-color: Theme.border;
-                background: Theme.surface;
+                border-color: root.c.border;
+                background: root.c.surface;
                 HorizontalLayout {
                     for h[c] in LoopStore.header: LoopInput {
+                        c: root.c;
                         text: h;
                         placeholder: @tr("Column {}", c + 1);
                         bold: true;
@@ -145,9 +153,10 @@ export component LoopEditor inherits Rectangle {
             }
             for row[r] in LoopStore.rows: Rectangle {
                 border-width: 1px;
-                border-color: Theme.border;
+                border-color: root.c.border;
                 HorizontalLayout {
                     for cell[c] in row.cells: LoopInput {
+                        c: root.c;
                         text: cell;
                         placeholder: "";
                         edited(t) => { LoopStore.set-cell(r, c, t); }
@@ -159,8 +168,9 @@ export component LoopEditor inherits Rectangle {
         if LoopStore.kind == "bullets": VerticalLayout {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
-                Text { text: "•"; color: Theme.fg; font-size: 14px * Theme.font-scale; vertical-alignment: center; width: 10px; }
+                Text { text: "•"; color: root.c.fg; font-size: 14px * Theme.font-scale; vertical-alignment: center; width: 10px; }
                 LoopInput {
+                    c: root.c;
                     text: row.text;
                     placeholder: @tr("List item");
                     edited(t) => { LoopStore.set-text(r, t); }
@@ -171,12 +181,13 @@ export component LoopEditor inherits Rectangle {
         if LoopStore.kind == "checklist": VerticalLayout {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
-                CheckBox { variant: CheckBoxVariant.square; y: 4px;
+                CheckBox { c: root.c; variant: CheckBoxVariant.square; y: 4px;
                     checked: row.checked;
                     label: row.text != "" ? row.text : @tr("Checklist item");
                     toggled => { LoopStore.toggle(r); }
                 }
                 LoopInput {
+                    c: root.c;
                     text: row.text;
                     placeholder: @tr("Checklist item");
                     edited(t) => { LoopStore.set-text(r, t); }
@@ -187,23 +198,26 @@ export component LoopEditor inherits Rectangle {
         if LoopStore.kind == "tasks": VerticalLayout {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
-                CheckBox { variant: CheckBoxVariant.square; y: 4px;
+                CheckBox { c: root.c; variant: CheckBoxVariant.square; y: 4px;
                     checked: row.checked;
                     label: row.text != "" ? row.text : @tr("Task");
                     toggled => { LoopStore.toggle(r); }
                 }
                 LoopInput {
+                    c: root.c;
                     text: row.text;
                     placeholder: @tr("Task");
                     horizontal-stretch: 2;
                     edited(t) => { LoopStore.set-text(r, t); }
                 }
                 LoopInput {
+                    c: root.c;
                     text: row.assignee;
                     placeholder: @tr("Assigned to");
                     edited(t) => { LoopStore.set-assignee(r, t); }
                 }
                 LoopInput {
+                    c: root.c;
                     text: row.due;
                     placeholder: @tr("Due date");
                     edited(t) => { LoopStore.set-due(r, t); }
@@ -215,11 +229,13 @@ export component LoopEditor inherits Rectangle {
             for row[r] in LoopStore.rows: HorizontalLayout {
                 spacing: 6px;
                 LoopInput {
+                    c: root.c;
                     text: row.text;
                     placeholder: @tr("Option");
                     edited(t) => { LoopStore.set-text(r, t); }
                 }
                 Pill {
+                    c: root.c;
                     label: "👍 " + row.votes;
                     active: row.checked;
                     accessible-label: @tr("Vote for option {}", r + 1);
@@ -236,7 +252,7 @@ export component LoopEditor inherits Rectangle {
                 accessible-role: button;
                 accessible-label: @tr("Add row");
                 accessible-action-default => { LoopStore.add-row(); }
-                add-text := Text { x: 4px; text: @tr("+ Add row"); color: add-touch.has-hover ? Theme.accent : Theme.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                add-text := Text { x: 4px; text: @tr("+ Add row"); color: add-touch.has-hover ? root.c.accent : root.c.fg-muted; font-size: 12px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
                 add-touch := TouchArea { mouse-cursor: pointer; clicked => { LoopStore.add-row(); } }
             }
         }
@@ -262,6 +278,7 @@ export component LoopEditor inherits Rectangle {
                     width: here ? pill.preferred-width + 6px : 0px;
                     height: here ? 26px : 0px;
                     pill := Pill {
+                        c: root.c;
                         visible: parent.here;
                         x: 0px;
                         width: parent.width - 6px;
@@ -274,7 +291,7 @@ export component LoopEditor inherits Rectangle {
 
         Text {
             text: @tr("Sent as a formatted message: live Loop components need Microsoft Loop.");
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 11px * Theme.font-scale;
             wrap: word-wrap;
             horizontal-alignment: Theme.start-align;
