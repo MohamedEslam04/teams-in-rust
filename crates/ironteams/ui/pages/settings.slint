@@ -653,10 +653,11 @@ export component ProfileMenu inherits Rectangle {
                             VerticalLayout {
                                 alignment: end;
                                 horizontal-stretch: 0;
-                                IconButton {
-                                    icon: @image-url("../icons/emoji.svg");
-                                    tooltip: @tr("Add emoji to status message");
+                                Button {
+                                    variant: ButtonVariant.settings;
+                                    label: "🙂";
                                     active: root.note-emoji-open;
+                                    accessible-label: @tr("Add emoji to status message");
                                     clicked => { root.note-emoji-query = ""; root.note-emoji-open = !root.note-emoji-open; }
                                 }
                             }
