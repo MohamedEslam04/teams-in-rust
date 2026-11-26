@@ -44,7 +44,7 @@ pub struct Hooks {
     pub autostart: Autostart,
     pub test_notification: Box<dyn Fn()>,
     pub open_url: Box<dyn Fn(&str)>,
-    /// Starts IronTeams again and quits this one.
+    /// Quits this process; `main` then starts IronTeams again (`relaunch`).
     pub restart: Box<dyn Fn()>,
     /// Runs after the tokens were removed: the app closes.
     pub signed_out: Box<dyn Fn()>,
@@ -125,10 +125,9 @@ impl SettingsEnv {
                 open_url: Box::new(|u| {
                     let _ = crate::external::open(u);
                 }),
+                // `main` starts the new process after the full shutdown (`relaunch`).
                 restart: Box::new(|| {
-                    if let Ok(exe) = std::env::current_exe() {
-                        let _ = std::process::Command::new(exe).spawn();
-                    }
+                    crate::relaunch::request(crate::relaunch::Relaunch::default());
                     let _ = slint::quit_event_loop();
                 }),
                 signed_out: Box::new(|| {

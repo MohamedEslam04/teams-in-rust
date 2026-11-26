@@ -108,7 +108,7 @@ Files:
 - `[push.rs:read_portal]` Builds a tokio current-thread runtime and does an xdg desktop portal (D-Bus) read
 - `[hooks.rs:SettingsEnv::system test_notification]` Spawns a thread showing a desktop card (desktop_cards client) or notify_rust notification
 - `[push.rs:watch_portal]` Spawns thread 'ironteams-portal' with its own runtime subscribing to portal D-Bus change stream
-- `[hooks.rs:SettingsEnv::system restart]` Spawns a new process of current_exe and quits the Slint event loop; signed_out and quit also quit the event loop
+- `[hooks.rs:SettingsEnv::system restart]` Calls `relaunch::request(Relaunch::default())` and quits the Slint event loop; it spawns nothing itself: `main` starts the new process after the full shutdown (`relaunch::run_if_requested`). signed_out and quit only quit the event loop
 - `[push.rs:apply_look]` Writes Theme (including code_bg) and SettingsStore Slint globals (UI state) and sets the process-global mention colour with crate::markdown::set_mention_color, which affects rows drawn afterwards
 - `[hooks.rs:SettingsEnv::system open_url]` Opens URLs via crate::external::open; [command.rs:"view-account"] opens myaccount.microsoft.com
 - `[push.rs:apply_general]` Sets global state: appearance::formats, language, tray keep_running, link previews
