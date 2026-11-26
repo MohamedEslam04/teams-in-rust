@@ -6,8 +6,6 @@
 # palettes (composer_format.slint), drop-shadow colours, brand colours (Loop, file kinds,
 # calendar categories) and the call window's always-dark video surfaces. The rest should move
 # into Theme tokens or atom variants over time; this list may only shrink, never grow.
-organisms/app_rail.slint #ffffff
-organisms/apps_rail.slint #000000a0
 organisms/app_top_bar.slint #ffb900
 organisms/calendar_dialogs.slint #ff8a8d
 organisms/calendar_dialogs.slint #ffb900
@@ -54,10 +52,6 @@ organisms/channel_tabs.slint #3b3d6b
 organisms/channel_tabs.slint #ffffff
 organisms/chat_header.slint #000000a0
 organisms/chat_header.slint #ffffff
-organisms/chat_list_extras.slint #00000060
-organisms/chat_list_extras.slint #ffffff
-organisms/communities_section.slint #0f7b5f
-organisms/communities_section.slint #ffffff
 organisms/composer_apps.slint #000000a0
 organisms/composer_apps.slint #ffffff
 organisms/composer_apps.slint #ffffff10
@@ -89,9 +83,6 @@ organisms/drive_share_dialog.slint #e3e4fa
 organisms/forward_dialog.slint #000000a0
 organisms/forward_dialog.slint #34365c
 organisms/forward_dialog.slint #ffffff
-organisms/lists.slint #000000a0
-organisms/lists.slint #3b3d6b
-organisms/lists.slint #ffffff
 organisms/media.slint #00000090
 organisms/media.slint #000000b0
 organisms/media.slint #000000c0
@@ -138,8 +129,6 @@ organisms/shared_view.slint #2d3a5f
 organisms/shared_view.slint #5a5a5a
 organisms/shared_view.slint #ffffff
 organisms/shortcuts.slint #000000b0
-organisms/sidebar.slint #e97a5f
-organisms/sidebar.slint #ffd335
 organisms/teams_dialogs.slint #3b3d6b
 organisms/teams_dialogs.slint #ffffff
 organisms/topbar.slint #00000080
@@ -154,8 +143,6 @@ organisms/video_clip.slint #ffffff
 organisms/video_preview.slint #00000099
 organisms/video_preview.slint #000000cc
 organisms/video_preview.slint #ffffff
-organisms/web_parity.slint #1f2a3b
-organisms/web_parity.slint #ffffff
 pages/activity.slint #00000080
 pages/activity.slint #3b1f22
 pages/activity.slint #3b3d6b

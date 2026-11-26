@@ -6,14 +6,16 @@ import { Icon } from "../atoms/widgets.slint";
 import { Motion, PopIn } from "../tokens/motion.slint";
 import { RailApps } from "apps_rail.slint";
 import { Theme } from "../tokens/theme.slint";
+import { Tokens } from "../tokens/types.slint";
 
 export component AppRail inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <int> activity-unread;
     in property <int> chats-unread;
     callback navigate(string);
     in-out property <string> view;
     width: AppsStore.rail-width;
-    background: Theme.rail;
+    background: root.c.rail;
     VerticalLayout {
         padding-top: 8px;
         // The gap below an entry belongs to the entry (60px), so a hidden one leaves none.
@@ -33,15 +35,15 @@ export component AppRail inherits Rectangle {
                 height: 32px;
                 y: 12px;
                 border-radius: 2px;
-                background: root.view == item.key ? Theme.accent : transparent;
+                background: root.view == item.key ? root.c.accent : transparent;
             }
             VerticalLayout {
                 y: 0px;
                 height: 56px;
                 alignment: center;
                 spacing: 2px;
-                Icon { source: RailItems.icon(item.key); tint: root.view == item.key || rt.has-hover ? Theme.accent : Theme.fg-muted; animate tint { duration: Motion.quick; } width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
-                if !AppsStore.icons-only: Text { accessible-role: none; text: RailItems.label(item.key); color: root.view == item.key ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
+                Icon { c: root.c; source: RailItems.icon(item.key); tint: root.view == item.key || rt.has-hover ? root.c.accent : root.c.fg-muted; animate tint { duration: Motion.quick; } width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
+                if !AppsStore.icons-only: Text { accessible-role: none; text: RailItems.label(item.key); color: root.view == item.key ? root.c.accent : root.c.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
             }
             if ri.badge-count > 0: PopIn {
                 from-scale: Theme.reduced-motion ? 1.0 : 0.3;
@@ -50,10 +52,10 @@ export component AppRail inherits Rectangle {
                 height: 16px;
                 width: max(16px, badge-text.preferred-width + 8px);
                 border-radius: 8px;
-                background: Theme.unread-badge;
+                background: root.c.unread-badge;
                 accessible-role: text;
                 accessible-label: @tr("{} unread", ri.badge-count);
-                badge-text := Text { text: ri.badge-count > 99 ? "99+" : ri.badge-count; color: #ffffff; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                badge-text := Text { text: ri.badge-count > 99 ? "99+" : ri.badge-count; color: root.c.on-badge; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             }
             rt := TouchArea {
                 y: 0px;
@@ -69,6 +71,6 @@ export component AppRail inherits Rectangle {
                 clicked => { root.navigate(item.key); }
             }
         }
-        RailApps { view <=> root.view; }
+        RailApps { c: root.c; view <=> root.view; }
     }
 }
