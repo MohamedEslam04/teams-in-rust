@@ -9,6 +9,7 @@ import { ListStore } from "lists.slint";
 import { PaletteStore } from "../stores/palette_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
+import { SplitStore } from "../stores/split_store.slint";
 import { ShortcutApi } from "shortcuts.slint";
 import { TopBarStore } from "topbar.slint";
 
@@ -29,6 +30,10 @@ export component AppKeys inherits FocusScope {
     in property <string> reply-preview;
     callback set-filter(string);
     in-out property <bool> shortcuts-open;
+    // The split view's pane shows: while it is the active one, Esc closes it and Alt+Shift+R
+    // goes to its box.
+    in property <bool> split-shown;
+    callback close-split;
     in property <bool> teams-no-channel;
     in property <string> thread-root;
     in-out property <string> view;
@@ -72,13 +77,15 @@ export component AppKeys inherits FocusScope {
         }
         reject
     }
-    // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
+    // Esc, when nothing else took it: closes the shortcut list, then the active split pane, then
+    // the thread, then the reply.
     key-pressed(event) => {
         if event.text == Key.Escape && !event.modifiers.shift {
             if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
             if PeopleStore.jump-date-open { PeopleStore.jump-date-open = false; root.focus-tick += 1; return accept; }
             if root.shortcuts-open { root.shortcuts-open = false; return accept; }
             if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
+            if root.split-shown && SplitStore.active { root.close-split(); return accept; }
             if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
             if root.thread-root != "" { root.close-thread(); return accept; }
             if root.reply-preview != "" { root.cancel-reply(); return accept; }
@@ -137,7 +144,9 @@ export component AppKeys inherits FocusScope {
             root.view = "chat";
             FindStore.command("quick", "unreads");
         }
-        if a == "focus-composer" { root.focus-tick += 1; }
+        if a == "focus-composer" {
+            if root.split-shown && SplitStore.active { SplitStore.focus-tick += 1; } else { root.focus-tick += 1; }
+        }
         if a == "focus-messages" { root.msg-focus-tick += 1; }
         if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }
         if a == "attach-file" { root.attach-file(); }

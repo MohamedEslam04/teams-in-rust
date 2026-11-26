@@ -1923,6 +1923,16 @@ msgstr "زر الرد يفتح المحادثة والمؤشر في مربع ا�
 msgid "Chat list width"
 msgstr "عرض قائمة المحادثات"
 
+# Split view: a second chat beside the open one.
+msgid "Open in split view"
+msgstr "فتح في عرض مقسّم"
+
+msgid "Close split view"
+msgstr "إغلاق العرض المقسّم"
+
+msgid "Split view width"
+msgstr "عرض اللوحة المقسّمة"
+
 msgid "Add a tab"
 msgstr "إضافة تبويب"
 

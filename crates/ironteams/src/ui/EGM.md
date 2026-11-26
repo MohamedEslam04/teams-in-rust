@@ -20,12 +20,13 @@ Files:
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
 - `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
-- `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs` and the chat lists in `ui.rs`.
+- `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs`, `split.rs` and the chat lists in `ui.rs`.
 - `motion.rs`: Sets TypingStore names and chats models for the typing indicator and list-row dots.
 - `palette.rs`: Command palette ranking (score/rank), recent-actions list, row building with list geometry, wired to PaletteApi callbacks.
 - `ongoing_call.rs`: `UiHandle::ongoing_call` and `ongoing_call_elapsed` fill `OngoingCallStore`, the header's live-call strip.
 - `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
-- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; follows the look Settings applies (popout_apply_look), shows/updates messages.
+- `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; follows the look Settings applies (popout_apply_look), shows/updates messages; `patch_rows` (shared with `split.rs`).
+- `split.rs`: Split view: a second chat in the main window's pane right of the open one (`SplitStore`); open, messages, close.
 - `chat_note.rs`: UiHandle::set_chat_note fills ChatNoteStore.text (the open chat's private note).
 - `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models; UiHandle::later fills `RemindStore.later` (the Later page rows).
 - `row_fingerprint.rs`: `of`, `of_chat`, `of_post`: hash of every drawn field of a `MsgData`, `ChatData` or `PostData`, used as the row print for `model_sync`.
@@ -98,6 +99,7 @@ Files:
 - `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
 - `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
 - `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; applies the last look (thread-local LOOK) through settings::apply_look and copies SettingsStore.wheel_speed from the main window
+- `[split.rs:UiHandle::split_open]` pub fn(&self,conv:String,title:String); `[split.rs:UiHandle::split_messages]` pub fn(&self,msgs:Vec<MsgData>); `[split.rs:UiHandle::split_close]` pub fn(&self)
 
 ## Invariants
 - `[activity.rs:fill]` rows updated in place via set_row_data when id sequence and length are unchanged (keeps scroll position); otherwise set_vec
@@ -118,7 +120,10 @@ Files:
 - `[appstore.rs:set_recaps]` query written only when it differs from the search box text
 - `[message_toast.rs:MAX_CARDS]` at most 3 cards; a new card removes the oldest first
 - `[popout.rs:popout_open]` switching conv clears draft and sets an empty messages model (so the retained ROWS model is no longer the one shown and `popout_messages` restarts it); scroll_tick bumped to land on newest
-- `[popout.rs:popout_messages]` messages are patched into the thread-local ROWS model through `model_sync::patch` (fingerprint per row) instead of a new model each time; scroll_tick bumped only for the first fill of a chat
+- `[popout.rs:popout_messages]` messages are patched into the thread-local ROWS model through `patch_rows` / `model_sync::patch` (fingerprint per row) instead of a new model each time; scroll_tick bumped only for the first fill of a chat
+- `[split.rs:split_open]` switching conv clears the draft and messages; sets active, open, scroll_tick and focus_tick; shows a "make the window wider" banner when AppWindow.split_fits is false (the pane then shows once the window is wide enough)
+- `[split.rs:split_messages]` ignored while SplitStore.open is false; same patching as the pop-out (own thread-local ROWS)
+- `[split.rs:split_close]` clears SplitStore (open, active, conv, draft, messages) and drops ROWS
 - `[channels.rs:posts]` the POSTS model is replaced only when `model_sync::is_shown` is false (a test or the store default is shown); the thread post is written only when its fingerprint or id changed
 - `[row_fingerprint.rs:of]` MsgData is destructured without `..`, so a new field fails to compile until the fingerprint covers it
 - `[model_sync.rs:patch]` rows both lists share stay and only those whose print changed are written; a list that is mostly reordered is written row by row; returns the number of rows written

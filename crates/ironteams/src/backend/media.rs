@@ -21,6 +21,7 @@ use teams_proto::translate::{self, MessageRef, Scope, Settings, Status, Trigger}
 use teams_proto::urlpreview::{self, LinkPreview};
 
 mod extras;
+use extras::Second;
 
 /// Link cards shown under one message.
 const MAX_CARDS: usize = 3;
@@ -68,13 +69,17 @@ pub enum MediaCmd {
     Report(String),
     /// Opens a chat in its own window.
     PopOut(String),
-    /// The popped-out chat's composer sent text: the chat and the text.
+    /// The popped-out chat's (or the split pane's) composer sent text: the chat and the text.
     PopOutSend {
         conv: String,
         text: String,
     },
     /// The popped-out chat's window was closed.
     PopOutClose,
+    /// "Open in split view": the chat in a pane right of the open one.
+    Split(String),
+    /// The split pane was closed.
+    SplitClose,
 }
 
 impl MediaCmd {
@@ -114,7 +119,8 @@ impl MediaCmd {
             "outlook" => MediaCmd::ShareToOutlook(arg.to_string()),
             "report" => MediaCmd::Report(arg.to_string()),
             "popout" => MediaCmd::PopOut(arg.to_string()),
-            "popout-send" => {
+            // The split pane sends the same way as the pop-out window.
+            "popout-send" | "split-send" => {
                 let (conv, text) = arg.split_once('\u{1f}')?;
                 MediaCmd::PopOutSend {
                     conv: conv.to_string(),
@@ -122,6 +128,8 @@ impl MediaCmd {
                 }
             }
             "popout-close" => MediaCmd::PopOutClose,
+            "split" => MediaCmd::Split(arg.to_string()),
+            "split-close" => MediaCmd::SplitClose,
             _ => return None,
         })
     }
@@ -178,6 +186,7 @@ impl Default for State {
             thumbs: ByteLru::new(THUMB_BUDGET),
             gate: Arc::default(),
             popout: None,
+            split: None,
         }
     }
 }
@@ -209,6 +218,8 @@ pub(super) struct State {
     gate: Arc<tokio::sync::Mutex<()>>,
     /// The chat shown in the pop-out window, if one is open (see `extras`).
     popout: Option<String>,
+    /// The chat shown in the main window's split pane, if one is open (see `extras`).
+    split: Option<String>,
 }
 
 /// What a message row shows about translation.
@@ -393,9 +404,14 @@ impl Engine {
             }
             MediaCmd::ShareToOutlook(id) => self.share_to_outlook(&id).await?,
             MediaCmd::Report(id) => self.report_message(&id).await?,
-            MediaCmd::PopOut(conv) => self.popout_open(&conv).await?,
+            MediaCmd::PopOut(conv) => self.second_open(&conv, Second::PopOut).await?,
             MediaCmd::PopOutSend { conv, text } => self.popout_send(&conv, &text).await?,
             MediaCmd::PopOutClose => self.media.lock().unwrap().popout = None,
+            MediaCmd::Split(conv) => self.second_open(&conv, Second::Split).await?,
+            MediaCmd::SplitClose => {
+                self.media.lock().unwrap().split = None;
+                self.ui.split_close();
+            }
         }
         Ok(())
     }
@@ -1115,6 +1131,21 @@ mod tests {
         assert_eq!(
             MediaCmd::parse("popout-close", ""),
             Some(MediaCmd::PopOutClose)
+        );
+        assert_eq!(
+            MediaCmd::parse("split", "19:a@thread.v2"),
+            Some(MediaCmd::Split("19:a@thread.v2".into()))
+        );
+        assert_eq!(
+            MediaCmd::parse("split-send", "19:a@thread.v2\u{1f}hi"),
+            Some(MediaCmd::PopOutSend {
+                conv: "19:a@thread.v2".into(),
+                text: "hi".into()
+            })
+        );
+        assert_eq!(
+            MediaCmd::parse("split-close", ""),
+            Some(MediaCmd::SplitClose)
         );
         assert_eq!(MediaCmd::parse("nope", ""), None);
     }

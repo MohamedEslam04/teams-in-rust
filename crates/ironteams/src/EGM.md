@@ -91,7 +91,7 @@ Files:
 - `[native_tray.rs:set_unread]` pub fn set_unread(count: u32); updates badge and tooltip (0 hides badge)
 - `[spell.rs:Speller::system]` pub fn system() -> Speller; loads system dictionaries and saved words (slow, parses dictionaries)
 - `[topbar.rs:MOBILE_APP_URL]` pub const &str, Microsoft Teams download page
-- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, row_fingerprint, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, model_sync, ongoing_call, palette, people, remind, teams, voice, cal
+- `[ui.rs:submodules]` pub(crate) mods: activity, appstore, call, call_direct(feature calls), calls_page(feature calls), drive, message_toast, motion, popout, row_fingerprint, settings, topbar; private: channels, clip, composer_apps, engage, find, gifs, lists, media, model_sync, ongoing_call, palette, people, remind, split, teams, voice, cal
 - `[window_state.rs:RestorePlan]` pub struct {size: Option<(i32,i32)> logical, position: Option<(i32,i32)> physical, maximized: bool}
 - `[catch_up.rs:Row]` pub struct {id:String, unread:bool, mention:bool}
 - `[demo.rs:activity]` pub fn activity(st: &Store, now: i64) -> Vec<ActivityItem>: 6 invented items (newest first) referencing message ids looked up from seeded store

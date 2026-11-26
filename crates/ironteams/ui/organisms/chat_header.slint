@@ -13,6 +13,7 @@ import { FindStore } from "../stores/find_store.slint";
 import { ComposerApps } from "composer_apps.slint";
 import { ChannelHeaderItems } from "web_parity.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { MediaStore } from "media.slint";
 
 export global ChatHeaderStore {
     // The chat whose "Remove chat history" waits for confirmation, or "".
@@ -27,6 +28,8 @@ export component HeaderMenu inherits Rectangle {
     in property <bool> channel: false;
     // The header's buttons that did not fit.
     in property <bool> extras: false;
+    // The window has room for a second chat beside this one ("Open in split view").
+    in property <bool> can-split: false;
     callback mark-unread();
     callback schedule-meeting();
     callback done();
@@ -93,6 +96,13 @@ export component HeaderMenu inherits Rectangle {
                 enabled: root.can-share;
                 clicked => {
                     DirectCallStore.command("share-screen", root.chat-id);
+                    root.done();
+                }
+            }
+            if root.can-split: MenuItem { variant: MenuItemVariant.header;
+                label: @tr("Open in split view");
+                clicked => {
+                    MediaStore.command("split", root.chat-id);
                     root.done();
                 }
             }
@@ -165,6 +175,7 @@ export component HeaderMoreButton inherits Rectangle {
     in property <bool> muted;
     in property <bool> channel: false;
     in property <bool> extras: false;
+    in property <bool> can-split: false;
     callback mark-unread();
     callback schedule-meeting();
     width: 32px;
@@ -185,6 +196,7 @@ export component HeaderMoreButton inherits Rectangle {
             muted: root.muted;
             channel: root.channel;
             extras: root.extras;
+            can-split: root.can-split;
             mark-unread => { root.mark-unread(); }
             schedule-meeting => { root.schedule-meeting(); }
             done => { more-popup.close(); }

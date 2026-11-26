@@ -62,6 +62,8 @@ export component ChatPaneHeader inherits Rectangle {
     callback schedule-meeting(string);
     in property <bool> single-pane;
     in property <string> thread-root;
+    // The window has room for the split view (its header menu offers "Open in split view").
+    in property <bool> can-split: false;
     property <bool> compact: self.width < 720px;
     // A call goes on in this conversation: the live-call strip shows.
     property <bool> call-strip: OngoingCallStore.live && OngoingCallStore.chat-id == root.current-id && root.current-id != "";
@@ -288,6 +290,7 @@ export component ChatPaneHeader inherits Rectangle {
             muted: root.current-muted;
             channel: root.current-is-channel;
             extras: root.compact;
+            can-split: root.can-split;
             mark-unread => { root.mark-chat-unread(root.current-id); }
             schedule-meeting => { root.schedule-meeting(root.current-id); }
         }

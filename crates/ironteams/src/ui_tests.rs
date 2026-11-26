@@ -83,6 +83,7 @@ mod shortcut_keys;
 mod shortcuts;
 mod snippets;
 mod splash;
+mod split_view;
 mod teams;
 mod theme_shots;
 mod topbar;
