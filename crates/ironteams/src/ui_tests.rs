@@ -75,11 +75,11 @@ mod seen_by;
 mod settings;
 mod settings_layout;
 mod settings_shots;
-mod theme_shots;
 mod shortcuts;
 mod snippets;
 mod splash;
 mod teams;
+mod theme_shots;
 mod topbar;
 #[cfg(feature = "calls")]
 mod video_effects;
