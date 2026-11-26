@@ -33,6 +33,7 @@ pub(crate) mod call_direct;
 #[cfg(feature = "calls")]
 pub(crate) mod calls_page;
 mod channels;
+mod chat_note;
 mod clip;
 mod composer_apps;
 pub(crate) mod drive;

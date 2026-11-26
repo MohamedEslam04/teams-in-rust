@@ -2583,3 +2583,17 @@ msgstr "تُمسح عند {}"
 
 msgid "Status message clears"
 msgstr "وقت مسح رسالة الحالة"
+
+# The private note on a chat (details pane and the header icon).
+
+msgid "Private note"
+msgstr "ملاحظة خاصة"
+
+msgid "Only on this computer. Never sent to Teams."
+msgstr "على هذا الكمبيوتر فقط. لا تُرسل أبدًا إلى Teams."
+
+msgid "Add a private note about this chat"
+msgstr "أضف ملاحظة خاصة عن هذه الدردشة"
+
+msgid "This chat has a private note"
+msgstr "هذه الدردشة بها ملاحظة خاصة"

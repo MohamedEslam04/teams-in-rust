@@ -30,6 +30,7 @@ mod catch_up;
 mod channels;
 mod chat_header;
 mod chat_navigation;
+mod chat_note;
 mod chat_titles;
 mod clip_loop;
 mod composer_apps;
