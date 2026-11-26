@@ -8,8 +8,8 @@ import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
-import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
+import { SRadio, SRadioList, ThemeTile, ThemeTileMetrics } from "../molecules/settings_widgets.slint";
+import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow, ThemeChoiceRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { AppsStore } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
@@ -653,16 +653,55 @@ export component NotificationsPage inherits SettingsSections {
 export component AppearancePage inherits SettingsSections {
     SettingsSection {
         title: @tr("Theme");
-        SettingsChoiceRow {
+        // The gallery: built-in themes, then custom ones, as many to a line as fit.
+        SettingsRow {
             label: @tr("Theme");
-            description: @tr("Now showing: {}.", SettingsStore.theme-shown);
-            options: [{v: "light", l: @tr("Light")}, {v: "dark", l: @tr("Dark")}, {v: "system", l: @tr("Use system setting")}];
-            value: SettingsStore.theme;
-            picked(v) => { SettingsStore.theme = v; SettingsStore.command("theme", v); }
+            description: @tr("Now showing: {}.", SettingsStore.theme-name(SettingsStore.theme-active, SettingsStore.theme-active-name));
+            stacked: true;
+            gallery := Rectangle {
+                property <int> cols: max(1, Math.floor((self.width + 12px) / (ThemeTileMetrics.width + 12px)));
+                min-height: max(0px, Math.ceil(SettingsStore.themes.length / self.cols) * (ThemeTileMetrics.height + 12px) - 12px);
+                for t[i] in SettingsStore.themes: ThemeTile {
+                    property <int> col: Math.mod(i, gallery.cols);
+                    x: Theme.rtl ? gallery.width - self.width - self.col * (ThemeTileMetrics.width + 12px) : self.col * (ThemeTileMetrics.width + 12px);
+                    y: Math.floor(i / gallery.cols) * (ThemeTileMetrics.height + 12px);
+                    t: t;
+                    checked: SettingsStore.theme-mode == "one" && SettingsStore.theme-id == t.id;
+                    clicked => { SettingsStore.command("theme-pick", t.id); }
+                }
+            }
+        }
+        SettingsChoiceRow {
+            label: @tr("Switch");
+            options: [{v: "one", l: @tr("One theme")}, {v: "system", l: @tr("Follow the system")}, {v: "schedule", l: @tr("On a schedule")}];
+            value: SettingsStore.theme-mode;
+            picked(v) => { SettingsStore.theme-mode = v; SettingsStore.command("theme-mode", v); }
+        }
+        if SettingsStore.theme-mode != "one": ThemeChoiceRow {
+            label: @tr("Light theme");
+            themes: SettingsStore.themes-light-first;
+            value: SettingsStore.theme-light;
+            picked(id) => { SettingsStore.command("theme-slot", SettingsStore.j2("light", id)); }
+        }
+        if SettingsStore.theme-mode != "one": ThemeChoiceRow {
+            label: @tr("Dark theme");
+            themes: SettingsStore.themes-dark-first;
+            value: SettingsStore.theme-dark;
+            picked(id) => { SettingsStore.command("theme-slot", SettingsStore.j2("dark", id)); }
+        }
+        if SettingsStore.theme-mode == "schedule": SettingsBlock {
+            HorizontalLayout {
+                spacing: Space.m;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                Field { variant: FieldVariant.settings; label: @tr("Light from"); text: SettingsStore.theme-light-from; width: 120px; committed(t) => { SettingsStore.command("theme-time", SettingsStore.j2("light", t)); } }
+                Field { variant: FieldVariant.settings; label: @tr("Dark from"); text: SettingsStore.theme-dark-from; width: 120px; committed(t) => { SettingsStore.command("theme-time", SettingsStore.j2("dark", t)); } }
+            }
         }
         SettingsRow {
             label: @tr("Accent colour");
-            description: @tr("Now: {}.", SettingsStore.accent-shown);
+            description: @tr("For IronTeams Dark and IronTeams Light. Now: {}.", SettingsStore.accent-shown)
+                + (SettingsStore.accent-enabled ? "" : " " + @tr("The active theme has its own accent; edit the theme to change it."));
+            enabled: SettingsStore.accent-enabled;
             stacked: true;
             HorizontalLayout {
                 spacing: Space.s;
@@ -671,29 +710,33 @@ export component AppearancePage inherits SettingsSections {
                     width: 32px;
                     height: 32px;
                     border-radius: 16px;
+                    opacity: SettingsStore.accent-enabled ? 1 : 0.4;
                     border-width: SettingsStore.accent == a.v ? 3px : 1px;
                     border-color: SettingsStore.accent == a.v ? Theme.fg : Theme.border;
                     background: a.v == "" ? transparent : a.c;
                     accessible-role: radio-button;
                     accessible-label: @tr("Accent colour: {}", a.l);
                     accessible-checked: SettingsStore.accent == a.v;
-                    accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
+                    accessible-enabled: SettingsStore.accent-enabled;
+                    accessible-action-default => { if SettingsStore.accent-enabled { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
                     if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                    TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
+                    TouchArea { enabled: SettingsStore.accent-enabled; mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
                 }
                 for a in Fixed.accent-choices: Rectangle {
                     width: 32px;
                     height: 32px;
                     border-radius: 16px;
+                    opacity: SettingsStore.accent-enabled ? 1 : 0.4;
                     border-width: SettingsStore.accent == a.v ? 3px : 1px;
                     border-color: SettingsStore.accent == a.v ? Theme.fg : Theme.border;
                     background: a.v == "" ? transparent : a.c;
                     accessible-role: radio-button;
                     accessible-label: @tr("Accent colour: {}", a.l);
                     accessible-checked: SettingsStore.accent == a.v;
-                    accessible-action-default => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); }
+                    accessible-enabled: SettingsStore.accent-enabled;
+                    accessible-action-default => { if SettingsStore.accent-enabled { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
                     if a.v == "": Text { text: "A"; color: Theme.accent; font-size: Theme.font-body; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                    TouchArea { mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
+                    TouchArea { enabled: SettingsStore.accent-enabled; mouse-cursor: pointer; clicked => { SettingsStore.accent = a.v; SettingsStore.command("accent", a.v); } }
                 }
             }
         }

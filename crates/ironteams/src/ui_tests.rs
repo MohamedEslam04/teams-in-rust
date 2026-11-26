@@ -79,6 +79,7 @@ mod shortcuts;
 mod snippets;
 mod splash;
 mod teams;
+mod themes;
 mod topbar;
 #[cfg(feature = "calls")]
 mod video_effects;

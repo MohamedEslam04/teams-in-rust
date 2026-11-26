@@ -7,7 +7,8 @@
 //! reads the settings again. Without an engine (tests) a write stays a dry run, logged and shown.
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
-//! open, close, page, query, profile, theme, accent, density, font-step, font-scale, skin-tone,
+//! open, close, page, query, profile, theme, theme-pick, theme-mode, theme-slot, theme-time,
+//! reset-theme, accent, density, font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
 //! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
@@ -34,14 +35,15 @@ use crate::backend::sounds::{self, Kind as SoundKind};
 use crate::update_check::{self, Release};
 use crate::updater::{self, Event, Phase};
 use crate::{
-    AppWindow, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg, SPerson, SToggle,
-    SettingsStore, Theme,
+    AppWindow, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg, SPerson, STheme,
+    SToggle, SettingsStore, Theme,
 };
 use app_store::DevicePermission;
-use appearance::{Density, PortalChange, PortalSettings, Rgb, Theme as LegacyTheme};
+use appearance::{Density, PortalChange, PortalSettings, Rgb};
 use session::OpenChatAt;
 use slint::{ComponentHandle, ModelRc, SharedString};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -110,6 +112,13 @@ struct Ctl {
     switching: Option<switch::Pending>,
     /// The last look applied to the windows (`look_changed`), `None` before the first.
     last_look: Option<Look>,
+    /// The active account's label (`session::Config.account`): its own theme wins over the app
+    /// choice. Known at start; switching accounts restarts IronTeams.
+    account: Option<String>,
+    /// The theme fallbacks already logged, so each is logged once.
+    logged_fallbacks: HashSet<appearance::Fallback>,
+    /// Runs `look_changed` once a minute while a schedule picks the theme.
+    schedule_timer: Option<slint::Timer>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.
@@ -129,6 +138,12 @@ thread_local! {
 
 fn ctl() -> Option<Shared> {
     CTL.with(|c| c.borrow().clone())
+}
+
+/// How many theme fallbacks were logged (each one once).
+#[cfg(test)]
+pub(crate) fn logged_fallback_count() -> usize {
+    ctl().map_or(0, |c| c.borrow().logged_fallbacks.len())
 }
 
 fn s(v: impl Into<SharedString>) -> SharedString {

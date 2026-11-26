@@ -1,4 +1,5 @@
 use super::*;
+use appearance::themes::{self, Switch, ThemeChoice};
 
 /// One command from the page. Runs on the UI thread.
 pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
@@ -49,17 +50,100 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             ));
         }
         // --- Appearance ---
-        "theme" | "accent" | "density" | "font-step" | "font-scale" => {
+        "theme" | "theme-pick" | "theme-mode" | "theme-slot" | "theme-time" | "reset-theme" => {
+            let mut c = shared.borrow_mut();
+            let current = c.local.theme_choice();
+            let slot = parts.first().copied().unwrap_or("");
+            let value = parts.get(1).copied().unwrap_or("");
+            let choice = match name {
+                // The palette's "Toggle dark/light theme" and the screenshot tests.
+                "theme" => match arg {
+                    "light" => Some(ThemeChoice::Fixed(themes::LIGHT_ID.into())),
+                    "dark" => Some(ThemeChoice::Fixed(themes::DARK_ID.into())),
+                    _ => Some(themes::default_choice()),
+                },
+                "theme-pick" => Some(ThemeChoice::Fixed(arg.to_string())),
+                "theme-mode" => {
+                    let drawn = c
+                        .last_look
+                        .as_ref()
+                        .map(|l| l.theme_id.clone())
+                        .unwrap_or_else(|| themes::DARK_ID.into());
+                    Some(mode_choice(&current, arg, drawn, &c.local.themes))
+                }
+                "theme-slot" => match current {
+                    ThemeChoice::Pair {
+                        light,
+                        dark,
+                        switch,
+                    } => Some(match slot {
+                        "light" => ThemeChoice::Pair {
+                            light: value.to_string(),
+                            dark,
+                            switch,
+                        },
+                        _ => ThemeChoice::Pair {
+                            light,
+                            dark: value.to_string(),
+                            switch,
+                        },
+                    }),
+                    fixed => Some(fixed),
+                },
+                "theme-time" => {
+                    let Some(m) = crate::send_options::parse_time(value).map(|m| m as u16) else {
+                        push_themes(w, &c);
+                        notice(w, "Write the time like 8:00 AM or 08:00.");
+                        return;
+                    };
+                    match current {
+                        ThemeChoice::Pair {
+                            light,
+                            dark,
+                            switch:
+                                Switch::Schedule {
+                                    light_from,
+                                    dark_from,
+                                },
+                        } => Some(ThemeChoice::Pair {
+                            light,
+                            dark,
+                            switch: if slot == "light" {
+                                Switch::Schedule {
+                                    light_from: m,
+                                    dark_from,
+                                }
+                            } else {
+                                Switch::Schedule {
+                                    light_from,
+                                    dark_from: m,
+                                }
+                            },
+                        }),
+                        other => Some(other),
+                    }
+                }
+                _ => None,
+            };
+            match choice {
+                Some(choice) => c.local.themes.choice = Some(choice),
+                None => {
+                    let account = c.account.clone();
+                    c.local.themes.reset(account.as_deref());
+                }
+            }
+            let r = c.local.save_themes();
+            look_changed(w, &mut c);
+            push_themes(w, &c);
+            match r {
+                Ok(()) if name == "reset-theme" => notice(w, "Theme reset."),
+                r => saved(w, r),
+            }
+        }
+        "accent" | "density" | "font-step" | "font-scale" => {
             let mut c = shared.borrow_mut();
             let a = &mut c.local.appearance;
             match name {
-                "theme" => {
-                    a.theme = match arg {
-                        "light" => LegacyTheme::Light,
-                        "dark" => LegacyTheme::Dark,
-                        _ => LegacyTheme::System,
-                    }
-                }
                 "accent" => a.accent = Rgb::from_hex(arg),
                 "density" => {
                     a.density = if arg == "compact" {
@@ -840,5 +924,55 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             }
         }
         other => tracing::debug!(command = other, "settings: unknown command"),
+    }
+}
+
+/// The choice after "Switch" changed to `mode`. "One theme" keeps the theme drawn now (`drawn`).
+/// "Follow the system" and "On a schedule" keep the slots of a pair, or put a fixed theme in its
+/// kind's slot with the other IronTeams theme in the other; a schedule keeps its times, or starts
+/// at 08:00 and 19:00.
+fn mode_choice(
+    current: &ThemeChoice,
+    mode: &str,
+    drawn: String,
+    file: &appearance::ThemesFile,
+) -> ThemeChoice {
+    if mode == "one" {
+        return ThemeChoice::Fixed(drawn);
+    }
+    let (light, dark, times) = match current {
+        ThemeChoice::Pair {
+            light,
+            dark,
+            switch,
+        } => (
+            light.clone(),
+            dark.clone(),
+            match switch {
+                Switch::Schedule {
+                    light_from,
+                    dark_from,
+                } => Some((*light_from, *dark_from)),
+                Switch::System => None,
+            },
+        ),
+        ThemeChoice::Fixed(id) => match themes::find(file, id).map(themes::theme_kind) {
+            Some(appearance::ResolvedTheme::Light) => (id.clone(), themes::DARK_ID.into(), None),
+            Some(appearance::ResolvedTheme::Dark) => (themes::LIGHT_ID.into(), id.clone(), None),
+            None => (themes::LIGHT_ID.into(), themes::DARK_ID.into(), None),
+        },
+    };
+    let (light_from, dark_from) = times.unwrap_or(DEFAULT_SCHEDULE);
+    ThemeChoice::Pair {
+        light,
+        dark,
+        switch: if mode == "schedule" {
+            Switch::Schedule {
+                light_from,
+                dark_from,
+            }
+        } else {
+            Switch::System
+        },
     }
 }

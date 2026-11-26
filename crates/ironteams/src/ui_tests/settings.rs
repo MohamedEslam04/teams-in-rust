@@ -30,7 +30,7 @@ impl Home {
     }
 
     /// The same layout `session::Paths` uses under `IRONTEAMS_HOME`.
-    fn paths(&self) -> session::Paths {
+    pub(super) fn paths(&self) -> session::Paths {
         session::Paths {
             config_dir: self.0.join("config"),
             data_dir: self.0.join("data"),
@@ -64,6 +64,11 @@ impl Drop for Home {
     }
 }
 
+thread_local! {
+    /// The local time Settings reads (`SettingsEnv::now_min`), in minutes after midnight.
+    pub(super) static CLOCK: std::cell::Cell<u16> = const { std::cell::Cell::new(720) };
+}
+
 pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> SettingsEnv {
     let rec = |l: &Log, what: &'static str| {
         let l = l.clone();
@@ -79,6 +84,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
         background: false,
         apply_globals: false,
         crash_loop: Default::default(),
+        now_min: std::rc::Rc::new(|| CLOCK.with(|c| c.get())),
         hooks: Hooks {
             // The real autostart entry, written under the temp home instead of ~/.config.
             autostart: Autostart::desktop(Some(home.0.join("xdg"))),
@@ -130,7 +136,7 @@ pub(super) struct Ui {
     pub(super) app: AppWindow,
     log: Log,
     tokens: Arc<session::MemoryStore>,
-    home: Home,
+    pub(super) home: Home,
 }
 
 pub(super) fn window(home: Home) -> Ui {
@@ -1231,19 +1237,21 @@ fn theme_choice_changes_the_theme_global_live() {
     let ui = window(Home::new("theme"));
     let app = &ui.app;
     open_page(app, "appearance");
-    press(app, "Theme: Light");
+    press(app, "Theme: IronTeams Light");
     let t = app.global::<Theme>();
     assert!(!t.get_dark());
     assert_eq!(t.get_main(), slint::Color::from_rgb_u8(0xff, 0xff, 0xff));
     assert_eq!(t.get_fg(), slint::Color::from_rgb_u8(0x24, 0x24, 0x24));
-    assert!(checked(app, "Theme: Light"));
+    assert!(checked(app, "Theme: IronTeams Light"));
+    assert!(!checked(app, "Theme: IronTeams Dark"));
     assert_eq!(store(app).get_theme_shown(), "light");
 
-    press(app, "Theme: Dark");
+    press(app, "Theme: IronTeams Dark");
     assert!(t.get_dark());
     assert_eq!(t.get_main(), slint::Color::from_rgb_u8(0x14, 0x14, 0x14));
 
     // An accent colour and high contrast reach the same global.
+    tall_window(app);
     press(app, "Accent colour: Blue");
     assert_eq!(
         t.get_accent_strong(),
@@ -1275,6 +1283,8 @@ fn look_reaches_an_open_popout() {
     let cw = crate::ChatWindow::new().unwrap();
     crate::ui::popout::set_popout_for_test(cw.clone_strong());
     open_page(app, "appearance");
+    // The page is taller than the window: the accent row is under the theme gallery.
+    tall_window(app);
     press(app, "Accent colour: Blue");
     let pt = cw.global::<Theme>();
     assert_eq!(

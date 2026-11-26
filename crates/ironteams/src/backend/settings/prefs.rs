@@ -114,6 +114,32 @@ pub struct Local {
     pub calls: CallsPrefs,
     pub sounds: super::super::sounds::SoundPrefs,
     pub grants: Grants,
+    /// `themes.json`: the theme choice, the account and call themes, the fonts and the custom
+    /// themes.
+    pub themes: appearance::ThemesFile,
+}
+
+/// Reads `themes.json` from `dir`, logging once what the loader had to drop.
+fn load_themes(dir: &Path) -> appearance::ThemesFile {
+    let (themes, note) =
+        appearance::ThemesFile::load_from(&dir.join(appearance::themes::FILE_NAME));
+    if note.skipped > 0 || note.renamed_bad {
+        tracing::warn!(
+            skipped = note.skipped,
+            renamed_bad = note.renamed_bad,
+            "settings: themes.json had entries that could not be read"
+        );
+    }
+    themes
+}
+
+/// "Reset theme" on the files in `dir`, before any window opens (`--reset-theme`): the default
+/// choice, no theme for `account`, the call theme as the app's and no fonts, in `themes.json`;
+/// `appearance.json`'s old theme field follows the default choice. Custom themes stay.
+pub fn reset_theme_files(dir: &Path, account: Option<&str>) -> anyhow::Result<()> {
+    let mut local = Local::load(dir);
+    local.themes.reset(account);
+    local.save_themes()
 }
 
 impl Local {
@@ -135,7 +161,27 @@ impl Local {
             calls: read_json(&dir.join(CALLS_FILE)),
             sounds: read_json(&dir.join(super::super::sounds::SOUNDS_FILE)),
             grants: Grants::from_json(&perms),
+            themes: load_themes(dir),
         }
+    }
+
+    /// The app's theme choice: `themes.json`'s, or the old `appearance.json` theme before one was
+    /// picked.
+    pub fn theme_choice(&self) -> appearance::ThemeChoice {
+        self.themes
+            .choice
+            .clone()
+            .unwrap_or_else(|| appearance::themes::choice_from_legacy(self.appearance.theme))
+    }
+
+    /// Saves `themes.json`, then `appearance.json` with its old theme field written from the kind
+    /// of the app choice, so a build without themes still opens light or dark as it should.
+    pub fn save_themes(&mut self) -> anyhow::Result<()> {
+        self.themes
+            .save_to(&self.dir.join(appearance::themes::FILE_NAME))?;
+        self.appearance.theme =
+            appearance::themes::legacy_theme(&self.theme_choice(), &self.themes);
+        self.save_appearance()
     }
 
     pub fn save_appearance(&self) -> anyhow::Result<()> {

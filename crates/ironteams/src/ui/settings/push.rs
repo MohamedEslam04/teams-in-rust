@@ -48,7 +48,7 @@ pub(crate) fn portal_changed(w: &AppWindow, change: PortalChange) {
 }
 
 /// The Slint `Tokens` of one region.
-fn ui_tokens(p: &st::Palette) -> crate::Tokens {
+fn ui_tokens(p: &appearance::Tokens) -> crate::Tokens {
     crate::Tokens {
         bg: rgba(p.bg),
         surface: rgba(p.surface),
@@ -120,7 +120,37 @@ pub(crate) fn apply_look(t: &Theme<'_>, lk: &Look) {
 /// applied last, applies it to the main window and the popout. A new mention colour makes the
 /// engine draw the loaded messages again, so they do not keep the old one.
 pub(super) fn look_changed(w: &AppWindow, c: &mut Ctl) {
-    let lk: Look = st::look(&c.local, c.portal.as_ref());
+    let lk: Look = st::look(
+        &c.local,
+        c.portal.as_ref(),
+        c.account.as_deref(),
+        (c.env.now_min)(),
+    );
+    for f in &lk.fallbacks {
+        if c.logged_fallbacks.insert(f.clone()) {
+            tracing::warn!(fallback = ?f, "settings: a theme was not found, another one is used");
+        }
+    }
+    // A schedule is checked once a minute (and so after a resume too) while it picks the theme.
+    if !lk.schedule {
+        c.schedule_timer = None;
+    } else if c.schedule_timer.is_none() {
+        let timer = slint::Timer::default();
+        let weak = w.as_weak();
+        timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_secs(60),
+            move || {
+                let (Some(w), Some(shared)) = (weak.upgrade(), ctl()) else {
+                    return;
+                };
+                if let Ok(mut c) = shared.try_borrow_mut() {
+                    look_changed(&w, &mut c);
+                }
+            },
+        );
+        c.schedule_timer = Some(timer);
+    }
     show_look(w, c, &lk);
     if c.last_look.as_ref() == Some(&lk) {
         return;
@@ -147,6 +177,10 @@ pub(super) fn look_changed(w: &AppWindow, c: &mut Ctl) {
 fn show_look(w: &AppWindow, c: &Ctl, lk: &Look) {
     let g = w.global::<SettingsStore>();
     g.set_theme_shown(s(if lk.content.dark { "dark" } else { "light" }));
+    g.set_theme_active(s(&lk.theme_id));
+    let active = appearance::themes::find(&c.local.themes, &lk.theme_id);
+    g.set_theme_active_name(s(active.map_or("", |d| d.name.as_str())));
+    g.set_accent_enabled(lk.accent_applies);
     g.set_accent_shown(s(match (c.local.appearance.accent, lk.accent) {
         (Some(a), _) => a.to_hex(),
         (None, Some(a)) => format!("desktop accent {}", a.to_hex()),
@@ -159,6 +193,80 @@ fn show_look(w: &AppWindow, c: &Ctl, lk: &Look) {
         (lk.font_scale * 100.0).round()
     )));
 }
+
+/// The theme gallery and the switch: the tiles (built-in, then custom), the slot lists (that
+/// kind first), and the choice as the page shows it.
+pub(super) fn push_themes(w: &AppWindow, c: &Ctl) {
+    use appearance::themes::{Switch, ThemeChoice, builtins, theme_kind, theme_tokens};
+    let g = w.global::<SettingsStore>();
+    let accent = c.last_look.as_ref().and_then(|l| l.accent);
+    let tiles: Vec<STheme> = builtins()
+        .iter()
+        .chain(&c.local.themes.custom)
+        .map(|def| {
+            let (set, report) = theme_tokens(def, accent);
+            STheme {
+                id: s(&def.id),
+                name: s(&def.name),
+                kind: s(match theme_kind(def) {
+                    appearance::ResolvedTheme::Light => "light",
+                    appearance::ResolvedTheme::Dark => "dark",
+                }),
+                nav: rgba(set.nav.bg),
+                content: rgba(set.content.bg),
+                accent: rgba(set.content.accent),
+                bubble: rgba(set.content.bubble_mine),
+                custom: def.id.starts_with("custom:"),
+                low_contrast: report.low_contrast,
+            }
+        })
+        .collect();
+    let kind_first = |kind: &str| -> Vec<STheme> {
+        let (mut first, rest): (Vec<STheme>, Vec<STheme>) =
+            tiles.iter().cloned().partition(|t| t.kind.as_str() == kind);
+        first.extend(rest);
+        first
+    };
+    g.set_themes_light_first(model(kind_first("light")));
+    g.set_themes_dark_first(model(kind_first("dark")));
+    g.set_themes(model(tiles));
+    let (mode, id, light, dark, times) = match c.local.theme_choice() {
+        ThemeChoice::Fixed(id) => (
+            "one",
+            id,
+            appearance::themes::LIGHT_ID.to_string(),
+            appearance::themes::DARK_ID.to_string(),
+            None,
+        ),
+        ThemeChoice::Pair {
+            light,
+            dark,
+            switch,
+        } => match switch {
+            Switch::System => ("system", String::new(), light, dark, None),
+            Switch::Schedule {
+                light_from,
+                dark_from,
+            } => (
+                "schedule",
+                String::new(),
+                light,
+                dark,
+                Some((light_from, dark_from)),
+            ),
+        },
+    };
+    let (light_from, dark_from) = times.unwrap_or(DEFAULT_SCHEDULE);
+    g.set_theme_mode(s(mode));
+    g.set_theme_id(s(id));
+    g.set_theme_light(s(light));
+    g.set_theme_dark(s(dark));
+    g.set_theme_light_from(s(appearance::formats::clock(i32::from(light_from))));
+    g.set_theme_dark_from(s(appearance::formats::clock(i32::from(dark_from))));
+}
+
+/// The times a new schedule starts with: light from 08:00, dark from 19:00.
+pub(super) const DEFAULT_SCHEDULE: (u16, u16) = (480, 1140);
 
 /// Hands the general preferences to what reads them outside Settings: the date and time helpers
 /// and the tray's close-to-tray decision, plus the interface language (translation and direction).
@@ -188,11 +296,6 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     let g = w.global::<SettingsStore>();
     let l = &c.local;
     let a = &l.appearance;
-    g.set_theme(s(match a.theme {
-        LegacyTheme::Light => "light",
-        LegacyTheme::Dark => "dark",
-        LegacyTheme::System => "system",
-    }));
     g.set_accent(s(a.accent.map(Rgb::to_hex).unwrap_or_default()));
     g.set_density(s(match a.density {
         Density::Comfy => "comfy",
@@ -200,6 +303,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     }));
     g.set_font_scale(a.font_scale);
     g.set_skin_tone(w.get_skin_tone());
+    push_themes(w, c);
 
     let gp = &l.general;
     let system = appearance::system_language()

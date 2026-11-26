@@ -211,6 +211,17 @@ fn status_and_theme_actions_send_the_settings_commands() {
 }
 
 #[test]
+fn the_catalog_lists_reset_theme() {
+    let app = open_palette();
+    let log = settings_commands(&app);
+    type_text(&app, "reset theme");
+    assert_eq!(labels(&app)[0], "Reset theme");
+    enter(&app);
+    assert_eq!(*log.borrow(), [("reset-theme".to_string(), String::new())]);
+    assert!(!is_open(&app));
+}
+
+#[test]
 fn keyboard_shortcuts_and_new_chat_use_their_existing_flows() {
     let app = open_palette();
     type_text(&app, "keyboard");

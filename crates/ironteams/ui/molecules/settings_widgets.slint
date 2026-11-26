@@ -3,7 +3,8 @@
 import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
-import { SOption, SettingsStore } from "../stores/settings_store.slint";
+import { Badge, BadgeVariant } from "../atoms/chip.slint";
+import { SOption, STheme, SettingsStore } from "../stores/settings_store.slint";
 
 // A round +/- button of the zoom row.
 component ZoomButton inherits Rectangle {
@@ -303,4 +304,242 @@ export component SNavItem inherits Rectangle {
         nl := Text { horizontal-alignment: Theme.start-align; text: root.label; color: root.active ? root.c.fg : root.c.fg-muted; font-size: Theme.font-body; font-weight: root.active ? 600 : 400; vertical-alignment: center; overflow: elide; }
     }
     nt := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The size of a theme tile: the 160x104 drawing and the name under it. The gallery places the
+// tiles with it (12px apart).
+export global ThemeTileMetrics {
+    out property <length> width: 160px;
+    out property <length> height: 132px;
+    out property <length> drawing: 104px;
+}
+
+// One theme of the gallery, drawn as a small window: the nav strip with an accent dot, the
+// content area with two message bubbles, and the name under it. A radio button "Theme: <name>".
+export component ThemeTile inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <STheme> t;
+    in property <bool> checked;
+    callback clicked();
+    property <string> name: SettingsStore.theme-name(root.t.id, root.t.name);
+    // A Tab put the focus here: the ring shows (a click does not show it).
+    property <bool> focus-visible: false;
+    width: ThemeTileMetrics.width;
+    height: ThemeTileMetrics.height;
+    accessible-role: radio-button;
+    accessible-label: @tr("Theme: {}", root.name);
+    accessible-checked: root.checked;
+    accessible-action-default => { root.clicked(); }
+    drawing := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: ThemeTileMetrics.drawing;
+        border-radius: 6px;
+        clip: true;
+        background: root.t.content;
+        Rectangle {
+            x: Theme.rtl ? parent.width - self.width : 0px;
+            y: 0px;
+            width: 36px;
+            height: parent.height;
+            background: root.t.nav;
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 10px;
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: root.t.accent;
+            }
+        }
+        // The other person's message on the start side, mine on the end side.
+        Rectangle {
+            x: Theme.rtl ? parent.width - 46px - self.width : 46px;
+            y: 22px;
+            width: 64px;
+            height: 18px;
+            border-radius: 6px;
+            background: root.c.surface;
+        }
+        Rectangle {
+            x: Theme.rtl ? 10px : parent.width - 10px - self.width;
+            y: 50px;
+            width: 64px;
+            height: 18px;
+            border-radius: 6px;
+            background: root.t.bubble;
+        }
+        if root.t.low-contrast: Badge {
+            c: root.c;
+            x: Theme.rtl ? 6px : parent.width - 6px - self.width;
+            y: parent.height - 6px - self.height;
+            variant: BadgeVariant.tag;
+            tone: "warn";
+            text: @tr("Low contrast");
+        }
+    }
+    Rectangle {
+        x: drawing.x;
+        y: drawing.y;
+        width: drawing.width;
+        height: drawing.height;
+        border-radius: drawing.border-radius;
+        border-width: root.checked ? 2px : 1px;
+        border-color: root.checked ? root.c.accent : (ta.has-hover ? root.c.fg-subtle : root.c.border);
+    }
+    Text {
+        x: 0px;
+        y: ThemeTileMetrics.drawing + 6px;
+        width: root.width;
+        text: root.name;
+        color: root.c.fg;
+        font-size: Theme.font-small;
+        font-weight: root.checked ? 600 : 400;
+        horizontal-alignment: Theme.start-align;
+        overflow: elide;
+        accessible-role: none;
+    }
+    keys := FocusScope {
+        width: 0px;
+        height: 0px;
+        focus-on-click: false;
+        focus-changed-event(reason) => {
+            root.focus-visible = self.has-focus && reason == FocusReason.tab-navigation;
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) && !event.repeat {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            keys.focus();
+            root.focus-visible = false;
+            root.clicked();
+        }
+    }
+    if root.focus-visible: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: drawing.width + 6px;
+        height: drawing.height + 6px;
+        border-radius: drawing.border-radius + 3px;
+        border-width: 2px;
+        border-color: root.c.accent;
+    }
+}
+
+// One option of a `ThemeSelect` list: a radio button "<group>: <name>".
+component ThemeOption inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <string> group;
+    in property <string> label;
+    in property <bool> on;
+    callback picked();
+    height: 30px * max(1, Theme.font-scale);
+    border-radius: 4px;
+    background: root.on ? root.c.selected : (ot.has-hover ? root.c.surface-hover : transparent);
+    accessible-role: radio-button;
+    accessible-label: root.group + ": " + root.label;
+    accessible-checked: root.on;
+    accessible-action-default => { root.picked(); }
+    Text {
+        x: 10px;
+        width: parent.width - 20px;
+        text: root.label;
+        color: root.on ? root.c.accent : root.c.fg;
+        font-size: Theme.font-body;
+        horizontal-alignment: Theme.start-align;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+    ot := TouchArea { mouse-cursor: pointer; clicked => { root.picked(); } }
+}
+
+// A drop-down of themes: a button with the chosen theme's name that opens the list under it.
+// `with-same` puts "Same as app" (value "") first. The button is the combo box `group`.
+export component ThemeSelect inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
+    in property <string> group;
+    in property <[STheme]> themes;
+    in property <string> value;
+    in property <bool> with-same: false;
+    callback picked(string);
+    property <bool> open: false;
+    spacing: 4px;
+    alignment: start;
+    HorizontalLayout {
+        alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+        Rectangle {
+            width: 240px;
+            height: 30px * max(1, Theme.font-scale);
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.open ? root.c.accent : root.c.border;
+            background: head.has-hover ? root.c.surface-hover : root.c.surface;
+            accessible-role: combobox;
+            accessible-label: root.group;
+            accessible-expandable: true;
+            accessible-expanded: root.open;
+            accessible-action-default => { root.open = !root.open; }
+            // The chosen theme's name: only the matching entry is drawn.
+            Rectangle {
+                x: Theme.rtl ? 30px : 10px;
+                width: parent.width - 40px;
+                if root.with-same && root.value == "": Text {
+                    width: parent.width;
+                    height: parent.height;
+                    text: @tr("Same as app");
+                    color: root.c.fg;
+                    font-size: Theme.font-body;
+                    horizontal-alignment: Theme.start-align;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                for t in root.themes: Text {
+                    width: parent.width;
+                    height: parent.height;
+                    visible: t.id == root.value;
+                    text: SettingsStore.theme-name(t.id, t.name);
+                    color: root.c.fg;
+                    font-size: Theme.font-body;
+                    horizontal-alignment: Theme.start-align;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            Icon {
+                c: root.c;
+                x: Theme.rtl ? 8px : parent.width - 8px - self.width;
+                y: (parent.height - self.height) / 2;
+                source: @image-url("../icons/chevron-down.svg");
+                width: 14px;
+                height: 14px;
+            }
+            head := TouchArea { mouse-cursor: pointer; clicked => { root.open = !root.open; } }
+        }
+    }
+    if root.open: VerticalLayout {
+        spacing: 2px;
+        if root.with-same: ThemeOption {
+            c: root.c;
+            group: root.group;
+            label: @tr("Same as app");
+            on: root.value == "";
+            picked => { root.open = false; root.picked(""); }
+        }
+        for t in root.themes: ThemeOption {
+            c: root.c;
+            group: root.group;
+            label: SettingsStore.theme-name(t.id, t.name);
+            on: t.id == root.value;
+            picked => { root.open = false; root.picked(t.id); }
+        }
+    }
 }

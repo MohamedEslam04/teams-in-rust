@@ -2463,3 +2463,72 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+msgid "IronTeams Dark"
+msgstr "IronTeams داكن"
+
+msgid "IronTeams Light"
+msgstr "IronTeams فاتح"
+
+msgid "Dusk"
+msgstr "الغسق"
+
+msgid "Harbor"
+msgstr "الميناء"
+
+msgid "Moss"
+msgstr "الطحلب"
+
+msgid "Sandstone"
+msgstr "الحجر الرملي"
+
+msgid "Ember"
+msgstr "الجمر"
+
+msgid "Glacier"
+msgstr "الجليد"
+
+msgid "Graphite"
+msgstr "الجرافيت"
+
+msgid "Orchard"
+msgstr "البستان"
+
+msgid "Theme: {}"
+msgstr "السمة: {}"
+
+msgid "Low contrast"
+msgstr "تباين منخفض"
+
+msgid "Same as app"
+msgstr "مثل التطبيق"
+
+msgid "Switch"
+msgstr "التبديل"
+
+msgid "One theme"
+msgstr "سمة واحدة"
+
+msgid "On a schedule"
+msgstr "حسب جدول"
+
+msgid "Light theme"
+msgstr "السمة الفاتحة"
+
+msgid "Dark theme"
+msgstr "السمة الداكنة"
+
+msgid "Light from"
+msgstr "الفاتحة من"
+
+msgid "Dark from"
+msgstr "الداكنة من"
+
+msgid "For IronTeams Dark and IronTeams Light. Now: {}."
+msgstr "لسمتي IronTeams داكن و IronTeams فاتح. الآن: {}."
+
+msgid "The active theme has its own accent; edit the theme to change it."
+msgstr "للسمة الحالية لون تمييز خاص بها؛ عدّل السمة لتغييره."
+
+msgid "Reset theme"
+msgstr "إعادة تعيين السمة"
