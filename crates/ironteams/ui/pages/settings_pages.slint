@@ -748,8 +748,8 @@ export component AppearancePage inherits SettingsSections {
                 property <int> cols: max(1, Math.floor((self.width + 12px) / (ThemeTileMetrics.width + 12px)));
                 min-height: max(0px, Math.ceil(SettingsStore.themes.length / self.cols) * (ThemeTileMetrics.height + 12px) - 12px);
                 for t[i] in SettingsStore.themes: ThemeTile {
-                    property <int> col: Math.mod(i, gallery.cols);
-                    x: Theme.rtl ? gallery.width - self.width - self.col * (ThemeTileMetrics.width + 12px) : self.col * (ThemeTileMetrics.width + 12px);
+                    property <int> tile-col: Math.mod(i, gallery.cols);
+                    x: Theme.rtl ? gallery.width - self.width - self.tile-col * (ThemeTileMetrics.width + 12px) : self.tile-col * (ThemeTileMetrics.width + 12px);
                     y: Math.floor(i / gallery.cols) * (ThemeTileMetrics.height + 12px);
                     t: t;
                     checked: SettingsStore.theme-mode == "one" && SettingsStore.theme-id == t.id;
