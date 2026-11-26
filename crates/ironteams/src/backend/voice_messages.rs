@@ -182,7 +182,9 @@ pub(super) fn mark_played(list: &mut Vec<String>, key: &str) -> bool {
 }
 
 fn media_dir() -> Option<PathBuf> {
-    Some(session::Paths::new().ok()?.cache_dir.join("media"))
+    Some(super::cache::media_dir(
+        &super::cache::current_account_dir()?
+    ))
 }
 
 /// Where a voice message's recording is cached.
@@ -653,8 +655,8 @@ impl Engine {
             let wave_json = serde_json::to_vec(&Waveform { peaks, duration_ms })?;
             std::fs::write(wave, wave_json)?;
         }
-        let dir = session::Paths::new()?
-            .cache_dir
+        let dir = super::cache::current_account_dir()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory"))?
             .join("outbox")
             .join(&item.client_message_id);
         let path = dir.join("voice-message.m4a");

@@ -566,6 +566,11 @@ fn main() -> anyhow::Result<()> {
                 Err(e) => tracing::warn!(error = %e, "could not back up the data"),
             }
             updater::guard::start(&paths.data_dir, version);
+            // Before the engine: the cache older versions shared between accounts moves into
+            // the active account's folder (a rename; nothing is deleted if it fails).
+            if let Ok(cfg) = paths.load_config() {
+                backend::migrate_shared_cache(&paths.cache_dir, &cfg.active_token_key());
+            }
             paths.data_dir
         });
 

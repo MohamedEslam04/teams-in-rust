@@ -223,7 +223,9 @@ impl Engine {
         }
         self.drive_status(format!("Downloading {}...", item.name));
         let bytes = ops::download(&self.client, &item).await?;
-        let dir = session::Paths::new()?.cache_dir.join("drive-open");
+        let dir = crate::backend::cache::current_account_dir()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory"))?
+            .join("drive-open");
         let name = sanitize_file_name(&item.name);
         let path = tokio::task::spawn_blocking(move || -> anyhow::Result<std::path::PathBuf> {
             std::fs::create_dir_all(&dir)?;

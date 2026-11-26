@@ -484,12 +484,22 @@ impl UiHandle {
         self.run(move |w| {
             let g = w.global::<SettingsStore>();
             g.set_storage_db(s(size_label(sizes.db_bytes)));
-            g.set_storage_media(s(size_label(sizes.media_bytes)));
+            // This account's share, and the total when other accounts have media too.
+            let media = if sizes.media_total_bytes > sizes.media_bytes {
+                format!(
+                    "{} (all accounts: {})",
+                    size_label(sizes.media_bytes),
+                    size_label(sizes.media_total_bytes)
+                )
+            } else {
+                size_label(sizes.media_bytes)
+            };
+            g.set_storage_media(s(media));
             g.set_storage_temp(s(size_label(sizes.temp_bytes)));
             g.set_storage_backups(s(size_label(sizes.backups_bytes)));
             let total = [
                 sizes.db_bytes,
-                sizes.media_bytes,
+                sizes.media_bytes.max(sizes.media_total_bytes),
                 sizes.temp_bytes,
                 sizes.backups_bytes,
             ]

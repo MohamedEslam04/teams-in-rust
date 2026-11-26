@@ -123,12 +123,12 @@ fn ms(d: Duration) -> i32 {
     d.as_millis().min(i32::MAX as u128) as i32
 }
 
-/// The cache directory; tests keep their files in a temporary one.
+/// The account's cache folder; tests keep their files in a temporary one.
 fn cache_dir() -> Option<PathBuf> {
     #[cfg(test)]
     return Some(std::env::temp_dir().join(format!("ironteams-clip-tests-{}", std::process::id())));
     #[cfg(not(test))]
-    return session::Paths::new().ok().map(|p| p.cache_dir);
+    return super::cache::current_account_dir();
 }
 
 fn media_dir() -> Option<PathBuf> {

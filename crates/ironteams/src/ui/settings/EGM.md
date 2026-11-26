@@ -64,7 +64,7 @@ Files:
 - `[updates.rs:banner]` pub(super) fn(&AppWindow, &mut Ctl, String, &str, BannerAction); sets info banner and banner_action
 - `[misc.rs:with_server_note]` pub(super) fn(&Ctl)->Option<(String,NotificationSettings)>; chat_service + notification settings if read
 - `[updates.rs:update_line]` pub fn(&Phase) -> String; fixed status sentences per updater phase
-- `[misc.rs:remove_account_cache]` pub(super) fn(&Paths,&Account); deletes db file + -wal/-shm unless the active account shares it
+- `[misc.rs:remove_account_cache]` pub(super) fn(&Paths,&Account); deletes the account's cache folders (`cache/accounts/<label>` and `<label>@<tenant>`, never the one the active account uses) and its db file + -wal/-shm unless the active account shares it
 - `[updates.rs:push_update]` pub(super) fn(&AppWindow, &Ctl); shows self-update state (no-op without hooks.updates)
 - `[misc.rs:license_done]` pub(super) fn(&AppWindow,Result<(),String>); on Ok calls hooks.restart
 - `[updates.rs:install_self_update]` pub(super) fn(&AppWindow, &mut Ctl); startup: restore pending update, crash-loop banner, 30s due-timer
@@ -126,7 +126,7 @@ Files:
 - `[updates.rs:start_update]` Spawns std::thread running updater::run_cycle/run_rollback (network download)
 - `[command.rs:"test-sound"|"sign-out"|"report-problem"]` Spawn std threads when env.background, reply via weak.upgrade_in_event_loop; sign-out deletes stored tokens from the keyring
 - `[updates.rs:install_self_update]` Starts repeating 30s slint::Timer; reads pending update from disk via src.pending()
-- `[misc.rs:remove_account_cache]` Deletes the account's SQLite db files; [write_or_plan/request_load] send Cmd::Settings to the engine channel (network writes to Teams); [install.rs:install] apply_general sets process-wide date/time format settings
+- `[misc.rs:remove_account_cache]` Deletes the account's media cache folders and SQLite db files; [write_or_plan/request_load] send Cmd::Settings to the engine channel (network writes to Teams); [install.rs:install] apply_general sets process-wide date/time format settings
 - `[updates.rs:restart_to_update]` apply_on_exit(true) schedules installer/relaunch, then invokes hooks.quit to quit the process; apply_update_on_quit does likewise on exit
 
 ## Verification
