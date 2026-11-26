@@ -107,3 +107,46 @@ fn the_last_chat_is_found_in_the_sidebar_or_skipped() {
     // Gone or never there: skipped silently.
     assert!(restore_command(&app, "19:gone").is_none());
 }
+
+/// Runs the restore of `state`'s account on a window that is signed in, shown, and lists the given
+/// chats (as a cache-first start leaves it before the network answered); the chat it opened.
+fn restored_chat(state: &WindowState, listed: &[&str]) -> Option<String> {
+    let app = new_window();
+    app.set_login_state("ready".into());
+    app.set_chats_main(ModelRc::new(VecModel::from(
+        listed
+            .iter()
+            .map(|id| chat_row(id, "Chat"))
+            .collect::<Vec<_>>(),
+    )));
+    app.show().unwrap();
+    let id = state.active_view().last_chat.clone()?;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Cmd>();
+    let _timer = crate::window_state::start_restore(&app, id, tx);
+    testing::mock_elapsed_time(std::time::Duration::from_millis(400));
+    match rx.try_recv() {
+        Ok(Cmd::SelectChat(id)) => Some(id),
+        _ => None,
+    }
+}
+
+#[test]
+fn each_account_restarts_on_its_own_last_chat() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("window-state.json");
+    // Account A ran and left a chat open, then B did (as the save timer records while it runs).
+    for (key, chat) in [("work", "19:work"), ("guest", "19:guest")] {
+        let mut s = WindowState::load_from(&path, key);
+        s.set_last_chat(Some(chat));
+        s.save_to(&path).unwrap();
+    }
+    let listed = ["19:work", "19:guest"];
+    // Switching back to A opens A's chat, not the one B left open last.
+    let a = WindowState::load_from(&path, "work");
+    assert_eq!(restored_chat(&a, &listed).as_deref(), Some("19:work"));
+    let b = WindowState::load_from(&path, "guest");
+    assert_eq!(restored_chat(&b, &listed).as_deref(), Some("19:guest"));
+    // An account that never ran here starts on no chat at all.
+    let c = WindowState::load_from(&path, "third");
+    assert_eq!(restored_chat(&c, &listed), None);
+}

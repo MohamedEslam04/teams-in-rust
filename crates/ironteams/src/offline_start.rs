@@ -55,6 +55,26 @@ pub fn on_refresh_error(e: &Error, has_cache: bool) -> OnRefreshError {
     }
 }
 
+/// Whether a start with a stored session shows the saved chats first and refreshes the session
+/// afterwards (the cache-first start): the config knows who the user is and the account's
+/// database exists. An account that never ran here (no self MRI, no database) keeps the
+/// sign-in first order, because there is nothing to show yet.
+pub fn cache_first(self_mri: Option<&str>, db_exists: bool) -> bool {
+    self_mri.is_some_and(|m| !m.is_empty()) && db_exists
+}
+
+/// How long to wait before the `attempt`th (0-based) refresh of the session in the background.
+/// A cache-first start has not failed yet, so its first refresh (`immediate_first`) is not
+/// delayed and the retries after it back off from [`retry_delay`]'s start; any other start has
+/// already failed once, so it waits [`retry_delay`] every time.
+pub fn refresh_delay(attempt: u32, immediate_first: bool) -> Duration {
+    match (immediate_first, attempt) {
+        (true, 0) => Duration::ZERO,
+        (true, n) => retry_delay(n - 1),
+        (false, n) => retry_delay(n),
+    }
+}
+
 /// How long to wait before the `attempt`th (0-based) retry: 5 s, doubling, at most a minute.
 pub fn retry_delay(attempt: u32) -> Duration {
     let s = 5u64.saturating_mul(1u64 << attempt.min(16));
@@ -159,6 +179,24 @@ mod tests {
             on_refresh_error(&Error::Protocol("x".into()), true),
             OnRefreshError::Fail
         );
+    }
+
+    #[test]
+    fn only_an_account_that_ran_before_starts_from_its_saved_chats() {
+        assert!(cache_first(Some("8:orgid:me"), true));
+        assert!(!cache_first(Some("8:orgid:me"), false), "no database yet");
+        assert!(!cache_first(None, true), "who the user is is not known");
+        assert!(!cache_first(Some(""), true));
+        assert!(!cache_first(None, false), "the first run of an account");
+    }
+
+    #[test]
+    fn a_cache_first_start_refreshes_at_once_and_backs_off_after() {
+        assert_eq!(refresh_delay(0, true), Duration::ZERO);
+        assert_eq!(refresh_delay(1, true), Duration::from_secs(5));
+        assert_eq!(refresh_delay(2, true), Duration::from_secs(10));
+        // A start that already failed once waits before it tries again.
+        assert_eq!(refresh_delay(0, false), Duration::from_secs(5));
     }
 
     #[test]

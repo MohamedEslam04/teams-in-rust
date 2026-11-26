@@ -1,7 +1,7 @@
 # ironteams src (crate root)
 
 ## Overview
-Source root of the `ironteams` binary crate (`src/main.rs`). It owns process start-up (CLI modes, fonts, file logging, renderer choice, sign-in with an offline start, tokio runtime), the UI-thread glue between the Slint `AppWindow` and the backend `Engine` (view-data structs in `data.rs`/`*_data.rs`, models in `ui.rs`), and many small window-level features of the composer, search box, tray, shortcuts and settings persistence. Business logic lives in `backend/`, Slint model filling in `ui/`, the card host in `desktop_cards/`, shared helpers in `support/` and self-update plumbing in `updater/`.
+Source root of the `ironteams` binary crate (`src/main.rs`). It owns process start-up (CLI modes, fonts, file logging, renderer choice, cache-first sign-in, tokio runtime), the UI-thread glue between the Slint `AppWindow` and the backend `Engine` (view-data structs in `data.rs`/`*_data.rs`, models in `ui.rs`), and many small window-level features of the composer, search box, tray, shortcuts and settings persistence. Business logic lives in `backend/`, Slint model filling in `ui/`, the card host in `desktop_cards/`, shared helpers in `support/` and self-update plumbing in `updater/`.
 
 Files:
 - `main.rs`: Binary entry: CLI modes (--report-problem, --self-check, desktop-cards host, --call-demo), crypto provider, font/logging/renderer/backend setup, wires all Slint callbacks to Cmd channel, runs tokio runtime with app_main (sign-in, online or from the saved chats, then engine dispatch loop) and tray event loop.
@@ -24,7 +24,8 @@ Files:
 - `media_data.rs`: Plain Send data (ViewerData) for the chat image viewer.
 - `mention.rs`: UI-thread pure helpers for @mentions in the composer (find active @query, complete, one-Backspace token removal) wired into MentionApi.
 - `native_tray.rs`: Windows/macOS tray icon via Slint SystemTrayIcon (icon, unread badge, tooltip, mute/focus checkable menu), UI-thread only.
-- `offline_start.rs`: Offline start: `OFFLINE_NOTICE`, `OnRefreshError {Offline, SignIn, Fail}`, `is_transient`, `on_refresh_error(err, has_cache)`, `retry_delay(attempt)` (5 s doubling, at most 60 s).
+- `offline_start.rs`: Cache-first and offline start decisions: `OFFLINE_NOTICE`, `OnRefreshError {Offline, SignIn, Fail}`, `is_transient`, `on_refresh_error(err, has_cache)`, `cache_first(self_mri, db_exists)` (an account that ran here before shows its saved chats first), `refresh_delay(attempt, immediate_first)` (0 for a cache-first start's first refresh), `retry_delay(attempt)` (5 s doubling, at most 60 s).
+- `start_timing.rs`: Start-up timing: `init()` (first line of `main`), `mark(Stage)` logs `start: window shown`, `start: cached chats painted`, `start: signed in`, `start: online` once each with milliseconds since the process started (G7 of docs/designs/account-switching-relaunch.md).
 - `reactions.rs`: Teams reaction keys (six named + <hex>_<name>), reaction display names, reactor card rows, and emoji picker rows.
 - `renderer.rs`: Window renderer choice: `Started {wanted, running}` (`fell_back`), `wanted`, `start`, `record`, `running`, `env`; precedence `IRONTEAMS_RENDERER` > saved `general.json` renderer > CPU; a GPU start failure falls back to the software renderer.
 - `send_options.rs`: Send-button schedule picker logic: typed-time parsing, quick choices, month calendar cells, local-time resolve to ms, labels, wired into SendStore.
@@ -38,7 +39,7 @@ Files:
 - `ui.rs`: UI-thread module root: converts view data (MsgData, ChatData, TeamData, ...) to Slint models and implements most UiHandle update methods (login, banner, chats, header, messages patched in place by row fingerprint, composer state); private children `model_sync`, `ongoing_call` and `pub(crate) row_fingerprint` live in `ui/`.
 - `ui_api.rs`: Defines the thread-safe UiHandle (weak AppWindow, run via upgrade_in_event_loop) and plain view-data structs the engine passes to the UI (PlayerView, RecorderView, ClipView, Picture, Toast, ScheduledData).
 - `update_check.rs`: Always-on GitHub latest-release check for copies that cannot update themselves (Velopack installs use `updater`): pure version parsing/comparison, release JSON parsing, and a blocking one-shot HTTP GET (installs the TLS crypto provider first) refused in demo mode and tests.
-- `window_state.rs`: Restores and debounce-saves window geometry, maximized flag, last chat/channel, sidebar width (220-600), collapsed teams and Quick views via session::window_state::WindowState; pure decision helpers plus Slint timers; the save timer runs only while the window is in sight (`set_autosave`).
+- `window_state.rs`: Restores and debounce-saves window geometry, maximized flag, sidebar width (220-600) and, per account (keyed by `Config::active_token_key()`, passed to `install`), last chat/channel, collapsed teams and Quick views via session::window_state::WindowState; pure decision helpers plus Slint timers; the save timer runs only while the window is in sight (`set_autosave`).
 - `window_watch.rs`: Tracks whether the main window is in sight and focused: `Mode {Visible, Minimized, Hidden}`, `WindowStatus {visible, focused, scale_pct}`, pure `mode`/`status`/`scale_pct`/`poll_every`, and `install`/`update`/`shown`/`hidden`/`focus_changed`; sends the status to the engine over a `tokio::sync::watch` channel and drives `window_state::set_autosave`.
 
 ## Interface
@@ -57,7 +58,7 @@ Files:
 - `[window_watch.rs:update/shown/hidden/focus_changed]` pub fns reading or setting the window state; callers are `main.rs` (install, winit focus events) and `tray_wiring.rs` (show_and_raise, hide to tray, run)
 - `[logging.rs:init]` pub fn(Option<&Path>); starts the tracing subscriber (file and/or stdout)
 - `[renderer.rs:start]` pub fn(wanted, select) -> Result<Started, E>; `wanted(saved)` applies the env override, `record`/`running` keep what runs
-- `[offline_start.rs:on_refresh_error]` pub fn(&Error, has_cache: bool) -> OnRefreshError; `retry_delay(attempt)` pub fn(u32) -> Duration
+- `[offline_start.rs:on_refresh_error]` pub fn(&Error, has_cache: bool) -> OnRefreshError; `retry_delay(attempt)` pub fn(u32) -> Duration; `cache_first(Option<&str>, bool) -> bool`; `refresh_delay(u32, bool) -> Duration`
 - `[file_hover.rs:of]` pub(crate) fn(&WindowEvent) -> Option<bool>
 - `[key_layout.rs:Shortcuts]` pub(crate) struct (Default); `event(&self, win, &WindowEvent) -> EventResult` re-sends a Ctrl/Cmd/Alt chord with the US letter of the physical key on a non-Latin layout
 - `[composer_lines.rs:wire]` pub fn(&AppWindow); installs `LineApi` callbacks
@@ -74,7 +75,7 @@ Files:
 - `[topbar.rs:FEEDBACK_URL]` pub const &str, CARGO_PKG_REPOSITORY + "/issues"
 - `[ui.rs:install_apps/install_calendar/install_clip/install_composer_apps/install_voice]` pub re-exports of appstore::wire, cal::wire, clip::wire, composer_apps::wire, voice::wire
 - `[window_state.rs:Rect]` pub struct {x,y,w,h: i32} physical-pixel rectangle (window or monitor)
-- `[main.rs:app_main]` async fn(UiHandle, UnboundedReceiver<Cmd>, tokio::sync::watch::Receiver<window_watch::WindowStatus>): sign-in (online, or offline from the saved chats via `SignedIn::Offline`/`start_cached`, then `reconnect` keeps dispatching commands while the session refresh is retried; a rejected session reopens the device-code sign-in through `adopt_sign_in`), then engine.dispatch loop; a spawned task applies each status change as `engine.focused`, `Engine::set_visible`, `Engine::set_display_scale` and `window_changed()`; demo mode via IRONTEAMS_DEMO
+- `[main.rs:app_main]` async fn(UiHandle, UnboundedReceiver<Cmd>, tokio::sync::watch::Receiver<window_watch::WindowStatus>): sign-in (online for an account's first run; otherwise cache-first via `SignedIn::Cached`: `saved_engine` + `start_cached("")` paint the saved chats at once, then `reconnect` (generic over the refresh and the sign-in-again futures, so tests answer for the network) keeps dispatching commands while the session is refreshed, the first try immediately and retries backing off, showing the offline notice once when Teams is unreachable; a rejected session shows the sign-in screen and reopens the device-code sign-in through `adopt_sign_in`; on success `go_online`), then engine.dispatch loop; a spawned task applies each status change as `engine.focused`, `Engine::set_visible`, `Engine::set_display_scale` and `window_changed()`; demo mode via IRONTEAMS_DEMO
 - `[demo.rs:calendar_events]` pub fn calendar_events(week_start_ms: i64, now_ms: i64) -> serde_json::Value: Graph calendarView-shaped {value:[..]}; one 'Customer sync' starts now+3min (rounded to minute)
 - `[find_data.rs:SharedData]` pub struct (Clone): Shared tab row {kind,name,ext,shared_by,date,url,editable,sharepoint,icon,busy,highlight}
 - `[native_tray.rs:set_unread]` pub fn set_unread(count: u32); updates badge and tooltip (0 hides badge)
@@ -128,7 +129,7 @@ Files:
 - `[topbar.rs:RECENT_MAX]` recents truncated to 8 entries; Recents::add rejects empty text and text starting with '/'
 - `[ui.rs:MESSAGES]` thread_local Rc<VecModel<Msg>> lazily created on the UI thread; only touched inside UiHandle::run closures
 - `[window_watch.rs:apply]` sends the status on a tokio watch channel, starts/stops a repeating 400 ms slint::Timer that reads the window, and calls `window_state::set_autosave` (which saves once when the window goes out of sight)
-- `[offline_start.rs]` no I/O itself; main.rs `reconnect` sleeps and calls `Engine::refresh_session` per `retry_delay`
+- `[offline_start.rs]` no I/O itself; main.rs `reconnect` sleeps and calls `Engine::refresh_session` per `refresh_delay`
 - `[update_check.rs:fetch_latest]` one GET to the GitHub releases API (blocking, 10 s timeout) after installing the crypto provider; refused in demo mode and tests
 - `[window_state.rs:SHARED]` global static Mutex<Option<Shared>>; with_shared returns None if uninstalled or lock poisoned (helpers become no-ops/defaults)
 - `[main.rs:main]` --call-demo sets IRONTEAMS_DEMO and IRONTEAMS_CALL_DEMO via unsafe set_var before any thread exists
@@ -174,7 +175,7 @@ Files:
 - `[spell.rs:Speller::add_word]` creates the config dir and appends the word to spelling-words.txt; logs a tracing warning on failure
 - `[topbar.rs:Recents::save]` create_dir_all, writes a temp file and renames it to recent-searches.json
 - `[ui.rs:UiHandle::messages]` for `Scroll::Bottom` only, starts slint::Timer::single_shot (150 ms) for the second scroll tick; writes thread-local MESSAGES/MESSAGE_PRINTS (chat lists use CHAT_LISTS through `model_sync`)
-- `[window_state.rs:install]` WindowState::load() reads saved state from disk; starts the save timer (kept in thread-local SAVE_TIMER, run only while the window is in sight, one more save when it leaves) and, when a last chat is saved (and IRONTEAMS_OPEN is unset), a 300 ms restore timer that reopens the last chat/channel with Cmd::SelectChat/SelectChannel once signed in and the window is visible (gives up after 100 ticks)
+- `[window_state.rs:install]` pub fn(&AppWindow, persist: bool, key: &str, tx) -> Vec<Timer>; WindowState::load_for(key) reads saved state from disk for the account `key` (`active_account_key()` is the config's `active_token_key()`; the save timer and `capture` then write into that account's view); starts the save timer (kept in thread-local SAVE_TIMER, run only while the window is in sight, one more save when it leaves) and, when a last chat is saved (and IRONTEAMS_OPEN is unset), a 300 ms restore timer that reopens the last chat/channel with Cmd::SelectChat/SelectChannel once signed in and the window is visible (gives up after 100 ticks; `start_restore`; a cache-first start has the saved chats in the sidebar already, so it finds the chat before the network answers)
 - `[main.rs:main]` disk: compat::migrate_legacy_dirs, desktop_entry::ensure (Linux), updater::backup::on_start, guard::start/healthy_in
 - `[desktop_entry.rs:ensure]` tracing::info logging of outcome/error
 - `[loop_compose.rs:wire]` sends Cmd::SendLoop(html) on an unbounded tokio channel to the backend

@@ -333,21 +333,31 @@ impl Client {
         })
     }
 
-    /// Refreshes every access token and the skypetoken.
+    /// Refreshes every access token and the skypetoken. The Spaces token is requested first, with
+    /// the stored refresh token; then the CSA, Presence and Graph tokens are requested at the same
+    /// time, each with the refresh token Spaces returned, and the skypetoken exchange (which needs
+    /// only the Spaces token) overlaps them.
     pub async fn refresh_all(&self) -> Result<()> {
-        let rt = self.state.lock().await.refresh_token.clone();
-        let spaces = auth::refresh(&self.http, &self.tenant, &rt, RESOURCE_SPACES).await?;
-        let rt = spaces.refresh_token.clone().unwrap_or(rt);
-        let csa = auth::refresh(&self.http, &self.tenant, &rt, RESOURCE_CSA).await?;
-        // Presence is optional: some tenants do not grant it. Fall back to the skypetoken.
-        let presence = auth::refresh(&self.http, &self.tenant, &rt, RESOURCE_PRESENCE)
-            .await
-            .ok();
-        // Graph is optional too: only file upload needs it.
-        let graph = auth::refresh(&self.http, &self.tenant, &rt, RESOURCE_GRAPH)
-            .await
-            .ok();
-        let sky: SkypeToken = auth::skypetoken(&self.http, &spaces.access_token).await?;
+        let stored = self.state.lock().await.refresh_token.clone();
+        let http = &self.http;
+        let Fetched {
+            spaces,
+            csa,
+            presence,
+            graph,
+            sky,
+            rt,
+        } = Box::pin(fetch_tokens(
+            stored,
+            |resource, rt| async move { auth::refresh(http, &self.tenant, &rt, resource).await },
+            |spaces_token| async move { auth::skypetoken(http, &spaces_token).await },
+        ))
+        // Boxed: four requests in flight at once make a large future, and this one is awaited
+        // from nearly every request the app sends (`ensure_fresh`); inline it would grow every
+        // caller's stack frame (the engine's test threads overflowed their stacks).
+        .await?;
+        // The newest refresh token: CSA's, else the one Spaces returned (else the stored one).
+        let rt = csa.refresh_token.clone().unwrap_or(rt);
         let min_s = [
             Some(spaces.expires_in_s),
             Some(csa.expires_in_s),
@@ -361,7 +371,7 @@ impl Client {
         .unwrap_or(3600);
         let now = SystemTime::now();
         let mut st = self.state.lock().await;
-        st.refresh_token = csa.refresh_token.clone().unwrap_or(rt);
+        st.refresh_token = rt;
         st.cache.clear();
         st.cache.put(
             &Audience::Spaces,
@@ -742,6 +752,52 @@ impl Client {
 /// A larger answer stays larger: callers use this to tell it from a failure worth a retry.
 pub const DOWNLOAD_TOO_LARGE: &str = "download larger than";
 
+/// What one token refresh got from the network.
+struct Fetched {
+    spaces: auth::TokenResponse,
+    csa: auth::TokenResponse,
+    /// Optional: some tenants do not grant it (the skypetoken stands in).
+    presence: Option<auth::TokenResponse>,
+    /// Optional: only file upload needs it.
+    graph: Option<auth::TokenResponse>,
+    sky: SkypeToken,
+    /// The refresh token the CSA, Presence and Graph requests used: Spaces', else the stored one.
+    rt: String,
+}
+
+/// Requests the Spaces token with the `stored` refresh token (`refresh` sends one request for a
+/// resource and a refresh token). Then the CSA, Presence and Graph tokens are requested
+/// concurrently, each with the refresh token Spaces returned (the stored one if it returned none),
+/// and the skypetoken (`authz`, given the Spaces access token) is requested alongside them.
+/// Errors are reported in the order the requests used to run one after the other: Spaces, CSA,
+/// then the skypetoken; Presence and Graph failures are dropped.
+async fn fetch_tokens<R, RF, A, AF>(stored: String, refresh: R, authz: A) -> Result<Fetched>
+where
+    R: Fn(&'static str, String) -> RF,
+    RF: std::future::Future<Output = Result<auth::TokenResponse>>,
+    A: FnOnce(String) -> AF,
+    AF: std::future::Future<Output = Result<SkypeToken>>,
+{
+    let spaces = refresh(RESOURCE_SPACES, stored.clone()).await?;
+    let rt = spaces.refresh_token.clone().unwrap_or(stored);
+    let (csa, presence, graph, sky) = tokio::join!(
+        refresh(RESOURCE_CSA, rt.clone()),
+        refresh(RESOURCE_PRESENCE, rt.clone()),
+        refresh(RESOURCE_GRAPH, rt.clone()),
+        authz(spaces.access_token.clone()),
+    );
+    let csa = csa?;
+    let sky = sky?;
+    Ok(Fetched {
+        spaces,
+        csa,
+        presence: presence.ok(),
+        graph: graph.ok(),
+        sky,
+        rt,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -990,5 +1046,141 @@ mod tests {
         assert!(refresh_due(exp, t0 + Duration::from_secs(3600 - 300)));
         // Eight hours of suspend: wall clock moved on, so the tokens are due.
         assert!(refresh_due(exp, t0 + Duration::from_secs(8 * 3600)));
+    }
+
+    fn token(access: &str, rotated: Option<&str>) -> auth::TokenResponse {
+        auth::TokenResponse {
+            access_token: access.into(),
+            refresh_token: rotated.map(str::to_owned),
+            expires_in_s: 3600,
+        }
+    }
+
+    fn skype() -> SkypeToken {
+        SkypeToken {
+            token: "sky".into(),
+            expires_in_s: 3600,
+            chat_service: String::new(),
+            middle_tier: String::new(),
+            presence: String::new(),
+            mcp_service: None,
+            geo: None,
+            region: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn spaces_comes_first_and_the_other_three_are_in_flight_together() {
+        // CSA, Presence and Graph wait until all three are pending, as a server that answers
+        // only then would: one after the other, none would ever be answered. Spaces is answered
+        // alone and first, with a rotated refresh token that the other three must use.
+        let gate = Arc::new(tokio::sync::Barrier::new(3));
+        let spaces_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let refresh = |resource: &'static str, rt: String| {
+            let gate = gate.clone();
+            let spaces_done = spaces_done.clone();
+            async move {
+                if resource == RESOURCE_SPACES {
+                    assert_eq!(rt, "STORED", "Spaces gets the stored refresh token");
+                    spaces_done.store(true, std::sync::atomic::Ordering::SeqCst);
+                    return Ok(token(resource, Some("FROM-SPACES")));
+                }
+                assert!(
+                    spaces_done.load(std::sync::atomic::Ordering::SeqCst),
+                    "{resource} was requested before Spaces answered"
+                );
+                assert_eq!(rt, "FROM-SPACES", "{resource} gets Spaces' refresh token");
+                gate.wait().await;
+                Ok(token(resource, None))
+            }
+        };
+        let authz = |spaces: String| async move {
+            assert_eq!(
+                spaces, RESOURCE_SPACES,
+                "the skypetoken gets the Spaces token"
+            );
+            Ok(skype())
+        };
+        let got = tokio::time::timeout(
+            Duration::from_secs(5),
+            fetch_tokens("STORED".into(), refresh, authz),
+        )
+        .await
+        .expect("the three requests were sent one after the other")
+        .unwrap();
+        assert_eq!(got.spaces.access_token, RESOURCE_SPACES);
+        assert_eq!(got.csa.access_token, RESOURCE_CSA);
+        assert_eq!(got.presence.unwrap().access_token, RESOURCE_PRESENCE);
+        assert_eq!(got.graph.unwrap().access_token, RESOURCE_GRAPH);
+        assert_eq!(got.sky.token, "sky");
+        assert_eq!(got.rt, "FROM-SPACES");
+    }
+
+    #[tokio::test]
+    async fn without_a_rotated_token_from_spaces_the_stored_one_is_used() {
+        let refresh = |resource: &'static str, rt: String| async move {
+            assert_eq!(rt, "STORED");
+            Ok(token(resource, None))
+        };
+        let authz = |_: String| async { Ok(skype()) };
+        let got = fetch_tokens("STORED".into(), refresh, authz).await.unwrap();
+        assert_eq!(got.rt, "STORED");
+    }
+
+    #[tokio::test]
+    async fn presence_and_graph_are_optional_and_the_others_are_not() {
+        let only = |bad: &'static str| {
+            move |resource: &'static str, _rt: String| async move {
+                if resource == bad {
+                    Err(Error::Auth("no access_token".into()))
+                } else {
+                    Ok(token(resource, None))
+                }
+            }
+        };
+        let authz = |_: String| async { Ok(skype()) };
+        let got = fetch_tokens("RT".into(), only(RESOURCE_PRESENCE), authz)
+            .await
+            .unwrap();
+        assert!(got.presence.is_none() && got.graph.is_some());
+        let got = fetch_tokens("RT".into(), only(RESOURCE_GRAPH), authz)
+            .await
+            .unwrap();
+        assert!(got.presence.is_some() && got.graph.is_none());
+        assert!(
+            fetch_tokens("RT".into(), only(RESOURCE_SPACES), authz)
+                .await
+                .is_err()
+        );
+        assert!(
+            fetch_tokens("RT".into(), only(RESOURCE_CSA), authz)
+                .await
+                .is_err()
+        );
+        let sky_fails = |_: String| async { Err(Error::NotSignedIn) };
+        assert!(
+            matches!(
+                fetch_tokens("RT".into(), only(RESOURCE_GRAPH), sky_fails).await,
+                Err(Error::NotSignedIn)
+            ),
+            "a failed skypetoken exchange fails the refresh"
+        );
+    }
+
+    #[tokio::test]
+    async fn failures_are_reported_in_the_order_the_requests_used_to_run() {
+        // Spaces is asked first and a failure stops the rest, as when the requests ran in turn.
+        let refresh = |resource: &'static str, _rt: String| async move {
+            Err::<auth::TokenResponse, _>(Error::Auth(format!("bad {resource}")))
+        };
+        let authz = |_: String| async { Ok(skype()) };
+        let err = fetch_tokens("RT".into(), refresh, authz)
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            matches!(&err, Error::Auth(m) if m.contains(RESOURCE_SPACES)),
+            "{err}"
+        );
     }
 }
