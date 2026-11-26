@@ -84,6 +84,7 @@ mod shortcuts;
 mod snippets;
 mod splash;
 mod teams;
+mod theme_shots;
 mod topbar;
 mod unreads;
 #[cfg(feature = "calls")]

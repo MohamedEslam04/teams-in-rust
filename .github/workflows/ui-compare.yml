@@ -1,0 +1,146 @@
+# Screenshot comparison for changes to the look of the app. Draws the screens of
+# src/ui_tests/theme_shots.rs and src/ui_tests/settings_shots.rs (dark and light) at the pull
+# request's base commit and at the pull request (merged into the base), and compares them pixel for
+# pixel (scripts/ci/compare-shots.sh). A difference fails the run unless the pull request has the
+# `visual-change` label (adding the label runs it again); the differing pictures, side by side
+# (base, differing pixels, head), are the `ui-diff` artifact.
+#
+# Each picture set is drawn by a test process of its own: Slint's mocked clock is process-wide, and
+# the two tests would move each other's animations.
+#
+# Fonts are pinned: SLINT_FONT_PATH names the DejaVu files of the runner's fonts-dejavu-core, so the
+# pictures do not depend on what fontconfig answers on the runner image.
+#
+# Only changes that can alter the look start it: the GUI test build is heavy (ui-shots.yml needs the
+# extra swap and an hour), so it does not run for every pull request.
+#
+# Until the base commit has theme_shots.rs (this workflow's own first pull request) there is
+# nothing to compare: the pictures of the head are drawn and uploaded, and the comparison is skipped.
+name: UI compare
+
+on:
+  pull_request:
+    branches: [dev]
+    # `labeled` and `unlabeled` re-run it when `visual-change` is added or removed.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - 'crates/ironteams/ui/**'
+      - 'crates/appearance/**'
+      - 'crates/ironteams/src/backend/settings/**'
+      - 'crates/ironteams/src/ui/settings/**'
+      - 'scripts/check-ui-layers.sh'
+      - '.github/workflows/ui-compare.yml'
+  # By hand on a branch: compares it with the tip of dev.
+  workflow_dispatch:
+
+concurrency:
+  group: ui-compare-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The same as ci.yml, so the cached dependencies of its `check` job match this build.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+
+jobs:
+  # Named like the CI job so Swatinem/rust-cache restores that job's cache.
+  check:
+    name: Compare the UI pictures
+    # Another label changing does not need a new run.
+    if: >-
+      github.event_name != 'pull_request'
+      || !contains(fromJSON('["labeled","unlabeled"]'), github.event.action)
+      || github.event.label.name == 'visual-change'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
+      # The DejaVu files fonts-dejavu-core installs (checked below).
+      SLINT_FONT_PATH: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+    steps:
+      # The pull request merged into its base (the default ref), so what is compared is what the PR
+      # changes, not what dev gained meanwhile.
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || 'dev' }}
+          path: base
+      - uses: dtolnay/rust-toolchain@stable
+      # The GUI crate's test build outgrows the runner's memory without it (exit 143).
+      - name: More swap
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile >/dev/null && sudo swapon /mnt/swapfile
+          free -h
+      - name: System libraries
+        run: |
+          sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libdbus-1-dev libasound2-dev cmake pkg-config mold fonts-dejavu-core imagemagick
+          for f in ${SLINT_FONT_PATH//:/ }; do test -f "$f" || { echo "::error::missing font $f"; exit 1; }; done
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: Does the base draw the pictures?
+        id: base
+        run: |
+          if [[ -f base/crates/ironteams/src/ui_tests/theme_shots.rs ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::The base commit has no ui_tests/theme_shots.rs: the pictures are drawn at the head only and not compared."
+          fi
+      # Head first: it also proves the pictures can be drawn once the base has nothing to compare.
+      - name: Draw the pictures (head)
+        env:
+          IRONTEAMS_SHOTS_DIR: ${{ github.workspace }}/shots-head
+        run: |
+          cargo test -p ironteams --bin ironteams --no-run
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::theme_shots::theme_screens_to_png
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::settings_shots::settings_pages_to_png
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ui-shots-head
+          path: shots-head/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Draw the pictures (base)
+        if: steps.base.outputs.present == 'true'
+        working-directory: base
+        env:
+          IRONTEAMS_SHOTS_DIR: ${{ github.workspace }}/shots-base
+          # The head's target directory (the restored cache): the third-party dependencies compile
+          # once. Not set for the whole job: rust-cache puts CARGO_TARGET_DIR in its cache key,
+          # which would no longer match the CI `check` cache.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          cargo test -p ironteams --bin ironteams --no-run
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::theme_shots::theme_screens_to_png
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::settings_shots::settings_pages_to_png
+      - name: Compare the pictures
+        id: compare
+        if: steps.base.outputs.present == 'true'
+        run: |
+          status=0
+          bash scripts/ci/compare-shots.sh shots-base shots-head shots-diff || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        if: steps.compare.outputs.status != '' && steps.compare.outputs.status != '0'
+        with:
+          name: ui-diff
+          path: shots-diff/
+          if-no-files-found: warn
+      - name: Differences need the visual-change label
+        if: steps.compare.outputs.status != '' && steps.compare.outputs.status != '0'
+        env:
+          LABELLED: ${{ contains(github.event.pull_request.labels.*.name, 'visual-change') }}
+        run: |
+          if [[ "$LABELLED" == true ]]; then
+            echo "::notice::The pictures differ and the pull request has the visual-change label: accepted. See the ui-diff artifact."
+          else
+            echo "::error::The pictures differ from the base (list above; side by side in the ui-diff artifact). If the change is meant, add the visual-change label to the pull request."
+            exit 1
+          fi
