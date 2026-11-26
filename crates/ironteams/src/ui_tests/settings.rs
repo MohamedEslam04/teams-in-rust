@@ -1009,6 +1009,7 @@ fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
     let ui = window(Home::new("wheel-speed"));
     let app = &ui.app;
     let config = ui.home.paths().config_dir;
+    tall_window(app);
     open_page(app, "chats");
     assert_eq!(store(app).get_wheel_speed(), 2.5);
     assert!(checked(app, "Mouse wheel speed: 2.5×"));
