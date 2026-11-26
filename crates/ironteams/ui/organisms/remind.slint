@@ -19,11 +19,30 @@ export struct SnoozedRow {
     until: string,
 }
 
+// One row of the Later page: a reminder or a saved message.
+export struct LaterRow {
+    // `reminder:<id>` or `saved:<chat>` U+001F `<message>`; the commands take it back.
+    id: string,
+    // reminder | saved
+    kind: string,
+    // "Team › channel", or the chat's title.
+    chat: string,
+    author: string,
+    preview: string,
+    // The due time of a reminder, the time a message was saved ("Today 14:30").
+    time: string,
+    overdue: bool,
+}
+
 export global RemindStore {
     in-out property <bool> open: false;
     in property <[ReminderRow]> reminders;
     in property <[SnoozedRow]> snoozed;
-    // Names: remind (message id, when), cancel, snooze (chat id, when), unsnooze, refresh.
+    // The Later page (pages/later.slint): reminders and saved messages in one list.
+    in-out property <bool> later-open: false;
+    in property <[LaterRow]> later;
+    // Names: remind (message id, when), cancel, snooze (chat id, when), unsnooze, refresh,
+    // later-open (row id), later-done (row id), later-snooze (row id, `1h` or `tomorrow`).
     callback command(string, string);
 }
 
