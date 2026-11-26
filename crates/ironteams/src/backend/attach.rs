@@ -13,7 +13,7 @@ use store::OutboxKind;
 const MAX_BYTES: usize = 100 * 1024 * 1024;
 const IMAGE_EXTS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 /// Inline images are shown at most this wide in the chat.
-const INLINE_WIDTH: u32 = 400;
+pub(super) const INLINE_WIDTH: u32 = 400;
 
 /// One chip.
 pub(super) struct Attachment {
@@ -174,16 +174,24 @@ impl Engine {
         self.ui.attachments(chips);
     }
 
-    /// Moves the chips of the current chat into the outbox, in order: images and files become
-    /// image / file items (their bytes copied to the cache), sent by `flush_outbox` like any other
-    /// message, so they show as pending rows and can be retried or deleted when they fail.
-    /// What could not be queued stays a chip.
-    pub(super) fn queue_attachments(self: &Arc<Self>) -> anyhow::Result<()> {
+    /// Moves the chips of the current chat into the outbox: each file becomes a file item (its
+    /// bytes copied to the cache), sent by `flush_outbox` like any other message, so it shows as
+    /// a pending row and can be retried or deleted when it fails. What could not be queued stays
+    /// a chip.
+    ///
+    /// The images are one message, not one each. With `carry_images` they are taken off the chips
+    /// and returned, for the caller to put in the message it is about to queue (the typed text);
+    /// if that fails it hands them back with `restore_attachments`. Without it they are queued
+    /// here as one message of their own.
+    pub(super) fn queue_attachments(
+        self: &Arc<Self>,
+        carry_images: bool,
+    ) -> anyhow::Result<Vec<Attachment>> {
         let (Some(target), Some(conv)) = ({
             let v = self.view.lock().unwrap();
             (self.current_target_locked(&v), v.current.clone())
         }) else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let list = self
             .view
@@ -193,33 +201,54 @@ impl Engine {
             .remove(&conv)
             .unwrap_or_default();
         if list.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
-        let mut queue: std::collections::VecDeque<Attachment> = list.into();
+        let (mut images, files): (Vec<_>, Vec<_>) =
+            list.into_iter().partition(|a| a.inline.is_some());
+        let mut queue: std::collections::VecDeque<Attachment> = files.into();
         let mut result = Ok(());
         while let Some(a) = queue.front() {
-            let kind = if a.inline.is_some() {
-                OutboxKind::Image
-            } else {
-                OutboxKind::File
-            };
-            if let Err(err) = self.queue_attachment(target.clone(), kind, &a.name, &a.data) {
+            if let Err(err) =
+                self.queue_attachment(target.clone(), OutboxKind::File, &a.name, &a.data)
+            {
                 result = Err(err);
                 break;
             }
             queue.pop_front();
         }
+        if result.is_ok() && !carry_images && !images.is_empty() {
+            let queued = self.queue_images(target, String::new(), &images);
+            match queued {
+                Ok(()) => images.clear(),
+                Err(err) => result = Err(err),
+            }
+        }
+        if result.is_ok() && carry_images {
+            self.push_attachments();
+            return Ok(images);
+        }
+        // Whatever is not queued stays a chip.
+        queue.extend(images);
         if !queue.is_empty() {
-            self.view
-                .lock()
-                .unwrap()
-                .attachments
-                .entry(conv)
-                .or_default()
-                .splice(0..0, queue);
+            self.restore_attachments(&conv, queue.into());
         }
         self.push_attachments();
-        result
+        result.map(|()| Vec::new())
+    }
+
+    /// Puts chips back at the front of a chat's chips, when the message they were taken for
+    /// could not be queued.
+    pub(super) fn restore_attachments(&self, conv: &str, mut chips: Vec<Attachment>) {
+        if chips.is_empty() {
+            return;
+        }
+        {
+            let mut v = self.view.lock().unwrap();
+            let list = v.attachments.entry(conv.to_owned()).or_default();
+            chips.append(list);
+            *list = chips;
+        }
+        self.push_attachments();
     }
 }
 
