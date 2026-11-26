@@ -59,7 +59,7 @@ fn emoticon_item(e: &Emoticon, tone: u8) -> PickerItem {
 /// An emoji outside the catalog (flags, ...) as a picker cell.
 fn emoji_item(e: &Emoji) -> PickerItem {
     PickerItem {
-        key: codepoint_key(e),
+        key: reaction_key(e),
         emoji: e.ch.to_string(),
         name: capitalize(e.name),
     }
