@@ -160,7 +160,9 @@ fn settle_hover() {
 
 /// The message pane holds the keys (Alt+Shift+M), so no text box does.
 fn focus_messages(app: &AppWindow) {
+    focus_composer(app);
     chord(app, &[Key::Alt, Key::Shift], "m");
+    settle_hover();
 }
 
 #[test]
@@ -235,10 +237,9 @@ fn e_does_nothing_once_the_pointer_left_the_message_or_with_a_modifier() {
 fn typing_e_in_the_composer_types_the_letter_even_over_a_message_of_mine() {
     let app = app_with_messages(vec![msg("m1", "mine", true)]);
     let log = record_actions(&app);
+    focus_composer(&app);
     hover(&app, &rows(&app)[0]);
     settle_hover();
-    // Alt+Shift+R puts the focus in the composer, the pointer stays on the row.
-    chord(&app, &[Key::Alt, Key::Shift], "r");
     type_text(&app, "e");
     assert_eq!(app.get_draft(), "e");
     assert!(log.borrow().is_empty(), "{:?}", log.borrow());
