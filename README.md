@@ -440,4 +440,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 5997752a ("Merge pull request #97 from MohamedEslam04/feat/theme-gallery", 2026-11-26)
+Docs synced to commit 58714e17 ("Merge pull request #102 from MohamedEslam04/feat/theme-fonts", 2026-11-26)
