@@ -3001,3 +3001,17 @@ msgstr "انقل أيقونات شريط التطبيقات لأعلى أو لأ
 
 msgid "Show"
 msgstr "إظهار"
+
+# Settings: a theme for each account and for calls.
+
+msgid "Theme for each account"
+msgstr "سمة لكل حساب"
+
+msgid "Give an account its own theme to tell the accounts apart. Same as app uses the theme chosen in Appearance. The theme of the account in use shows at once; another account's shows when IronTeams starts with it."
+msgstr "امنح الحساب سمة خاصة به لتميّز بين الحسابات. «مثل التطبيق» يستخدم السمة المختارة في المظهر. تظهر سمة الحساب المستخدم فورًا، وتظهر سمة أي حساب آخر عند تشغيل IronTeams به."
+
+msgid "Calls and meetings"
+msgstr "المكالمات والاجتماعات"
+
+msgid "The call screen and the menus opened from it."
+msgstr "شاشة المكالمة والقوائم التي تُفتح منها."

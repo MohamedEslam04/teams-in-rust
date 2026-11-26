@@ -264,6 +264,10 @@ pub(super) fn push_themes(w: &AppWindow, c: &Ctl) {
     g.set_theme_dark(s(dark));
     g.set_theme_light_from(s(appearance::formats::clock(i32::from(light_from))));
     g.set_theme_dark_from(s(appearance::formats::clock(i32::from(dark_from))));
+    g.set_call_theme(s(match &c.local.themes.call {
+        appearance::CallChoice::Fixed(id) => id.as_str(),
+        appearance::CallChoice::SameAsApp => "",
+    }));
 }
 
 /// The times a new schedule starts with: light from 08:00, dark from 19:00.
@@ -636,7 +640,7 @@ pub(super) fn push_accounts(w: &AppWindow, c: &Ctl) {
         return;
     };
     g.set_accounts(model(
-        st::account_rows(&cfg)
+        st::account_rows(&cfg, &c.local.themes)
             .into_iter()
             .map(|a| SAccount {
                 initials: crate::data::initials(if a.name.is_empty() { &a.label } else { &a.name })
@@ -646,6 +650,7 @@ pub(super) fn push_accounts(w: &AppWindow, c: &Ctl) {
                 upn: a.upn.into(),
                 active: a.active,
                 unread: i32::try_from(a.unread).unwrap_or(i32::MAX),
+                theme: a.theme.into(),
             })
             .collect(),
     ));

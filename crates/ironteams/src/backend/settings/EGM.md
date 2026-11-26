@@ -13,9 +13,9 @@ Files:
 - `rows.rs`: Pure builders of settings-page rows (toggles, notify, privacy, sound, meeting chat) from prefs/Teams settings, plus dry-run builders that clone settings, apply one change and return a PlannedRequest without sending.
 
 ## Interface
-- `[accounts.rs:AccountRow]` pub struct {label,name,upn,active}
+- `[accounts.rs:AccountRow]` pub struct {label,name,upn,active,unread,theme} (theme: id from ThemesFile.accounts, "" for the app's)
 - `[rows.rs:ToggleRow]` pub struct {key,label,hint: String; on,enabled: bool}; Debug/Clone/PartialEq/Eq
-- `[accounts.rs:account_rows]` pub fn(&session::Config) -> Vec<AccountRow>; syncs active on a clone
+- `[accounts.rs:account_rows]` pub fn(&session::Config, &appearance::ThemesFile) -> Vec<AccountRow>; syncs active on a clone; theme from themes.accounts
 - `[rows.rs:toggle]` pub(super) fn toggle(key,label,hint:&str,on,enabled:bool)->ToggleRow
 - `[accounts.rs:OrgRow]` pub struct {tenant,name,home,active}
 - `[rows.rs:startup_rows]` pub fn startup_rows(&GeneralPrefs)->Vec<ToggleRow> (keys auto-start, open-in-background, keep-running)

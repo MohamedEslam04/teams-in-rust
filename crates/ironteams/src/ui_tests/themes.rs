@@ -257,6 +257,7 @@ fn a_stale_id_falls_back_and_is_logged_once() {
     portal_changed(app, PortalChange::ColorScheme(PortalScheme::NoPreference));
     assert_eq!(logged_fallback_count(), 1, "logged once");
 }
+
 // --- PR 4: the custom theme editor, sharing and the chat chip ---
 
 const LINE: &str =
@@ -669,4 +670,129 @@ fn a_malformed_line_shows_no_chip() {
         find_label(app, "Preview").is_empty(),
         "no chip, and no error either"
     );
+}
+
+/// The Accounts page in a window tall enough for all of it.
+fn accounts_page(app: &AppWindow) {
+    open_page(app, "accounts");
+    app.window().set_size(LogicalSize::new(1000., 4000.));
+    for _ in 0..3 {
+        testing::mock_elapsed_time(Duration::from_millis(16));
+    }
+}
+
+/// The unit-separator argument of "account-theme".
+fn account_arg(label: &str, id: &str) -> slint::SharedString {
+    format!("{label}\u{1f}{id}").into()
+}
+
+#[test]
+fn the_active_accounts_theme_applies_at_once() {
+    use slint::Model;
+    let home = Home::new("theme-account-now").with_accounts();
+    let dir = home.paths().config_dir;
+    let account = home.paths().load_config().unwrap().account;
+    let ui = window(home);
+    let app = &ui.app;
+    let t = app.global::<Theme>();
+    assert_eq!(t.get_content().bg, rgb(0x141414), "IronTeams Dark");
+    store(app).invoke_command(
+        "account-theme".into(),
+        account_arg(&account, "builtin:moss"),
+    );
+    assert_eq!(t.get_content().bg, rgb(0x121815), "Moss, with no restart");
+    assert_eq!(
+        Local::load(&dir)
+            .themes
+            .accounts
+            .get(&account)
+            .map(String::as_str),
+        Some("builtin:moss")
+    );
+    assert_eq!(
+        store(app).get_accounts().row_data(0).unwrap().theme,
+        "builtin:moss"
+    );
+    store(app).invoke_command("account-theme".into(), account_arg(&account, ""));
+    assert_eq!(t.get_content().bg, rgb(0x141414), "Same as app again");
+    assert!(!Local::load(&dir).themes.accounts.contains_key(&account));
+}
+
+#[test]
+fn another_accounts_theme_waits_for_its_start() {
+    let home = Home::new("theme-account-later").with_accounts();
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    let t = app.global::<Theme>();
+    store(app).invoke_command(
+        "account-theme".into(),
+        account_arg("second", "builtin:moss"),
+    );
+    assert_eq!(
+        t.get_content().bg,
+        rgb(0x141414),
+        "the active account is not second"
+    );
+    assert_eq!(
+        Local::load(&dir)
+            .themes
+            .accounts
+            .get("second")
+            .map(String::as_str),
+        Some("builtin:moss")
+    );
+    // Removing the active account makes "second" the one the next start uses.
+    accounts_page(app);
+    press(app, "Remove Test User");
+    press(app, "Yes, remove the account");
+    assert_eq!(
+        t.get_content().bg,
+        rgb(0x141414),
+        "still the running account's look"
+    );
+    let again = restart(&ui);
+    assert_eq!(
+        again.global::<Theme>().get_content().bg,
+        rgb(0x121815),
+        "the next start shows second's Moss"
+    );
+}
+
+#[test]
+fn removing_an_account_removes_its_theme() {
+    let home = Home::new("theme-account-remove").with_accounts();
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    store(app).invoke_command(
+        "account-theme".into(),
+        account_arg("second", "builtin:ember"),
+    );
+    assert!(Local::load(&dir).themes.accounts.contains_key("second"));
+    accounts_page(app);
+    press(app, "Remove second");
+    press(app, "Yes, remove the account");
+    assert!(!Local::load(&dir).themes.accounts.contains_key("second"));
+}
+
+#[test]
+fn the_call_theme_changes_only_the_call_region() {
+    let ui = window(Home::new("theme-call"));
+    let app = &ui.app;
+    appearance_page(app);
+    press(app, "Theme: IronTeams Light");
+    press(app, "Calls and meetings");
+    press(app, "Calls and meetings: IronTeams Dark");
+    let t = app.global::<Theme>();
+    assert!(t.get_call().dark, "the call is dark");
+    assert!(!t.get_content().dark, "the content area stays light");
+    assert!(!t.get_nav().dark, "and so does the nav");
+    assert_eq!(store(app).get_call_theme(), "builtin:dark");
+    assert_eq!(
+        Local::load(&ui.home.paths().config_dir).themes.call,
+        CallChoice::Fixed("builtin:dark".into())
+    );
+    store(app).invoke_command("call-theme".into(), "".into());
+    assert_eq!(t.get_call(), t.get_content(), "Same as app");
 }

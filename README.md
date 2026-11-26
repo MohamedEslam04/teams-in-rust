@@ -154,7 +154,8 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   with a live preview and a contrast report; Keep my colours; Edit, Copy theme, Rename, Delete; up
   to 50), shared as one line that Import previews before saving, and a chip with a Preview button
   under a message that is such a line; the accent colour (for IronTeams Dark and Light), density
-  and text size; Reset theme in the command palette (Ctrl+Shift+P) or `--reset-theme`; app language with
+  and text size; Reset theme in the command palette (Ctrl+Shift+P) or `--reset-theme`; a theme for
+  each account (Accounts page) and one for calls and meetings (Appearance page); app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; storage (the active account's media and the total over all accounts,
