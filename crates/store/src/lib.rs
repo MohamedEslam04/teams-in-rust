@@ -246,12 +246,13 @@ impl Store {
         Ok(tx.commit()?)
     }
 
-    /// Forgets a conversation (after leaving a group chat): its row, cached messages, draft and
+    /// Forgets a conversation (after leaving a group chat): its row, cached messages, draft, note and
     /// unread mark. Queued outbox items are left alone.
     pub fn delete_conversation(&self, id: &str) -> Result<()> {
         for sql in [
             "DELETE FROM messages WHERE conversation_id = ?1",
             "DELETE FROM drafts WHERE conversation_id = ?1",
+            "DELETE FROM chat_notes WHERE conversation_id = ?1",
             "DELETE FROM history_gaps WHERE conversation_id = ?1",
             "DELETE FROM conversations WHERE id = ?1",
         ] {
@@ -962,6 +963,37 @@ impl Store {
             .query_map([], draft_from_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(out)
+    }
+
+    // ---- chat notes ----------------------------------------------------
+
+    /// Saves the user's private note on a conversation. A note is plain text and stays on this
+    /// computer. Empty text deletes it.
+    pub fn set_chat_note(&self, conversation_id: &str, text: &str) -> Result<()> {
+        if text.is_empty() {
+            self.conn
+                .prepare_cached("DELETE FROM chat_notes WHERE conversation_id = ?1")?
+                .execute([conversation_id])?;
+        } else {
+            self.conn
+                .prepare_cached(
+                    "INSERT INTO chat_notes (conversation_id, text, updated_ms) \
+                     VALUES (?1, ?2, ?3) \
+                     ON CONFLICT(conversation_id) DO UPDATE SET \
+                         text = excluded.text, updated_ms = excluded.updated_ms",
+                )?
+                .execute(params![conversation_id, text, now_ms()])?;
+        }
+        Ok(())
+    }
+
+    /// The note on a conversation, if it has one.
+    pub fn chat_note(&self, conversation_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT text FROM chat_notes WHERE conversation_id = ?1")?
+            .query_row([conversation_id], |r| r.get(0))
+            .optional()?)
     }
 
     // ---- outbox --------------------------------------------------------

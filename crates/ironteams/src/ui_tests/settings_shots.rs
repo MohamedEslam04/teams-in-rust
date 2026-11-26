@@ -20,7 +20,7 @@ use slint::{PhysicalSize, Rgb8Pixel};
 use std::time::Duration;
 use teams_proto::user_settings::PrivacySettings;
 
-const PAGES: [&str; 13] = [
+const PAGES: [&str; 14] = [
     "general",
     "chats",
     "accounts",
@@ -28,6 +28,7 @@ const PAGES: [&str; 13] = [
     "notifications",
     "appearance",
     "accessibility",
+    "shortcuts",
     "devices",
     "calls",
     "files",
@@ -39,7 +40,7 @@ const PAGES: [&str; 13] = [
 /// A whole page is drawn into a window this tall, then cut below its last row.
 const TALL: u32 = 6000;
 
-struct ShotPlatform(Rc<MinimalSoftwareWindow>);
+pub(super) struct ShotPlatform(pub(super) Rc<MinimalSoftwareWindow>);
 
 impl Platform for ShotPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
@@ -51,7 +52,7 @@ impl Platform for ShotPlatform {
     }
 }
 
-fn settle() {
+pub(super) fn settle() {
     for _ in 0..20 {
         testing::mock_elapsed_time(Duration::from_millis(50));
         slint::platform::update_timers_and_animations();
@@ -59,7 +60,13 @@ fn settle() {
 }
 
 /// Draws the window at `w` x `h` and saves it; `whole` cuts the rows below the page's content.
-fn shoot(window: &MinimalSoftwareWindow, w: u32, h: u32, whole: bool, path: &std::path::Path) {
+pub(super) fn shoot(
+    window: &MinimalSoftwareWindow,
+    w: u32,
+    h: u32,
+    whole: bool,
+    path: &std::path::Path,
+) {
     window.set_size(PhysicalSize::new(w, h));
     settle();
     let mut buf = vec![Rgb8Pixel::default(); (w * h) as usize];

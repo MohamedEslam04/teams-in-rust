@@ -7,7 +7,7 @@ layer, from the smallest pieces up:
 
 | Layer | Folder | Holds |
 |---|---|---|
-| tokens | `tokens/` | `Theme` (colours, presence, scrim, text sizes), `Motion`, shared structs (`types.slint`) |
+| tokens | `tokens/` | `Theme` (region colours, text sizes), `Fixed` (colours that do not follow the theme), `Motion`, shared structs (`types.slint`) |
 | stores | `stores/` | globals Rust fills and listens to (`CallStore`, `DriveStore`, `FindStore`, …) and their structs |
 | atoms | `atoms/` | the building blocks: buttons, fields, checks, avatars, pills, menus, the search box |
 | molecules | `molecules/` | small composites of atoms (cards, pickers, a screen's own widgets) |
@@ -17,13 +17,13 @@ layer, from the smallest pieces up:
 
 ## Rules
 
-`bash scripts/check-ui-layers.sh` checks both of these; CI runs it in the clippy job.
+`bash scripts/check-ui-layers.sh` checks rules 1 and 2, and the region colours rule (see Theme regions); CI runs it in the clippy job.
 
 1. **No upward imports.** A file imports only from its own layer or a lower one:
    `tokens`, `stores` ← `atoms` ← `molecules` ← `organisms` ← `pages` ← `app.slint`.
    When an organism needs something from a page, the shared piece moves down (a struct or global
    to `stores/`, a widget to an organism or lower).
-2. **Colours live in `tokens/` and `atoms/`.** Elsewhere use a `Theme` token or an atom variant.
+2. **Colours live in `tokens/`.** Elsewhere use a `Theme` token, a `Fixed` colour or an atom variant.
    The colours screens still draw themselves are listed in `scripts/ui-hex-allowlist.txt`
    (the composer's colour palette, drop shadows, brand colours, the always-dark call surfaces,
    and the rest of what the screens drew before this layout); the list may only shrink. When you
@@ -34,6 +34,40 @@ layer, from the smallest pieces up:
    (`src/ui_tests/`) are part of the contract: rename them only together with their users.
 
 Not policed: the `px` literals. A length used in many places becomes a token when it earns it.
+
+## Theme regions
+
+The window has three colour regions, each a full set of colours: the content area, the nav (the
+rail, the sidebar, the chat list) and the call screen. A set is a `Tokens` struct
+(`tokens/types.slint`: 49 colours from `bg` to `shimmer`, and `dark`), and `Theme` holds one per
+region: `Theme.content`, `Theme.nav` and `Theme.call`. Rust sets all three, with the non-colour
+properties (`font-scale`, `compact`, `high-contrast`, `reduced-motion`, `h24`), through one
+function, `apply_look` (`src/ui/settings/push.rs`), for the main window and each chat popout.
+In the four built-in palettes the nav is the content set on the content's `panel`, and the call
+screen is the content set.
+
+- **The `c` input.** A component that draws colour declares `in property <Tokens> c:
+  Theme.content;` (the nav set defaults to `Theme.nav`, the call set to `Theme.call`) and reads
+  every colour from `root.c`. Inside such a component, every instance of another component that
+  takes `c` gets `c: root.c`. Popups opened from the nav float over the content area and use
+  `Theme.content`; menus and panels of the call screen use `Theme.call`.
+- **Flat aliases.** `Theme.main` (`content.bg`), `Theme.sidebar` and `Theme.card`
+  (`content.panel`), `Theme.dark` and one read-only alias per other token (`Theme.fg`,
+  `Theme.danger-hover`, …) stay for the pages outside the nav and the call screen.
+- **`Fixed`** (`tokens/fixed.slint`): named colours that do not follow the theme, such as
+  `Fixed.black` for the video surface, the file-kind colours, the call buttons, the calendar
+  slots, the composer's text and highlight colours and the accent choices.
+- **The nav set and the call set** are lists at the top of `scripts/check-ui-layers.sh`
+  (`nav_set`, `call_set`): the nav is `app_rail`, `apps_rail`, `sidebar`, `lists`,
+  `chat_list_extras`, `communities_section` and `web_parity`; the call set is
+  `pages/call_window.slint` and the `call_*` organisms with `video_effects` and `video_preview`.
+- **Region colours rule** (rule 3 of the script): the files of an area named in `rule3_areas`
+  may not read the flat colour aliases or `Theme.dark`; they read their `c` input. The names
+  are read from `tokens/theme.slint`. Areas: `atoms` (with `tokens/motion.slint`), `molecules`,
+  `nav`, `call`. The rule is switched on area by area as the components take `c`; today the
+  `atoms` and `molecules` areas are on. Every atom, `tokens/motion.slint` and every molecule that
+  reads a colour or instantiates a component with a `c` input takes `c` (an `in property
+  <Tokens>`, default `Theme.content`), reads its colours from `root.c` and passes `c: root.c` on.
 
 ## Atom catalog
 

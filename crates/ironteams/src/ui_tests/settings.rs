@@ -38,6 +38,11 @@ impl Home {
         }
     }
 
+    /// Where the preference files are.
+    pub(super) fn config_dir(&self) -> PathBuf {
+        self.paths().config_dir
+    }
+
     /// A config with two fake accounts; the first is active.
     pub(super) fn with_accounts(self) -> Home {
         let p = self.paths();
@@ -627,6 +632,90 @@ fn a_status_message_clears_after_the_chosen_time_and_can_show_when_people_messag
 }
 
 #[test]
+fn a_status_message_can_clear_after_half_an_hour() {
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("note-30m").with_accounts(), Some(tx), false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    while rx.try_recv().is_ok() {}
+    control(app, "New status message").set_accessible_value("Quick call");
+    press(app, "Clear message after: 30 minutes");
+    press(app, "Save message");
+    let Ok(Cmd::Settings(SettingsCmd::SetStatusNote(text, Some(until), false))) = rx.try_recv()
+    else {
+        panic!("a message that clears");
+    };
+    assert_eq!(text, "Quick call");
+    let ms = teams_proto::time::parse_iso_ms(&until).unwrap();
+    assert!((ms - (teams_proto::time::now_ms() + 30 * 60_000)).abs() < 60_000);
+}
+
+#[test]
+fn an_emoji_picked_for_the_status_message_goes_first() {
+    let ui = window_with(Home::new("note-emoji").with_accounts(), None, false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    control(app, "New status message").set_accessible_value("Heads down");
+    press(app, "Add emoji to status message");
+    for _ in 0..3 {
+        testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    }
+    let first = app
+        .global::<crate::EmojiApi>()
+        .invoke_list(0, "".into(), 0)
+        .row_data(0)
+        .expect("an emoji")
+        .ch;
+    ids(app, "EmojiGrid::cell")[0].mock_single_click(PointerEventButton::Left);
+    assert_eq!(
+        control(app, "New status message")
+            .accessible_value()
+            .unwrap_or_default(),
+        format!("{first} Heads down")
+    );
+}
+
+#[test]
+fn the_status_editor_says_when_the_message_clears() {
+    let ui = window_with(Home::new("note-clears").with_accounts(), None, false);
+    let app = &ui.app;
+    app.window().set_size(LogicalSize::new(1200., 2600.));
+    press(app, "Profile menu");
+    press(app, "Set status message");
+    let handle = UiHandle::new(app.as_weak());
+    let none = |app: &AppWindow| {
+        ElementHandle::find_by_accessible_label(app, "Status message clears")
+            .next()
+            .is_none()
+    };
+    // No end: nothing to say.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        ..Default::default()
+    });
+    assert!(none(app));
+    // An end ahead of us: the clock time.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        me_status_ends: Some(teams_proto::time::now_ms() + 3_600_000),
+        ..Default::default()
+    });
+    assert!(value_of(app, "Status message clears").starts_with("Clears at "));
+    // One that has passed: gone.
+    handle.settings_server(ServerData {
+        me_status: Some("Heads down".into()),
+        me_status_ends: Some(teams_proto::time::now_ms() - 1_000),
+        ..Default::default()
+    });
+    assert!(none(app));
+}
+
+#[test]
 fn the_profile_menu_changes_and_removes_the_photo_and_shows_it() {
     use crate::backend::settings::SettingsCmd;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -832,6 +921,8 @@ fn the_chats_page_sets_where_a_chat_opens_enter_to_send_receipts_and_link_previe
     let config = home.paths().config_dir;
     let ui = window_with(home, Some(tx), false);
     let app = &ui.app;
+    // The Reactions section above Read receipts pushes it out of a window of the usual height.
+    tall_window(app);
     let enter_log = Log::default();
     {
         let l = enter_log.clone();
@@ -844,6 +935,8 @@ fn the_chats_page_sets_where_a_chat_opens_enter_to_send_receipts_and_link_previe
             .on_command(move |n, a| l.borrow_mut().push(format!("{n} {a}")));
     }
     open_page(app, "chats");
+    // The Chat list section pushes the later rows below the window.
+    tall_window(app);
     while rx.try_recv().is_ok() {}
     assert_eq!(value_of(app, "Settings page"), "Chats and channels");
     assert!(checked(app, "When I open a chat take me to: Last read"));
@@ -1007,6 +1100,7 @@ fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
     let ui = window(Home::new("wheel-speed"));
     let app = &ui.app;
     let config = ui.home.paths().config_dir;
+    tall_window(app);
     open_page(app, "chats");
     assert_eq!(store(app).get_wheel_speed(), 2.5);
     assert!(checked(app, "Mouse wheel speed: 2.5×"));
@@ -1025,6 +1119,101 @@ fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
     store(app).invoke_command("wheel-speed".into(), "0.1".into());
     assert_eq!(store(app).get_wheel_speed(), 1.0, "at least once");
     assert_eq!(Local::load(&config).general.wheel_speed, 1.0);
+}
+
+/// Chats > Reactions: a slot opens the reaction picker above Settings, the reaction picked there
+/// replaces it (an empty slot adds one) and is kept, and Reset to default brings Teams' four back.
+#[test]
+fn the_chats_page_chooses_the_quick_reactions_and_resets_them() {
+    let ui = window(Home::new("quick-reactions"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    let keys = |app: &AppWindow| -> Vec<String> {
+        store(app)
+            .get_quick_reactions()
+            .iter()
+            .map(|i| i.key.to_string())
+            .collect()
+    };
+    let pick = |name: &str| {
+        let cell = ElementHandle::find_by_element_id(app, "ReactionPicker::cell")
+            .find(|c| label(c) == name)
+            .unwrap_or_else(|| panic!("no {name:?} in the picker"));
+        click(&cell);
+    };
+    // The Chat list section above Reactions pushes its rows out of a window of the usual height.
+    tall_window(app);
+    open_page(app, "chats");
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised"]);
+
+    // An empty slot adds.
+    press(app, "Quick reaction 5: empty");
+    assert!(app.get_picker_open());
+    assert_eq!(app.get_picker_msg_id(), "quick-slot");
+    pick("Sad");
+    assert!(!app.get_picker_open());
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised", "sad"]);
+    assert_eq!(
+        Local::load(&config).general.quick_reactions,
+        ["like", "heart", "laugh", "surprised", "sad"]
+    );
+
+    // A filled slot is replaced.
+    press(app, "Quick reaction 1: Like");
+    pick("Angry");
+    assert_eq!(keys(app), ["angry", "heart", "laugh", "surprised", "sad"]);
+
+    // A new window starts with the saved reactions.
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(keys(&again.app).len(), 5);
+
+    // Only reactions Teams accepts are kept.
+    store(app).invoke_command("quick-reaction".into(), "0:follow".into());
+    store(app).invoke_command("quick-reaction".into(), "x:like".into());
+    assert_eq!(keys(app)[0], "angry");
+
+    press(app, "Reset to default");
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised"]);
+    assert_eq!(
+        Local::load(&config).general.quick_reactions,
+        ["like", "heart", "laugh", "surprised"]
+    );
+}
+
+/// General > Start: IronTeams opens on Chat until another page is chosen; the choice is saved
+/// and read again by the next window, and a name that is not a page gives the default.
+#[test]
+fn the_general_page_sets_the_start_page_and_keeps_it() {
+    let ui = window(Home::new("start-page"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    open_page(app, "general");
+    assert_eq!(store(app).get_start_page(), "chat");
+    assert!(checked(app, "When IronTeams starts, open: Chat"));
+    press(app, "When IronTeams starts, open: Calendar");
+    assert_eq!(store(app).get_start_page(), "calendar");
+    assert!(checked(app, "When IronTeams starts, open: Calendar"));
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Calendar
+    );
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(store(&again.app).get_start_page(), "calendar");
+    press(app, "When IronTeams starts, open: Where I left off");
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Last
+    );
+    store(app).invoke_command("start-page".into(), "onedrive".into());
+    assert_eq!(
+        store(app).get_start_page(),
+        "chat",
+        "not a page: the default"
+    );
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Chat
+    );
 }
 
 #[test]
@@ -1257,6 +1446,91 @@ fn theme_choice_changes_the_theme_global_live() {
 }
 
 #[test]
+fn regions_default_to_the_content_colours() {
+    let ui = window(Home::new("regions"));
+    let t = ui.app.global::<Theme>();
+    assert_eq!(t.get_call(), t.get_content());
+    assert_eq!(t.get_nav().bg, t.get_content().panel);
+    // The flat colours are the content's.
+    assert_eq!(t.get_main(), t.get_content().bg);
+    assert_eq!(t.get_sidebar(), t.get_content().panel);
+    assert_eq!(t.get_dark(), t.get_content().dark);
+}
+
+#[test]
+fn look_reaches_an_open_popout() {
+    let ui = window(Home::new("popout-look"));
+    let app = &ui.app;
+    let cw = crate::ChatWindow::new().unwrap();
+    crate::ui::popout::set_popout_for_test(cw.clone_strong());
+    open_page(app, "appearance");
+    press(app, "Accent colour: Blue");
+    let pt = cw.global::<Theme>();
+    assert_eq!(
+        pt.get_content().accent_strong,
+        slint::Color::from_rgb_u8(0x0f, 0x6c, 0xbd)
+    );
+    assert_eq!(pt.get_content(), app.global::<Theme>().get_content());
+    assert!(!pt.get_h24());
+    open_page(app, "general");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
+    press(app, "Time format: 24-hour (13:30)");
+    assert!(pt.get_h24(), "the popout's time labels follow");
+    assert!(app.global::<Theme>().get_h24());
+}
+
+#[test]
+fn a_mention_colour_change_asks_for_a_redraw() {
+    use crate::backend::settings::SettingsCmd;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("mention-redraw"), Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    // The page is taller than the window: its last sections are below it.
+    tall_window(app);
+    while rx.try_recv().is_ok() {}
+    press(app, "Accent colour: Blue");
+    assert!(
+        matches!(rx.try_recv(), Ok(Cmd::Settings(SettingsCmd::Redraw))),
+        "the loaded messages are drawn again with the new mention colour"
+    );
+    assert!(rx.try_recv().is_err());
+    press(app, "Message density: Compact");
+    assert!(
+        rx.try_recv().is_err(),
+        "the mention colour did not change: nothing to draw again"
+    );
+}
+
+#[test]
+fn the_same_look_is_not_applied_twice() {
+    use appearance::{PortalChange, PortalScheme};
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui = window_with(Home::new("same-look"), Some(tx), false);
+    let app = &ui.app;
+    while rx.try_recv().is_ok() {}
+    let redraws = |rx: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>| {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .filter(|c| {
+                matches!(
+                    c,
+                    Cmd::Settings(crate::backend::settings::SettingsCmd::Redraw)
+                )
+            })
+            .count()
+    };
+    crate::ui::settings::portal_changed(app, PortalChange::ColorScheme(PortalScheme::Light));
+    assert!(
+        !app.global::<Theme>().get_dark(),
+        "the portal turned it light"
+    );
+    assert_eq!(redraws(&mut rx), 1);
+    crate::ui::settings::portal_changed(app, PortalChange::ColorScheme(PortalScheme::Light));
+    assert_eq!(redraws(&mut rx), 0, "the same look again: nothing to do");
+}
+
+#[test]
 fn font_size_and_larger_text_scale_the_theme_font() {
     let ui = window(Home::new("font"));
     let app = &ui.app;
@@ -1281,6 +1555,79 @@ fn font_size_and_larger_text_scale_the_theme_font() {
         (t.get_font_scale() - 1.25).abs() < 1e-6,
         "larger text stays on"
     );
+}
+
+/// Appearance > Messages: the style starts as bubbles, the choice is saved to appearance.json and
+/// the next window starts with it; a name that is not a style gives the default.
+#[test]
+fn the_appearance_page_sets_the_message_style_and_keeps_it() {
+    let home = Home::new("message-style");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    tall_window(app);
+    assert_eq!(store(app).get_message_style(), "bubbles");
+    assert!(checked(app, "Message style: Bubbles"));
+
+    press(app, "Message style: Flat");
+    assert_eq!(store(app).get_message_style(), "flat");
+    assert!(checked(app, "Message style: Flat"));
+    assert_eq!(
+        Local::load(&dir).appearance.message_style,
+        appearance::MessageStyle::Flat
+    );
+    press(app, "Message style: Compact");
+    let saved = Local::load(&dir).appearance;
+    assert_eq!(saved.message_style, appearance::MessageStyle::Compact);
+    // The density choice is a separate setting and stays as it was.
+    assert_eq!(saved.density, appearance::Density::Comfy);
+    assert!(ui.log.borrow().is_empty());
+
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(store(&again.app).get_message_style(), "compact");
+
+    store(app).invoke_command("message-style".into(), "irc".into());
+    assert_eq!(store(app).get_message_style(), "bubbles");
+    std::mem::forget(again.home); // `ui.home` removes the directory
+}
+
+/// Appearance > Messages: photos, time stamps and reactions start on, each switch is saved to
+/// appearance.json, and the next window starts with the choices.
+#[test]
+fn the_appearance_page_switches_photos_times_and_reactions_and_keeps_them() {
+    let home = Home::new("message-switches");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    tall_window(app);
+    for label in ["Show avatars", "Show time stamps", "Show reactions"] {
+        assert!(checked(app, label), "{label} starts on");
+    }
+    assert!(store(app).get_show_avatars() && store(app).get_show_timestamps());
+
+    press(app, "Show avatars");
+    assert!(!store(app).get_show_avatars());
+    assert!(!checked(app, "Show avatars"));
+    let saved = Local::load(&dir).appearance;
+    assert!(!saved.show_avatars && saved.show_timestamps && saved.show_reactions);
+
+    press(app, "Show time stamps");
+    press(app, "Show reactions");
+    assert!(!store(app).get_show_timestamps() && !store(app).get_show_reactions());
+    let saved = Local::load(&dir).appearance;
+    assert!(!saved.show_avatars && !saved.show_timestamps && !saved.show_reactions);
+    // The style is a separate setting and stays as it was.
+    assert_eq!(saved.message_style, appearance::MessageStyle::Bubbles);
+    assert!(ui.log.borrow().is_empty());
+
+    let again = window(Home(ui.home.0.clone()));
+    assert!(!store(&again.app).get_show_avatars());
+    assert!(!store(&again.app).get_show_timestamps());
+    assert!(!store(&again.app).get_show_reactions());
+
+    std::mem::forget(again.home); // `ui.home` removes the directory
 }
 
 #[test]
@@ -2147,6 +2494,7 @@ fn settings_rows_stay_inside_at_the_smallest_window() {
         "notifications",
         "appearance",
         "accessibility",
+        "shortcuts",
         "devices",
         "files",
         "storage",

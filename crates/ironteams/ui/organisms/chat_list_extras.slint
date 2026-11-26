@@ -74,16 +74,24 @@ component QuickRow inherits Rectangle {
     t := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
 }
 
-// The section itself. `open(kind)` asks for a quick view ("mentions", "followed", "discover") or
-// the Drafts filter ("drafts").
+// The section itself. `open(kind)` asks for a quick view ("unreads", "mentions", "followed",
+// "discover") or the Drafts filter ("drafts").
 export component QuickViewsSection inherits VerticalLayout {
-    // Unread chats that mention me.
+    // Unread chats, and of those the ones that mention me.
+    in property <int> unreads;
     in property <int> mentions;
     in property <bool> drafts-on;
     callback open(string);
     property <string> showing: FindStore.quick-open ? FindStore.quick-kind : "";
     qv-header := SectionHeader { label: @tr("Quick views"); expanded <=> QuickViewsStore.open; }
     if QuickViewsStore.open: VerticalLayout {
+        QuickRow {
+            label: @tr("Unreads");
+            icon: @image-url("../icons/unread.svg");
+            count: root.unreads;
+            active: root.showing == "unreads";
+            clicked => { root.open("unreads"); }
+        }
         QuickRow {
             label: @tr("Mentions");
             icon: @image-url("../icons/at.svg");

@@ -119,7 +119,7 @@ fn quick_views_rows_open_their_views_and_drafts_filters_the_list() {
     });
     h.runner()(Cmd::SetFilter("all".into()));
 
-    // The section sits above Favorites with its four rows.
+    // The section sits above Favorites with its five rows.
     let labels: Vec<_> = quick_rows(&h.app)
         .iter()
         .map(|r| r.accessible_label().unwrap().to_string())
@@ -127,6 +127,7 @@ fn quick_views_rows_open_their_views_and_drafts_filters_the_list() {
     assert_eq!(
         labels,
         [
+            "Unreads",
             "Mentions",
             "Followed threads",
             "Discover: popular posts from your teams",
@@ -197,7 +198,7 @@ fn quick_views_rows_open_their_views_and_drafts_filters_the_list() {
 #[test]
 fn collapsing_quick_views_hides_its_rows_and_is_remembered() {
     let app = app_with_messages(vec![]);
-    assert_eq!(quick_rows(&app).len(), 4);
+    assert_eq!(quick_rows(&app).len(), 5);
     let header = ElementHandle::find_by_element_id(&app, "QuickViewsSection::qv-header")
         .next()
         .expect("Quick views header");
@@ -210,7 +211,7 @@ fn collapsing_quick_views_hides_its_rows_and_is_remembered() {
     crate::window_state::remember_quick_views(&app, &mut state);
     assert!(!crate::window_state::quick_views_open(&state));
     let again = app_with_messages(vec![]);
-    assert_eq!(quick_rows(&again).len(), 4, "open before the restore");
+    assert_eq!(quick_rows(&again).len(), 5, "open before the restore");
     crate::window_state::restore_quick_views(&again, &state);
     assert!(quick_rows(&again).is_empty());
     click(
@@ -218,7 +219,7 @@ fn collapsing_quick_views_hides_its_rows_and_is_remembered() {
             .next()
             .unwrap(),
     );
-    assert_eq!(quick_rows(&again).len(), 4);
+    assert_eq!(quick_rows(&again).len(), 5);
 }
 
 // ---- Channel rows -----------------------------------------------------------------------------

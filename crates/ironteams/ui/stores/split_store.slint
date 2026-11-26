@@ -1,0 +1,20 @@
+// Split view: a second chat in a pane right of the open one, inside the main window. Rust fills it
+// (src/ui/split.rs) through the pop-out window's path; the pane sends `MediaStore` "split-send"
+// and "split-close". Nothing of it is kept across restarts.
+import { Msg } from "../tokens/types.slint";
+
+export global SplitStore {
+    in-out property <bool> open;
+    in-out property <string> conv-id;
+    in-out property <string> title;
+    in-out property <[Msg]> messages;
+    in-out property <string> draft;
+    // Bumped when a chat opens in the pane: its list goes to the newest message.
+    in-out property <int> scroll-tick;
+    // Bumped to put the keyboard focus in the pane's box.
+    in-out property <int> focus-tick;
+    // The pane's width as the divider left it; 0 is half the room.
+    in-out property <length> width: 0px;
+    // The pane was clicked last (or its box has the focus): Esc and Alt+Shift+R go to it.
+    in-out property <bool> active;
+}

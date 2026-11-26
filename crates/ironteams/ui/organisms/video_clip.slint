@@ -206,7 +206,7 @@ export component ClipRecorderPanel inherits Rectangle {
         }
         if ClipStore.problem != "" && ClipStore.has-picture: Text {
             text: ClipStore.problem;
-            color: #ff7e83;
+            color: Theme.danger-text;
             font-size: 12px * Theme.font-scale;
             horizontal-alignment: center;
             overflow: elide;

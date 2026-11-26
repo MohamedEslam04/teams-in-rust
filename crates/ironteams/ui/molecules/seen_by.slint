@@ -1,12 +1,14 @@
 // The "Seen by N" list: everyone who has seen my message, one per row, opened from the line under
 // my message and from the message menu's "Read by".
+import { Fixed } from "../tokens/fixed.slint";
 import { Theme } from "../tokens/theme.slint";
-import { ReaderItem } from "../tokens/types.slint";
+import { ReaderItem, Tokens } from "../tokens/types.slint";
 import { Motion } from "../tokens/motion.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { ScrollView } from "std-widgets.slint";
 
 export component SeenByList inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <[ReaderItem]> readers;
     // Esc.
     callback close();
@@ -15,11 +17,11 @@ export component SeenByList inherits Rectangle {
     // The header and the rows, at most 320px: a long list scrolls.
     height: min(320px, 44px + root.readers.length * 36px + 8px);
     border-radius: 6px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #00000090;
+    drop-shadow-color: Fixed.black-90;
     // Fades in and grows from 0.97 (150 ms) each time it opens.
     property <bool> shown: Theme.reduced-motion;
     opacity: root.shown ? 1.0 : 0.0;
@@ -50,7 +52,7 @@ export component SeenByList inherits Rectangle {
                 padding-right: 12px;
                 Text {
                     text: @tr("Seen by {}", "" + root.readers.length);
-                    color: Theme.fg;
+                    color: root.c.fg;
                     font-size: 14px * Theme.font-scale;
                     font-weight: 600;
                     vertical-alignment: center;
@@ -72,6 +74,7 @@ export component SeenByList inherits Rectangle {
                         padding-right: 12px;
                         spacing: 10px;
                         Avatar {
+                            c: root.c;
                             size: 24px;
                             y: 6px;
                             tone: rd.color;
@@ -80,7 +83,7 @@ export component SeenByList inherits Rectangle {
                         }
                         Text {
                             text: rd.name;
-                            color: Theme.fg;
+                            color: root.c.fg;
                             font-size: 13px * Theme.font-scale;
                             vertical-alignment: center;
                             horizontal-stretch: 1;

@@ -1,4 +1,4 @@
-//! The user's appearance choices (theme, accent, density, font scale) and their file.
+//! The user's appearance choices (theme, accent, density, font scale, message style) and their file.
 
 use crate::store::{self, Error, lenient};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -25,6 +25,38 @@ pub enum Density {
     #[default]
     Comfy,
     Compact,
+}
+
+/// How a message is drawn in a chat: in a bubble (the default), as a flat line with the photo and
+/// name on the left for everyone, or as a flat line with less room around it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageStyle {
+    #[default]
+    Bubbles,
+    Flat,
+    Compact,
+}
+
+impl MessageStyle {
+    /// The value that is saved and shown in Settings.
+    pub fn slug(self) -> &'static str {
+        match self {
+            MessageStyle::Bubbles => "bubbles",
+            MessageStyle::Flat => "flat",
+            MessageStyle::Compact => "compact",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<MessageStyle> {
+        [
+            MessageStyle::Bubbles,
+            MessageStyle::Flat,
+            MessageStyle::Compact,
+        ]
+        .into_iter()
+        .find(|m| m.slug() == s)
+    }
 }
 
 /// An sRGB color, stored in the file as `#rrggbb`.
@@ -98,6 +130,11 @@ fn de_font_scale<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
     Ok(clamp_font_scale(v))
 }
 
+/// A switch that is on unless the file says otherwise: a value of the wrong shape reads as on.
+fn de_true<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(lenient::<D, Option<bool>>(d)?.unwrap_or(true))
+}
+
 /// Appearance preferences. Every field has a default, so an old or partial file still loads.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -112,6 +149,18 @@ pub struct AppearancePrefs {
     /// Multiplier for text size, 0.75..=2.0. Use [`AppearancePrefs::set_font_scale`] to change it.
     #[serde(deserialize_with = "de_font_scale")]
     pub font_scale: f32,
+    /// Bubbles, flat lines or compact lines in a chat.
+    #[serde(deserialize_with = "lenient")]
+    pub message_style: MessageStyle,
+    /// The sender's photo beside a message. The name still opens the profile.
+    #[serde(deserialize_with = "de_true")]
+    pub show_avatars: bool,
+    /// The time beside the sender's name (shown while the pointer is on the message).
+    #[serde(deserialize_with = "de_true")]
+    pub show_timestamps: bool,
+    /// The row of reactions under a message. Hiding it keeps the reactions themselves.
+    #[serde(deserialize_with = "de_true")]
+    pub show_reactions: bool,
 }
 
 impl Default for AppearancePrefs {
@@ -121,6 +170,10 @@ impl Default for AppearancePrefs {
             accent: None,
             density: Density::Comfy,
             font_scale: default_font_scale(),
+            message_style: MessageStyle::Bubbles,
+            show_avatars: true,
+            show_timestamps: true,
+            show_reactions: true,
         }
     }
 }
@@ -286,6 +339,81 @@ mod tests {
     }
 
     #[test]
+    fn messages_default_to_bubbles_and_old_files_keep_that() {
+        assert_eq!(
+            AppearancePrefs::default().message_style,
+            MessageStyle::Bubbles
+        );
+        let old: AppearancePrefs = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(old.message_style, MessageStyle::Bubbles);
+    }
+
+    #[test]
+    fn message_style_loads_saves_and_survives_a_bad_value() {
+        let p: AppearancePrefs = serde_json::from_str(r#"{"message_style":"compact"}"#).unwrap();
+        assert_eq!(p.message_style, MessageStyle::Compact);
+        let bad: AppearancePrefs =
+            serde_json::from_str(r#"{"message_style":"irc","density":"compact"}"#).unwrap();
+        assert_eq!(bad.message_style, MessageStyle::Bubbles);
+        assert_eq!(bad.density, Density::Compact);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let saved = AppearancePrefs {
+            message_style: MessageStyle::Flat,
+            ..Default::default()
+        };
+        saved.save_to(&path).unwrap();
+        assert_eq!(AppearancePrefs::load_from(&path), saved);
+    }
+
+    #[test]
+    fn photos_times_and_reactions_are_on_unless_turned_off() {
+        let d = AppearancePrefs::default();
+        assert!(d.show_avatars && d.show_timestamps && d.show_reactions);
+        // A file written before the switches existed keeps today's look.
+        let old: AppearancePrefs = serde_json::from_str(r#"{"message_style":"flat"}"#).unwrap();
+        assert!(old.show_avatars && old.show_timestamps && old.show_reactions);
+        let off: AppearancePrefs = serde_json::from_str(
+            r#"{"show_avatars":false,"show_timestamps":false,"show_reactions":false}"#,
+        )
+        .unwrap();
+        assert!(!off.show_avatars && !off.show_timestamps && !off.show_reactions);
+        // A value of the wrong shape reads as on, and the other fields still load.
+        let bad: AppearancePrefs = serde_json::from_str(
+            r#"{"show_avatars":"no","show_timestamps":3,"show_reactions":false,"density":"compact"}"#,
+        )
+        .unwrap();
+        assert!(bad.show_avatars && bad.show_timestamps && !bad.show_reactions);
+        assert_eq!(bad.density, Density::Compact);
+    }
+
+    #[test]
+    fn the_switches_are_saved_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let saved = AppearancePrefs {
+            show_timestamps: false,
+            show_reactions: false,
+            ..Default::default()
+        };
+        saved.save_to(&path).unwrap();
+        assert_eq!(AppearancePrefs::load_from(&path), saved);
+    }
+
+    #[test]
+    fn message_style_slugs_round_trip() {
+        for s in [
+            MessageStyle::Bubbles,
+            MessageStyle::Flat,
+            MessageStyle::Compact,
+        ] {
+            assert_eq!(MessageStyle::from_slug(s.slug()), Some(s));
+        }
+        assert_eq!(MessageStyle::from_slug("irc"), None);
+    }
+
+    #[test]
     fn file_format_is_stable() {
         let p = AppearancePrefs {
             theme: Theme::Light,
@@ -297,5 +425,9 @@ mod tests {
         assert_eq!(v["accent"], "#0078d4");
         assert_eq!(v["density"], "comfy");
         assert_eq!(v["font_scale"], 1.0);
+        assert_eq!(v["message_style"], "bubbles");
+        assert_eq!(v["show_avatars"], true);
+        assert_eq!(v["show_timestamps"], true);
+        assert_eq!(v["show_reactions"], true);
     }
 }

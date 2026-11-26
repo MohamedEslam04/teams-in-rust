@@ -1,20 +1,23 @@
 // Dialog frames. `DialogFrame` is a titled panel with a close button; `ModalDialog` also dims
 // the window behind it, centres the panel and can show an error band under the title.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { IconButton } from "widgets.slint";
 
 // A dialog panel: its title, a close button and the content below.
 export component DialogFrame inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> title;
     in property <length> dialog-width: 480px;
     callback close();
     width: root.dialog-width;
     border-radius: 8px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: root.title;
     TouchArea { }
@@ -23,8 +26,8 @@ export component DialogFrame inherits Rectangle {
         spacing: 10px;
         HorizontalLayout {
             height: 28px;
-            Text { text: root.title; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-            IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close"; size: 28px; clicked => { root.close(); } }
+            Text { text: root.title; color: root.c.fg; font-size: 17px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+            IconButton { c: root.c; icon: @image-url("../icons/close.svg"); tooltip: "Close"; size: 28px; clicked => { root.close(); } }
         }
         @children
     }
@@ -32,12 +35,13 @@ export component DialogFrame inherits Rectangle {
 
 // A modal dialog: dimmed backdrop, a titled panel, and its content in `@children`.
 export component ModalDialog inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> title;
     in property <length> panel-width: 520px;
     in property <length> panel-height: 420px;
     in property <string> error;
     callback close();
-    background: #000000a0;
+    background: Fixed.black-a0;
     TouchArea { }
     panel := Rectangle {
         x: (root.width - self.width) / 2;
@@ -45,9 +49,9 @@ export component ModalDialog inherits Rectangle {
         width: min(root.panel-width, root.width - 24px);
         height: min(root.panel-height, root.height - 16px);
         border-radius: 8px;
-        background: Theme.sidebar;
+        background: root.c.panel;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: root.c.border;
         clip: true;
         VerticalLayout {
             Rectangle {
@@ -55,20 +59,20 @@ export component ModalDialog inherits Rectangle {
                 HorizontalLayout {
                     padding-left: 18px;
                     padding-right: 10px;
-                    Text { text: root.title; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; accessible-role: text; }
+                    Text { text: root.title; color: root.c.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; accessible-role: text; }
                     Rectangle { horizontal-stretch: 1; }
-                    IconButton { icon: @image-url("../icons/close.svg"); tooltip: "Close"; size: 28px; y: 10px; clicked => { root.close(); } }
+                    IconButton { c: root.c; icon: @image-url("../icons/close.svg"); tooltip: "Close"; size: 28px; y: 10px; clicked => { root.close(); } }
                 }
             }
             if root.error != "": Rectangle {
                 height: err.preferred-height + 14px;
-                background: #3b1f22;
+                background: root.c.danger-soft;
                 err := Text {
                     x: 18px;
                     y: 7px;
                     width: parent.width - 36px;
                     text: root.error;
-                    color: #ffffff;
+                    color: root.c.fg-strong;
                     font-size: 12px * Theme.font-scale;
                     wrap: word-wrap;
                     accessible-role: text;

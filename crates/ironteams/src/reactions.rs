@@ -139,6 +139,34 @@ pub fn reactors(
     (people, missing)
 }
 
+/// Whether Teams takes `key` as a reaction: an id of its emoticon catalog (with or without a skin
+/// tone), or the codepoint key of an emoji the catalog lacks. These are the keys the picker
+/// offers; anything else (`follow`, which Teams keeps in the same list, or a typo) is not one.
+pub fn is_accepted_key(key: &str) -> bool {
+    teams::parse_key(key).is_some() || emoji::all().iter().any(|e| reaction_key(e) == key)
+}
+
+/// The hover bar's cells for the saved reaction keys: the ones Teams accepts, once each, at most
+/// [`appearance::general::QUICK_REACTIONS_MAX`]. Teams' four when none is left.
+pub fn quick_items(keys: &[String]) -> Vec<PickerItem> {
+    let mut seen = HashSet::new();
+    let mut items: Vec<PickerItem> = keys
+        .iter()
+        .map(|k| k.trim())
+        .filter(|k| is_accepted_key(k) && seen.insert(k.to_string()))
+        .take(appearance::general::QUICK_REACTIONS_MAX)
+        .map(|k| PickerItem {
+            key: k.to_string(),
+            emoji: crate::markdown::reaction_emoji(k),
+            name: reaction_name(k),
+        })
+        .collect();
+    if items.is_empty() {
+        items = quick_items(&appearance::general::default_quick_reactions());
+    }
+    items
+}
+
 /// Picker rows for a search, in the user's skin tone `tone` (0 for none). An empty query lists
 /// the six Teams reactions, then Teams' catalog in its own order; a query lists the catalog's
 /// best matches by id, shortcut (`(flex)`), name or keyword, then emoji the catalog lacks.
@@ -223,6 +251,59 @@ mod tests {
         glyphs.sort_unstable();
         glyphs.dedup();
         assert_eq!(glyphs.len(), items.len(), "no emoji shown twice");
+    }
+
+    #[test]
+    fn only_keys_teams_takes_are_accepted() {
+        for key in ["like", "heart", "cwl", "fire", "muscle", "muscle-tone1"] {
+            assert!(is_accepted_key(key), "{key}");
+        }
+        // The codepoint key of an emoji the catalog lacks, as the picker makes it.
+        let flag = emoji::all()
+            .iter()
+            .find(|e| e.category == emoji::Category::Flags && e.name.contains("Egypt"))
+            .unwrap();
+        assert!(is_accepted_key(&reaction_key(flag)));
+        // Every key the picker offers is accepted.
+        for item in picker_items("", 0).iter().chain(&picker_items("fire", 0)) {
+            assert!(is_accepted_key(&item.key), "{}", item.key);
+        }
+        for key in ["", " ", "follow", "zzqq", "like-tone9", "1f1ea_nothing"] {
+            assert!(!is_accepted_key(key), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn quick_items_keep_valid_keys_in_order_and_fall_back_to_teams_four() {
+        let keys = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let names = |v: &[&str]| {
+            quick_items(&keys(v))
+                .iter()
+                .map(|i| i.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&["heart", "like"]), ["Heart", "Like"]);
+        let four = ["Like", "Heart", "Laugh", "Surprised"];
+        assert_eq!(names(&["like", "heart", "laugh", "surprised"]), four);
+        // A key Teams would not take is left out, a repeat shows once, nothing at all is Teams' four.
+        assert_eq!(names(&["follow", "like", "like", "nope"]), ["Like"]);
+        assert_eq!(names(&[]), four);
+        assert_eq!(names(&["follow", "nope"]), four);
+        // At most six.
+        let many = keys(&[
+            "like",
+            "heart",
+            "laugh",
+            "surprised",
+            "sad",
+            "angry",
+            "fire",
+        ]);
+        assert_eq!(quick_items(&many).len(), 6);
+        // Each cell reacts with its key and shows what that key decodes to.
+        for i in quick_items(&keys(&["like", "muscle-tone1", "cwl"])) {
+            assert_eq!(i.emoji, crate::markdown::reaction_emoji(&i.key));
+        }
     }
 
     #[test]

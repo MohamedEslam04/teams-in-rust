@@ -3,8 +3,9 @@
 // hidden, disabled copy of the text input: putting its cursor at the word's two ends reports their
 // positions (`cursor-position-changed`), and the red line is drawn there. A right click on a
 // word (the real input ignores the right button) opens the suggestions.
+import { Fixed } from "../tokens/fixed.slint";
 import { Theme } from "../tokens/theme.slint";
-import { Edited } from "../tokens/types.slint";
+import { Edited, Tokens } from "../tokens/types.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 
 export struct SpellWord {
@@ -30,6 +31,7 @@ export global SpellApi {
 
 // Sits under the composer's text input, with the same geometry and font.
 export component SpellOverlay inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     // The text the words were found in (the draft when typing paused).
     in property <string> text;
     in property <[SpellWord]> words;
@@ -105,7 +107,7 @@ export component SpellOverlay inherits Rectangle {
             y: mark.sy + root.line-height - 2px;
             width: mark.wide;
             height: 2px;
-            background: Theme.danger;
+            background: root.c.danger;
         }
         if mark.placed: hit := TouchArea {
             x: mark.left;
@@ -133,12 +135,12 @@ export component SpellOverlay inherits Rectangle {
         height: (max(root.menu-suggestions.length, 1) + 1) * 30px + 9px;
         close-policy: close-on-click-outside;
         Rectangle {
-            background: Theme.surface;
+            background: root.c.surface;
             border-radius: 6px;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: root.c.border;
             drop-shadow-blur: 8px;
-            drop-shadow-color: #00000060;
+            drop-shadow-color: Fixed.black-60;
             accessible-role: list;
             accessible-label: @tr("Spelling");
             VerticalLayout {
@@ -149,12 +151,12 @@ export component SpellOverlay inherits Rectangle {
                     Text {
                         x: 10px;
                         text: @tr("No suggestions");
-                        color: Theme.fg-subtle;
+                        color: root.c.fg-subtle;
                         font-size: 13px * Theme.font-scale;
                         vertical-alignment: center;
                     }
                 }
-                for s in root.menu-suggestions: MenuItem { variant: MenuItemVariant.spell;
+                for s in root.menu-suggestions: MenuItem { c: root.c; variant: MenuItemVariant.spell;
                     label: s;
                     strong: true;
                     clicked => {
@@ -163,8 +165,8 @@ export component SpellOverlay inherits Rectangle {
                         menu.close();
                     }
                 }
-                Rectangle { height: 1px; background: Theme.border; }
-                MenuItem { variant: MenuItemVariant.spell;
+                Rectangle { height: 1px; background: root.c.border; }
+                MenuItem { c: root.c; variant: MenuItemVariant.spell;
                     label: @tr("Add to dictionary");
                     clicked => {
                         SpellApi.add-word(root.menu-word.word);

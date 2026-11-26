@@ -1,0 +1,124 @@
+// The Later page: the pending reminders and the saved messages in one list, with Open, Mark done
+// and (for a reminder) Snooze. Rust fills `RemindStore.later` (backend/remind/later.rs) in the
+// order to show; the page only draws it and sends `RemindStore.command`.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { LaterRow, RemindStore } from "../organisms/remind.slint";
+
+component LaterItem inherits Rectangle {
+    in property <LaterRow> data;
+    callback open();
+    callback done();
+    callback snooze(string);
+    property <bool> reminder: root.data.kind == "reminder";
+    height: 98px;
+    border-radius: 4px;
+    background: row-touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    accessible-role: list-item;
+    accessible-label: root.data.preview;
+    accessible-description: root.data.chat + " · " + root.data.author + " · " + root.data.time;
+
+    row-touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+    VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.data.chat + (root.data.author != "" ? "  ·  " + root.data.author : "");
+                color: Theme.fg-muted;
+                font-size: 12px * Theme.font-scale;
+                overflow: elide;
+                horizontal-alignment: Theme.start-align;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.reminder ? (root.data.overdue ? @tr("Overdue · {}", root.data.time) : @tr("Due {}", root.data.time)) : @tr("Saved {}", root.data.time);
+                color: root.data.overdue ? Theme.danger : (root.reminder ? Theme.accent : Theme.fg-subtle);
+                font-size: 12px * Theme.font-scale;
+                font-weight: root.reminder ? 700 : 400;
+                horizontal-stretch: 0;
+            }
+        }
+        Text {
+            text: root.data.preview;
+            color: Theme.fg;
+            font-size: 13px * Theme.font-scale;
+            overflow: elide;
+            horizontal-alignment: Theme.start-align;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            open-btn := Button { variant: ButtonVariant.subtle; label: @tr("Open"); clicked => { root.open(); } }
+            done-btn := Button { variant: ButtonVariant.subtle; label: @tr("Mark done"); clicked => { root.done(); } }
+            if root.reminder: hour-btn := Button { variant: ButtonVariant.subtle; label: @tr("Snooze 1 hour"); clicked => { root.snooze("1h"); } }
+            if root.reminder: tomorrow-btn := Button { variant: ButtonVariant.subtle; label: @tr("Snooze until tomorrow 9:00"); clicked => { root.snooze("tomorrow"); } }
+        }
+    }
+}
+
+export component LaterPage inherits Rectangle {
+    background: Theme.main;
+    accessible-role: groupbox;
+    accessible-label: @tr("Later");
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            if event.text == Key.Escape { RemindStore.later-open = false; return accept; }
+            reject
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            width: min(760px, root.width - 32px);
+            padding-top: 16px;
+            padding-bottom: 16px;
+            spacing: 10px;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: @tr("Later");
+                    color: Theme.fg;
+                    font-size: 20px * Theme.font-scale;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-alignment: Theme.start-align;
+                    horizontal-stretch: 1;
+                    accessible-role: text;
+                }
+                IconButton { icon: @image-url("../icons/close.svg"); tooltip: @tr("Close"); clicked => { RemindStore.later-open = false; } }
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 6px;
+                    if RemindStore.later.length == 0: Text {
+                        text: @tr("Nothing here yet. Use \"Remind me\" or \"Save this message\" in a message's menu.");
+                        color: Theme.fg-subtle;
+                        font-size: 13px * Theme.font-scale;
+                        wrap: word-wrap;
+                        horizontal-alignment: Theme.start-align;
+                    }
+                    for r in RemindStore.later: LaterItem {
+                        data: r;
+                        open => {
+                            RemindStore.later-open = false;
+                            RemindStore.command("later-open", r.id);
+                        }
+                        done => { RemindStore.command("later-done", r.id); }
+                        snooze(kind) => { RemindStore.command("later-snooze", r.id + "\u{9}" + kind); }
+                    }
+                }
+            }
+        }
+    }
+}

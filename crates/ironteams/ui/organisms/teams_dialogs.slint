@@ -85,7 +85,7 @@ component JoinDialog inherits ModalDialog {
         padding: 18px;
         spacing: 12px;
         code := Field { variant: FieldVariant.dialog; label: "Team code"; placeholder: "Paste the code the team owner gave you"; accepted(c) => { TeamsStore.command("join-code", c); } }
-        if TeamsStore.join-info != "": Text { text: TeamsStore.join-info; color: #7fd49a; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: TeamsStore.join-info; }
+        if TeamsStore.join-info != "": Text { text: TeamsStore.join-info; color: Theme.success; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: TeamsStore.join-info; }
         Rectangle { vertical-stretch: 1; }
         ButtonRow {
             Button { variant: ButtonVariant.dialog; label: "Cancel"; clicked => { TeamsActions.close-dialog(); } }

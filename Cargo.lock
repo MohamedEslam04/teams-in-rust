@@ -295,6 +295,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "uuid",
  "zbus 5.19.0",
 ]
 

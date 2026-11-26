@@ -7,11 +7,13 @@
 import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint";
+import { EmojiItem } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
-import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
+import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsOrderRow, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
-import { AppsStore } from "../stores/apps_store.slint";
+import { ListStore } from "../organisms/lists.slint";
+import { AppsStore, RailItems } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 
@@ -83,6 +85,16 @@ export component GeneralPage inherits SettingsSections {
                 committed(t) => { SettingsStore.command("time-zone", t); }
             }
             SettingsNote { text: @tr("An IANA name such as Africa/Cairo. Leave it empty to follow the system. Chat times, the calendar, OneDrive and Store dates use it. A name that is not a time zone is ignored and the system zone is used."); }
+        }
+    }
+    SettingsSection {
+        title: @tr("Start");
+        SettingsChoiceRow {
+            label: @tr("When IronTeams starts, open");
+            description: @tr("Where I left off opens the page and the chat you had open when you closed IronTeams.");
+            options: [{v: "activity", l: @tr("Activity")}, {v: "chat", l: @tr("Chat")}, {v: "teams", l: @tr("Teams")}, {v: "calendar", l: @tr("Calendar")}, {v: "last", l: @tr("Where I left off")}];
+            value: SettingsStore.start-page;
+            picked(v) => { SettingsStore.start-page = v; SettingsStore.command("start-page", v); }
         }
     }
     SettingsSection {
@@ -201,6 +213,37 @@ export component ChatsPage inherits SettingsSections {
     // The composer's own setting (it is also in the composer's "more" menu).
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
+    // A quick reaction slot was chosen: its index, and the window position under it.
+    callback pick-quick-reaction(int, length, length);
+    // The chat list's display options, also in the list's "... > Customize view" menu (the same
+    // `ListStore` state and commands).
+    SettingsSection {
+        title: @tr("Chat list");
+        SettingsSwitchRow {
+            label: @tr("Show message previews");
+            description: @tr("Off: each chat takes one line, with the name only.");
+            checked: ListStore.show-previews;
+            toggled(on) => { ListStore.command("option", "previews\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show time stamps");
+            description: @tr("The time of the last message at the end of each chat.");
+            checked: ListStore.show-times;
+            toggled(on) => { ListStore.command("option", "times\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Chats and channels together");
+            description: @tr("Channels are listed in the Chats section instead of their own.");
+            checked: ListStore.combined;
+            toggled(on) => { ListStore.command("option", "combined\u{9}" + (on ? "on" : "off")); }
+        }
+        SettingsButtonRow {
+            label: @tr("Sections");
+            description: @tr("Group chats in a section of your own in the chat list.");
+            button-label: @tr("New section");
+            clicked => { ListStore.open-new-section(); }
+        }
+    }
     SettingsSection {
         title: @tr("Opening a chat");
         SettingsChoiceRow {
@@ -218,6 +261,49 @@ export component ChatsPage inherits SettingsSections {
             description: @tr("Off: Enter starts a new line and Ctrl+Enter sends.");
             checked: root.enter-sends;
             toggled(on) => { root.set-enter-sends(on); }
+        }
+    }
+    SettingsSection {
+        title: @tr("Reactions");
+        SettingsRow {
+            label: @tr("Quick reactions");
+            description: @tr("The reactions shown when you point at a message. Choose one to replace it with any reaction Teams offers; an empty slot adds one.");
+            stacked: true;
+            HorizontalLayout {
+                spacing: Space.xs;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                for i in 6: Rectangle {
+                    property <bool> filled: i < SettingsStore.quick-reactions.length;
+                    property <EmojiItem> item: SettingsStore.quick-reactions[i];
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: slot.has-hover ? Theme.accent : Theme.border;
+                    background: slot.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: self.filled ? @tr("Quick reaction {}: {}", i + 1, self.item.name) : @tr("Quick reaction {}: empty", i + 1);
+                    accessible-action-default => { root.pick-quick-reaction(i, self.absolute-position.x, self.absolute-position.y + self.height + 4px); }
+                    Text {
+                        text: parent.filled ? parent.item.emoji : "+";
+                        color: parent.filled ? Theme.fg : Theme.fg-subtle;
+                        font-size: parent.filled ? 18px * Theme.font-scale : Theme.font-heading;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    slot := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.pick-quick-reaction(i, parent.absolute-position.x, parent.absolute-position.y + parent.height + 4px); }
+                    }
+                }
+            }
+        }
+        SettingsButtonRow {
+            label: @tr("Reset quick reactions");
+            description: @tr("Back to Like, Heart, Laugh and Surprised.");
+            button-label: @tr("Reset to default");
+            clicked => { SettingsStore.command("quick-reaction-reset", ""); }
         }
     }
     SettingsSection {
@@ -733,6 +819,34 @@ export component AppearancePage inherits SettingsSections {
         }
     }
     SettingsSection {
+        title: @tr("Messages");
+        SettingsChoiceRow {
+            label: @tr("Message style");
+            description: @tr("Bubbles is the usual look. Flat and Compact draw every message, yours too, as a line with the photo and name on the left. Compact also tightens the spacing.");
+            options: [{v: "bubbles", l: @tr("Bubbles")}, {v: "flat", l: @tr("Flat")}, {v: "compact", l: @tr("Compact")}];
+            value: SettingsStore.message-style;
+            picked(v) => { SettingsStore.message-style = v; SettingsStore.command("message-style", v); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show avatars");
+            description: @tr("The sender's photo beside each message. The name still opens the profile.");
+            checked: SettingsStore.show-avatars;
+            toggled(on) => { SettingsStore.command("show-avatars", on ? "1" : "0"); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show time stamps");
+            description: @tr("The time beside the sender's name. Resting the pointer on a message shows it.");
+            checked: SettingsStore.show-timestamps;
+            toggled(on) => { SettingsStore.command("show-timestamps", on ? "1" : "0"); }
+        }
+        SettingsSwitchRow {
+            label: @tr("Show reactions");
+            description: @tr("The reactions under a message. Hiding them keeps them; you can still react from the message's hover bar.");
+            checked: SettingsStore.show-reactions;
+            toggled(on) => { SettingsStore.command("show-reactions", on ? "1" : "0"); }
+        }
+    }
+    SettingsSection {
         title: @tr("App bar");
         SettingsSwitchRow {
             label: @tr("Show app names");
@@ -742,9 +856,23 @@ export component AppearancePage inherits SettingsSections {
         }
         SettingsSwitchRow {
             label: @tr("Auto collapse app bar");
-            description: @tr("Not available in IronTeams yet.");
-            enabled: false;
-            checked: false;
+            description: @tr("Shows only the icons while the window is narrow.");
+            checked: AppsStore.auto-collapse;
+            toggled(on) => { AppsStore.auto-collapse = on; SettingsStore.command("rail-auto", on ? "1" : "0"); }
+        }
+    }
+    SettingsSection {
+        title: @tr("App bar order");
+        description: @tr("Move the app bar's icons up or down and hide the ones you do not use. Chat always stays. Apps pinned from Teams are moved with a right click on their icon.");
+        for f[i] in AppsStore.rail-fixed: SettingsOrderRow {
+            label: RailItems.label(f.key);
+            shown: f.shown;
+            can-hide: !f.locked;
+            first: i == 0;
+            last: i == AppsStore.rail-fixed.length - 1;
+            up => { SettingsStore.command("rail-move", f.key + "\u{1f}up"); }
+            down => { SettingsStore.command("rail-move", f.key + "\u{1f}down"); }
+            toggled(on) => { SettingsStore.command("rail-show", f.key + "\u{1f}" + (on ? "1" : "0")); }
         }
     }
 }

@@ -1,4 +1,4 @@
-# Colour literals still allowed outside ui/tokens/ and ui/atoms/ (scripts/check-ui-layers.sh).
+# Colour literals still allowed outside ui/tokens/ (scripts/check-ui-layers.sh).
 # One "<path under crates/ironteams/ui/> <#colour>" per line, colours in lower case.
 #
 # These are the colours the screens drew before the atomic-UI refactor, kept so the refactor
@@ -6,39 +6,6 @@
 # palettes (composer_format.slint), drop-shadow colours, brand colours (Loop, file kinds,
 # calendar categories) and the call window's always-dark video surfaces. The rest should move
 # into Theme tokens or atom variants over time; this list may only shrink, never grow.
-molecules/apps_kit.slint #ffffff
-molecules/apps_kit.slint #ffffff10
-molecules/call_captions.slint #000000c0
-molecules/call_captions.slint #ffffff
-molecules/call_captions.slint #ffffffb0
-molecules/call_held.slint #3a3320
-molecules/call_held.slint #fff4ce
-molecules/call_reactions.slint #00000080
-molecules/call_reactions.slint #000000a0
-molecules/call_reactions.slint #ffffff
-molecules/cards.slint #00000080
-molecules/cards.slint #141414
-molecules/cards.slint #2f8be6
-molecules/cards.slint #6b4ce6
-molecules/cards.slint #ffffff
-molecules/card_view.slint #1d3b27
-molecules/card_view.slint #232b5c
-molecules/card_view.slint #4a3912
-molecules/card_view.slint #4d2024
-molecules/card_view.slint #6fd685
-molecules/card_view.slint #9aa5ff
-molecules/card_view.slint #f5c451
-molecules/card_view.slint #ff7e83
-molecules/card_view.slint #ffffff
-molecules/loop_editor.slint #2f8be6
-molecules/loop_editor.slint #6b4ce6
-molecules/loop_editor.slint #ffffff
-molecules/message_menu.slint #00000090
-molecules/reaction_picker.slint #00000090
-molecules/seen_by.slint #00000090
-molecules/select_bar.slint #ffffff
-molecules/spelling.slint #00000060
-molecules/teams_widgets.slint #3b3d6b
 organisms/app_rail.slint #ffffff
 organisms/apps_rail.slint #000000a0
 organisms/app_top_bar.slint #ffb900
@@ -49,7 +16,6 @@ organisms/calendar_event.slint #ffb900
 organisms/calendar_form.slint #00000080
 organisms/calendar_form.slint #3b1f22
 organisms/calendar_form.slint #6bd69b
-organisms/calendar_form.slint #7f85f522
 organisms/calendar_form.slint #ff8a8d
 organisms/calendar_form.slint #ffb900
 organisms/call_feedback.slint #00000080
@@ -87,20 +53,17 @@ organisms/channel_tabs.slint #000000a0
 organisms/channel_tabs.slint #3b3d6b
 organisms/channel_tabs.slint #ffffff
 organisms/chat_header.slint #000000a0
-organisms/chat_header.slint #e04a4f
 organisms/chat_header.slint #ffffff
 organisms/chat_list_extras.slint #00000060
 organisms/chat_list_extras.slint #ffffff
 organisms/communities_section.slint #0f7b5f
 organisms/communities_section.slint #ffffff
 organisms/composer_apps.slint #000000a0
-organisms/composer_apps.slint #2b2b2b
 organisms/composer_apps.slint #ffffff
 organisms/composer_apps.slint #ffffff10
 organisms/composer_format.slint #0078d4
 organisms/composer_format.slint #038387
 organisms/composer_format.slint #13a10e
-organisms/composer_format.slint #6c71e0
 organisms/composer_format.slint #82cda8
 organisms/composer_format.slint #8764b8
 organisms/composer_format.slint #8a8a8a
@@ -128,7 +91,6 @@ organisms/forward_dialog.slint #34365c
 organisms/forward_dialog.slint #ffffff
 organisms/lists.slint #000000a0
 organisms/lists.slint #3b3d6b
-organisms/lists.slint #e0545a
 organisms/lists.slint #ffffff
 organisms/media.slint #00000090
 organisms/media.slint #000000b0
@@ -163,7 +125,6 @@ organisms/notice_banner.slint #3b1f22
 organisms/notice_banner.slint #ffffff
 organisms/participants.slint #000000a0
 organisms/participants.slint #3b1f22
-organisms/participants.slint #e04a4f
 organisms/participants.slint #ffffff
 organisms/profile_card.slint #000000a0
 organisms/profile_modal.slint #000000a0
@@ -180,7 +141,6 @@ organisms/shortcuts.slint #000000b0
 organisms/sidebar.slint #e97a5f
 organisms/sidebar.slint #ffd335
 organisms/teams_dialogs.slint #3b3d6b
-organisms/teams_dialogs.slint #7fd49a
 organisms/teams_dialogs.slint #ffffff
 organisms/topbar.slint #00000080
 organisms/video_clip.slint #000000
@@ -197,7 +157,6 @@ organisms/video_preview.slint #ffffff
 organisms/web_parity.slint #1f2a3b
 organisms/web_parity.slint #ffffff
 pages/activity.slint #00000080
-pages/activity.slint #23253f
 pages/activity.slint #3b1f22
 pages/activity.slint #3b3d6b
 pages/activity.slint #ffffff
@@ -206,14 +165,12 @@ pages/apps_store_view.slint #4a4a4a
 pages/apps_store_view.slint #6bd69b
 pages/apps_store_view.slint #ffffff
 pages/apps_tasks.slint #6bd69b
-pages/apps_tasks.slint #ff8a8f
 pages/calendar.slint #00000030
 pages/calendar.slint #00000055
 pages/calendar.slint #00000099
 pages/calendar.slint #101010
 pages/calendar.slint #17172a
 pages/calendar.slint #181818
-pages/calendar.slint #1c1c33
 pages/calendar.slint #1d3a2a
 pages/calendar.slint #237b4b
 pages/calendar.slint #262626

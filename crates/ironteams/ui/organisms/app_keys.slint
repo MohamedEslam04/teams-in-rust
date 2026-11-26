@@ -1,5 +1,6 @@
-// The window's keyboard shortcuts (Teams' chords, see src/shortcuts.rs) and Esc. It holds the
-// focus when no input has it, and wraps the window's content (`@children`).
+// The window's keyboard shortcuts (Teams' chords; the user can rebind them in Settings, see
+// src/shortcut_keys.rs and src/shortcuts.rs) and Esc. It holds the focus when no input has it,
+// and wraps the window's content (`@children`).
 import { AppsStore } from "../stores/apps_store.slint";
 import { ChannelStore } from "channel_posts.slint";
 import { DirectCallStore } from "call_incoming.slint";
@@ -8,6 +9,7 @@ import { ListStore } from "lists.slint";
 import { PaletteStore } from "../stores/palette_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
+import { SplitStore } from "../stores/split_store.slint";
 import { ShortcutApi } from "shortcuts.slint";
 import { TopBarStore } from "topbar.slint";
 
@@ -28,6 +30,10 @@ export component AppKeys inherits FocusScope {
     in property <string> reply-preview;
     callback set-filter(string);
     in-out property <bool> shortcuts-open;
+    // The split view's pane shows: while it is the active one, Esc closes it and Alt+Shift+R
+    // goes to its box.
+    in property <bool> split-shown;
+    callback close-split;
     in property <bool> teams-no-channel;
     in property <string> thread-root;
     in-out property <string> view;
@@ -56,59 +62,30 @@ export component AppKeys inherits FocusScope {
             root.mark-all-read();
             return accept;
         }
-        // Alt+Down / Alt+Up: the next / previous unread chat or channel in the list.
-        if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            root.catch-up(event.text == Key.DownArrow ? 1 : -1);
-            return accept;
-        }
-        // Alt+Q: collapse every section of the chat list.
-        if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
-            ListStore.command("collapse-all", "");
-            return accept;
-        }
-        // Alt+Left and Alt+Right: Back and Forward.
-        if event.text == Key.LeftArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            TopBarStore.command("back", "");
-            return accept;
-        }
-        if event.text == Key.RightArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            TopBarStore.command("forward", "");
-            return accept;
-        }
-        // Ctrl+Alt+E: Search.
-        if ((event.text == "E" || event.text == "e") && event.modifiers.control && event.modifiers.alt) {
-            root.view = "search";
-            FindStore.focus-tick += 1;
-            return accept;
-        }
-        if (event.text == "," || event.text == "<") && event.modifiers.control && event.modifiers.shift { SettingsStore.show("general"); return accept; } // Ctrl+Shift+,: Settings.
-        // Alt+Shift+N: New chat.
-        if ((event.text == "N" || event.text == "n") && event.modifiers.alt && event.modifiers.shift) {
-            root.view = "chat";
-            PeopleStore.new-chat-open = true;
-            PeopleStore.command("new-chat-open", "");
-            return accept;
-        }
         // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
         // are the numbered and bullet list (Teams), so they stay with the composer there.
         if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
             AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
             return accept;
         }
-        // The other Teams chords (plan chat 5.9); the mapping is in src/shortcuts.rs.
-        if ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift) != "" {
-            root.run-shortcut(ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift));
+        // The other chords: which key means which action is a table the user can change
+        // (src/shortcut_keys.rs); `run-shortcut` does the action.
+        let a = ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift);
+        if a != "" {
+            root.run-shortcut(a);
             return accept;
         }
         reject
     }
-    // Esc, when nothing else took it: closes the shortcut list, then the thread, then the reply.
+    // Esc, when nothing else took it: closes the shortcut list, then the active split pane, then
+    // the thread, then the reply.
     key-pressed(event) => {
         if event.text == Key.Escape && !event.modifiers.shift {
             if PeopleStore.profile-open { PeopleStore.profile-open = false; return accept; }
             if PeopleStore.jump-date-open { PeopleStore.jump-date-open = false; root.focus-tick += 1; return accept; }
             if root.shortcuts-open { root.shortcuts-open = false; return accept; }
             if root.menu-open { root.menu-open = false; root.focus-tick += 1; return accept; }
+            if root.split-shown && SplitStore.active { root.close-split(); return accept; }
             if ChannelStore.thread-id != "" && root.posts-mode { ChannelStore.close-thread(); return accept; }
             if root.thread-root != "" { root.close-thread(); return accept; }
             if root.reply-preview != "" { root.cancel-reply(); return accept; }
@@ -116,6 +93,30 @@ export component AppKeys inherits FocusScope {
         reject
     }
     function run-shortcut(a: string) {
+        // Alt+Down and Alt+Up: the next / previous unread chat or channel in the list.
+        if a == "next-unread" { root.catch-up(1); }
+        if a == "previous-unread" { root.catch-up(-1); }
+        // Alt+Shift+Down / Alt+Shift+Up (2 / -2): the same, wrapping around the list.
+        if a == "next-unread-wrap" { root.catch-up(2); }
+        if a == "previous-unread-wrap" { root.catch-up(-2); }
+        // Alt+Q: collapse every section of the chat list.
+        if a == "collapse-all" { ListStore.command("collapse-all", ""); }
+        // Alt+Left and Alt+Right: Back and Forward.
+        if a == "back" { TopBarStore.command("back", ""); }
+        if a == "forward" { TopBarStore.command("forward", ""); }
+        // Ctrl+Alt+E: Search.
+        if a == "search" {
+            root.view = "search";
+            FindStore.focus-tick += 1;
+        }
+        // Ctrl+Shift+,: Settings.
+        if a == "settings" { SettingsStore.show("general"); }
+        // Alt+Shift+N: New chat.
+        if a == "new-chat" {
+            root.view = "chat";
+            PeopleStore.new-chat-open = true;
+            PeopleStore.command("new-chat-open", "");
+        }
         // Alt+Shift+A and Alt+Shift+V: the call button's Audio call and Video call.
         if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
             DirectCallStore.command("dial", root.current-id);
@@ -138,7 +139,14 @@ export component AppKeys inherits FocusScope {
         if a == "filter-chats" { root.filter = root.filter == "chats" ? "all" : "chats"; root.set-filter(root.filter); }
         if a == "filter-channels" { root.filter = root.filter == "channels" ? "all" : "channels"; root.set-filter(root.filter); }
         if a == "filter-clear" { root.filter = "all"; root.set-filter("all"); }
-        if a == "focus-composer" { root.focus-tick += 1; }
+        // Alt+Shift+U: the Unreads view.
+        if a == "unreads" {
+            root.view = "chat";
+            FindStore.command("quick", "unreads");
+        }
+        if a == "focus-composer" {
+            if root.split-shown && SplitStore.active { SplitStore.focus-tick += 1; } else { root.focus-tick += 1; }
+        }
         if a == "focus-messages" { root.msg-focus-tick += 1; }
         if a == "expand-composer" { root.composer-expanded = !root.composer-expanded; root.focus-tick += 1; }
         if a == "attach-file" { root.attach-file(); }

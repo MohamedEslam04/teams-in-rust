@@ -1,4 +1,5 @@
-//! Catch-up: which unread chat comes next (Alt+Down / Alt+Up), what the "Catch up" chip opens and
+//! Catch-up: which unread chat comes next (Alt+Down / Alt+Up, and Alt+Shift+Down / Alt+Shift+Up
+//! which wrap around the list), what the "Catch up" chip opens and
 //! the counts behind the chip and the "While you were away" card. The rows are the chat list in
 //! the order it is drawn; the effects (opening the chat, the banner) live in `ui/app.slint`.
 
@@ -21,12 +22,18 @@ pub enum Step {
     First,
     Next,
     Previous,
+    /// Like `Next` / `Previous`, but past the end of the list it carries on from the other end
+    /// (Alt+Shift+Down / Alt+Shift+Up). The open chat itself is never the answer.
+    NextWrap,
+    PreviousWrap,
 }
 
 impl Step {
     fn from_int(n: i32) -> Self {
         match n {
             0 => Step::First,
+            2 => Step::NextWrap,
+            -2 => Step::PreviousWrap,
             n if n < 0 => Step::Previous,
             _ => Step::Next,
         }
@@ -40,7 +47,7 @@ fn deduped(rows: &[Row]) -> Vec<&Row> {
 }
 
 /// The chat to open for `step`, or `None` when there is nothing unread that way. `Next` and
-/// `Previous` do not wrap; a `current` that is not in the list counts as before the first row
+/// `Previous` do not wrap, `NextWrap` and `PreviousWrap` do; a `current` that is not in the list counts as before the first row
 /// for `Next` and after the last for `Previous`.
 pub fn target(current: &str, rows: &[Row], step: Step) -> Option<String> {
     let rows = deduped(rows);
@@ -62,6 +69,29 @@ pub fn target(current: &str, rows: &[Row], step: Step) -> Option<String> {
                 .position(|r| r.id == current)
                 .unwrap_or(rows.len());
             rows[..to].iter().rev().find(|r| r.unread)
+        }
+        Step::NextWrap => {
+            let from = rows
+                .iter()
+                .position(|r| r.id == current)
+                .map_or(0, |i| i + 1);
+            let (after, before) = rows.split_at(from);
+            before
+                .iter()
+                .chain(after.iter())
+                .find(|r| r.unread && r.id != current)
+        }
+        Step::PreviousWrap => {
+            let to = rows
+                .iter()
+                .position(|r| r.id == current)
+                .unwrap_or(rows.len());
+            let (before, after) = rows.split_at(to);
+            before
+                .iter()
+                .rev()
+                .chain(after.iter().rev())
+                .find(|r| r.unread && r.id != current)
         }
     };
     found.map(|r| r.id.clone())
@@ -158,6 +188,49 @@ mod tests {
     }
 
     #[test]
+    fn next_wrap_goes_on_from_the_top_after_the_last_unread() {
+        assert_eq!(target("a", &list(), Step::NextWrap).as_deref(), Some("b"));
+        assert_eq!(target("d", &list(), Step::NextWrap).as_deref(), Some("e"));
+        assert_eq!(target("e", &list(), Step::NextWrap).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn previous_wrap_goes_on_from_the_bottom_before_the_first_unread() {
+        assert_eq!(
+            target("e", &list(), Step::PreviousWrap).as_deref(),
+            Some("d")
+        );
+        assert_eq!(
+            target("b", &list(), Step::PreviousWrap).as_deref(),
+            Some("e")
+        );
+        assert_eq!(
+            target("a", &list(), Step::PreviousWrap).as_deref(),
+            Some("e")
+        );
+    }
+
+    #[test]
+    fn a_wrap_never_lands_on_the_open_chat() {
+        // The open chat is the only unread one: there is nothing else to go to.
+        let only = vec![r("a", false, false), r("b", true, false)];
+        assert_eq!(target("b", &only, Step::NextWrap), None);
+        assert_eq!(target("b", &only, Step::PreviousWrap), None);
+        // Another unread chat exists: it is reached from either end.
+        assert_eq!(target("a", &only, Step::NextWrap).as_deref(), Some("b"));
+        assert_eq!(target("a", &only, Step::PreviousWrap).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn a_wrap_with_a_chat_that_is_not_listed_starts_from_the_edge() {
+        assert_eq!(target("", &list(), Step::NextWrap).as_deref(), Some("b"));
+        assert_eq!(
+            target("gone", &list(), Step::PreviousWrap).as_deref(),
+            Some("e")
+        );
+    }
+
+    #[test]
     fn a_chat_that_is_not_listed_starts_from_the_edge() {
         assert_eq!(target("", &list(), Step::Next).as_deref(), Some("b"));
         assert_eq!(
@@ -182,7 +255,13 @@ mod tests {
     #[test]
     fn nothing_unread_means_no_target() {
         let none = vec![r("a", false, false), r("b", false, false)];
-        for step in [Step::First, Step::Next, Step::Previous] {
+        for step in [
+            Step::First,
+            Step::Next,
+            Step::Previous,
+            Step::NextWrap,
+            Step::PreviousWrap,
+        ] {
             assert_eq!(target("a", &none, step), None);
         }
         assert_eq!(target("a", &[], Step::Next), None);
@@ -206,5 +285,7 @@ mod tests {
         assert_eq!(Step::from_int(0), Step::First);
         assert_eq!(Step::from_int(1), Step::Next);
         assert_eq!(Step::from_int(-1), Step::Previous);
+        assert_eq!(Step::from_int(2), Step::NextWrap);
+        assert_eq!(Step::from_int(-2), Step::PreviousWrap);
     }
 }

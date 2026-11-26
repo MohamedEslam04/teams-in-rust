@@ -2,6 +2,7 @@
 //! The composer draws one input per line but keeps the draft as one string; `render::lines` maps
 //! between the two.
 
+use crate::support::inline_images;
 use crate::{AppWindow, LineApi};
 use render::{Dir, lines};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -50,6 +51,10 @@ pub fn wire(window: &AppWindow) {
                 .chars()
                 .all(|c| !c.is_control() && !('\u{f700}'..='\u{f7ff}').contains(&c))
     });
+    api.on_image_slot(|line: SharedString| {
+        inline_images::slot_of_line(&line).map_or(-1, |s| i32::try_from(s).unwrap_or(-1))
+    });
+    api.on_has_images(|text: SharedString| inline_images::has_images(&text));
     api.on_direction(
         |text: SharedString, line| match lines::line_direction(&text, index(line)) {
             Some(Dir::Rtl) => 1,

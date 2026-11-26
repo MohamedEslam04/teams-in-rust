@@ -14,6 +14,7 @@ Files:
 - `quick_lists.rs`: Engine methods for the quick views (Saved, Mentions, Followed threads): load from cache then server, paging, unsave/unfollow, follow overrides and thread fetch into the store.
 - `search.rs`: Engine search flow: run_search (local cache hits then server messages and global others), local message/conversation hits, and 'Show more' paging.
 - `top_messages.rs`: Messages group of the top search box dropdown: generation-guarded TopMessages state, cache hits at once then debounced server search, pushed to the UI.
+- `unreads.rs`: Unreads quick view: unread messages from others past each unread conversation's read horizon, grouped by conversation (header row `unread-group` with the count, newest conversation first, messages oldest first), per-conversation and all "Mark as read", refresh when the chat list changes.
 
 ## Interface
 - `[model.rs:FindCmd]` pub enum of finding UI commands (Search, Go, Quick, Shared*, ChannelTab*, FindQuery, ...)

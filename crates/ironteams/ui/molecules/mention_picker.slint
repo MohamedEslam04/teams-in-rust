@@ -1,7 +1,7 @@
 // @mention picker: the popup above the composer that lists who can be mentioned while an
 // `@query` is being typed. The pure text functions live in Rust (src/mention.rs).
 import { Theme } from "../tokens/theme.slint";
-import { Edited, PersonItem } from "../tokens/types.slint";
+import { Edited, PersonItem, Tokens } from "../tokens/types.slint";
 import { Avatar } from "../atoms/avatar.slint";
 
 export global MentionApi {
@@ -17,16 +17,17 @@ export global MentionApi {
 }
 
 export component MentionPicker inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <[PersonItem]> items;
     in property <int> index: 0;
     callback picked(int);
 
     width: 320px;
     height: min(items.length, 8) * 40px + 8px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-radius: 6px;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     accessible-role: list;
     accessible-label: "Mention";
     VerticalLayout {
@@ -34,18 +35,18 @@ export component MentionPicker inherits Rectangle {
         for p[i] in root.items: Rectangle {
             height: 40px;
             border-radius: 4px;
-            background: i == root.index || row.has-hover ? Theme.surface-hover : transparent;
+            background: i == root.index || row.has-hover ? root.c.surface-hover : transparent;
             accessible-role: list-item;
             accessible-label: p.name;
             HorizontalLayout {
                 padding-left: 8px;
                 padding-right: 8px;
                 spacing: 10px;
-                Avatar { initials: p.initials; tone: p.color; img: p.avatar; has-img: p.has-avatar; size: 28px; y: 6px; }
+                Avatar { c: root.c; initials: p.initials; tone: p.color; img: p.avatar; has-img: p.has-avatar; size: 28px; y: 6px; }
                 VerticalLayout {
                     alignment: center;
-                    Text { text: p.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
-                    if p.subtitle != "": Text { text: p.subtitle; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+                    Text { text: p.name; color: root.c.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+                    if p.subtitle != "": Text { text: p.subtitle; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
                 }
             }
             row := TouchArea { mouse-cursor: pointer; clicked => { root.picked(i); } }

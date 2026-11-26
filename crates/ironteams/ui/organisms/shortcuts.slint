@@ -5,6 +5,7 @@ import { ChatRow, Msg } from "../tokens/types.slint";
 import { SectionRow } from "lists.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { ScrollView } from "std-widgets.slint";
+import { ShortcutStore } from "../stores/shortcut_store.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
 
 export global ShortcutApi {
@@ -41,6 +42,11 @@ component Row inherits Rectangle {
 export component ShortcutsDialog inherits Rectangle {
     callback close();
     callback open-palette();
+    callback open-settings();
+    // The chord of an action the user can rebind (Settings > Keyboard shortcuts).
+    pure function k(id: string) -> string {
+        return ShortcutStore.keys(id, ShortcutStore.version);
+    }
     background: #000000b0;
     accessible-role: groupbox;
     accessible-label: "Keyboard shortcuts";
@@ -75,42 +81,46 @@ export component ShortcutsDialog inherits Rectangle {
                     padding-bottom: 16px;
                     spacing: 0px;
                     Heading { variant: HeadingVariant.group; text: "General"; height: 28px; vertical-alignment: bottom; }
-                    Row { keys: "Ctrl+."; what: "Show keyboard shortcuts"; }
-                    Row { keys: "Ctrl+Shift+P"; what: "Command palette"; link: true; activated => { root.open-palette(); } }
-                    Row { keys: "Ctrl+Alt+E"; what: "Search"; }
-                    Row { keys: "Ctrl+Alt+G"; what: "Go to a chat or channel"; }
-                    Row { keys: "Alt+Shift+N"; what: "New chat"; }
+                    Row { keys: root.k("shortcuts"); what: "Show keyboard shortcuts"; }
+                    Row { keys: root.k("palette"); what: "Command palette"; link: true; activated => { root.open-palette(); } }
+                    Row { keys: root.k("search"); what: "Search"; }
+                    Row { keys: root.k("goto"); what: "Go to a chat or channel"; }
+                    Row { keys: root.k("new-chat"); what: "New chat"; }
+                    Row { keys: root.k("settings"); what: @tr("Open Settings"); }
                     Row { keys: "Esc"; what: "Close the thread, popup or reply"; }
                     Heading { variant: HeadingVariant.group; text: "Navigation"; height: 28px; vertical-alignment: bottom; }
-                    Row { keys: "Alt+Left / Alt+Right"; what: "Back, forward"; }
-                    Row { keys: "Ctrl+E"; what: "Go to the search box"; }
-                    Row { keys: "Ctrl+/"; what: "Show the list of commands"; }
+                    Row { keys: root.k("back") + " / " + root.k("forward"); what: "Back, forward"; }
+                    Row { keys: root.k("search-box"); what: "Go to the search box"; }
+                    Row { keys: root.k("commands"); what: "Show the list of commands"; }
                     Row { keys: "Ctrl+Shift+1 to 9"; what: "Open the nth app of the app bar"; }
                     Heading { variant: HeadingVariant.group; text: "Chat list"; height: 28px; vertical-alignment: bottom; }
-                    Row { keys: "Ctrl+Shift+F"; what: "Filter the chat list"; }
-                    Row { keys: "Ctrl+Alt+U"; what: "Unread filter"; }
-                    Row { keys: "Ctrl+Alt+C"; what: "Chats filter"; }
-                    Row { keys: "Ctrl+Alt+A"; what: "Channels filter"; }
-                    Row { keys: "Ctrl+Alt+Z"; what: "Clear filters"; }
+                    Row { keys: root.k("filter-box"); what: "Filter the chat list"; }
+                    Row { keys: root.k("filter-unread"); what: "Unread filter"; }
+                    Row { keys: root.k("filter-chats"); what: "Chats filter"; }
+                    Row { keys: root.k("filter-channels"); what: "Channels filter"; }
+                    Row { keys: root.k("filter-clear"); what: "Clear filters"; }
                     Row { keys: "Shift+Esc"; what: "Mark all as read"; }
-                    Row { keys: "Alt+Q"; what: "Collapse all sections"; }
-                    Row { keys: "Alt+Down"; what: "Next unread chat or channel"; }
-                    Row { keys: "Alt+Up"; what: "Previous unread chat or channel"; }
+                    Row { keys: root.k("collapse-all"); what: "Collapse all sections"; }
+                    Row { keys: root.k("next-unread"); what: "Next unread chat or channel"; }
+                    Row { keys: root.k("previous-unread"); what: "Previous unread chat or channel"; }
+                    Row { keys: root.k("next-unread-wrap"); what: @tr("Next unread chat (wraps around)"); }
+                    Row { keys: root.k("previous-unread-wrap"); what: @tr("Previous unread chat (wraps around)"); }
+                    Row { keys: root.k("unreads"); what: "Unreads: every unread message"; }
                     Heading { variant: HeadingVariant.group; text: "Messages"; height: 28px; vertical-alignment: bottom; }
-                    Row { keys: "Alt+Shift+R"; what: "Focus the compose box"; }
-                    Row { keys: "Alt+Shift+M"; what: "Focus the message pane"; }
-                    Row { keys: "Ctrl+F"; what: @tr("Find in chat or channel"); }
-                    Row { keys: "Ctrl+Alt+Home"; what: @tr("Jump to the first message of the chat"); }
-                    Row { keys: "Ctrl+Shift+X"; what: "Expand the composer"; }
-                    Row { keys: "Alt+Shift+O"; what: "Attach a file"; }
+                    Row { keys: root.k("focus-composer"); what: "Focus the compose box"; }
+                    Row { keys: root.k("focus-messages"); what: "Focus the message pane"; }
+                    Row { keys: root.k("find"); what: @tr("Find in chat or channel"); }
+                    Row { keys: root.k("jump-first"); what: @tr("Jump to the first message of the chat"); }
+                    Row { keys: root.k("expand-composer"); what: "Expand the composer"; }
+                    Row { keys: root.k("attach-file"); what: "Attach a file"; }
                     Row { keys: "Ctrl+Shift+R"; what: "Record a voice message (Esc deletes it, Enter sends it)"; }
                     Row { keys: "Ctrl+Shift+I"; what: "Mark the next message as important"; }
                     Row { keys: "Up (empty composer)"; what: "Edit your last message"; }
                     Row { keys: "R, F, S, P, U"; what: "In a message menu: reply, forward, save, pin, mark unread"; }
                     Heading { variant: HeadingVariant.group; text: "Calls"; height: 28px; vertical-alignment: bottom; }
-                    Row { keys: "Alt+Shift+A"; what: "Audio call (1:1 chat)"; }
-                    Row { keys: "Alt+Shift+V"; what: "Video call (1:1 chat)"; }
-                    Row { keys: "Ctrl+Shift+E"; what: "Share screen (1:1 chat)"; }
+                    Row { keys: root.k("audio-call"); what: "Audio call (1:1 chat)"; }
+                    Row { keys: root.k("video-call"); what: "Video call (1:1 chat)"; }
+                    Row { keys: root.k("share-screen"); what: "Share screen (1:1 chat)"; }
                     Heading { variant: HeadingVariant.group; text: "During a call"; height: 28px; vertical-alignment: bottom; }
                     Row { keys: "Ctrl+Shift+M"; what: "Mute or unmute"; }
                     Row { keys: "Ctrl+Shift+O"; what: "Turn the camera on or off"; }
@@ -129,6 +139,8 @@ export component ShortcutsDialog inherits Rectangle {
                     Row { keys: "Ctrl+Alt+4"; what: "Quote"; }
                     Row { keys: "Ctrl+Shift+7 / 8"; what: "Numbered list, bullet list"; }
                     Row { keys: "Ctrl+Z / Ctrl+Y"; what: "Undo, redo"; }
+                    Heading { variant: HeadingVariant.group; text: @tr("Customize"); height: 28px; vertical-alignment: bottom; }
+                    Row { keys: ""; what: @tr("Change these shortcuts in Settings"); link: true; activated => { root.open-settings(); } }
                 }
             }
         }

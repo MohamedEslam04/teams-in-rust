@@ -23,6 +23,7 @@ impl UiHandle {
                         expanded: d.expanded,
                         unread: d.unread,
                         local: d.local,
+                        sort: d.sort.into(),
                         items: model(d.items.into_iter().map(chat_row).collect()),
                     })
                     .collect(),
@@ -36,6 +37,20 @@ impl UiHandle {
                     })
                     .collect(),
             ));
+        });
+    }
+
+    /// The "Sort by" choice of Favorites, Chats and Teams and channels (`recent`, `alpha`, `unread`).
+    pub fn fixed_sorts(
+        &self,
+        favorites: &'static str,
+        chats: &'static str,
+        channels: &'static str,
+    ) {
+        self.list_store(move |s| {
+            s.set_favorites_sort(favorites.into());
+            s.set_chats_sort(chats.into());
+            s.set_channels_sort(channels.into());
         });
     }
 
