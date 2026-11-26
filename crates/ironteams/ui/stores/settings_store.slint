@@ -78,6 +78,8 @@ export global SettingsStore {
     in-out property <string> language-shown;
     in-out property <string> date-format: "auto"; // auto | dmy | mdy | ymd
     in-out property <string> time-format: "auto"; // auto | h12 | h24
+    // The page IronTeams opens on at start: activity | chat | teams | calendar | last.
+    in-out property <string> start-page: "chat";
     in-out property <string> time-zone: "";       // "" follows the system
     in-out property <string> system-time-zone;
     in-out property <[SToggle]> startup;

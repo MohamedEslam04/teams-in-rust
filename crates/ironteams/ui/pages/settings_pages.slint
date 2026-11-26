@@ -86,6 +86,16 @@ export component GeneralPage inherits SettingsSections {
         }
     }
     SettingsSection {
+        title: @tr("Start");
+        SettingsChoiceRow {
+            label: @tr("When IronTeams starts, open");
+            description: @tr("Where I left off opens the page and the chat you had open when you closed IronTeams.");
+            options: [{v: "activity", l: @tr("Activity")}, {v: "chat", l: @tr("Chat")}, {v: "teams", l: @tr("Teams")}, {v: "calendar", l: @tr("Calendar")}, {v: "last", l: @tr("Where I left off")}];
+            value: SettingsStore.start-page;
+            picked(v) => { SettingsStore.start-page = v; SettingsStore.command("start-page", v); }
+        }
+    }
+    SettingsSection {
         title: @tr("Writing");
         SettingsSwitchRow {
             label: @tr("Check spelling");
