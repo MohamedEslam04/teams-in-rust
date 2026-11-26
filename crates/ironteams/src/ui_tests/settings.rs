@@ -832,6 +832,8 @@ fn the_chats_page_sets_where_a_chat_opens_enter_to_send_receipts_and_link_previe
     let config = home.paths().config_dir;
     let ui = window_with(home, Some(tx), false);
     let app = &ui.app;
+    // The Reactions section above Read receipts pushes it out of a window of the usual height.
+    tall_window(app);
     let enter_log = Log::default();
     {
         let l = enter_log.clone();
