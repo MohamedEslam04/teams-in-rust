@@ -5,7 +5,6 @@
 //! Ctrl+Shift+1 to 9 stay in `app_keys.slint` with their own keys.
 
 use crate::{AppWindow, Msg, ShortcutApi};
-use slint::platform::Key;
 use slint::{ComponentHandle, Model, ModelRc, SharedString};
 
 /// The action of a chord, or `""`. `key` is the key's text (case is ignored). Which chord means
@@ -36,6 +35,7 @@ pub fn wire(window: &AppWindow) {
 mod tests {
     use super::*;
     use slint::VecModel;
+    use slint::platform::Key;
 
     #[test]
     fn every_chord_of_the_plan_has_an_action() {
