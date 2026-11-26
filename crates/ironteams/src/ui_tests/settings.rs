@@ -1283,6 +1283,41 @@ fn font_size_and_larger_text_scale_the_theme_font() {
     );
 }
 
+/// Appearance > Messages: the style starts as bubbles, the choice is saved to appearance.json and
+/// the next window starts with it; a name that is not a style gives the default.
+#[test]
+fn the_appearance_page_sets_the_message_style_and_keeps_it() {
+    let home = Home::new("message-style");
+    let dir = home.paths().config_dir;
+    let ui = window(home);
+    let app = &ui.app;
+    open_page(app, "appearance");
+    tall_window(app);
+    assert_eq!(store(app).get_message_style(), "bubbles");
+    assert!(checked(app, "Message style: Bubbles"));
+
+    press(app, "Message style: Flat");
+    assert_eq!(store(app).get_message_style(), "flat");
+    assert!(checked(app, "Message style: Flat"));
+    assert_eq!(
+        Local::load(&dir).appearance.message_style,
+        appearance::MessageStyle::Flat
+    );
+    press(app, "Message style: Compact");
+    let saved = Local::load(&dir).appearance;
+    assert_eq!(saved.message_style, appearance::MessageStyle::Compact);
+    // The density choice is a separate setting and stays as it was.
+    assert_eq!(saved.density, appearance::Density::Comfy);
+    assert!(ui.log.borrow().is_empty());
+
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(store(&again.app).get_message_style(), "compact");
+
+    store(app).invoke_command("message-style".into(), "irc".into());
+    assert_eq!(store(app).get_message_style(), "bubbles");
+    std::mem::forget(again.home); // `ui.home` removes the directory
+}
+
 #[test]
 fn local_preferences_round_trip_through_the_temp_home() {
     let home = Home::new("roundtrip");

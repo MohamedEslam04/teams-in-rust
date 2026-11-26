@@ -52,6 +52,7 @@ mod list_stability;
 mod lists;
 mod media;
 mod meeting_cards;
+mod message_style;
 mod message_toast;
 mod message_ui;
 mod motion;
