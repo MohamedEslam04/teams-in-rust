@@ -22,7 +22,7 @@ component HexField inherits Field {
 component ThemeColourRow inherits Rectangle {
     in property <Tokens> c: Theme.content;
     in property <int> index;
-    in property <SBaseRow> row;
+    in property <SBaseRow> entry;
     in property <bool> readonly;
     pure function colour-name(i: int) -> string {
         return i == 0 ? @tr("Nav background")
@@ -47,20 +47,20 @@ component ThemeColourRow inherits Rectangle {
                     c: root.c;
                     variant: FieldVariant.bare;
                     placeholder: @tr("{}: hex colour", root.name);
-                    hex: root.row.hex;
+                    hex: root.entry.hex;
                     committed(t) => {
                         SettingsStore.command("editor-hex", SettingsStore.j2("" + root.index, t));
-                        self.text = root.row.hex;
+                        self.text = root.entry.hex;
                     }
                 }
             }
             if !root.readonly: ColourPicker {
                 c: root.c;
                 label: root.name;
-                l: root.row.l;
-                chroma: root.row.c;
-                hue: root.row.h;
-                colour: root.row.colour;
+                l: root.entry.l;
+                chroma: root.entry.c;
+                hue: root.entry.h;
+                colour: root.entry.colour;
                 edited(l, ch, h) => { SettingsStore.command("editor-lch", SettingsStore.j4("" + root.index, "" + l, "" + ch, "" + h)); }
             }
             if root.readonly: Rectangle {
@@ -70,7 +70,7 @@ component ThemeColourRow inherits Rectangle {
                 border-radius: 4px;
                 border-width: 1px;
                 border-color: root.c.border;
-                background: root.row.colour;
+                background: root.entry.colour;
             }
         }
     }
@@ -209,7 +209,7 @@ export component ThemeEditorLayer inherits Rectangle {
                         for r[i] in SettingsStore.editor-rows: ThemeColourRow {
                             c: root.c;
                             index: i;
-                            row: r;
+                            entry: r;
                             readonly: SettingsStore.editor-mode == "import";
                         }
                         ThemePreview { c: root.c; }
