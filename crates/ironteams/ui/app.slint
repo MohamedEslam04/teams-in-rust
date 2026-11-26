@@ -31,6 +31,7 @@ import { ReactionHover } from "atoms/reaction_hover.slint";
 import { ProfileModal } from "organisms/profile_modal.slint";
 import { TeamsStore } from "stores/teams_store.slint";
 import { TeamsPage } from "pages/teams_page.slint";
+import { LaterPage } from "pages/later.slint";
 import { TeamsDialogs } from "organisms/teams_dialogs.slint";
 export { ChatWindow } from "organisms/chat_window.slint";
 import { OneDriveView } from "pages/onedrive.slint";
@@ -88,7 +89,7 @@ export { ClipStore } from "organisms/video_clip.slint";
 export { LoopStore, LoopRow } from "molecules/loop_editor.slint";
 export { PeopleStore } from "molecules/people.slint";
 export { ListStore, SectionRow, SectionChoice } from "organisms/lists.slint";
-export { RemindStore, ReminderRow, SnoozedRow } from "organisms/remind.slint";
+export { RemindStore, ReminderRow, SnoozedRow, LaterRow } from "organisms/remind.slint";
 export { ChannelStore, PostItem, Replier } from "organisms/channel_posts.slint";
 export { FindStore, HitRow, PickRow, SharedRow } from "stores/find_store.slint";
 export { MediaStore } from "organisms/media.slint";
@@ -151,6 +152,8 @@ export component AppWindow inherits Window {
     in-out property <string> view: "chat"; // chat | teams | activity | calendar | onedrive
     // Any other page (an app, search, a notification) shrinks a running call to its floating bar.
     changed view => {
+        // The Later page covers the page under it: another page leaves it.
+        RemindStore.later-open = false;
         if CallStore.phase != "" { CallStore.minimized = true; }
         TopBarStore.command("visit", root.view + "\u{1f}" + root.current-id);
     }
@@ -166,6 +169,7 @@ export component AppWindow inherits Window {
         // Settings covers the page: going to a page leaves it, as in Teams (also for the page
         // already open under it).
         root.leave-settings();
+        RemindStore.later-open = false;
         // Leaving the call view keeps the call running in the small floating bar.
         if CallStore.phase != "" { CallStore.minimized = true; }
         let from = root.view;
@@ -517,6 +521,12 @@ export component AppWindow inherits Window {
             root.view = "search";
             FindStore.command("search-tab", "chats");
             FindStore.focus-tick += 1;
+        }
+        if cmd == "later" {
+            root.leave-settings();
+            RemindStore.later-open = true;
+            RemindStore.command("refresh", "");
+            root.palette-done();
         }
         if cmd == "mark-all-read" { root.mark-all-read(); root.palette-done(); }
         if cmd == "next-unread" { root.leave-settings(); root.catch-up(2); root.palette-done(); }
@@ -1029,6 +1039,10 @@ export component AppWindow inherits Window {
                         root.menu-open = true;
                     }
                     notification-settings => { root.activity-settings(); }
+                    open-later => {
+                        RemindStore.later-open = true;
+                        RemindStore.command("refresh", "");
+                    }
                     dismiss-banner => { root.dismiss-banner(); }
                 }
             }
@@ -1287,6 +1301,14 @@ export component AppWindow inherits Window {
             root.view = "teams";
             root.select-channel(id, title);
         }
+    }
+    // Later: reminders and saved messages in one list, over the area right of the rail.
+    if root.login-state == "ready" && RemindStore.later-open: LaterPage {
+        x: AppsStore.rail-width;
+        y: 48px;
+        z: 40;
+        width: root.width - AppsStore.rail-width;
+        height: root.height - 48px;
     }
     // Viva Engage: a community's read-only feed covers the area right of the rail.
     if root.login-state == "ready" && EngageStore.open && (root.view == "chat" || root.view == "teams"): EngageView {

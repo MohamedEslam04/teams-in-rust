@@ -2032,6 +2032,33 @@ msgstr "إلغاء التأجيل"
 msgid "Snooze"
 msgstr "تأجيل"
 
+msgid "Later"
+msgstr "لاحقًا"
+
+msgid "Open Later"
+msgstr "فتح «لاحقًا»"
+
+msgid "Nothing here yet. Use \"Remind me\" or \"Save this message\" in a message's menu."
+msgstr "لا يوجد شيء هنا بعد. استخدم «ذكّرني» أو «حفظ هذه الرسالة» من قائمة الرسالة."
+
+msgid "Overdue · {}"
+msgstr "متأخر · {}"
+
+msgid "Due {}"
+msgstr "الموعد {}"
+
+msgid "Saved {}"
+msgstr "حُفظت {}"
+
+msgid "Mark done"
+msgstr "تمّ"
+
+msgid "Snooze 1 hour"
+msgstr "تأجيل ساعة"
+
+msgid "Snooze until tomorrow 9:00"
+msgstr "تأجيل حتى غد الساعة 9:00"
+
 msgid "‹ Snooze"
 msgstr "› تأجيل"
 

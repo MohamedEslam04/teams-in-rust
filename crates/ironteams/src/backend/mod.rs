@@ -127,7 +127,7 @@ pub use media::MediaCmd;
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
 pub use quit::{QUIT_WITHIN, QuitDone};
-pub use remind::{RemindCmd, ReminderData, SnoozedData};
+pub use remind::{LaterData, RemindCmd, ReminderData, SnoozedData};
 pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
