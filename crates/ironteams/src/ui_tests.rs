@@ -34,6 +34,7 @@ mod chat_titles;
 mod clip_loop;
 mod composer_apps;
 mod composer_gaps;
+mod composer_inline_images;
 mod composer_lines;
 mod composer_send;
 mod desktop_cards;
@@ -2184,6 +2185,20 @@ fn chips(app: &AppWindow) -> Vec<String> {
         .collect()
 }
 
+/// The composer's text with each image line shown as "🖼".
+fn shown_draft(app: &AppWindow) -> String {
+    crate::support::inline_images::readable(&app.get_draft())
+}
+
+/// How many images are placed in the composer's text.
+fn inline_images(app: &AppWindow) -> usize {
+    app.global::<crate::InlineImageStore>()
+        .get_images()
+        .iter()
+        .filter(|i| i.live)
+        .count()
+}
+
 /// A PNG and a text file in a scratch directory.
 fn sample_files(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("ironteams-attach-{tag}-{}", std::process::id()));
@@ -2280,29 +2295,38 @@ fn files_become_chips_per_chat_and_each_can_be_removed() {
     let run = h.runner();
     run(Cmd::AddFile(png));
     run(Cmd::AddFile(txt));
-    assert_eq!(chips(&h.app), vec!["shot.png", "notes.txt"]);
-    let model = h.app.get_pending_attachments();
-    let first = model.row_data(0).unwrap();
-    assert!(
-        first.is_image && first.has_preview,
-        "images get a thumbnail"
+    assert_eq!(
+        chips(&h.app),
+        vec!["notes.txt"],
+        "the image went into the text (ui_tests/composer_inline_images.rs); the file is a chip"
     );
-    let second = model.row_data(1).unwrap();
-    assert!(!second.is_image && !second.has_preview);
-    assert_eq!(second.detail, "5 B");
-    assert_eq!(ids(&h.app, "ComposerAttachments::chip").len(), 2);
+    assert_eq!(inline_images(&h.app), 1);
+    let model = h.app.get_pending_attachments();
+    let file = model.row_data(0).unwrap();
+    assert!(!file.is_image && !file.has_preview);
+    assert_eq!(file.detail, "5 B");
+    assert_eq!(ids(&h.app, "ComposerAttachments::chip").len(), 1);
 
     h.select(BACKEND);
     assert!(chips(&h.app).is_empty(), "attachments belong to their chat");
     h.select(NOTES);
-    assert_eq!(chips(&h.app).len(), 2);
+    assert_eq!(chips(&h.app).len(), 1);
 
     h.app.on_remove_attachment({
         let run = run.clone();
         move |i| run(Cmd::RemoveAttachment(i as usize))
     });
+    // The composer lost the image's taller line with the chat switch: let it lay out again
+    // before the X is clicked where it now is.
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     ids(&h.app, "ComposerAttachments::chip-x")[0].mock_single_click(PointerEventButton::Left);
-    assert_eq!(chips(&h.app), vec!["notes.txt"]);
+    assert!(chips(&h.app).is_empty());
+    assert_eq!(
+        inline_images(&h.app),
+        1,
+        "the image in the text is not a chip"
+    );
 }
 
 /// The plain text of every message row of the open chat, oldest first.
@@ -2329,14 +2353,20 @@ fn a_failed_upload_keeps_the_chips_and_the_text() {
             .add_attachment("bad\0name.txt".into(), vec![1, 2, 3]),
     )
     .unwrap();
-    assert_eq!(chips(&h.app), vec!["shot.png", "bad\0name.txt"]);
-    run(Cmd::Send("with a picture".into(), String::new()));
+    assert_eq!(chips(&h.app), vec!["bad\0name.txt"]);
+    let draft = format!("with a picture\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
     assert_eq!(
         chips(&h.app),
-        vec!["bad\0name.txt", "shot.png"],
-        "the file that could not be queued stays, and so does the image that waited for the message"
+        vec!["bad\0name.txt"],
+        "the file that could not be queued stays"
     );
-    assert_eq!(h.app.get_draft(), "with a picture");
+    assert_eq!(
+        shown_draft(&h.app),
+        "with a picture\n🖼",
+        "the image that waited for the message is back in the text"
+    );
+    assert_eq!(inline_images(&h.app), 1);
     assert!(
         message_texts(&h.app)
             .iter()
@@ -2348,7 +2378,7 @@ fn a_failed_upload_keeps_the_chips_and_the_text() {
 }
 
 #[test]
-fn images_that_cannot_be_queued_stay_chips_with_the_text_in_the_composer() {
+fn images_that_cannot_be_queued_stay_in_the_text_in_the_composer() {
     let h = Harness::new();
     h.select(NOTES);
     let (png, _) = sample_files("badimg");
@@ -2358,9 +2388,12 @@ fn images_that_cannot_be_queued_stay_chips_with_the_text_in_the_composer() {
     // A valid image under a name no file system accepts.
     h.rt.block_on(h.engine.add_attachment("bad\0name.png".into(), bytes))
         .unwrap();
-    run(Cmd::Send("two pictures".into(), String::new()));
-    assert_eq!(chips(&h.app), vec!["shot.png", "bad\0name.png"]);
-    assert_eq!(h.app.get_draft(), "two pictures");
+    assert_eq!(shown_draft(&h.app), "🖼\n🖼\n", "one after the other");
+    let draft = format!("two pictures\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
+    assert!(chips(&h.app).is_empty());
+    assert_eq!(shown_draft(&h.app), "two pictures\n🖼\n🖼");
+    assert_eq!(inline_images(&h.app), 2);
     assert!(
         message_texts(&h.app)
             .iter()
@@ -2378,9 +2411,10 @@ fn files_go_through_the_outbox_first_then_one_message_with_the_text_and_the_imag
     let run = h.runner();
     run(Cmd::AddFile(png));
     run(Cmd::AddFile(txt));
-    run(Cmd::Send("caption".into(), String::new()));
+    let draft = format!("caption\n{}", h.app.get_draft());
+    run(Cmd::Send(draft, String::new()));
     assert!(chips(&h.app).is_empty(), "queued chips are gone");
-    assert_eq!(h.app.get_draft(), "", "the sent text left the composer");
+    assert_eq!(inline_images(&h.app), 0, "and so is the image in the text");
     let texts = message_texts(&h.app);
     let tail: Vec<_> = texts.iter().rev().take(2).rev().cloned().collect();
     assert_eq!(

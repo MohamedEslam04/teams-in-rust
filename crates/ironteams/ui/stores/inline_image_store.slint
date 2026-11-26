@@ -1,0 +1,14 @@
+// The images placed between the composer's lines (docs/designs/composer-inline-images.md). An
+// image is a line of the draft holding one marker character; Rust (src/ui.rs) fills `images` and
+// puts the marker lines in the draft.
+import { InlineImage } from "../tokens/types.slint";
+
+export global InlineImageStore {
+    // By slot: the image whose marker is U+E100 + slot (`live` false for a slot without one).
+    in property <[InlineImage]> images;
+    // The composer's cursor, a byte offset into the draft: a new image goes there.
+    in-out property <int> caret;
+    // Rust asks the composer to put its cursor at `place` (after an image it put in).
+    in property <int> place;
+    in property <int> place-tick;
+}

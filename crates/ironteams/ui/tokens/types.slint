@@ -61,6 +61,8 @@ export struct Edited { text: string, cursor: int }
 
 // An attachment waiting in the composer (pasted image, dropped or picked file).
 export struct PendingAttachment { name: string, detail: string, is-image: bool, preview: image, has-preview: bool }
+// An image placed between the composer's lines (stores/inline_image_store.slint).
+export struct InlineImage { preview: image, live: bool }
 // `place`: "OneDrive" | "SharePoint" | "" (elsewhere). `detail`: the card's second line.
 export struct FileItem { name: string, url: string, ext: string, place: string, detail: string }
 // A Loop component link drawn as a card.

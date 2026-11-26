@@ -588,7 +588,12 @@ impl Engine {
             .drafts()
             .unwrap_or_default()
             .into_iter()
-            .map(|d| (d.conversation_id, d.text))
+            .map(|d| {
+                (
+                    d.conversation_id,
+                    crate::support::inline_images::readable(&d.text),
+                )
+            })
             .collect();
         self.ui.quick_drafts(drafts.len());
         let ov = self.lists_overlay();

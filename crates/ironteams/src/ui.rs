@@ -8,16 +8,18 @@ pub use composer_apps::wire as install_composer_apps;
 pub use voice::wire as install_voice;
 
 use crate::data::{
-    AttachmentData, ChatData, HeaderData, MeetingCardData, MsgData, Pixels, RecipientData, Scroll,
-    TeamData,
+    AttachmentData, ChatData, HeaderData, InlineImageData, MeetingCardData, MsgData, Pixels,
+    RecipientData, Scroll, TeamData,
 };
 use crate::markdown::{PostKind, Segment};
 use crate::reactions;
+use crate::support::inline_images;
 use crate::ui_api::UiHandle;
 use crate::{
     AppWindow, BodyPart, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem,
-    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, PostBlock, QuoteItem,
-    ReactionItem, Reactor, ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
+    InlineImage, InlineImageStore, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg,
+    PendingAttachment, PostBlock, QuoteItem, ReactionItem, Reactor, ReaderItem, Recipient, TeamRow,
+    VideoClipItem, VoiceItem,
 };
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
 use std::cell::RefCell;
@@ -621,6 +623,44 @@ impl UiHandle {
                     })
                     .collect(),
             ));
+        });
+    }
+
+    /// The images placed between the composer's lines, by slot.
+    pub fn inline_images(&self, images: Vec<InlineImageData>) {
+        self.run(move |w| {
+            w.global::<InlineImageStore>().set_images(model(
+                images
+                    .into_iter()
+                    .map(|i| InlineImage {
+                        preview: img(&i.thumb).0,
+                        live: i.live,
+                    })
+                    .collect(),
+            ));
+        });
+    }
+
+    /// Puts the line of the image in `slot` into the composer at its cursor, and the cursor after
+    /// it (docs/designs/composer-inline-images.md). The engine hears of the new text as of any
+    /// edit, once this update is done (it may be running inside the engine's own command).
+    pub fn insert_inline_image(&self, slot: u32) {
+        self.run(move |w| {
+            let store = w.global::<InlineImageStore>();
+            let caret = usize::try_from(store.get_caret()).unwrap_or(0);
+            let (text, caret) = inline_images::insert(&w.get_draft(), caret, slot);
+            let caret = i32::try_from(caret).unwrap_or(i32::MAX);
+            w.set_draft(text.into());
+            // Read by the next image at once, before the composer reports its cursor.
+            store.set_caret(caret);
+            store.set_place(caret);
+            store.set_place_tick(store.get_place_tick() + 1);
+            let weak = w.as_weak();
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                if let Some(w) = weak.upgrade() {
+                    w.invoke_draft_edited(w.get_draft());
+                }
+            });
         });
     }
 
