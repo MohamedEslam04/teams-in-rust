@@ -228,7 +228,7 @@ export component RemoveHistoryConfirm inherits Rectangle {
             remove-btn := Rectangle {
                 width: 90px;
                 border-radius: 4px;
-                background: remove-touch.has-hover ? #e04a4f : Theme.danger;
+                background: remove-touch.has-hover ? Theme.danger-hover : Theme.danger;
                 accessible-role: button;
                 accessible-label: @tr("Remove");
                 accessible-action-default => { root.confirm(); }

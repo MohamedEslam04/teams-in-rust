@@ -408,7 +408,7 @@ export component FormatBar inherits Rectangle {
                 Rectangle {
                     height: 30px;
                     border-radius: 4px;
-                    background: table-ok.has-hover ? #6c71e0 : Theme.accent-strong;
+                    background: table-ok.has-hover ? Theme.accent : Theme.accent-strong;
                     accessible-role: button;
                     accessible-label: @tr("Insert table");
                     Text { text: @tr("Insert"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
@@ -465,7 +465,7 @@ export component FormatBar inherits Rectangle {
                         width: 64px;
                         height: 30px;
                         border-radius: 4px;
-                        background: link-ok.has-hover ? #6c71e0 : Theme.accent-strong;
+                        background: link-ok.has-hover ? Theme.accent : Theme.accent-strong;
                         accessible-role: button;
                         accessible-label: @tr("Insert link address");
                         Text { text: @tr("Insert"); color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }

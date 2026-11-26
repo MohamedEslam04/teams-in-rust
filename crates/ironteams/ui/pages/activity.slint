@@ -187,7 +187,7 @@ component PreviewList inherits Rectangle {
             for m in root.messages: hl-row := Rectangle {
                 property <bool> hl: m.id == root.highlight;
                 height: mr.height;
-                background: self.hl ? #23253f : transparent;
+                background: self.hl ? Theme.accent-muted : transparent;
                 if self.hl: hl-marker := Rectangle { x: 0; width: 3px; background: Theme.accent; }
                 mr := MessageRow {
                     width: parent.width;
