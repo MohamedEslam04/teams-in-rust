@@ -403,6 +403,14 @@ impl Engine {
                 });
                 anyhow::bail!("This conversation was deleted.");
             }
+            // The session is not refreshed yet (a cache-first start): the saved messages stay on
+            // screen without a note, and the sync that runs once online reads the newest page.
+            Err(teams_proto::Error::NotReady) => {
+                tracing::debug!("chat history waits for the session refresh, showing the cache");
+                self.view.lock().unwrap().loaded = true;
+                self.mark(|d| d.messages = true);
+                return Ok(());
+            }
             // No answer (a dropped connection, a suspend, no network): the saved messages are
             // already on screen, so say so quietly and try again instead of a red error.
             Err(e) if e.is_transient() => {

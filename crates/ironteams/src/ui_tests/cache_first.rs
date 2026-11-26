@@ -166,7 +166,9 @@ fn names_asked_for_before_the_refresh_are_asked_for_again_later() {
     // A name that could not be fetched yet must not count as asked for: the sender would stay
     // unknown for the whole run.
     let h = before_the_refresh();
-    h.engine.test_fetch_names(vec!["8:orgid:unknown".into()]);
+    h.rt.block_on(async {
+        h.engine.test_fetch_names(vec!["8:orgid:unknown".into()]);
+    });
     assert_eq!(
         h.engine.test_asked_names(),
         1,
