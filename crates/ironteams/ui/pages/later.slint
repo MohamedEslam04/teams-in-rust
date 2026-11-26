@@ -15,7 +15,7 @@ component LaterItem inherits Rectangle {
     property <bool> reminder: root.data.kind == "reminder";
     height: 98px;
     border-radius: 4px;
-    background: row-touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    background: row-touch.has-hover ? Theme.surface-hover : Theme.panel;
     accessible-role: list-item;
     accessible-label: root.data.preview;
     accessible-description: root.data.chat + " · " + root.data.author + " · " + root.data.time;

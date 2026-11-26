@@ -45,7 +45,7 @@ export component ChatColumn inherits Rectangle {
     VerticalLayout {
         Rectangle {
             height: root.closable ? 60px : 52px;
-            background: root.closable ? Theme.sidebar : Theme.topbar;
+            background: root.closable ? Theme.panel : Theme.topbar;
             TouchArea {
                 clicked => {
                     root.activated();

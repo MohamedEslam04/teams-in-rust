@@ -140,7 +140,7 @@ component UnreadGroup inherits Rectangle {
     callback clicked();
     callback mark-read();
     height: 74px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     accessible-role: list-item;
     accessible-label: root.data.title;
     accessible-description: @tr("{} unread", root.data.count) + " · " + root.data.subtitle;
