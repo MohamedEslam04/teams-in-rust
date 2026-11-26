@@ -24,6 +24,7 @@ Files:
 - `channel_tabs.rs`: Channel header tabs beyond Posts/Files: list, add website/app tab (channel and chat), rename, remove, list installed apps for the Add-a-tab dialog; U+001F-joined argument parsing.
 - `channels.rs`: Posts tab engine: ChannelCmd parsing/dispatch, post card and thread-panel rendering, Adaptive Card row mapping, thread prefetch, older-history paging, replies, follow, announcements, cloud-file attach.
 - `clip_capture.rs`: Real camera + mic behind the video clip recorder: raw I420 frames piped to system ffmpeg (H.264 MP4), mic via voice::Recorder, mux AAC on stop; no-camera stub without `calls` feature.
+- `chat_note.rs`: Private per-chat note on Engine (`Cmd::NoteEdited`, handled inline): debounced (500 ms) write to the store's `chat_notes` table, flushed on chat switch and quit, restored (`UiHandle::set_chat_note`) when a chat opens. Local only, never sent.
 - `composer_apps.rs`: Composer "+" picker of the open chat's installed apps: search commands (composeExtension/query, debounced) and action commands (task module in web host, submitAction) produce cards kept per chat in the draft until Send.
 - `dirty_stats.rs`: MarkStats counts dirty marks by call site (Location) and part bitmask and yields a per-minute summary string for the debug log.
 - `drafts.rs`: Per-chat draft persistence on Engine: debounced write of composer text and reply target to the store, clear on send, restore on chat open.

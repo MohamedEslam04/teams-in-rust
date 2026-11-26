@@ -26,6 +26,7 @@ Files:
 - `ongoing_call.rs`: `UiHandle::ongoing_call` and `ongoing_call_elapsed` fill `OngoingCallStore`, the header's live-call strip.
 - `people.rs`: UiHandle methods filling the PeopleStore global: mention picker, new chat, participants, profile card, org chart, own presence, pins, receipts.
 - `popout.rs`: Single pop-out ChatWindow (thread-local) sharing the main window's callbacks; copies Theme, shows/updates messages.
+- `chat_note.rs`: UiHandle::set_chat_note fills ChatNoteStore.text (the open chat's private note).
 - `remind.rs`: UiHandle::reminders fills RemindStore reminders and snoozed chats models.
 - `row_fingerprint.rs`: `of`, `of_chat`, `of_post`: hash of every drawn field of a `MsgData`, `ChatData` or `PostData`, used as the row print for `model_sync`.
 - `settings.rs`: Settings UI controller root: Ctl state, thread-local CTL, submodule declarations/re-exports, MicPoll/OpenMic types, command list docs.

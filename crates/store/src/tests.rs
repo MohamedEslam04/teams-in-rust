@@ -691,6 +691,61 @@ fn drafts_newest_first() {
     assert_eq!(order, ["a", "b", "c"]);
 }
 
+// ---- chat notes (migration v9) -----------------------------------------------------------
+
+#[test]
+fn a_chat_note_roundtrips_per_conversation_and_keeps_its_lines() {
+    let s = Store::open_in_memory().unwrap();
+    assert_eq!(s.chat_note("c").unwrap(), None);
+    s.set_chat_note("c", "ask about <b>the invoice</b>\nمرحبا\n\nend")
+        .unwrap();
+    s.set_chat_note("other", "second").unwrap();
+    assert_eq!(
+        s.chat_note("c").unwrap().as_deref(),
+        Some("ask about <b>the invoice</b>\nمرحبا\n\nend")
+    );
+    // Saving again replaces the note; there is still one row per conversation.
+    s.set_chat_note("c", "changed").unwrap();
+    assert_eq!(s.chat_note("c").unwrap().as_deref(), Some("changed"));
+    assert_eq!(s.chat_note("other").unwrap().as_deref(), Some("second"));
+}
+
+#[test]
+fn an_empty_chat_note_deletes_it() {
+    let s = Store::open_in_memory().unwrap();
+    s.set_chat_note("c", "x").unwrap();
+    s.set_chat_note("c", "").unwrap();
+    assert_eq!(s.chat_note("c").unwrap(), None);
+    // Deleting a note that does not exist is fine.
+    s.set_chat_note("nope", "").unwrap();
+}
+
+#[test]
+fn a_chat_note_goes_with_a_forgotten_conversation_but_stays_through_clear_cache() {
+    let s = Store::open_in_memory().unwrap();
+    s.set_chat_note("c", "mine").unwrap();
+    s.set_chat_note("d", "also mine").unwrap();
+    s.clear_cache(&[]).unwrap();
+    assert_eq!(s.chat_note("c").unwrap().as_deref(), Some("mine"));
+    s.delete_conversation("c").unwrap();
+    assert_eq!(s.chat_note("c").unwrap(), None);
+    assert_eq!(s.chat_note("d").unwrap().as_deref(), Some("also mine"));
+}
+
+#[test]
+fn a_database_from_before_chat_notes_gains_the_table() {
+    let conn = Connection::open_in_memory().unwrap();
+    fts::register(&conn).unwrap();
+    for sql in &migrations::MIGRATIONS[..8] {
+        conn.execute_batch(sql).unwrap();
+    }
+    conn.execute_batch("PRAGMA user_version = 8").unwrap();
+    let s = Store::init(conn).unwrap();
+    assert_eq!(s.chat_note("c").unwrap(), None);
+    s.set_chat_note("c", "note").unwrap();
+    assert_eq!(s.chat_note("c").unwrap().as_deref(), Some("note"));
+}
+
 // ---- outbox ------------------------------------------------------------
 
 fn item(id: &str, conv: &str, created: i64) -> OutboxItem {

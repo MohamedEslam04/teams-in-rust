@@ -809,6 +809,12 @@ fn main() -> anyhow::Result<()> {
     }
     {
         let tx = tx.clone();
+        window.global::<ChatNoteStore>().on_edited(move |text| {
+            let _ = tx.send(Cmd::NoteEdited(text.into()));
+        });
+    }
+    {
+        let tx = tx.clone();
         window.global::<ListStore>().on_command(move |name, arg| {
             if let Some(c) = backend::ListsCmd::parse(&name, &arg) {
                 let _ = tx.send(Cmd::Lists(c));

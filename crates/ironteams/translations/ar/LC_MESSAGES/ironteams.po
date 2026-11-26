@@ -2463,3 +2463,17 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+# The private note on a chat (details pane and the header icon).
+
+msgid "Private note"
+msgstr "ملاحظة خاصة"
+
+msgid "Only on this computer. Never sent to Teams."
+msgstr "على هذا الكمبيوتر فقط. لا تُرسل أبدًا إلى Teams."
+
+msgid "Add a private note about this chat"
+msgstr "أضف ملاحظة خاصة عن هذه الدردشة"
+
+msgid "This chat has a private note"
+msgstr "هذه الدردشة بها ملاحظة خاصة"

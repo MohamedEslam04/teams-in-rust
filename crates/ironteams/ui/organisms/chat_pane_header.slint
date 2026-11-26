@@ -9,6 +9,7 @@ import { ChannelMeetButton, MeetingJoinButton } from "web_parity.slint";
 import { ChannelTabButton } from "channel_tabs.slint";
 import { OngoingCallStore } from "../stores/ongoing_call_store.slint";
 import { OngoingCallStrip } from "ongoing_call_strip.slint";
+import { ChatNoteStore } from "chat_note.slint";
 import { FindStore } from "../stores/find_store.slint";
 import { HeaderMoreButton } from "chat_header.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
@@ -257,6 +258,18 @@ export component ChatPaneHeader inherits Rectangle {
                 FindStore.chat-find-open = !FindStore.chat-find-open;
                 FindStore.chat-find-tick += 1;
                 FindStore.command(FindStore.chat-find-open ? "find-open" : "find-close", "");
+            }
+        }
+        // A private note exists on this chat (it is edited in the details pane): the icon opens it.
+        if root.thread-root == "" && ChatNoteStore.text != "": note-btn := IconButton {
+            icon: @image-url("../icons/note.svg");
+            y: 14px;
+            tooltip: @tr("This chat has a private note");
+            tint: Theme.accent;
+            active: FindStore.details-open;
+            clicked => {
+                FindStore.details-open = true;
+                FindStore.command("details", "open");
             }
         }
         if root.thread-root == "" && !root.compact: IconButton {

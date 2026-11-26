@@ -38,10 +38,11 @@ impl QuitDone {
 }
 
 impl Engine {
-    /// `Cmd::Quit`: the pending draft is written, every live call is ended, and this device
+    /// `Cmd::Quit`: the pending draft and note are written, every live call is ended, and this device
     /// leaves presence (last, so the call's own presence update cannot bring it back).
     pub(super) async fn quit(self: &Arc<Self>, done: QuitDone) {
         self.flush_draft();
+        self.flush_chat_note();
         self.save_last_unread();
         let ended = self.end_calls(CALLS_WITHIN).await;
         tracing::info!(call_ended = ended, "quitting");
