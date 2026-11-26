@@ -126,12 +126,14 @@ fn turning_off_photos_keeps_the_name_and_the_profile() {
     show(&app, false, true, true);
     let buttons = profile_buttons(&app);
     assert_eq!(buttons.len(), 1, "the name is left");
+    // Read now: the element goes when the photo comes back and the row is built again.
+    let name_x = buttons[0].absolute_position().x;
     // Nothing is beside the name when there is no photo: it sits at the bubble's edge, not a
     // photo's width and a gap further right.
     show(&app, true, true, true);
     let with_photo = profile_buttons(&app);
     assert_eq!(with_photo.len(), 2);
-    assert!(buttons[0].absolute_position().x < with_photo[1].absolute_position().x);
+    assert!(name_x < with_photo[1].absolute_position().x);
 }
 
 #[test]
