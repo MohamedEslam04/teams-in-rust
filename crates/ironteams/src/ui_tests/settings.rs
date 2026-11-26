@@ -1091,6 +1091,42 @@ fn the_chats_page_chooses_the_quick_reactions_and_resets_them() {
     );
 }
 
+/// General > Start: IronTeams opens on Chat until another page is chosen; the choice is saved
+/// and read again by the next window, and a name that is not a page gives the default.
+#[test]
+fn the_general_page_sets_the_start_page_and_keeps_it() {
+    let ui = window(Home::new("start-page"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    open_page(app, "general");
+    assert_eq!(store(app).get_start_page(), "chat");
+    assert!(checked(app, "When IronTeams starts, open: Chat"));
+    press(app, "When IronTeams starts, open: Calendar");
+    assert_eq!(store(app).get_start_page(), "calendar");
+    assert!(checked(app, "When IronTeams starts, open: Calendar"));
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Calendar
+    );
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(store(&again.app).get_start_page(), "calendar");
+    press(app, "When IronTeams starts, open: Where I left off");
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Last
+    );
+    store(app).invoke_command("start-page".into(), "onedrive".into());
+    assert_eq!(
+        store(app).get_start_page(),
+        "chat",
+        "not a page: the default"
+    );
+    assert_eq!(
+        Local::load(&config).general.start_page,
+        appearance::general::StartPage::Chat
+    );
+}
+
 #[test]
 fn find_in_settings_reaches_the_chats_page() {
     let ui = window(Home::new("chats-find"));

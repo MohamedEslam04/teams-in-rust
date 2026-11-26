@@ -43,6 +43,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "Keyword alerts",
         "keyword word phrase alert notify",
     ),
+    (
+        "general",
+        "When IronTeams starts, open",
+        "start startup launch opening page home activity chat teams calendar where i left off last",
+    ),
     ("general", "Date format", "day month year"),
     ("general", "Time format", "clock 12 24 hour"),
     ("general", "Time zone", "timezone region"),

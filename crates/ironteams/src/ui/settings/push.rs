@@ -190,6 +190,7 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     g.set_quick_reactions(emoji_model(crate::reactions::quick_items(
         &gp.quick_reactions,
     )));
+    g.set_start_page(s(gp.start_page.slug()));
     g.set_open_chat_at(s(match c.open_chat_at {
         OpenChatAt::FirstUnread => "last-read",
         OpenChatAt::Newest => "newest",

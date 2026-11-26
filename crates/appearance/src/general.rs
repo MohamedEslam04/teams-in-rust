@@ -162,6 +162,45 @@ pub enum TimeFormat {
     H24,
 }
 
+/// The page IronTeams opens on when it starts (Settings > General). `Chat` is how IronTeams
+/// started before the setting existed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartPage {
+    Activity,
+    #[default]
+    Chat,
+    Teams,
+    Calendar,
+    /// The page that was open when IronTeams last closed (and its chat).
+    Last,
+}
+
+impl StartPage {
+    /// The name Settings and the file use: `activity`, `chat`, `teams`, `calendar` or `last`.
+    pub fn slug(self) -> &'static str {
+        match self {
+            StartPage::Activity => "activity",
+            StartPage::Chat => "chat",
+            StartPage::Teams => "teams",
+            StartPage::Calendar => "calendar",
+            StartPage::Last => "last",
+        }
+    }
+
+    pub fn from_slug(s: &str) -> Option<StartPage> {
+        [
+            StartPage::Activity,
+            StartPage::Chat,
+            StartPage::Teams,
+            StartPage::Calendar,
+            StartPage::Last,
+        ]
+        .into_iter()
+        .find(|p| p.slug() == s)
+    }
+}
+
 fn de_language<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     let s: Option<String> = lenient(d)?;
     Ok(s.as_deref().and_then(normalize_tag))
@@ -399,6 +438,9 @@ pub struct GeneralPrefs {
     /// Missing or unreadable gives [`default_quick_reactions`].
     #[serde(deserialize_with = "de_quick_reactions")]
     pub quick_reactions: Vec<String>,
+    /// The page IronTeams opens on at start.
+    #[serde(deserialize_with = "lenient")]
+    pub start_page: StartPage,
 }
 
 impl Default for GeneralPrefs {
@@ -426,6 +468,7 @@ impl Default for GeneralPrefs {
             link_previews: true,
             wheel_speed: WHEEL_SPEED_DEFAULT,
             quick_reactions: default_quick_reactions(),
+            start_page: StartPage::default(),
         }
     }
 }
@@ -605,6 +648,49 @@ mod tests {
         let replaced = with_quick_reaction(&full, 5, "z");
         assert_eq!(replaced.len(), QUICK_REACTIONS_MAX);
         assert_eq!(replaced[5], "z");
+    }
+
+    #[test]
+    fn start_page_defaults_to_chat_and_a_bad_value_resets_it() {
+        assert_eq!(GeneralPrefs::default().start_page, StartPage::Chat);
+        let old: GeneralPrefs = serde_json::from_str(r#"{"language":"ar"}"#).unwrap();
+        assert_eq!(old.start_page, StartPage::Chat, "a file from before it");
+        for (slug, page) in [
+            ("activity", StartPage::Activity),
+            ("chat", StartPage::Chat),
+            ("teams", StartPage::Teams),
+            ("calendar", StartPage::Calendar),
+            ("last", StartPage::Last),
+        ] {
+            let p: GeneralPrefs =
+                serde_json::from_str(&format!(r#"{{"start_page":"{slug}"}}"#)).unwrap();
+            assert_eq!(p.start_page, page, "{slug}");
+        }
+        for bad in [r#""weird""#, "3", "null", r#"["teams"]"#] {
+            let p: GeneralPrefs =
+                serde_json::from_str(&format!(r#"{{"start_page":{bad},"auto_start":true}}"#))
+                    .unwrap();
+            assert_eq!(p.start_page, StartPage::Chat, "{bad}");
+            assert!(p.auto_start, "a bad value only resets its own field");
+        }
+    }
+
+    #[test]
+    fn start_page_slugs_round_trip_and_match_the_file() {
+        for p in [
+            StartPage::Activity,
+            StartPage::Chat,
+            StartPage::Teams,
+            StartPage::Calendar,
+            StartPage::Last,
+        ] {
+            assert_eq!(StartPage::from_slug(p.slug()), Some(p));
+            assert_eq!(
+                serde_json::to_string(&p).unwrap(),
+                format!("\"{}\"", p.slug())
+            );
+        }
+        assert_eq!(StartPage::from_slug("onedrive"), None);
     }
 
     #[test]
@@ -842,6 +928,7 @@ mod tests {
             link_previews: false,
             wheel_speed: 4.0,
             quick_reactions: vec!["fire".into(), "like".into()],
+            start_page: StartPage::Last,
         };
         p.save_to(&path).unwrap();
         assert_eq!(GeneralPrefs::load_from(&path), p);

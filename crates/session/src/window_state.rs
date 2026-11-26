@@ -41,6 +41,9 @@ const MAX_SECTION_LEN: usize = 128;
 const MAX_KEY_LEN: usize = 256;
 const MAX_VIEWS: usize = 64;
 
+/// The pages [`AccountView::last_view`] can hold: the ones a start can open.
+pub const START_VIEWS: [&str; 4] = ["chat", "teams", "activity", "calendar"];
+
 /// What one account was looking at: restored when that account starts again.
 #[derive(Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
@@ -49,6 +52,9 @@ pub struct AccountView {
     pub last_chat: Option<String>,
     /// Id of the last channel that was open: the Teams page opens it again.
     pub last_channel: Option<String>,
+    /// The page that was open ("chat", "teams", "activity" or "calendar"): "Where I left off" in
+    /// Settings opens it again. Any other page is not remembered.
+    pub last_view: Option<String>,
     /// Ids of the collapsed sidebar sections.
     pub collapsed_sections: BTreeSet<String>,
 }
@@ -58,6 +64,7 @@ impl std::fmt::Debug for AccountView {
         f.debug_struct("AccountView")
             .field("last_chat", &self.last_chat.as_ref().map(|_| "<set>"))
             .field("last_channel", &self.last_channel.as_ref().map(|_| "<set>"))
+            .field("last_view", &self.last_view)
             .field("collapsed_sections", &self.collapsed_sections.len())
             .finish()
     }
@@ -67,6 +74,7 @@ impl std::fmt::Debug for AccountView {
 static EMPTY_VIEW: AccountView = AccountView {
     last_chat: None,
     last_channel: None,
+    last_view: None,
     collapsed_sections: BTreeSet::new(),
 };
 
@@ -84,6 +92,13 @@ impl AccountView {
                 *id = None;
             }
         }
+        if self
+            .last_view
+            .as_deref()
+            .is_some_and(|v| !START_VIEWS.contains(&v))
+        {
+            self.last_view = None;
+        }
         self.collapsed_sections
             .retain(|s| !s.is_empty() && s.len() <= MAX_SECTION_LEN);
         while self.collapsed_sections.len() > MAX_SECTIONS {
@@ -99,6 +114,13 @@ impl AccountView {
 
     pub fn set_last_channel(&mut self, id: Option<&str>) {
         self.last_channel = id.map(str::to_owned);
+        self.clamp();
+    }
+
+    /// Remembers the open page, or forgets it with `None`. A page outside [`START_VIEWS`] is
+    /// forgotten too.
+    pub fn set_last_view(&mut self, view: Option<&str>) {
+        self.last_view = view.map(str::to_owned);
         self.clamp();
     }
 
@@ -419,6 +441,13 @@ impl WindowState {
         self.clamp();
     }
 
+    /// Remembers the open page of the active account, or forgets it with `None`.
+    pub fn set_last_view(&mut self, view: Option<&str>) {
+        let key = self.active.clone();
+        self.view_mut(&key).set_last_view(view);
+        self.clamp();
+    }
+
     pub fn is_collapsed(&self, section: &str) -> bool {
         self.active_view().is_collapsed(section)
     }
@@ -599,6 +628,44 @@ mod tests {
         );
         s.set_last_channel(Some("  "));
         assert_eq!(s.active_view().last_channel, None, "a blank id is not kept");
+    }
+
+    #[test]
+    fn the_last_page_is_kept_only_for_pages_a_start_can_open() {
+        let mut s = WindowState::default();
+        assert_eq!(s.active_view().last_view, None);
+        for v in START_VIEWS {
+            s.set_last_view(Some(v));
+            assert_eq!(s.active_view().last_view.as_deref(), Some(v));
+        }
+        s.set_last_view(Some("onedrive"));
+        assert_eq!(s.active_view().last_view, None, "other pages are forgotten");
+        s.set_last_view(Some("calendar"));
+        s.set_last_view(None);
+        assert_eq!(s.active_view().last_view, None);
+        assert!(s.accounts.is_empty(), "an empty view is not kept");
+    }
+
+    #[test]
+    fn the_last_page_survives_a_save_and_a_bad_value_is_dropped_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(FILE_NAME);
+        let mut s = WindowState::load_from(&p, KEY);
+        s.set_last_view(Some("teams"));
+        s.save_to(&p).unwrap();
+        assert_eq!(
+            WindowState::load_from(&p, KEY)
+                .active_view()
+                .last_view
+                .as_deref(),
+            Some("teams")
+        );
+        let bad = format!(r#"{{"accounts":{{"{KEY}":{{"last_view":"settings"}}}}}}"#);
+        std::fs::write(&p, bad).unwrap();
+        assert_eq!(
+            WindowState::load_from(&p, KEY).active_view().last_view,
+            None
+        );
     }
 
     // ---- per-account views ----

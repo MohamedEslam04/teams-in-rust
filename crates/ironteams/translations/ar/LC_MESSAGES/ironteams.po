@@ -531,6 +531,18 @@ msgstr "سرعة عجلة الماوس"
 msgid "How far one notch of the mouse wheel scrolls messages and posts. A touchpad scrolls as it always does."
 msgstr "المسافة التي تمررها نقرة واحدة من عجلة الماوس في الرسائل والمنشورات. لوحة اللمس تمرر كما هي دائمًا."
 
+msgid "Start"
+msgstr "البدء"
+
+msgid "When IronTeams starts, open"
+msgstr "عند بدء IronTeams، افتح"
+
+msgid "Where I left off opens the page and the chat you had open when you closed IronTeams."
+msgstr "«من حيث توقفت» يفتح الصفحة والدردشة اللتين كانتا مفتوحتين عند إغلاق IronTeams."
+
+msgid "Where I left off"
+msgstr "من حيث توقفت"
+
 msgid "You asked {} for control"
 msgstr "طلبت من {} التحكم"
 

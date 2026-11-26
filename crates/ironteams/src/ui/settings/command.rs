@@ -782,6 +782,14 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
+        "start-page" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.start_page =
+                appearance::general::StartPage::from_slug(arg).unwrap_or_default();
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "link-previews" => {
             let mut c = shared.borrow_mut();
             c.local.general.link_previews = bit(arg);
