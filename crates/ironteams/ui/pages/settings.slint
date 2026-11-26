@@ -40,6 +40,10 @@ export component SettingsPage inherits Rectangle {
             SettingsStore.target-y = -1px;
         }
     }
+    // A page opens at its top: the column would keep the scroll of the page before (Appearance
+    // scrolled to a row, then Devices opens with its Speaker rows above the window).
+    property <string> shown-page: SettingsStore.page;
+    changed shown-page => { sv.content-y = 0px; }
     // Swallow clicks so the views underneath do not get them.
     TouchArea { }
     keys := FocusScope {

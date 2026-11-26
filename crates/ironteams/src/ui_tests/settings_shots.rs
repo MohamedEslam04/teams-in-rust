@@ -181,7 +181,13 @@ fn settings_pages_to_png() {
     let find = |label: &str| {
         ElementHandle::find_by_accessible_label(&app, label)
             .find(|e| e.size().height > 0. && e.accessible_role() != Some(AccessibleRole::Text))
-            .unwrap_or_else(|| panic!("{label:?} on screen"))
+            .unwrap_or_else(|| {
+                // What the page does show, to tell a page opened scrolled from a label that changed.
+                let radios: Vec<_> = ElementHandle::find_by_element_type_name(&app, "SRadio")
+                    .filter_map(|e| e.accessible_label())
+                    .collect();
+                panic!("{label:?} on screen; radio buttons shown: {radios:?}")
+            })
     };
     let click = |label: &str| {
         let e = find(label);
@@ -257,15 +263,6 @@ fn settings_pages_to_png() {
         );
         if name == "switch" {
             click(first);
-        }
-        if !row.is_empty() {
-            // The next page opens at the top: the page list keeps the scroll of the last one.
-            app.window().dispatch_event(WindowEvent::PointerScrolled {
-                position: LogicalPosition::new(600., 400.),
-                delta_x: 0.,
-                delta_y: 10_000.,
-            });
-            settle();
         }
     }
 
