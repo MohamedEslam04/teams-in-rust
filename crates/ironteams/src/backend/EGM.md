@@ -97,7 +97,7 @@ Files:
 - `[composer_apps.rs:ComposerAppsCmd]` pub enum {List,Close,Back,Search(String),Action(String),Query(String),Choose(usize),Remove(usize)}; ComposerAppsCmd::parse(name,&str arg)->Option<Self> (None on unknown name or non-numeric Choose/Remove)
 - `[engage.rs:EngageCmd]` pub enum Open(u64)|Refresh|Older|Close|OpenWeb(String); EngageCmd::parse(name,arg)->Option<EngageCmd>
 - `[lists.rs:MANAGE_APPS_NOTE]` pub const &str: banner text for 'Manage apps' (feature unavailable)
-- `[media.rs:MediaCmd]` pub enum: OpenImage{msg,url}, OpenPhoto, ImageStep, ImageClose, ImageSave, ImageCopy, ImageAction{action,msg,url}, CopyText(String), Translate, ShowOriginal, FileCard{action,url}, CopyLink, ShareToOutlook, Report, PopOut, PopOutSend{conv,text}, PopOutClose
+- `[media.rs:MediaCmd]` pub enum: OpenImage{msg,url}, OpenPhoto, ImageStep, ImageClose, ImageSave, ImageCopy, ImageAction{action,msg,url}, CopyText(String), Translate, ShowOriginal, FileCard{action,url}, CopyLink, ShareToOutlook, Report, PopOut, PopOutSend{conv,text} (also the split pane's send), PopOutClose, Split, SplitClose
 - `[mentions.rs:Entry]` pub(super) struct {mri: String, name: String, kind: MentionKind}: a person/team/channel/everyone picked in the composer
 - `[outsider.rs:Outsider]` pub(crate) enum { External, Guest } (Debug, Clone, Copy, PartialEq, Eq)
 - `[photo.rs:Engine::start_my_photo]` pub(super) fn(self: &Arc<Self>): spawns a one-off read of my avatar via client.avatar (skipped offline)
@@ -126,7 +126,7 @@ Files:
 - `[composer_apps.rs:Engine::composer_apps_cmd]` pub(super) async fn(self:&Arc<Self>, ComposerAppsCmd)->anyhow::Result<()> dispatcher for the picker
 - `[engage.rs:PostData]` pub struct post row (id,sender,initials,time,text,likes,replies,attachments,url,reply)
 - `[lists.rs:ListsCmd]` pub enum: list UI commands (NewSection, RenameSection, DeleteSection, ToggleSection, CollapseAll, Move, RemoveFromSection, Mute, Unmute, CopyLink, Hide, RemoveHistory, ManageApps, NotifyWhenAvailable(person, on), Option, Channel*)
-- `[media.rs:MediaCmd::parse]` pub fn parse(name:&str,arg:&str)->Option<MediaCmd>; 'image' splits on '|', 'image-do' splits into 3 parts on U+001F, 'text-copy' takes the whole arg, 'file'/'popout-send' split once on U+001F, image-step parses i32
+- `[media.rs:MediaCmd::parse]` pub fn parse(name:&str,arg:&str)->Option<MediaCmd>; 'image' splits on '|', 'image-do' splits into 3 parts on U+001F, 'text-copy' takes the whole arg, 'file'/'popout-send'/'split-send' split once on U+001F ('split-send' is PopOutSend), image-step parses i32
 - `[mentions.rs:Prepared]` pub(super) struct {text: String, mentions: Vec<Mention>}: draft with OPEN n CLOSE placeholders plus mentions in text order
 - `[outsider.rs:Outsider::label]` pub fn label(self) -> &'static str  ("External"|"Guest")
 - `[photo.rs:Engine::change_photo]` pub(super) async fn(self: &Arc<Self>): rfd file picker (jpg/jpeg/png), check_photo, client.set_my_photo, then keep_my_avatar; reports via ui.settings_notice
@@ -149,7 +149,7 @@ Files:
 - `[composer_apps.rs:State]` pub(super) struct (Default) holding picker state and per-chat cards (HashMap<conv,Vec<CardAttachment>>); field of Engine as composer_apps (Mutex)
 - `[engage.rs:EngageData]` pub struct view model (community,title,posts,more,loading,error)
 - `[lists.rs:ListsCmd::parse]` pub fn(name:&str, arg:&str) -> Option<ListsCmd>; args split on first '\t'; unknown name -> None
-- `[media.rs:State]` pub(super) struct (viewer, translations, settings, thumbs ByteLru, gate, popout); Default impl; held as Engine.media Mutex
+- `[media.rs:State]` pub(super) struct (viewer, translations, settings, thumbs ByteLru, gate, popout, split); Default impl; held as Engine.media Mutex
 - `[mentions.rs:prepare]` pub(super) fn prepare(text: &str, entries: &[Entry]) -> Prepared
 - `[outsider.rs:classify]` pub fn classify(mri:&str, tenant:Option<&str>, own_tenant:Option<&str>, guest:bool) -> Option<Outsider>
 - `[photo.rs:Engine::remove_photo]` pub(super) async fn(self: &Arc<Self>): client.remove_my_photo then keep_my_avatar(None)

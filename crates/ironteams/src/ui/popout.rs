@@ -1,6 +1,7 @@
 //! "Pop out chat": one chat in a second window (`ChatWindow`). The window shares the engine: its
 //! send, reactions and links go through the main window's callbacks, so nothing new is wired in
-//! `main.rs`. One chat is popped out at a time; popping out another replaces it.
+//! `main.rs`. One chat is popped out at a time; popping out another replaces it. The split view
+//! (`split.rs`) shows a second chat the same way, in a pane of the main window.
 
 use super::{UiHandle, model, model_sync, msg, row_fingerprint};
 use crate::data::MsgData;
@@ -145,22 +146,8 @@ impl UiHandle {
             POPOUT.with(|p| {
                 if let Some(cw) = p.borrow().as_ref() {
                     let first = cw.get_messages().row_count() == 0;
-                    // Patched, not replaced: a new model built every row again and the list
-                    // jumped for every avatar or reaction the engine drew.
-                    let rows = msgs
-                        .into_iter()
-                        .map(|m| ((m.id.clone(), row_fingerprint::of(&m)), m))
-                        .collect();
                     ROWS.with(|cell| {
-                        let mut cell = cell.borrow_mut();
-                        let (m, prints) =
-                            cell.get_or_insert_with(|| (Rc::new(VecModel::default()), vec![]));
-                        if !model_sync::is_shown(&cw.get_messages(), m) {
-                            m.set_vec(vec![]);
-                            prints.clear();
-                            cw.set_messages(ModelRc::from(m.clone()));
-                        }
-                        model_sync::patch(m, prints, rows, msg);
+                        patch_rows(cell, &cw.get_messages(), |m| cw.set_messages(m), msgs)
                     });
                     if first {
                         // A chat just opened: at its newest message, like the main view.
@@ -170,6 +157,30 @@ impl UiHandle {
             });
         });
     }
+}
+
+/// Shows `msgs` in the list whose model is `shown`, through the model kept in `rows` (`set` puts
+/// it in place of a model set elsewhere, such as the empty one of a newly opened chat). Patched,
+/// not replaced: a new model built every row again and the list jumped for every avatar or
+/// reaction the engine drew.
+pub(super) fn patch_rows(
+    rows: &RefCell<Option<model_sync::Synced<Msg>>>,
+    shown: &ModelRc<Msg>,
+    set: impl FnOnce(ModelRc<Msg>),
+    msgs: Vec<MsgData>,
+) {
+    let new = msgs
+        .into_iter()
+        .map(|m| ((m.id.clone(), row_fingerprint::of(&m)), m))
+        .collect();
+    let mut rows = rows.borrow_mut();
+    let (m, prints) = rows.get_or_insert_with(|| (Rc::new(VecModel::default()), vec![]));
+    if !model_sync::is_shown(shown, m) {
+        m.set_vec(vec![]);
+        prints.clear();
+        set(ModelRc::from(m.clone()));
+    }
+    model_sync::patch(m, prints, new, msg);
 }
 
 #[cfg(test)]

@@ -184,6 +184,7 @@ impl Engine {
         }
         if d.messages {
             self.render_popout();
+            self.render_split();
         }
     }
 

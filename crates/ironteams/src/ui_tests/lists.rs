@@ -375,6 +375,7 @@ fn the_item_menu_of_a_chat_has_the_teams_entries() {
             "Mark as unread",
             "Favorite",
             "Pop out chat",
+            "Open in split view",
             "Move to section",
             "Snooze",
             "Mute",

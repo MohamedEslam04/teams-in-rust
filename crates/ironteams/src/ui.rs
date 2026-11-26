@@ -49,6 +49,7 @@ pub(crate) mod popout;
 mod remind;
 pub(crate) mod row_fingerprint;
 pub(crate) mod settings;
+mod split;
 mod teams;
 pub(crate) mod topbar;
 mod voice;

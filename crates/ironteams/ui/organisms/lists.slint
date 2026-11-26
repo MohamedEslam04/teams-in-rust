@@ -110,6 +110,7 @@ export component ItemMenu inherits Rectangle {
                 clicked => { TeamsStore.command("chan-pin", root.data.id + "\u{1f}" + (ListStore.channel-pinned ? "0" : "1")); root.done(); }
             }
             if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Pop out chat"); clicked => { MediaStore.command("popout", root.data.id); root.done(); } }
+            if !root.data.channel: MenuItem { variant: MenuItemVariant.list; label: @tr("Open in split view"); clicked => { MediaStore.command("split", root.data.id); root.done(); } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Move to section"); chevron: true; clicked => { root.view = "sections"; } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Snooze"); chevron: true; clicked => { root.view = "snooze"; } }
             if root.in-section: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove from section"); clicked => { ListStore.command("remove-section", root.data.id); root.done(); } }

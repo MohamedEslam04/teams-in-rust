@@ -78,6 +78,7 @@ mod settings_shots;
 mod shortcuts;
 mod snippets;
 mod splash;
+mod split_view;
 mod teams;
 mod topbar;
 #[cfg(feature = "calls")]

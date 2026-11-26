@@ -33,6 +33,9 @@ import { TeamsStore } from "stores/teams_store.slint";
 import { TeamsPage } from "pages/teams_page.slint";
 import { TeamsDialogs } from "organisms/teams_dialogs.slint";
 export { ChatWindow } from "organisms/chat_window.slint";
+import { ChatColumn } from "organisms/chat_column.slint";
+import { SplitStore } from "stores/split_store.slint";
+export { SplitStore } from "stores/split_store.slint";
 import { OneDriveView } from "pages/onedrive.slint";
 import { DriveStore } from "stores/drive_store.slint";
 import { DriveFilePicker } from "organisms/drive_file_picker.slint";
@@ -464,8 +467,23 @@ export component AppWindow inherits Window {
     property <bool> list-only: root.single-pane && (root.current-id == "" || root.pane-list || root.teams-no-channel);
     property <bool> chat-only: root.single-pane && !root.list-only;
     property <length> list-width: min(root.sidebar-width, max(220px, root.width - AppsStore.rail-width - 5px - 480px));
+    // Split view (`SplitStore`): a second chat right of the open one. It shows while the room
+    // right of the list holds both, the open chat at least 360px and the pane at least 300px;
+    // a narrower window hides it until it is wide enough again. Rust reads `split-fits`.
+    property <length> chat-room: root.width - AppsStore.rail-width - root.list-width - 5px;
+    out property <bool> split-fits: !root.single-pane && root.chat-room >= 360px + 5px + 300px;
+    property <bool> split-shown: SplitStore.open && root.split-fits && root.view != "search";
+    property <length> split-width: max(300px, min(SplitStore.width > 0px ? SplitStore.width : (root.chat-room - 5px) / 2, root.chat-room - 5px - 360px));
     in property <int> anchor-index: -1;
 
+
+    // The split pane's X and Esc: the engine stops filling it and the keys go back to the chat.
+    function close-split() {
+        SplitStore.open = false;
+        SplitStore.active = false;
+        MediaStore.command("split-close", "");
+        root.focus-tick += 1;
+    }
 
     // The command palette runs the same things the rail, the shortcuts and Settings run.
     function leave-settings() {
@@ -596,6 +614,8 @@ export component AppWindow inherits Window {
         reply-preview: root.reply-preview;
         set-filter(a0) => { root.set-filter(a0); }
         shortcuts-open <=> root.shortcuts-open;
+        split-shown: root.split-shown;
+        close-split => { root.close-split(); }
         teams-no-channel: root.teams-no-channel;
         thread-root: root.thread-root;
         view <=> root.view;
@@ -775,6 +795,7 @@ export component AppWindow inherits Window {
                                     schedule-meeting(a0) => { root.schedule-meeting(a0); }
                                     single-pane: root.single-pane;
                                     thread-root: root.thread-root;
+                                    can-split: root.split-fits;
                                 }
 
                                 if FindStore.chat-find-open && root.thread-root == "": ChatFindBar { channel: root.current-is-channel; }
@@ -872,7 +893,8 @@ export component AppWindow inherits Window {
                                 // Composer
                                 if (!root.posts-mode || ChannelStore.compose-open) && !root.unavailable && !root.opening: Composer {
                                     vertical-stretch: 0;
-                                    window-width: root.width;
+                                    // The split pane takes its share of the window from the composer.
+                                    window-width: root.split-shown ? root.width - root.split-width - 5px : root.width;
                                     current-is-channel: root.current-is-channel;
                                     thread-root: root.thread-root;
                                     reply-author: root.reply-author;
@@ -885,7 +907,10 @@ export component AppWindow inherits Window {
                                     expanded <=> root.composer-expanded;
                                     important <=> root.important;
                                     urgent <=> root.urgent;
-                                    input-focus(f) => { root.composer-focused = f; }
+                                    input-focus(f) => {
+                                        root.composer-focused = f;
+                                        if f { SplitStore.active = false; }
+                                    }
                                     edit-last => {
                                         if ShortcutApi.last-own(root.messages) != "" { root.edit(ShortcutApi.last-own(root.messages)); }
                                     }
@@ -950,6 +975,41 @@ export component AppWindow inherits Window {
                                 width: parent.width;
                                 height: parent.height;
                             }
+                        }
+
+                        // The split view: its divider drags the pane's width.
+                        if root.split-shown: Rectangle {
+                            width: 5px;
+                            background: split-drag.pressed || split-drag.has-hover ? Theme.accent : Theme.border;
+                            accessible-role: slider;
+                            accessible-label: @tr("Split view width");
+                            accessible-value: round(root.split-width / 1px);
+                            accessible-action-increment => { SplitStore.width = root.split-width + 20px; }
+                            accessible-action-decrement => { SplitStore.width = max(300px, root.split-width - 20px); }
+                            split-drag := TouchArea {
+                                mouse-cursor: col-resize;
+                                moved => {
+                                    if self.pressed {
+                                        SplitStore.width = max(300px, min(root.chat-room - 5px - 360px, root.split-width - (self.mouse-x - self.pressed-x)));
+                                    }
+                                }
+                            }
+                        }
+                        if root.split-shown: ChatColumn {
+                            width: root.split-width;
+                            chat-title: SplitStore.title;
+                            messages: SplitStore.messages;
+                            draft <=> SplitStore.draft;
+                            scroll-tick: SplitStore.scroll-tick;
+                            focus-tick: SplitStore.focus-tick;
+                            closable: true;
+                            active: SplitStore.active;
+                            take-focus: SplitStore.active;
+                            send(t) => { MediaStore.command("split-send", SplitStore.conv-id + "\u{1f}" + t); }
+                            react(id, k) => { root.react(id, k); }
+                            open-url(u) => { root.open-url(u); }
+                            activated => { SplitStore.active = true; }
+                            close => { root.close-split(); }
                         }
                     }
                 }
