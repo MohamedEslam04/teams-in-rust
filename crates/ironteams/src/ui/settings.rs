@@ -8,7 +8,7 @@
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
 //! open, close, page, query, profile, theme, theme-pick, theme-mode, theme-slot, theme-time,
-//! reset-theme, theme-new, theme-edit, theme-import, theme-copy, theme-rename, theme-delete,
+//! reset-theme, font-code, font-ui, theme-new, theme-edit, theme-import, theme-copy, theme-rename, theme-delete,
 //! editor-hex, editor-lch, editor-name, editor-keep, editor-save, editor-cancel (`themes.rs`),
 //! accent, density, message-style, show-avatars, show-timestamps, show-reactions,
 //! font-step, font-scale, skin-tone,
@@ -69,6 +69,7 @@ mod updates;
 pub use updates::*;
 mod command;
 use command::*;
+mod fonts;
 mod switch;
 mod themes;
 pub use themes::route_theme_preview;

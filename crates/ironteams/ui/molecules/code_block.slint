@@ -28,7 +28,7 @@ export component CodeBlock inherits Rectangle {
         code-text := Text {
             text: root.code;
             color: root.c.fg;
-            font-family: "monospace";
+            font-family: Theme.font-code;
             font-size: 13px * Theme.font-scale;
             wrap: char-wrap;
             // Code reads left to right, also in a right-to-left interface.

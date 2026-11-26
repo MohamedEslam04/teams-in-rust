@@ -122,6 +122,11 @@ export global SettingsStore {
     in-out property <string> accent-shown;
     in-out property <string> density: "comfy"; // comfy | compact
     in-out property <float> font-scale: 1.0;
+    // The fonts (Appearance > Text): the installed families the pickers list after "Default"
+    // (filled when the page first opens), and the saved code and interface families ("" default).
+    in-out property <[string]> font-families;
+    in-out property <string> font-code;
+    in-out property <string> font-ui;
     // How a message is drawn (organisms/message_row.slint): bubbles | flat | compact.
     in-out property <string> message-style: "bubbles";
     in-out property <bool> show-avatars: true;

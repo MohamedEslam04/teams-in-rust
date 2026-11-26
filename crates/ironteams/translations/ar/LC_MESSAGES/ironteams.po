@@ -811,6 +811,19 @@ msgstr "لون تمييز النص"
 msgid "Font size"
 msgstr "حجم الخط"
 
+# Appearance > Text: the code and interface font pickers.
+msgid "Code font"
+msgstr "خط التعليمات البرمجية"
+
+msgid "Code blocks and other fixed-width text. Inline code in messages keeps the default font."
+msgstr "كتل التعليمات البرمجية والنصوص الأخرى ذات العرض الثابت. تحتفظ التعليمات البرمجية المضمّنة في الرسائل بالخط الافتراضي."
+
+msgid "Interface font"
+msgstr "خط الواجهة"
+
+msgid "Text in every window. Emoji and Arabic keep their own fonts where this one has no letters for them."
+msgstr "النص في كل النوافذ. تحتفظ الرموز التعبيرية والعربية بخطوطها الخاصة عندما لا يحتوي هذا الخط على حروفها."
+
 msgid "Bullet list"
 msgstr "قائمة نقطية"
 

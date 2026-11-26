@@ -114,6 +114,10 @@ pub(crate) fn apply_look(t: &Theme<'_>, lk: &Look) {
     t.set_high_contrast(lk.high_contrast);
     t.set_reduced_motion(lk.reduced_motion);
     t.set_h24(lk.h24);
+    // A saved family that is no longer installed is ignored: the default font is drawn.
+    let font = |f: &Option<String>| f.as_deref().filter(|f| fonts::installed(f)).map(s);
+    t.set_font_code(font(&lk.font_code).unwrap_or_else(|| s("monospace")));
+    t.set_font_ui(font(&lk.font_ui).unwrap_or_default());
 }
 
 /// Works out the look from the preferences and the portal and, when it differs from the one
@@ -268,6 +272,22 @@ pub(super) fn push_themes(w: &AppWindow, c: &Ctl) {
         appearance::CallChoice::Fixed(id) => id.as_str(),
         appearance::CallChoice::SameAsApp => "",
     }));
+    let t = &c.local.themes;
+    g.set_font_code(s(t.font_code.clone().unwrap_or_default()));
+    g.set_font_ui(s(t.font_ui.clone().unwrap_or_default()));
+}
+
+/// The families the font pickers offer after "Default". Listed when the Appearance page first
+/// opens, not at start, and set once listed (`fonts::families`).
+pub(super) fn push_font_families(w: &AppWindow) {
+    let weak = w.as_weak();
+    fonts::families(move |list| {
+        if let Some(w) = weak.upgrade() {
+            let families: Vec<SharedString> = list.iter().map(|f| s(f.as_str())).collect();
+            w.global::<SettingsStore>()
+                .set_font_families(model(families));
+        }
+    });
 }
 
 /// The times a new schedule starts with: light from 08:00, dark from 19:00.

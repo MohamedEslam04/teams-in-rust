@@ -543,3 +543,77 @@ export component ThemeSelect inherits VerticalLayout {
         }
     }
 }
+
+// A drop-down of font families: a button with the chosen family that opens the list under it,
+// "Default" (value "") first; past ten entries the list scrolls. The button is the combo box
+// `group`, its entries the radio buttons "<group>: <family>".
+export component FontSelect inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
+    in property <string> group;
+    in property <[string]> families;
+    in property <string> value;
+    callback picked(string);
+    property <bool> open: false;
+    property <length> item-height: 30px * max(1, Theme.font-scale);
+    spacing: 4px;
+    alignment: start;
+    HorizontalLayout {
+        alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+        Rectangle {
+            width: 240px;
+            height: root.item-height;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.open ? root.c.accent : root.c.border;
+            background: head.has-hover ? root.c.surface-hover : root.c.surface;
+            accessible-role: combobox;
+            accessible-label: root.group;
+            accessible-value: root.value == "" ? @tr("Default") : root.value;
+            accessible-expandable: true;
+            accessible-expanded: root.open;
+            accessible-action-default => { root.open = !root.open; }
+            Text {
+                x: Theme.rtl ? 30px : 10px;
+                width: parent.width - 40px;
+                text: root.value == "" ? @tr("Default") : root.value;
+                color: root.c.fg;
+                font-size: Theme.font-body;
+                horizontal-alignment: Theme.start-align;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: none;
+            }
+            Icon {
+                c: root.c;
+                x: Theme.rtl ? 8px : parent.width - 8px - self.width;
+                y: (parent.height - self.height) / 2;
+                source: @image-url("../icons/chevron-down.svg");
+                width: 14px;
+                height: 14px;
+            }
+            head := TouchArea { mouse-cursor: pointer; clicked => { root.open = !root.open; } }
+        }
+    }
+    if root.open: Flickable {
+        height: min(10, root.families.length + 1) * (root.item-height + 2px);
+        content-height: list.preferred-height;
+        list := VerticalLayout {
+            width: root.width;
+            spacing: 2px;
+            ThemeOption {
+                c: root.c;
+                group: root.group;
+                label: @tr("Default");
+                on: root.value == "";
+                picked => { root.open = false; root.picked(""); }
+            }
+            for f in root.families: ThemeOption {
+                c: root.c;
+                group: root.group;
+                label: f;
+                on: f == root.value;
+                picked => { root.open = false; root.picked(f); }
+            }
+        }
+    }
+}

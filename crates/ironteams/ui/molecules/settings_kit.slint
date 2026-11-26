@@ -22,7 +22,7 @@ import { SettingsStore, SOption, STheme } from "../stores/settings_store.slint";
 import { CheckBox, SwitchTrack } from "../atoms/check.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
-import { SChoice, ThemeSelect } from "settings_widgets.slint";
+import { FontSelect, SChoice, ThemeSelect } from "settings_widgets.slint";
 
 export global SettingsMetrics {
     // The page column: the padding around it and the widest it grows.
@@ -340,6 +340,21 @@ export component ThemeChoiceRow inherits SettingsRow {
         themes: root.themes;
         value: root.value;
         with-same: root.with-same;
+        picked(v) => { root.picked(v); }
+    }
+}
+
+// A font family picked from a drop-down, "Default" (value "") first.
+export component FontChoiceRow inherits SettingsRow {
+    in property <[string]> families;
+    in property <string> value;
+    callback picked(string);
+    stacked: true;
+    FontSelect {
+        c: root.c;
+        group: root.label;
+        families: root.families;
+        value: root.value;
         picked(v) => { root.picked(v); }
     }
 }

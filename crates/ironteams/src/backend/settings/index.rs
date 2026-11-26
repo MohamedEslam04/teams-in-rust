@@ -169,6 +169,12 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "reaction emoji like hide message",
     ),
     ("appearance", "Font size", "text zoom scale bigger smaller"),
+    (
+        "appearance",
+        "Code font",
+        "monospace typeface family code block",
+    ),
+    ("appearance", "Interface font", "typeface family text"),
     ("appearance", "Skin tone", "emoji"),
     (
         "appearance",

@@ -140,6 +140,8 @@ export component AppWindow inherits Window {
     min-height: 560px;
     background: Theme.main;
     default-font-size: 14px * Theme.font-scale;
+    // The interface font (Settings > Appearance > Text); "" keeps the default chain.
+    default-font-family: Theme.font-ui;
     // "Auto collapse app bar" needs the window's width (AppsStore.narrow-width is the
     // `single-pane` breakpoint below).
     init => { AppsStore.window-width = root.width; }

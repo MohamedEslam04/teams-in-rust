@@ -170,6 +170,11 @@ export global Theme {
     out property <color> shimmer: content.shimmer;
     out property <bool> dark: content.dark;
 
+    // Fonts (Settings > Appearance > Text): the code font of code blocks and other monospace
+    // text, and the interface font of the windows ("" keeps the default chain).
+    in-out property <string> font-code: "monospace";
+    in-out property <string> font-ui: "";
+
     in-out property <length> radius: 6px;
     // Set at runtime from the appearance and accessibility settings (backend/settings.rs).
     in-out property <float> font-scale: 1.0;

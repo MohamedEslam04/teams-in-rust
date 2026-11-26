@@ -258,6 +258,127 @@ fn a_stale_id_falls_back_and_is_logged_once() {
     assert_eq!(logged_fallback_count(), 1, "logged once");
 }
 
+/// A family Slint can draw on this machine: a common one, else any that is not an emoji font.
+/// `None` on a machine without fonts.
+fn an_installed_family() -> Option<String> {
+    let mut c = slint::fontique_012::shared_collection();
+    let known = [
+        "DejaVu Sans Mono",
+        "Liberation Mono",
+        "Consolas",
+        "Menlo",
+        "Courier New",
+    ]
+    .into_iter()
+    .find(|f| c.family_id(f).is_some())
+    .map(str::to_string);
+    known.or_else(|| {
+        c.family_names()
+            .find(|n| !n.to_lowercase().contains("emoji"))
+            .map(str::to_string)
+    })
+}
+
+#[test]
+fn the_code_font_reaches_the_theme() {
+    let ui = window(Home::new("font-code"));
+    let app = &ui.app;
+    let Some(family) = an_installed_family() else {
+        eprintln!("no font installed, nothing to pick");
+        return;
+    };
+    appearance_page(app);
+    let t = app.global::<Theme>();
+    assert_eq!(t.get_font_code(), "monospace", "the default");
+    // The list is filled by a worker; here it is set by hand.
+    store(app).set_font_families(ModelRc::new(VecModel::from(vec![SharedString::from(
+        family.as_str(),
+    )])));
+    press(app, "Code font");
+    press(app, &format!("Code font: {family}"));
+    assert_eq!(t.get_font_code(), family.as_str());
+    assert_eq!(store(app).get_font_code(), family.as_str());
+    assert_eq!(t.get_font_ui(), "", "the interface font is not changed");
+    assert_eq!(
+        Local::load(&ui.home.paths().config_dir)
+            .themes
+            .font_code
+            .as_deref(),
+        Some(family.as_str())
+    );
+    press(app, "Code font");
+    press(app, "Code font: Default");
+    assert_eq!(t.get_font_code(), "monospace");
+    assert_eq!(
+        Local::load(&ui.home.paths().config_dir).themes.font_code,
+        None
+    );
+}
+
+#[test]
+fn a_missing_family_falls_back_to_monospace() {
+    let home = Home::new("font-missing");
+    let dir = home.paths().config_dir;
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(appearance::themes::FILE_NAME),
+        r#"{"font_code": "No Such Font 4711", "font_ui": "No Such Font 4711"}"#,
+    )
+    .unwrap();
+    let ui = window(home);
+    let t = ui.app.global::<Theme>();
+    assert_eq!(t.get_font_code(), "monospace");
+    assert_eq!(t.get_font_ui(), "", "the default chain");
+    assert_eq!(
+        store(&ui.app).get_font_code(),
+        "No Such Font 4711",
+        "the saved choice is kept"
+    );
+}
+
+#[test]
+fn the_interface_font_applies_at_once() {
+    let ui = window(Home::new("font-ui"));
+    let app = &ui.app;
+    let Some(family) = an_installed_family() else {
+        eprintln!("no font installed, nothing to pick");
+        return;
+    };
+    let t = app.global::<Theme>();
+    assert_eq!(t.get_font_ui(), "", "the default chain");
+    store(app).invoke_command("font-ui".into(), family.as_str().into());
+    assert_eq!(t.get_font_ui(), family.as_str(), "no restart needed");
+    assert_eq!(
+        Local::load(&ui.home.paths().config_dir)
+            .themes
+            .font_ui
+            .as_deref(),
+        Some(family.as_str())
+    );
+}
+
+#[test]
+fn reset_theme_clears_the_fonts() {
+    let ui = window(Home::new("font-reset"));
+    let app = &ui.app;
+    let Some(family) = an_installed_family() else {
+        eprintln!("no font installed, nothing to pick");
+        return;
+    };
+    let st = store(app);
+    st.invoke_command("font-code".into(), family.as_str().into());
+    st.invoke_command("font-ui".into(), family.as_str().into());
+    let t = app.global::<Theme>();
+    assert_eq!(t.get_font_ui(), family.as_str());
+    st.invoke_command("reset-theme".into(), "".into());
+    assert_eq!(t.get_font_code(), "monospace");
+    assert_eq!(t.get_font_ui(), "");
+    assert_eq!(st.get_font_code(), "");
+    assert_eq!(st.get_font_ui(), "");
+    let back = Local::load(&ui.home.paths().config_dir).themes;
+    assert_eq!((back.font_code, back.font_ui), (None, None));
+}
+
 // --- PR 4: the custom theme editor, sharing and the chat chip ---
 
 const LINE: &str =
