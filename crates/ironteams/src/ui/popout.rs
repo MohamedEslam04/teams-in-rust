@@ -22,7 +22,7 @@ thread_local! {
 
 /// Settings applied a new look: the popout, open or opened later, follows it.
 pub(crate) fn popout_apply_look(lk: &Look) {
-    LOOK.with(|l| *l.borrow_mut() = Some(*lk));
+    LOOK.with(|l| *l.borrow_mut() = Some(lk.clone()));
     POPOUT.with(|p| {
         if let Some(cw) = p.borrow().as_ref() {
             settings::apply_look(&cw.global::<Theme>(), lk);

@@ -128,7 +128,7 @@ import { NoticeBanner } from "organisms/notice_banner.slint";
 import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
 export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, RailFixed, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
-export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
+export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind } from "pages/settings.slint";
 export { TopBarStore, TopRow } from "organisms/topbar.slint";
 
 export component AppWindow inherits Window {
@@ -560,6 +560,7 @@ export component AppWindow inherits Window {
         if cmd == "previous-unread-wrap" { root.leave-settings(); root.catch-up(-2); root.palette-done(); }
         if cmd == "settings" { SettingsStore.show(arg); }
         if cmd == "toggle-theme" { SettingsStore.command("theme", SettingsStore.theme-shown == "dark" ? "light" : "dark"); root.palette-done(); }
+        if cmd == "reset-theme" { SettingsStore.command("reset-theme", ""); root.palette-done(); }
         if cmd == "shortcuts" { root.shortcuts-open = true; root.palette-done(); }
         if cmd == "report-problem" { SettingsStore.command("report-problem", ""); root.palette-done(); }
         if cmd == "status" { SettingsStore.command("status", arg); root.palette-done(); }

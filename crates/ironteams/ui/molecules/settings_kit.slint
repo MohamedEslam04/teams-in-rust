@@ -18,11 +18,11 @@
 import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
-import { SettingsStore, SOption } from "../stores/settings_store.slint";
+import { SettingsStore, SOption, STheme } from "../stores/settings_store.slint";
 import { CheckBox, SwitchTrack } from "../atoms/check.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
-import { SChoice } from "settings_widgets.slint";
+import { SChoice, ThemeSelect } from "settings_widgets.slint";
 
 export global SettingsMetrics {
     // The page column: the padding around it and the widest it grows.
@@ -321,6 +321,25 @@ export component SettingsChoiceRow inherits SettingsRow {
         options: root.options;
         value: root.value;
         enabled: root.enabled;
+        picked(v) => { root.picked(v); }
+    }
+}
+
+// A theme picked from a drop-down (the light and dark slots of the switch; with `with-same`,
+// "Same as app" first). The drop-down is the combo box `<label>`, its entries the radio buttons
+// "<label>: <theme name>".
+export component ThemeChoiceRow inherits SettingsRow {
+    in property <[STheme]> themes;
+    in property <string> value;
+    in property <bool> with-same: false;
+    callback picked(string);
+    stacked: true;
+    ThemeSelect {
+        c: root.c;
+        group: root.label;
+        themes: root.themes;
+        value: root.value;
+        with-same: root.with-same;
         picked(v) => { root.picked(v); }
     }
 }

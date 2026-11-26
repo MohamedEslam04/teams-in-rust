@@ -588,6 +588,19 @@ fn main() -> anyhow::Result<()> {
     {
         relaunch::apply_args(&paths, &args);
     }
+    // `--reset-theme`: the default theme choice, no theme for the active account, the call theme
+    // as the app's and no fonts, before any window reads them (custom themes stay). After the
+    // relaunch arguments, so the account is the one this start opens.
+    if args.iter().any(|a| a == "--reset-theme")
+        && compat::var_os("IRONTEAMS_DEMO").is_none()
+        && let Ok(paths) = session::Paths::new()
+    {
+        let account = paths.load_config().ok().map(|c| c.account);
+        match backend::settings::reset_theme_files(&paths.config_dir, account.as_deref()) {
+            Ok(()) => tracing::info!("theme reset (--reset-theme)"),
+            Err(e) => tracing::warn!(error = %e, "could not reset the theme"),
+        }
+    }
     // Before anything talks to the desktop portal: it registers the app id only for an installed
     // desktop file, and nothing installs one for a cargo run or the AppImage.
     #[cfg(target_os = "linux")]

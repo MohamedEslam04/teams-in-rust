@@ -14,8 +14,8 @@ use super::Engine;
 use super::call_feedback;
 use app_store::{DevicePermission, Grants};
 use appearance::{
-    AccessibilityPrefs, AppearancePrefs, AutoSwitch, DateFormat, GeneralPrefs, PortalSettings,
-    ResolvedTheme, Rgb, TimeFormat,
+    AccessibilityPrefs, AppearancePrefs, AutoSwitch, DateFormat, GeneralPrefs, PortalSettings, Rgb,
+    TimeFormat,
 };
 use devices::DevicePrefs;
 use serde::{Deserialize, Serialize};

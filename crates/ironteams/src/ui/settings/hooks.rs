@@ -84,7 +84,23 @@ pub struct SettingsEnv {
     pub apply_globals: bool,
     /// What the crash-loop guard found at this start.
     pub crash_loop: updater::guard::Verdict,
+    /// The local time in minutes after midnight, for a theme schedule. Tests set the clock.
+    pub now_min: Rc<dyn Fn() -> u16>,
     pub hooks: Hooks,
+}
+
+/// The local time in minutes after midnight: in the time zone of Settings > General when one is
+/// set, else the computer's.
+fn local_minute() -> u16 {
+    use chrono::Timelike;
+    let (h, m) = match appearance::formats::local_now() {
+        Some(t) => (t.hour(), t.minute()),
+        None => {
+            let t = chrono::Local::now();
+            (t.hour(), t.minute())
+        }
+    };
+    (h * 60 + m) as u16
 }
 
 impl SettingsEnv {
@@ -99,6 +115,7 @@ impl SettingsEnv {
             background: true,
             apply_globals: true,
             crash_loop: updater::guard::verdict(),
+            now_min: Rc::new(local_minute),
             hooks: Hooks {
                 autostart: Autostart::desktop(None),
                 test_notification: Box::new(|| {

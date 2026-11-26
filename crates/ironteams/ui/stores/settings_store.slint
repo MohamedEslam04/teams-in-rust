@@ -18,6 +18,9 @@ export struct SDevice { id: string, name: string }
 export struct SAppPerm { app: string, name: string, perms: [SToggle] }
 // A "Find in Settings" hit: the setting's label and the page that holds it.
 export struct SFind { page: string, page-title: string, label: string }
+// A theme of the gallery: its id (`builtin:dusk`, `custom:<uuid>`), name, kind (light | dark) and
+// the colours its tile draws. `low-contrast`: the contrast check could not pass every pair.
+export struct STheme { id: string, name: string, kind: string, nav: color, content: color, accent: color, bubble: color, custom: bool, low-contrast: bool }
 
 export global SettingsStore {
     // --- the page ---
@@ -68,8 +71,23 @@ export global SettingsStore {
     in-out property <bool> note-show-when-messaged: false;
 
     // --- Appearance (9.3) ---
-    in-out property <string> theme: "system"; // light | dark | system
     in-out property <string> theme-shown;     // light | dark: what is drawn now
+    // The theme gallery (built-in, then custom) and the same themes for the light and dark
+    // slots, that kind first.
+    in-out property <[STheme]> themes;
+    in-out property <[STheme]> themes-light-first;
+    in-out property <[STheme]> themes-dark-first;
+    // Switch: one (theme-id) | system (follow the desktop) | schedule (light and dark from times).
+    in-out property <string> theme-mode: "system";
+    in-out property <string> theme-id;
+    in-out property <string> theme-light: "builtin:light";
+    in-out property <string> theme-dark: "builtin:dark";
+    in-out property <string> theme-light-from: "08:00";
+    in-out property <string> theme-dark-from: "19:00";
+    // The theme drawn now, and whether the accent setting applies to it (IronTeams Dark or Light).
+    in-out property <string> theme-active: "builtin:dark";
+    in-out property <string> theme-active-name: "IronTeams Dark";
+    in-out property <bool> accent-enabled: true;
     in-out property <string> accent: "";      // #rrggbb, "" follows the desktop
     in-out property <string> accent-shown;
     in-out property <string> density: "comfy"; // comfy | compact
@@ -246,6 +264,20 @@ export global SettingsStore {
     // (name, argument). See `ui/settings.rs` for the list.
     callback command(string, string);
 
+    // The name a theme shows: the built-in names are translated, a custom theme keeps its own.
+    pure public function theme-name(id: string, name: string) -> string {
+        return id == "builtin:dark" ? @tr("IronTeams Dark")
+            : id == "builtin:light" ? @tr("IronTeams Light")
+            : id == "builtin:dusk" ? @tr("Dusk")
+            : id == "builtin:harbor" ? @tr("Harbor")
+            : id == "builtin:moss" ? @tr("Moss")
+            : id == "builtin:sandstone" ? @tr("Sandstone")
+            : id == "builtin:ember" ? @tr("Ember")
+            : id == "builtin:glacier" ? @tr("Glacier")
+            : id == "builtin:graphite" ? @tr("Graphite")
+            : id == "builtin:orchard" ? @tr("Orchard")
+            : name;
+    }
     pure public function j2(a: string, b: string) -> string { return a + "\u{1f}" + b; }
     pure public function j3(a: string, b: string, c: string) -> string { return a + "\u{1f}" + b + "\u{1f}" + c; }
 

@@ -5,9 +5,10 @@
 //! By hand:
 //! `IRONTEAMS_SHOTS_DIR=/tmp/shots cargo test -p ironteams --bin ironteams -- --ignored theme_screens_to_png`.
 //!
-//! Files: `<theme>-<screen>.png` for the chat view with the nav (`chat`), an open message menu
-//! (`message-menu`), the call screen (`call`), a calendar day (`calendar-day`) and one dialog
-//! (`dialog`), each at 1280x800. The Settings pages are `settings_shots`.
+//! Files: `<theme>-<screen>.png` (`dark`, `light`, and `harbor` for one derived theme) for the
+//! chat view with the nav (`chat`), an open message menu (`message-menu`), the call screen
+//! (`call`), a calendar day (`calendar-day`) and one dialog (`dialog`), each at 1280x800. The
+//! Settings pages are `settings_shots`.
 //!
 //! The pictures must not depend on the day, the machine or the network: nothing here goes through
 //! the engine (its chat list and message times follow the clock), the models are filled by hand
@@ -268,10 +269,16 @@ fn theme_screens_to_png() {
         shoot(&window, W, H, false, &dir.join(format!("{name}.png")));
     };
 
-    for theme in ["dark", "light"] {
+    // IronTeams Dark and Light, then Harbor (a built-in theme with a dark nav and a light content
+    // area; its pictures are new, so the comparison has nothing to hold them against).
+    for (theme, cmd, arg) in [
+        ("dark", "theme", "dark"),
+        ("light", "theme", "light"),
+        ("harbor", "theme-pick", "builtin:harbor"),
+    ] {
         // Applying the look also sets the colour mentions are drawn in, so the messages below
         // are made after it.
-        settings.invoke_command("theme".into(), theme.into());
+        settings.invoke_command(cmd.into(), arg.into());
         assert_eq!(app.global::<Theme>().get_dark(), theme == "dark");
 
         open_chat(&app);

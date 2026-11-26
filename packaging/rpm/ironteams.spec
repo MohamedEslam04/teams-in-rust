@@ -121,7 +121,7 @@ install -Dm644 packaging/io.github.mohamedeslam04.ironteams.metainfo.xml %{build
 
 %changelog
 * Thu Nov 26 2026 IronTeams contributors - 0.1.12-1
-- 0.1.12: next unread chat shortcut, Later inbox, split view, message styles, shortcut and app bar customisation, theme engine groundwork, fixes
+- 0.1.12: next unread chat shortcut, Later inbox, split view, message styles, shortcut and app bar customisation, theme gallery with light and dark schedule, fixes
 
 * Thu Nov 26 2026 IronTeams contributors - 0.1.11-1
 - 0.1.11
