@@ -928,9 +928,6 @@ msgstr "حتى غد الساعة 8:00"
 msgid "For 1 week"
 msgstr "لمدة أسبوع"
 
-msgid "Until I turn it off"
-msgstr "حتى أوقف الكتم"
-
 msgid "Manage notifications"
 msgstr "إدارة الإشعارات"
 
