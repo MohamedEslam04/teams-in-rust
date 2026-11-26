@@ -345,10 +345,13 @@ impl Client {
             presence,
             graph,
             sky,
-        } = fetch_tokens(
+        } = Box::pin(fetch_tokens(
             |resource| auth::refresh(http, &self.tenant, &rt, resource),
             |spaces_token| async move { auth::skypetoken(http, &spaces_token).await },
-        )
+        ))
+        // Boxed: five requests in flight at once make a large future, and this one is awaited
+        // from nearly every request the app sends (`ensure_fresh`); inline it would grow every
+        // caller's stack frame (the engine's test threads overflowed their stacks).
         .await?;
         // The newest refresh token: CSA's, else Spaces', else the one used.
         let rt = csa
