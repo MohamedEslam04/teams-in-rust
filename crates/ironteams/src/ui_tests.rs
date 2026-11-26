@@ -385,6 +385,38 @@ fn hover_bar_order_for_own_message() {
 }
 
 #[test]
+fn the_hover_bar_shows_the_chosen_quick_reactions() {
+    let app = app_with_messages(vec![msg("m1", "theirs", false)]);
+    let log = record_actions(&app);
+    let chosen = ["fire", "like", "heart", "laugh", "surprised", "sad"];
+    let items: Vec<crate::EmojiItem> = chosen
+        .iter()
+        .map(|k| crate::EmojiItem {
+            key: (*k).into(),
+            emoji: "x".into(),
+            name: (*k).into(),
+        })
+        .collect();
+    app.global::<crate::SettingsStore>()
+        .set_quick_reactions(slint::ModelRc::new(slint::VecModel::from(items)));
+    let row = &rows(&app)[0];
+    hover(&app, row);
+    let reacts = quick_reactions(&app);
+    assert_eq!(reacts.len(), 6, "one cell for each chosen reaction");
+    for r in &reacts {
+        click(r);
+    }
+    let want: Vec<String> = chosen.iter().map(|k| format!("react m1 {k}")).collect();
+    assert_eq!(*log.borrow(), want);
+    // The bar still holds its other buttons.
+    let labels: Vec<_> = bar_buttons(&app, row).iter().map(label).collect();
+    assert_eq!(
+        labels,
+        ["More reactions", "Reply with quote", "More actions"]
+    );
+}
+
+#[test]
 fn others_messages_have_no_edit_in_the_bar() {
     let app = app_with_messages(vec![msg("m1", "theirs", false)]);
     let row = &rows(&app)[0];

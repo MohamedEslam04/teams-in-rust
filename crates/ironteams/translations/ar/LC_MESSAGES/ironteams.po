@@ -501,6 +501,30 @@ msgstr "الكتابة"
 msgid "Scrolling"
 msgstr "التمرير"
 
+msgid "Reactions"
+msgstr "التفاعلات"
+
+msgid "Quick reactions"
+msgstr "التفاعلات السريعة"
+
+msgid "The reactions shown when you point at a message. Choose one to replace it with any reaction Teams offers; an empty slot adds one."
+msgstr "التفاعلات التي تظهر عند تمرير المؤشر فوق رسالة. اختر تفاعلًا لاستبداله بأي تفاعل يقدمه Teams، والخانة الفارغة تضيف تفاعلًا."
+
+msgid "Quick reaction {}: {}"
+msgstr "التفاعل السريع {}: {}"
+
+msgid "Quick reaction {}: empty"
+msgstr "التفاعل السريع {}: فارغ"
+
+msgid "Reset quick reactions"
+msgstr "إعادة ضبط التفاعلات السريعة"
+
+msgid "Back to Like, Heart, Laugh and Surprised."
+msgstr "العودة إلى إعجاب وقلب وضحك ودهشة."
+
+msgid "Reset to default"
+msgstr "إعادة الضبط إلى الافتراضي"
+
 msgid "Mouse wheel speed"
 msgstr "سرعة عجلة الماوس"
 

@@ -80,6 +80,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ),
     (
         "chats",
+        "Quick reactions",
+        "reaction react emoji hover like heart laugh favourite reset",
+    ),
+    (
+        "chats",
         "Mouse wheel speed",
         "scroll scrolling wheel mouse fast slow faster speed",
     ),

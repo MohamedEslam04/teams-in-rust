@@ -7,6 +7,7 @@
 import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint";
+import { EmojiItem } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SRadio, SRadioList } from "../molecules/settings_widgets.slint";
 import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow } from "../molecules/settings_kit.slint";
@@ -202,6 +203,8 @@ export component ChatsPage inherits SettingsSections {
     // The composer's own setting (it is also in the composer's "more" menu).
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
+    // A quick reaction slot was chosen: its index, and the window position under it.
+    callback pick-quick-reaction(int, length, length);
     // The chat list's display options, also in the list's "... > Customize view" menu (the same
     // `ListStore` state and commands).
     SettingsSection {
@@ -248,6 +251,49 @@ export component ChatsPage inherits SettingsSections {
             description: @tr("Off: Enter starts a new line and Ctrl+Enter sends.");
             checked: root.enter-sends;
             toggled(on) => { root.set-enter-sends(on); }
+        }
+    }
+    SettingsSection {
+        title: @tr("Reactions");
+        SettingsRow {
+            label: @tr("Quick reactions");
+            description: @tr("The reactions shown when you point at a message. Choose one to replace it with any reaction Teams offers; an empty slot adds one.");
+            stacked: true;
+            HorizontalLayout {
+                spacing: Space.xs;
+                alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                for i in 6: Rectangle {
+                    property <bool> filled: i < SettingsStore.quick-reactions.length;
+                    property <EmojiItem> item: SettingsStore.quick-reactions[i];
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: slot.has-hover ? Theme.accent : Theme.border;
+                    background: slot.has-hover ? Theme.surface-hover : transparent;
+                    accessible-role: button;
+                    accessible-label: self.filled ? @tr("Quick reaction {}: {}", i + 1, self.item.name) : @tr("Quick reaction {}: empty", i + 1);
+                    accessible-action-default => { root.pick-quick-reaction(i, self.absolute-position.x, self.absolute-position.y + self.height + 4px); }
+                    Text {
+                        text: parent.filled ? parent.item.emoji : "+";
+                        color: parent.filled ? Theme.fg : Theme.fg-subtle;
+                        font-size: parent.filled ? 18px * Theme.font-scale : Theme.font-heading;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                    slot := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.pick-quick-reaction(i, parent.absolute-position.x, parent.absolute-position.y + parent.height + 4px); }
+                    }
+                }
+            }
+        }
+        SettingsButtonRow {
+            label: @tr("Reset quick reactions");
+            description: @tr("Back to Like, Heart, Laugh and Surprised.");
+            button-label: @tr("Reset to default");
+            clicked => { SettingsStore.command("quick-reaction-reset", ""); }
         }
     }
     SettingsSection {

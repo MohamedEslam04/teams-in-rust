@@ -25,6 +25,8 @@ export component SettingsPage inherits Rectangle {
     // Chats › "Press Enter to send": the composer's own setting, kept by the window.
     in property <bool> enter-sends: true;
     callback set-enter-sends(bool);
+    // Chats > Quick reactions: the slot, and where under it the picker opens.
+    callback pick-quick-reaction(int, length, length);
     // A Find result opened a page: the row of that setting reports its place (settings_widgets),
     // and the page scrolls it into view.
     property <length> want-y: SettingsStore.target-y;
@@ -171,6 +173,7 @@ export component SettingsPage inherits Rectangle {
                             if SettingsStore.query == "" && SettingsStore.page == "chats": ChatsPage {
                                 enter-sends: root.enter-sends;
                                 set-enter-sends(on) => { root.set-enter-sends(on); }
+                                pick-quick-reaction(slot, x, y) => { root.pick-quick-reaction(slot, x, y); }
                             }
                             if SettingsStore.query == "" && SettingsStore.page == "accounts": AccountsPage { }
                             if SettingsStore.query == "" && SettingsStore.page == "privacy": PrivacyPage { }

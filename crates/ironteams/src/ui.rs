@@ -479,8 +479,16 @@ fn recipient(r: RecipientData) -> Recipient {
 
 /// The "More reactions" rows for `query`, in the saved skin tone `tone`.
 fn picker_model(query: &str, tone: i32) -> ModelRc<EmojiItem> {
+    emoji_model(reactions::picker_items(
+        query,
+        u8::try_from(tone).unwrap_or(0),
+    ))
+}
+
+/// Reaction cells as the UI's `EmojiItem` rows.
+fn emoji_model(items: Vec<reactions::PickerItem>) -> ModelRc<EmojiItem> {
     model(
-        reactions::picker_items(query, u8::try_from(tone).unwrap_or(0))
+        items
             .into_iter()
             .map(|i| EmojiItem {
                 key: i.key.into(),

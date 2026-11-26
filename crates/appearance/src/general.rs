@@ -228,6 +228,61 @@ fn de_wheel_speed<'de, D: Deserializer<'de>>(d: D) -> Result<f32, D::Error> {
         .map_or(WHEEL_SPEED_DEFAULT, |f| clamp_wheel_speed(f as f32)))
 }
 
+/// Most reactions the hover bar can show.
+pub const QUICK_REACTIONS_MAX: usize = 6;
+
+/// The hover bar's reactions until the user picks their own: Teams' like, heart, laugh and
+/// surprised.
+pub fn default_quick_reactions() -> Vec<String> {
+    ["like", "heart", "laugh", "surprised"]
+        .map(String::from)
+        .to_vec()
+}
+
+/// Reaction keys as the bar keeps them: trimmed, none empty or twice, at most
+/// [`QUICK_REACTIONS_MAX`].
+pub fn clean_quick_reactions(keys: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for k in keys {
+        let k = k.trim().to_string();
+        if !k.is_empty() && !out.contains(&k) {
+            out.push(k);
+        }
+    }
+    out.truncate(QUICK_REACTIONS_MAX);
+    out
+}
+
+/// `keys` with `key` in `slot`. A key the bar already has in another slot swaps places with the
+/// one it replaces; a slot past the end appends (while there is room); a slot past the last one
+/// changes nothing.
+pub fn with_quick_reaction(keys: &[String], slot: usize, key: &str) -> Vec<String> {
+    let mut out = keys.to_vec();
+    let key = key.trim().to_string();
+    if slot >= QUICK_REACTIONS_MAX || key.is_empty() {
+        return out;
+    }
+    if slot >= out.len() {
+        out.retain(|k| *k != key);
+        out.push(key);
+    } else {
+        if let Some(other) = out.iter().position(|k| *k == key) {
+            out.swap(other, slot);
+        }
+        out[slot] = key;
+    }
+    clean_quick_reactions(out)
+}
+
+fn de_quick_reactions<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(Vec::<String>::deserialize(v)
+        .map(clean_quick_reactions)
+        .ok()
+        .filter(|k| !k.is_empty())
+        .unwrap_or_else(default_quick_reactions))
+}
+
 fn lenient_days<'de, D: Deserializer<'de>>(d: D) -> Result<[bool; 7], D::Error> {
     let v = serde_json::Value::deserialize(d)?;
     Ok(<[bool; 7]>::deserialize(v).unwrap_or([true; 7]))
@@ -340,6 +395,10 @@ pub struct GeneralPrefs {
     /// ([`WHEEL_SPEED_MIN`] to [`WHEEL_SPEED_MAX`]).
     #[serde(deserialize_with = "de_wheel_speed")]
     pub wheel_speed: f32,
+    /// Reaction keys of the hover bar on a message, in order: one to [`QUICK_REACTIONS_MAX`].
+    /// Missing or unreadable gives [`default_quick_reactions`].
+    #[serde(deserialize_with = "de_quick_reactions")]
+    pub quick_reactions: Vec<String>,
 }
 
 impl Default for GeneralPrefs {
@@ -366,6 +425,7 @@ impl Default for GeneralPrefs {
             keyword_alerts: Vec::new(),
             link_previews: true,
             wheel_speed: WHEEL_SPEED_DEFAULT,
+            quick_reactions: default_quick_reactions(),
         }
     }
 }
@@ -467,6 +527,84 @@ mod tests {
         assert_eq!(speed(r#"{"wheel_speed":"fast"}"#), WHEEL_SPEED_DEFAULT);
         assert_eq!(clamp_wheel_speed(f32::NAN), WHEEL_SPEED_DEFAULT);
         assert_eq!(clamp_wheel_speed(-3.0), WHEEL_SPEED_MIN);
+    }
+
+    #[test]
+    fn quick_reactions_default_to_teams_four_and_old_files_still_load() {
+        let four = ["like", "heart", "laugh", "surprised"];
+        assert_eq!(GeneralPrefs::default().quick_reactions, four);
+        let old = r#"{"language":"ar"}"#;
+        assert_eq!(
+            serde_json::from_str::<GeneralPrefs>(old)
+                .unwrap()
+                .quick_reactions,
+            four,
+            "a file written before the setting existed"
+        );
+    }
+
+    #[test]
+    fn quick_reactions_load_leniently() {
+        let keys = |json: &str| {
+            serde_json::from_str::<GeneralPrefs>(json)
+                .unwrap()
+                .quick_reactions
+        };
+        assert_eq!(
+            keys(r#"{"quick_reactions":["fire","like"]}"#),
+            ["fire", "like"]
+        );
+        // Blank and repeated keys go, and no more than six stay.
+        assert_eq!(
+            keys(r#"{"quick_reactions":[" fire ","","fire","a","b","c","d","e","f"]}"#),
+            ["fire", "a", "b", "c", "d", "e"]
+        );
+        // Anything unreadable, or nothing left, is today's set.
+        let four = default_quick_reactions();
+        assert_eq!(keys(r#"{"quick_reactions":"like"}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":[1,2]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":["like",3]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":[]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":["",""]}"#), four);
+        assert_eq!(keys(r#"{"quick_reactions":null}"#), four);
+        // A bad value only resets its own field.
+        let p: GeneralPrefs =
+            serde_json::from_str(r#"{"quick_reactions":7,"auto_start":true}"#).unwrap();
+        assert!(p.auto_start);
+    }
+
+    #[test]
+    fn a_quick_reaction_replaces_its_slot_swaps_a_repeat_and_appends_in_an_empty_slot() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let four = default_quick_reactions();
+        assert_eq!(
+            with_quick_reaction(&four, 1, "fire"),
+            ["like", "fire", "laugh", "surprised"]
+        );
+        // Already in slot 3: the two trade places, nothing is lost.
+        assert_eq!(
+            with_quick_reaction(&four, 0, "surprised"),
+            ["surprised", "heart", "laugh", "like"]
+        );
+        assert_eq!(with_quick_reaction(&four, 2, "laugh"), four);
+        // Slots 4 and 5 are empty: they add.
+        assert_eq!(
+            with_quick_reaction(&four, 4, "fire"),
+            ["like", "heart", "laugh", "surprised", "fire"]
+        );
+        assert_eq!(
+            with_quick_reaction(&v(&["a"]), 5, "b"),
+            ["a", "b"],
+            "the next free slot, never a gap"
+        );
+        assert_eq!(with_quick_reaction(&v(&["a", "b"]), 4, "a"), ["b", "a"]);
+        // Out of range or blank: unchanged.
+        assert_eq!(with_quick_reaction(&four, 6, "fire"), four);
+        assert_eq!(with_quick_reaction(&four, 0, "  "), four);
+        let full = v(&["a", "b", "c", "d", "e", "f"]);
+        let replaced = with_quick_reaction(&full, 5, "z");
+        assert_eq!(replaced.len(), QUICK_REACTIONS_MAX);
+        assert_eq!(replaced[5], "z");
     }
 
     #[test]
@@ -703,6 +841,7 @@ mod tests {
             keyword_alerts: vec!["deploy".into(), "نشر".into()],
             link_previews: false,
             wheel_speed: 4.0,
+            quick_reactions: vec!["fire".into(), "like".into()],
         };
         p.save_to(&path).unwrap();
         assert_eq!(GeneralPrefs::load_from(&path), p);

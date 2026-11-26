@@ -1120,7 +1120,8 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && root.picker-open: ReactionPickerLayer {
-        z: 46;
+        // Above Settings (60) when it is choosing a quick reaction.
+        z: root.picker-msg-id == "quick-slot" ? 65 : 46;
         width: root.width;
         height: root.height;
         picker-items: root.picker-items;
@@ -1129,7 +1130,13 @@ export component AppWindow inherits Window {
         picker-search(a0) => { root.picker-search(a0); }
         picker-x: root.picker-x;
         picker-y: root.picker-y;
-        react(a0, a1) => { root.react(a0, a1); }
+        react(a0, a1) => {
+            if a0 == "quick-slot" {
+                SettingsStore.command("quick-reaction", "" + SettingsStore.quick-slot + ":" + a1);
+            } else {
+                root.react(a0, a1);
+            }
+        }
     }
 
     if root.login-state == "ready" && root.forward-open: ForwardLayer {
@@ -1318,6 +1325,15 @@ export component AppWindow inherits Window {
         height: root.height - 48px;
         enter-sends: root.enter-sends;
         set-enter-sends(on) => { root.enter-sends = on; root.set-enter-sends(on); }
+        // Chats > Quick reactions: the reaction picker chooses for a slot instead of reacting.
+        pick-quick-reaction(slot, x, y) => {
+            SettingsStore.quick-slot = slot;
+            root.picker-msg-id = "quick-slot";
+            root.picker-x = x;
+            root.picker-y = y;
+            root.picker-open = true;
+            root.picker-search("");
+        }
     }
     // The account switch's question, above Settings and the profile menu it can come from.
     if root.login-state == "ready" && SettingsStore.switch-confirm-open: SwitchConfirmLayer {
