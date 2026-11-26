@@ -2,8 +2,11 @@
 
 use std::sync::Arc;
 
-use calling::video::receive::{H264Depacketizer, KeyframeRequest, VideoPacket, carries_keyframe};
-use calling::video::{I420Frame, i420_to_rgb, step_for};
+use calling::video::receive::{
+    H264Depacketizer, KeyframeRequest, LossKeyframe, ReceiveStats, VideoPacket, carries_keyframe,
+};
+use calling::video::{I420Frame, box_downscale, halve, i420_to_rgb, step_for};
+use std::time::{Duration, Instant};
 
 fn frame(w: usize, h: usize, y: impl Fn(usize, usize) -> u8, u: u8, v: u8) -> I420Frame {
     let mut data = Vec::new();
@@ -52,6 +55,142 @@ fn a_step_keeps_every_nth_pixel() {
     let small = i420_to_rgb(&f, step_for(640, 320), true);
     assert_eq!((small.width, small.height), (320, 180));
     assert_eq!(small.data.len(), 320 * 180 * 3);
+}
+
+#[test]
+fn an_area_average_downscale_beats_point_sampling_and_2to1_equals_halve() {
+    // A 1px checkerboard: the finest possible detail, where point-sampling aliases hardest.
+    let checker = frame(
+        4,
+        4,
+        |c, r| if (c + r) % 2 == 0 { 16 } else { 235 },
+        128,
+        128,
+    );
+
+    // Point-sampling (what the old receive path did, via i420_to_rgb's step): every kept pixel is
+    // one phase of the pattern, so the result is a flat extreme — the aliasing we saw as blocks.
+    let pointed = i420_to_rgb(&checker, 2, false);
+    assert!(
+        pointed.data.iter().all(|&b| b == 0 || b == 255),
+        "point-sampling keeps only extremes"
+    );
+
+    // Area average: each 2x2 block averages to the mid-grey the pattern really is — no aliasing.
+    let boxed = box_downscale(&checker, 2); // max_width 2 of a 4-wide frame => ratio 2
+    let (y, _, _) = boxed.planes();
+    assert!(
+        y.iter().all(|&l| (120..=132).contains(&l)),
+        "box filter averages to mid-grey, not an extreme: {y:?}"
+    );
+
+    // A 2:1 ratio is exactly halve(), and the common "already small enough" case copies nothing.
+    assert_eq!(*boxed, halve(&checker));
+    let same = box_downscale(&checker, 100);
+    assert_eq!((same.width, same.height), (4, 4));
+    assert!(
+        matches!(same, std::borrow::Cow::Borrowed(_)),
+        "no copy when it fits"
+    );
+}
+
+#[test]
+fn a_box_downscale_averages_each_block_for_a_non_halve_ratio() {
+    // A 6x6 frame, left three columns black, right three white; a 3:1 downscale to 2x2.
+    let f = frame(6, 6, |c, _| if c < 3 { 16 } else { 235 }, 128, 128);
+    let out = box_downscale(&f, 2); // step_for(6, 2) == 3
+    assert_eq!((out.width, out.height), (2, 2));
+    // Each output pixel is a whole 3x3 block of one colour.
+    assert_eq!(out.planes().0, &[16, 235, 16, 235]);
+}
+
+#[test]
+fn a_dropped_access_unit_asks_for_a_keyframe_once_per_debounce() {
+    let mut k = LossKeyframe::new(Duration::from_millis(500));
+    let t = Instant::now();
+    assert!(!k.on_loss(0, t), "no drop yet, no ask");
+    assert!(k.on_loss(1, t), "the first drop asks for a keyframe");
+    assert!(
+        !k.on_loss(2, t + Duration::from_millis(100)),
+        "a second drop inside the debounce does not ask again"
+    );
+    assert!(
+        !k.on_loss(2, t + Duration::from_millis(700)),
+        "no new drop, no ask"
+    );
+    assert!(
+        k.on_loss(3, t + Duration::from_millis(700)),
+        "a new drop after the debounce asks again"
+    );
+}
+
+#[test]
+fn stats_summarise_an_interval_then_reset() {
+    let mut s = ReceiveStats::new(Duration::from_secs(5));
+    let t0 = Instant::now();
+    assert_eq!(s.sample(t0), None, "the first sample only starts the clock");
+
+    // 150 packets of 1000 bytes; the sequence skips two packets once (so two are lost).
+    let mut seq = 0u16;
+    for i in 0..150 {
+        if i == 100 {
+            seq = seq.wrapping_add(2); // 100 and 101 never arrive
+        }
+        s.packet(seq, 1000);
+        seq = seq.wrapping_add(1);
+        s.frame((1280, 720), (1280, 720), 1);
+    }
+    s.au_dropped(2);
+    s.queue_full();
+    s.pli();
+    s.pli();
+
+    let out = s
+        .sample(t0 + Duration::from_secs(5))
+        .expect("a sample once the interval has passed");
+    assert_eq!(
+        (out.decoded, out.drawn, out.step),
+        ((1280, 720), (1280, 720), 1)
+    );
+    assert_eq!(out.fps, 30, "150 frames over 5 s");
+    assert_eq!(out.kbit_s, 240, "150 KB over 5 s = 240 kbit/s");
+    assert_eq!(out.packets, 150);
+    assert_eq!(out.lost, 2, "two missing sequence numbers");
+    assert_eq!(out.au_dropped, 2);
+    assert_eq!(out.queue_full, 1);
+    assert_eq!(out.plis, 2);
+
+    // The interval counters reset; the running AU total does not re-count.
+    assert_eq!(
+        s.sample(t0 + Duration::from_secs(6)),
+        None,
+        "not 5 s in yet"
+    );
+    s.au_dropped(2);
+    let next = s
+        .sample(t0 + Duration::from_secs(11))
+        .expect("the next interval");
+    assert_eq!(
+        (next.packets, next.lost, next.au_dropped, next.plis),
+        (0, 0, 0, 0)
+    );
+}
+
+#[test]
+fn a_new_decoded_size_is_reported_as_a_change() {
+    let mut s = ReceiveStats::new(Duration::from_secs(5));
+    assert!(
+        !s.frame((640, 360), (640, 360), 1),
+        "the first size is a baseline"
+    );
+    assert!(
+        !s.frame((640, 360), (640, 360), 1),
+        "the same size is no change"
+    );
+    assert!(
+        s.frame((1280, 720), (1280, 720), 1),
+        "a different size is a change"
+    );
 }
 
 fn packet(sequence: u16, timestamp: u32, marker: bool, payload: &[u8]) -> VideoPacket {
@@ -274,7 +413,7 @@ mod decoding {
     fn decode(units: &[Vec<u8>], lose: impl Fn(usize, usize) -> bool) -> (bool, bool) {
         let ask = KeyframeRequest::default();
         let (tx, rx) = mpsc::channel(4096);
-        let mut frames = spawn_decoder(rx, 320);
+        let mut frames = spawn_decoder(rx, None, 320);
         let mut sequence = 0u16;
         for (i, unit) in units.iter().enumerate() {
             let payloads = packetize(unit);

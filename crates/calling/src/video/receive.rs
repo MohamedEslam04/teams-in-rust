@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 /// A remote video track's want of a keyframe: its decoder asks (a picture it cannot decode), the
 /// track's reader sends the sender a PLI. Shared by every packet of the track.
@@ -193,14 +194,198 @@ impl H264Depacketizer {
     }
 }
 
+/// Asks the sender for a keyframe (an RTCP PLI) when the depacketizer drops an access unit, so
+/// the pictures after a lost one — which reference it and come out concealed, not as a decode
+/// error — are followed by a fresh keyframe. Debounced to at most once per window per line, so a
+/// burst of loss does not flood the sender. One per remote line.
+#[derive(Debug)]
+pub struct LossKeyframe {
+    debounce: Duration,
+    seen_dropped: u64,
+    last: Option<Instant>,
+}
+
+impl LossKeyframe {
+    pub fn new(debounce: Duration) -> Self {
+        LossKeyframe {
+            debounce,
+            seen_dropped: 0,
+            last: None,
+        }
+    }
+
+    /// Given the depacketizer's running `dropped` total and the current time, whether to ask the
+    /// sender for a keyframe now: a new drop since the last call, and `debounce` has passed since
+    /// the last ask.
+    pub fn on_loss(&mut self, dropped: u64, now: Instant) -> bool {
+        if dropped <= self.seen_dropped {
+            return false;
+        }
+        self.seen_dropped = dropped;
+        if self
+            .last
+            .is_some_and(|t| now.duration_since(t) < self.debounce)
+        {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
+}
+
+/// A snapshot of one remote line's receive stats over the last interval: what came in, what was
+/// decoded and what was drawn. [`spawn_decoder`] logs one of these per line every few seconds;
+/// tests assert on it directly.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct StatsSample {
+    /// The decoded picture's size (the source size, before downscaling).
+    pub decoded: (usize, usize),
+    /// The size actually drawn, after the box downscale.
+    pub drawn: (usize, usize),
+    /// The integer downscale ratio between them (1 = drawn at full size).
+    pub step: usize,
+    pub fps: u32,
+    /// Received video payload bitrate over the interval.
+    pub kbit_s: u32,
+    pub packets: u64,
+    /// Packets missing (forward sequence gaps) over the interval.
+    pub lost: u64,
+    /// Access units the depacketizer dropped over the interval.
+    pub au_dropped: u64,
+    /// Decoded pictures dropped because the draw queue was full.
+    pub queue_full: u64,
+    /// Keyframes asked for (PLIs requested) over the interval.
+    pub plis: u64,
+}
+
+/// Accumulates one remote line's receive stats between [`Self::sample`]s. Time is passed in, so a
+/// test drives it with a clock of its own.
+#[derive(Debug)]
+pub struct ReceiveStats {
+    interval: Duration,
+    started: Option<Instant>,
+    last_sequence: Option<u16>,
+    decoded: (usize, usize),
+    drawn: (usize, usize),
+    step: usize,
+    frames: u64,
+    bytes: u64,
+    packets: u64,
+    lost: u64,
+    au_base: u64,
+    au_total: u64,
+    queue_full: u64,
+    plis: u64,
+}
+
+impl ReceiveStats {
+    pub fn new(interval: Duration) -> Self {
+        ReceiveStats {
+            interval,
+            started: None,
+            last_sequence: None,
+            decoded: (0, 0),
+            drawn: (0, 0),
+            step: 0,
+            frames: 0,
+            bytes: 0,
+            packets: 0,
+            lost: 0,
+            au_base: 0,
+            au_total: 0,
+            queue_full: 0,
+            plis: 0,
+        }
+    }
+
+    /// One received packet: its RTP `sequence` (to count lost packets as forward gaps, ignoring
+    /// reordered ones) and its payload `bytes` (for the received bitrate).
+    pub fn packet(&mut self, sequence: u16, bytes: usize) {
+        self.packets += 1;
+        self.bytes += bytes as u64;
+        match self.last_sequence {
+            None => self.last_sequence = Some(sequence),
+            Some(last) => {
+                let gap = sequence.wrapping_sub(last.wrapping_add(1));
+                if gap < 0x8000 {
+                    // A forward gap (0 is the normal next packet); a backward jump is a
+                    // reordered or duplicate packet, left uncounted.
+                    self.lost += u64::from(gap);
+                    self.last_sequence = Some(sequence);
+                }
+            }
+        }
+    }
+
+    /// One decoded-and-drawn picture: the `decoded` source size, the `drawn` size after the
+    /// downscale and the integer `step` between them. Returns whether the decoded size changed.
+    pub fn frame(&mut self, decoded: (usize, usize), drawn: (usize, usize), step: usize) -> bool {
+        let changed = self.decoded != (0, 0) && self.decoded != decoded;
+        self.frames += 1;
+        self.decoded = decoded;
+        self.drawn = drawn;
+        self.step = step;
+        changed
+    }
+
+    /// The depacketizer's running dropped-access-unit total (for the per-interval drop count).
+    pub fn au_dropped(&mut self, total: u64) {
+        self.au_total = total;
+    }
+
+    /// A picture dropped because the draw queue was full.
+    pub fn queue_full(&mut self) {
+        self.queue_full += 1;
+    }
+
+    /// A keyframe asked for (a PLI requested).
+    pub fn pli(&mut self) {
+        self.plis += 1;
+    }
+
+    /// A snapshot once `interval` has passed since the last one, resetting the interval counters;
+    /// `None` before then. The first call only starts the clock.
+    pub fn sample(&mut self, now: Instant) -> Option<StatsSample> {
+        let started = *self.started.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(started);
+        if elapsed < self.interval {
+            return None;
+        }
+        let ms = u64::try_from(elapsed.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
+        let out = StatsSample {
+            decoded: self.decoded,
+            drawn: self.drawn,
+            step: self.step,
+            fps: (self.frames * 1000 / ms) as u32,
+            kbit_s: (self.bytes * 8 / ms) as u32,
+            packets: self.packets,
+            lost: self.lost,
+            au_dropped: self.au_total.saturating_sub(self.au_base),
+            queue_full: self.queue_full,
+            plis: self.plis,
+        };
+        self.started = Some(now);
+        self.au_base = self.au_total;
+        self.frames = 0;
+        self.bytes = 0;
+        self.packets = 0;
+        self.lost = 0;
+        self.queue_full = 0;
+        self.plis = 0;
+        Some(out)
+    }
+}
+
 #[cfg(feature = "camera")]
 pub use decoder::{H264Decoder, spawn_decoder};
 
 #[cfg(feature = "camera")]
 mod decoder {
-    use super::{H264Depacketizer, VideoPacket};
+    use super::{H264Depacketizer, LossKeyframe, ReceiveStats, VideoPacket};
     use crate::video::h264::{nal_type, split_annexb};
-    use crate::video::{I420Frame, RgbFrame, i420_to_rgb, step_for};
+    use crate::video::{I420Frame, RgbFrame, box_downscale, i420_to_rgb, step_for};
     use crate::{Error, Result};
     use openh264::OpenH264API;
     use openh264::decoder::{Decoder, DecoderConfig};
@@ -211,6 +396,10 @@ mod decoder {
 
     /// How often at most a decoder that keeps failing says so at info.
     const FAILURE_LOG: Duration = Duration::from_secs(5);
+    /// How often at most a dropped access unit asks the sender for a fresh keyframe (a PLI).
+    const LOSS_KEYFRAME: Duration = Duration::from_millis(500);
+    /// How often each remote line logs its receive stats.
+    const STATS_INTERVAL: Duration = Duration::from_secs(5);
 
     /// What a decoder was given, for a low-noise log when it cannot decode: enough to tell a
     /// stream whose keyframe never came whole from one that sends something else.
@@ -305,9 +494,16 @@ mod decoder {
 
     /// Decodes the remote video on a thread of its own and sends each picture, at most
     /// `max_width` wide, as RGB. Follows the first track that sends a keyframe (one picture to
-    /// show); ends when `packets` closes or the receiver goes away.
+    /// show); ends when `packets` closes or the receiver goes away. `mid` only tags the logs.
+    ///
+    /// A picture wider than `max_width` is box-downscaled (every block averaged), not
+    /// point-sampled, so it does not alias into blocky edges. A dropped access unit asks the
+    /// sender for a fresh keyframe (concealed loss is not a decode error, so it would otherwise
+    /// persist until the next scheduled keyframe). Receive stats are logged per line every few
+    /// seconds and when the decoded size changes.
     pub fn spawn_decoder(
         mut packets: mpsc::Receiver<VideoPacket>,
+        mid: Option<Arc<str>>,
         max_width: usize,
     ) -> mpsc::Receiver<RgbFrame> {
         let (tx, rx) = mpsc::channel(2);
@@ -325,6 +521,8 @@ mod decoder {
                 let mut track: Option<Arc<str>> = None;
                 let mut failures = Failures::default();
                 let mut decoding = false;
+                let mut loss = LossKeyframe::new(LOSS_KEYFRAME);
+                let mut stats = ReceiveStats::new(STATS_INTERVAL);
                 while let Some(p) = packets.blocking_recv() {
                     if track.is_none() && super::carries_keyframe(&p.payload) {
                         tracing::info!(track = %p.track, ssrc = p.ssrc, "showing remote video");
@@ -336,7 +534,20 @@ mod decoder {
                         }
                         continue;
                     }
-                    let Some(unit) = depacketizer.push(&p) else {
+                    stats.packet(p.sequence, p.payload.len());
+                    let unit = depacketizer.push(&p);
+                    stats.au_dropped(depacketizer.dropped());
+                    if loss.on_loss(depacketizer.dropped(), Instant::now()) {
+                        // A dropped access unit (a sequence gap): every picture after it
+                        // references one we never decoded, and OpenH264 conceals rather than
+                        // errors, so ask the sender for a fresh keyframe.
+                        p.keyframe.request();
+                        stats.pli();
+                    }
+                    if let Some(s) = stats.sample(Instant::now()) {
+                        log_stats(mid.as_deref(), &s);
+                    }
+                    let Some(unit) = unit else {
                         continue;
                     };
                     failures.saw(&unit);
@@ -347,22 +558,32 @@ mod decoder {
                             // OpenH264 (without error concealment) decodes nothing more until
                             // the next IDR with its SPS and PPS: ask the sender for one.
                             p.keyframe.request();
+                            stats.pli();
                             decoding = false;
                             tracing::debug!(%e, "remote video frame not decoded");
                             failures.failed(&e, &unit, depacketizer.dropped());
                             continue;
                         }
                     };
-                    if !std::mem::replace(&mut decoding, true) {
+                    let step = step_for(frame.width, max_width);
+                    let scaled = box_downscale(&frame, max_width);
+                    let rgb = i420_to_rgb(&scaled, 1, false);
+                    let changed =
+                        stats.frame((frame.width, frame.height), (rgb.width, rgb.height), step);
+                    if !std::mem::replace(&mut decoding, true) || changed {
                         tracing::info!(
-                            width = frame.width,
-                            height = frame.height,
+                            mid = ?mid,
+                            decoded_width = frame.width,
+                            decoded_height = frame.height,
+                            drawn_width = rgb.width,
+                            drawn_height = rgb.height,
+                            step,
                             "remote video decoding"
                         );
                     }
-                    let rgb = i420_to_rgb(&frame, step_for(frame.width, max_width), false);
                     match tx.try_send(rgb) {
-                        Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => stats.queue_full(),
                         Err(mpsc::error::TrySendError::Closed(_)) => return,
                     }
                 }
@@ -371,5 +592,25 @@ mod decoder {
             tracing::warn!(%e, "video decoder thread not started");
         }
         rx
+    }
+
+    /// One parseable INFO line of a remote line's receive stats (see [`super::StatsSample`]).
+    fn log_stats(mid: Option<&str>, s: &super::StatsSample) {
+        tracing::info!(
+            mid = ?mid,
+            decoded_width = s.decoded.0,
+            decoded_height = s.decoded.1,
+            drawn_width = s.drawn.0,
+            drawn_height = s.drawn.1,
+            step = s.step,
+            fps = s.fps,
+            kbit_s = s.kbit_s,
+            packets = s.packets,
+            lost = s.lost,
+            au_dropped = s.au_dropped,
+            queue_full = s.queue_full,
+            plis = s.plis,
+            "remote video stats"
+        );
     }
 }

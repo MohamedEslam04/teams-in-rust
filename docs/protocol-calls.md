@@ -599,10 +599,15 @@ What IronTeams does with this (`calling::video::{camera, receive}`, `ironteams/s
 - Self-view: every second camera frame, mirrored and reduced to at most 320 px wide, drawn in our
   own tile.
 - Receiving: every remote video track's RTP goes to `MediaEvents::video`; a PLI goes out at its
-  first packet and every 2 s until a keyframe comes. The first track that sends a keyframe is
-  depacketized (single NAL, STAP-A, FU-A; a lost packet drops its access unit), decoded by
-  OpenH264 on a thread of its own and drawn in one person's tile: the other person in a 1:1 call,
-  in a meeting the person heard now, else the first other person.
+  first packet, after a decode failure, and when the depacketizer drops an access unit on a
+  sequence gap (so a concealed loss, which OpenH264 does not report as an error, still triggers a
+  fresh keyframe; the per-track request is debounced to 500 ms and the sender PLI throttled to one
+  every 2 s). The first track that sends a keyframe is depacketized (single NAL, STAP-A, FU-A; a
+  lost packet drops its access unit), decoded by OpenH264 on a thread of its own, area-average
+  downscaled to the tile's width (not point-sampled, so no aliasing; the 1:1 remote camera is
+  decoded up to 1280 wide) and drawn in one person's tile: the other person in a 1:1 call, in a
+  meeting the person heard now, else the first other person. Each line logs `remote video stats`
+  every 5 s (decoded/drawn WxH, step, fps, kbit/s, packets, lost, au_dropped, queue_full, plis).
 - "Accept with video" answers with audio (as mautrix-teams) and turns the camera on once the call
   runs. The pre-join Camera switch does the same for a meeting join.
 - Video call (a 1:1 chat header's call dropdown, Alt+Shift+V; built 2026-11-23, UNVERIFIED live):
@@ -687,7 +692,10 @@ What IronTeams does (`calling::signaling::{roster, video}`, `calling::media`,
   slots=N slot_lines=N share=bool share_mid=…` (`slots`: gallery lines that can be subscribed,
   placed and with a stream id; `slot_lines`: placed at all), then per line `remote video line
   started mid=… slot=…`, and per subscription `video subscription sent`, then `video subscribed`
-  or (WARN) `video subscription refused`, each with mid, source, stream and sequence.
+  or (WARN) `video subscription refused`, each with mid, source, stream and sequence. After each
+  negotiation it also logs `negotiated video feedback` once per `m=video` line (the `rtcp-fb`
+  types, the extmaps, and any `b=`/`max-fs`/`max-br`/`max-fps`), so a live run can confirm from the
+  SDP actually negotiated whether transport-cc/REMB is present (measurement only, no SDP change).
 - A join that offers video lines is laid out as the web client's (camera mid 1, gallery 2-10,
   sharing mid 11; `IRONTEAMS_MEETING_VIDEO_LAYOUT=sharing-second` puts the sharing line at mid 2,
   IronTeams's first layout), every video line states `a=x-signaling-fb:* x-message app send:src
