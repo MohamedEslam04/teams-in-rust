@@ -12,9 +12,9 @@
 #     (`call_set`); the other organisms and the pages may read the flat colours. The forbidden
 #     names are read from tokens/theme.slint. Non-colour `Theme` properties (`Theme.radius`,
 #     `Theme.font-body`, ...) stay readable. Comments are not checked.
-#
 #  4. Every `Theme.x` and `Fixed.x` read names a property the global declares, so a removed
 #     alias (`Theme.sidebar`, `Theme.card`) or a misspelt token fails here, not only in CI.
+#
 # Run from anywhere: bash scripts/check-ui-layers.sh. Exits 1 and names each offence.
 set -euo pipefail
 
