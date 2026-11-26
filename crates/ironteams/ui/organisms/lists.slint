@@ -60,7 +60,7 @@ export global ListStore {
     // Pinned to the top of its team (pinned channels list).
     in property <bool> channel-pinned: false;
     // Names: new-section, rename-section, delete-section, section-toggle, collapse-all, move,
-    // remove-section, mute, unmute, notify-available, notify-available-off, copy-link, hide, option, channel-menu, channel-show,
+    // remove-section, mute, mute-for, unmute, notify-available, notify-available-off, copy-link, hide, option, channel-menu, channel-show,
     // channel-hide, channel-notify, channel-link, channel-team, channel-leave.
     callback command(string, string);
 }
@@ -120,9 +120,11 @@ export component ItemMenu inherits Rectangle {
             MenuItem { variant: MenuItemVariant.list; label: @tr("Move to section"); chevron: true; clicked => { root.view = "sections"; } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Snooze"); chevron: true; clicked => { root.view = "snooze"; } }
             if root.in-section: MenuItem { variant: MenuItemVariant.list; label: @tr("Remove from section"); clicked => { ListStore.command("remove-section", root.data.id); root.done(); } }
-            if !root.data.channel: MenuItem { variant: MenuItemVariant.list;
-                label: root.data.muted ? @tr("Unmute") : @tr("Mute");
-                clicked => { ListStore.command(root.data.muted ? "unmute" : "mute", root.data.id); root.done(); }
+            // Mute asks for how long; a muted chat offers Unmute and says when a timed mute ends.
+            if !root.data.channel && !root.data.muted: MenuItem { variant: MenuItemVariant.list; label: @tr("Mute"); chevron: true; clicked => { root.view = "mute"; } }
+            if !root.data.channel && root.data.muted: MenuItem { variant: MenuItemVariant.list;
+                label: root.data.muted-until != "" ? @tr("Unmute (muted until {})", root.data.muted-until) : @tr("Unmute");
+                clicked => { ListStore.command("unmute", root.data.id); root.done(); }
             }
             // Teams offers it in a 1:1 chat with another person; it is kept on this computer only.
             if root.data.notify != "": MenuItem { variant: MenuItemVariant.list;
@@ -166,6 +168,14 @@ export component ItemMenu inherits Rectangle {
             MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}1h"); root.done(); } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Until tomorrow 9:00"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}tomorrow"); root.done(); } }
             MenuItem { variant: MenuItemVariant.list; label: @tr("Until next week (Monday 9:00)"); clicked => { RemindStore.command("snooze", root.data.id + "\u{9}week"); root.done(); } }
+        }
+        if root.view == "mute": VerticalLayout {
+            MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Mute"); dim: true; clicked => { root.view = "main"; } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 hour"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}1h"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("For 8 hours"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}8h"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until tomorrow 8:00"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}tomorrow"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("For 1 week"); clicked => { ListStore.command("mute-for", root.data.id + "\u{9}week"); root.done(); } }
+            MenuItem { variant: MenuItemVariant.list; label: @tr("Until I turn it off"); clicked => { ListStore.command("mute", root.data.id); root.done(); } }
         }
         if root.view == "notify": VerticalLayout {
             MenuItem { variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }

@@ -913,6 +913,24 @@ msgstr "إلغاء الكتم"
 msgid "Mute"
 msgstr "كتم"
 
+msgid "‹ Mute"
+msgstr "› كتم"
+
+msgid "Unmute (muted until {})"
+msgstr "إلغاء الكتم (مكتومة حتى {})"
+
+msgid "For 8 hours"
+msgstr "لمدة 8 ساعات"
+
+msgid "Until tomorrow 8:00"
+msgstr "حتى غد الساعة 8:00"
+
+msgid "For 1 week"
+msgstr "لمدة أسبوع"
+
+msgid "Until I turn it off"
+msgstr "حتى أوقف الكتم"
+
 msgid "Manage notifications"
 msgstr "إدارة الإشعارات"
 

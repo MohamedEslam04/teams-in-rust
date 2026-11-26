@@ -710,6 +710,7 @@ impl Engine {
         self.start_my_presence();
         self.start_people_presence();
         self.start_reminders();
+        self.start_mute_expiry();
         self.start_ongoing_calls();
         let e = self.clone();
         tokio::spawn(async move { e.live_loop().await });

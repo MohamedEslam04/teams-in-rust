@@ -33,7 +33,7 @@ Files:
 - `find.rs`: Module hub for Search/Find-in-chat/Mentions/Followed: declares submodules and shared paging/scan constants; no logic.
 - `gifs.rs`: Composer GIF/sticker picker: search with sequence guard, async preview downloads, pick enqueues the GIF HTML to the open chat/thread.
 - `in_order.rs`: Ordered command lanes: calls lane (sync ordered part + Rest) and per-store lanes that poll each command to its first await, plus start_now for chat switches.
-- `lists.rs`: Chat list sections, chat item menu (mute/hide/remove history), list options and channel menu; local state persisted in the store KV, mirrored with Teams settings. Also the local "Notify when available" list (`ListsCmd::NotifyWhenAvailable`, `Local.watched`, `is_watching`, `watched_people`); `lists_refresh` also stores channel titles.
+- `lists.rs`: Chat list sections, chat item menu (mute/hide/remove history), list options and channel menu; local state persisted in the store KV, mirrored with Teams settings. Timed mutes: Teams' mute has no end time, so `Local.mute_until` keeps it and `lists_expire_mutes` (start + 15 s tick, `start_mute_expiry`) unmutes. Also the local "Notify when available" list (`ListsCmd::NotifyWhenAvailable`, `Local.watched`, `is_watching`, `watched_people`); `lists_refresh` also stores channel titles.
 - `live.rs`: Trouter live loop: connection state, outbox flush/resync, incoming message/typing/presence events, and desktop notification routing. Any `48:notifications` push reloads the Activity feed (`on_activity_event`).
 - `loop_paragraph.rs`: Engine::send_loop: sends a composer Loop paragraph as a formatted text outbox message (no live Loop write path) and flushes the outbox.
 - `media.rs`: Chat media for Engine: MediaCmd parsing/dispatch, inline image grid, image/photo viewer with async download, Translate state/cache, link preview cards with serialized thumbnail fetch and disk cache. Also image actions (`MediaCmd::ImageAction`, `image_action` saving to the downloads dir or `temp_dir/ironteams-images`, `copy_image_bytes` to the clipboard) and `MediaCmd::CopyText`.
@@ -125,7 +125,7 @@ Files:
 - `[channel_tabs.rs:split_add]` pub fn(&str)->Option<(String,String)>: name U+001F url; adds https:// if no '://'; requires https and non-empty host
 - `[composer_apps.rs:Engine::composer_apps_cmd]` pub(super) async fn(self:&Arc<Self>, ComposerAppsCmd)->anyhow::Result<()> dispatcher for the picker
 - `[engage.rs:PostData]` pub struct post row (id,sender,initials,time,text,likes,replies,attachments,url,reply)
-- `[lists.rs:ListsCmd]` pub enum: list UI commands (NewSection, RenameSection, DeleteSection, ToggleSection, CollapseAll, Move, RemoveFromSection, Mute, Unmute, CopyLink, Hide, RemoveHistory, ManageApps, NotifyWhenAvailable(person, on), Option, Channel*)
+- `[lists.rs:ListsCmd]` pub enum: list UI commands (NewSection, RenameSection, DeleteSection, ToggleSection, CollapseAll, Move, RemoveFromSection, Mute, MuteFor(chat, 1h|8h|tomorrow|week), Unmute, CopyLink, Hide, RemoveHistory, ManageApps, NotifyWhenAvailable(person, on), Option, Channel*)
 - `[media.rs:MediaCmd::parse]` pub fn parse(name:&str,arg:&str)->Option<MediaCmd>; 'image' splits on '|', 'image-do' splits into 3 parts on U+001F, 'text-copy' takes the whole arg, 'file'/'popout-send' split once on U+001F, image-step parses i32
 - `[mentions.rs:Prepared]` pub(super) struct {text: String, mentions: Vec<Mention>}: draft with OPEN n CLOSE placeholders plus mentions in text order
 - `[outsider.rs:Outsider::label]` pub fn label(self) -> &'static str  ("External"|"Guest")
