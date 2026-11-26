@@ -48,7 +48,7 @@ pub(crate) fn portal_changed(w: &AppWindow, change: PortalChange) {
 }
 
 /// The Slint `Tokens` of one region.
-fn ui_tokens(p: &appearance::Tokens) -> crate::Tokens {
+pub(super) fn ui_tokens(p: &appearance::Tokens) -> crate::Tokens {
     crate::Tokens {
         bg: rgba(p.bg),
         surface: rgba(p.surface),
@@ -234,6 +234,7 @@ pub(super) fn push_themes(w: &AppWindow, c: &Ctl) {
     g.set_themes_light_first(model(kind_first("light")));
     g.set_themes_dark_first(model(kind_first("dark")));
     g.set_themes(model(tiles));
+    g.set_themes_full(c.local.themes.custom.len() >= appearance::themes::MAX_CUSTOM);
     let (mode, id, light, dark, times) = match c.local.theme_choice() {
         ThemeChoice::Fixed(id) => (
             "one",

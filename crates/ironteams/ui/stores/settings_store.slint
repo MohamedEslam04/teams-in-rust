@@ -3,7 +3,7 @@
 // (`ui/settings.rs`); the UI reports what the user did through `command(name, argument)`.
 // Arguments with several values are joined with the unit separator "\u{1f}".
 
-import { EmojiItem } from "../tokens/types.slint";
+import { EmojiItem, Tokens } from "../tokens/types.slint";
 
 export struct SOption { v: string, l: string }
 // A switch row. `enabled: false` greys it out; `hint` is the second line.
@@ -21,6 +21,13 @@ export struct SFind { page: string, page-title: string, label: string }
 // A theme of the gallery: its id (`builtin:dusk`, `custom:<uuid>`), name, kind (light | dark) and
 // the colours its tile draws. `low-contrast`: the contrast check could not pass every pair.
 export struct STheme { id: string, name: string, kind: string, nav: color, content: color, accent: color, bubble: color, custom: bool, low-contrast: bool }
+
+// The custom theme editor (`ui/settings/themes.rs`): one base colour with its hex and the picker's
+// slider positions (0 to 100 each: lightness, chroma, hue), a contrast pair that fails (names and
+// ratios as text), and a token the adjustment moved (the colour picked and the one drawn).
+export struct SBaseRow { hex: string, colour: color, l: float, c: float, h: float }
+export struct SPairRow { fg: string, bg: string, ratio: string, min: string }
+export struct SAdjusted { token: string, picked: color, drawn: color }
 
 export global SettingsStore {
     // --- the page ---
@@ -87,6 +94,27 @@ export global SettingsStore {
     // The theme drawn now, and whether the accent setting applies to it (IronTeams Dark or Light).
     in-out property <string> theme-active: "builtin:dark";
     in-out property <string> theme-active-name: "IronTeams Dark";
+    // The custom theme editor: new | edit | import, the 8 base colours, the preview's regions and
+    // the contrast report. `editor-error` is a `share-error` code, "" when there is none.
+    in-out property <bool> editor-open: false;
+    in-out property <string> editor-mode: "new";
+    in-out property <string> editor-id;
+    in-out property <string> editor-name;
+    in-out property <[SBaseRow]> editor-rows;
+    in-out property <Tokens> editor-content;
+    in-out property <Tokens> editor-nav;
+    in-out property <[SPairRow]> editor-failing;
+    in-out property <[SAdjusted]> editor-adjusted;
+    in-out property <bool> editor-keep: false;
+    in-out property <bool> editor-low-contrast: false;
+    in-out property <string> editor-error;
+    in-out property <string> editor-line;
+    in-out property <bool> editor-can-save: false;
+    // The Import dialog, the Rename dialog (the theme and the name it starts with) and the limit.
+    in-out property <bool> import-open: false;
+    in-out property <string> rename-id;
+    in-out property <string> rename-name;
+    in-out property <bool> themes-full: false;
     // The theme of the call screen and its menus: a theme id, or "" for the app's.
     in-out property <string> call-theme;
     in-out property <bool> accent-enabled: true;
@@ -285,8 +313,22 @@ export global SettingsStore {
             : id == "builtin:orchard" ? @tr("Orchard")
             : name;
     }
+    // The sentence for a refused theme line or name (`appearance::share` codes), "" for no error.
+    pure public function share-error(code: string) -> string {
+        return code == "too-long" ? @tr("The line is longer than 200 characters.")
+            : code == "not-a-theme" ? @tr("This is not an IronTeams theme line.")
+            : code == "version" ? @tr("This theme line comes from a newer IronTeams.")
+            : code == "name-empty" ? @tr("The theme has no name.")
+            : code == "name-too-long" ? @tr("The name is longer than 40 characters.")
+            : code == "name-colon" ? @tr("The name may not contain a colon.")
+            : code == "name-hidden" ? @tr("The name contains hidden or control characters.")
+            : code == "colours" ? @tr("The line must hold exactly 8 colours written as #rrggbb.")
+            : code == "limit" ? @tr("You have 50 custom themes, the most IronTeams keeps. Delete one first.")
+            : "";
+    }
     pure public function j2(a: string, b: string) -> string { return a + "\u{1f}" + b; }
     pure public function j3(a: string, b: string, c: string) -> string { return a + "\u{1f}" + b + "\u{1f}" + c; }
+    pure public function j4(a: string, b: string, c: string, d: string) -> string { return a + "\u{1f}" + b + "\u{1f}" + c + "\u{1f}" + d; }
 
     // Opens the Settings page on `p`.
     public function show(p: string) {

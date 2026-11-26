@@ -683,9 +683,61 @@ fn named_reaction(key: &str) -> Option<String> {
         .map(|e| e.ch.to_string())
 }
 
+/// A theme sent as a share line (`ironteams-theme:1:<name>:<8 colours>`), drawn as a chip under
+/// the message: the name, the nav, content and accent colours, and the line for "Preview".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeChip {
+    pub name: String,
+    pub nav: appearance::Rgb,
+    pub content: appearance::Rgb,
+    pub accent: appearance::Rgb,
+    pub line: String,
+}
+
+/// The chip for a message whose whole text (formatting removed, trimmed) is a well-formed share
+/// line. `None` for anything else, with no error: a longer text is not parsed at all, and a line
+/// inside a sentence is just text.
+pub fn theme_chip(plain: &str) -> Option<ThemeChip> {
+    let line = plain.trim();
+    if line.len() > 800 || line.chars().count() > 200 {
+        return None;
+    }
+    let (name, base) = appearance::share::parse(line).ok()?;
+    Some(ThemeChip {
+        name,
+        nav: base.0[0],
+        content: base.0[3],
+        accent: base.0[5],
+        line: line.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const THEME_LINE: &str = "ironteams-theme:1:Night shift:#1d2b45,#e6ecf5,#2f4a75,#ffffff,#1c2430,#2f6fd6,#1f57b8,#d93f3f";
+
+    #[test]
+    fn a_share_line_gives_a_chip() {
+        let chip = theme_chip(&format!("  {THEME_LINE}\n")).expect("a chip");
+        assert_eq!(chip.name, "Night shift");
+        assert_eq!(chip.nav, appearance::Rgb::new(0x1d, 0x2b, 0x45));
+        assert_eq!(chip.content, appearance::Rgb::new(0xff, 0xff, 0xff));
+        assert_eq!(chip.accent, appearance::Rgb::new(0x2f, 0x6f, 0xd6));
+        assert_eq!(chip.line, THEME_LINE);
+    }
+
+    #[test]
+    fn a_line_inside_a_sentence_a_bad_line_and_a_long_message_give_no_chip() {
+        assert_eq!(theme_chip(&format!("try this: {THEME_LINE}")), None);
+        assert_eq!(theme_chip("ironteams-theme:1:Night shift:#1d2b45"), None);
+        assert_eq!(
+            theme_chip(&format!("{THEME_LINE} {}", "x".repeat(5_000))),
+            None
+        );
+        assert_eq!(theme_chip("hello"), None);
+    }
 
     fn r(html: &str) -> Rendered {
         render_blocks(&render::parse_teams_html(html))

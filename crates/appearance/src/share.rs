@@ -117,6 +117,15 @@ pub fn check_name(s: &str) -> Result<&str, NameError> {
     Ok(s)
 }
 
+/// `s` without the characters a name may not hold (`:`, control and hidden format characters),
+/// cut at [`NAME_MAX`]. Not trimmed, so a name can be typed word by word.
+pub fn clean_name(s: &str) -> String {
+    s.chars()
+        .filter(|&c| c != ':' && !c.is_control() && !is_hidden_format(c))
+        .take(NAME_MAX)
+        .collect()
+}
+
 /// Unicode category Cf (Unicode 15.1), as ranges. A table here avoids a crate for one check.
 const CF: &[(u32, u32)] = &[
     (0x00AD, 0x00AD),
@@ -186,6 +195,13 @@ mod tests {
             let line = export(name, &sample());
             assert_eq!(parse(&line), Ok((name.to_string(), sample())), "{name}");
         }
+    }
+
+    #[test]
+    fn clean_name_drops_colons_and_hidden_characters_and_cuts() {
+        assert_eq!(clean_name("My: th\u{202e}eme\n "), "My theme ");
+        assert_eq!(clean_name("زوجي\u{200d}"), "زوجي\u{200d}");
+        assert_eq!(clean_name(&"a".repeat(60)).chars().count(), NAME_MAX);
     }
 
     #[test]

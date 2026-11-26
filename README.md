@@ -150,11 +150,14 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
 - **Settings:** theme: a gallery of ten built-in themes (IronTeams Dark and Light, Dusk, Harbor,
   Moss, Sandstone, Ember, Glacier, Graphite, Orchard), shown as one theme, a light and a dark theme
   that follow the system, or a light and a dark theme on a schedule (switched within a minute of
-  each time); the accent colour (for IronTeams Dark and Light), density and text size; the code
-  font (code blocks and other fixed-width text) and the interface font, picked from the installed
-  fonts and applied at once (colour emoji, bold and Arabic keep working); Reset theme
-  in the command palette (Ctrl+Shift+P) or `--reset-theme`; a theme for each account
-  (Accounts page) and one for calls and meetings (Appearance page); app language with
+  each time); your own themes (New custom theme: eight colours, each picked in OKLCH or typed as hex,
+  with a live preview and a contrast report; Keep my colours; Edit, Copy theme, Rename, Delete; up
+  to 50), shared as one line that Import previews before saving, and a chip with a Preview button
+  under a message that is such a line; the accent colour (for IronTeams Dark and Light), density
+  and text size; the code font (code blocks and other fixed-width text) and the interface font,
+  picked from the installed fonts and applied at once (colour emoji, bold and Arabic keep working);
+  Reset theme in the command palette (Ctrl+Shift+P) or `--reset-theme`; a theme for
+  each account (Accounts page) and one for calls and meetings (Appearance page); app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; storage (the active account's media and the total over all accounts,
