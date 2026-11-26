@@ -2333,19 +2333,45 @@ fn a_failed_upload_keeps_the_chips_and_the_text() {
     run(Cmd::Send("with a picture".into(), String::new()));
     assert_eq!(
         chips(&h.app),
-        vec!["bad\0name.txt"],
-        "the chip that could not be queued stays; the one before it went to the outbox"
+        vec!["bad\0name.txt", "shot.png"],
+        "the file that could not be queued stays, and so does the image that waited for the message"
     );
     assert_eq!(h.app.get_draft(), "with a picture");
     assert!(
-        message_texts(&h.app).iter().all(|t| t != "with a picture"),
-        "the text was not sent"
+        message_texts(&h.app)
+            .iter()
+            .all(|t| !t.contains("with a picture") && !t.contains("shot.png")),
+        "nothing was sent or queued: {:?}",
+        message_texts(&h.app)
     );
     discard_pending(&h, &run);
 }
 
 #[test]
-fn chips_and_text_go_through_the_outbox_in_order() {
+fn images_that_cannot_be_queued_stay_chips_with_the_text_in_the_composer() {
+    let h = Harness::new();
+    h.select(NOTES);
+    let (png, _) = sample_files("badimg");
+    let bytes = std::fs::read(&png).unwrap();
+    let run = h.runner();
+    run(Cmd::AddFile(png));
+    // A valid image under a name no file system accepts.
+    h.rt.block_on(h.engine.add_attachment("bad\0name.png".into(), bytes))
+        .unwrap();
+    run(Cmd::Send("two pictures".into(), String::new()));
+    assert_eq!(chips(&h.app), vec!["shot.png", "bad\0name.png"]);
+    assert_eq!(h.app.get_draft(), "two pictures");
+    assert!(
+        message_texts(&h.app)
+            .iter()
+            .all(|t| !t.contains("two pictures") && !t.contains("shot.png")),
+        "no half message was queued"
+    );
+    discard_pending(&h, &run);
+}
+
+#[test]
+fn files_go_through_the_outbox_first_then_one_message_with_the_text_and_the_images() {
     let h = Harness::new();
     h.select(NOTES);
     let (png, txt) = sample_files("outbox");
@@ -2356,11 +2382,21 @@ fn chips_and_text_go_through_the_outbox_in_order() {
     assert!(chips(&h.app).is_empty(), "queued chips are gone");
     assert_eq!(h.app.get_draft(), "", "the sent text left the composer");
     let texts = message_texts(&h.app);
-    let tail: Vec<_> = texts.iter().rev().take(3).rev().cloned().collect();
+    let tail: Vec<_> = texts.iter().rev().take(2).rev().cloned().collect();
     assert_eq!(
-        tail,
-        vec!["🖼 shot.png", "📎 notes.txt", "caption"],
-        "image, file card, then the text, as outbox rows"
+        tail[0], "📎 notes.txt",
+        "the file card, then ONE message for the text and the image: {texts:?}"
+    );
+    let (c, i) = (tail[1].find("caption"), tail[1].find("🖼 shot.png"));
+    assert!(
+        c.is_some() && i.is_some() && c < i,
+        "the text, then the image: {:?}",
+        tail[1]
+    );
+    assert_eq!(
+        texts.iter().filter(|t| t.contains("shot.png")).count(),
+        1,
+        "the image is not a row of its own: {texts:?}"
     );
     discard_pending(&h, &run);
 }
