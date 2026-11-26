@@ -257,13 +257,16 @@ fn a_meeting_joined_late_shows_the_time_since_it_started() {
     let c = CallHarness::new();
     meeting_started(&c, 21 * 60_000);
     c.connected();
-    assert_eq!(timer(&c), "21:00", "the meeting's time, not ours");
+    // The timer runs on the wall clock: a slow runner can cross a second between steps.
+    let near_21 = |t: String| t == "21:00" || t == "21:01";
+    assert!(near_21(timer(&c)), "the meeting's time, not ours");
     // Leaving and joining again does not restart it.
     click(&c.button("Leave"));
     click(&c.button("Rejoin"));
     click(&c.button("Join now"));
     c.fake.emit(Event::Connected);
-    assert_eq!(timer(&c), "21:00");
+    let t = timer(&c);
+    assert!(near_21(t.clone()), "still the meeting's time: {t}");
 }
 
 #[test]
