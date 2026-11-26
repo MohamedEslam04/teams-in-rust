@@ -258,6 +258,15 @@ fn settings_pages_to_png() {
         if name == "switch" {
             click(first);
         }
+        if !row.is_empty() {
+            // The next page opens at the top: the page list keeps the scroll of the last one.
+            app.window().dispatch_event(WindowEvent::PointerScrolled {
+                position: LogicalPosition::new(600., 400.),
+                delta_x: 0.,
+                delta_y: 10_000.,
+            });
+            settle();
+        }
     }
 
     // Find in Settings: the results, then the page a result opens with the setting tinted.
