@@ -14,6 +14,7 @@ import { ComposerApps } from "composer_apps.slint";
 import { ChannelHeaderItems } from "web_parity.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { MediaStore } from "media.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global ChatHeaderStore {
     // The chat whose "Remove chat history" waits for confirmation, or "".
@@ -215,7 +216,7 @@ export component RemoveHistoryConfirm inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: @tr("Remove chat history?");
     VerticalLayout {
@@ -244,7 +245,7 @@ export component RemoveHistoryConfirm inherits Rectangle {
                 accessible-role: button;
                 accessible-label: @tr("Remove");
                 accessible-action-default => { root.confirm(); }
-                Text { text: @tr("Remove"); color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                Text { text: @tr("Remove"); color: Theme.on-danger; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
                 remove-touch := TouchArea { mouse-cursor: pointer; clicked => { root.confirm(); } }
             }
         }

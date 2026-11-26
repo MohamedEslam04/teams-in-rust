@@ -9,6 +9,7 @@ import { Avatar } from "../atoms/avatar.slint";
 import { ListStore, SectionRow } from "../organisms/lists.slint";
 import { CallsPageStore } from "../stores/calls_page_store.slint";
 import { PaletteStore } from "../stores/palette_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 export { PaletteStore } from "../stores/palette_store.slint";
 
 // One action of the catalog. `cmd` and `arg` tell `run-palette` what to do (the id is the key of
@@ -128,7 +129,7 @@ export component CommandPalette inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 16px;
-            drop-shadow-color: #000000a0;
+            drop-shadow-color: Fixed.black-a0;
             // Keeps clicks inside the panel from closing it.
             TouchArea { }
             VerticalLayout {

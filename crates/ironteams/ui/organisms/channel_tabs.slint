@@ -6,6 +6,7 @@ import { Pill } from "../atoms/chip.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { FileToolButton } from "shared_view.slint";
 import { ChannelTabItem, FindStore } from "../stores/find_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // "Add a tab": a website with a name, added to the open channel for everyone in it.
 export component AddTabDialog inherits Rectangle {
@@ -22,7 +23,7 @@ export component AddTabDialog inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: @tr("Add a tab");
     TouchArea { }
@@ -48,7 +49,7 @@ export component AddTabDialog inherits Rectangle {
             ListView {
                 for a in FindStore.tab-apps: Rectangle {
                     height: 30px;
-                    background: root.app-id == a.id ? #3b3d6b : (app-touch.has-hover ? Theme.surface-hover : transparent);
+                    background: root.app-id == a.id ? Theme.accent-soft : (app-touch.has-hover ? Theme.surface-hover : transparent);
                     accessible-role: button;
                     accessible-label: a.name;
                     accessible-checkable: true;
@@ -126,7 +127,7 @@ export component AddTabDialog inherits Rectangle {
                 accessible-role: button;
                 accessible-label: @tr("Add");
                 accessible-enabled: root.ready;
-                Text { text: @tr("Add"); color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: @tr("Add"); color: root.ready ? Theme.on-accent : Theme.fg-strong; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                 add-touch := TouchArea {
                     mouse-cursor: pointer;
                     enabled: root.ready;
@@ -216,7 +217,7 @@ export component ChannelTabOverlays inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 12px;
-            drop-shadow-color: #00000090;
+            drop-shadow-color: Fixed.black-90;
             accessible-role: groupbox;
             accessible-label: @tr("Tab actions");
             TouchArea { }
@@ -242,7 +243,7 @@ export component ChannelTabOverlays inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 16px;
-            drop-shadow-color: #000000a0;
+            drop-shadow-color: Fixed.black-a0;
             accessible-role: groupbox;
             accessible-label: FindStore.tab-dialog == "rename" ? @tr("Rename tab") : @tr("Remove tab");
             TouchArea { }
@@ -287,7 +288,7 @@ export component ChannelTabOverlays inherits Rectangle {
                         background: FindStore.tab-dialog == "remove" ? Theme.danger : Theme.accent-strong;
                         accessible-role: button;
                         accessible-label: FindStore.tab-dialog == "rename" ? @tr("Save") : @tr("Remove");
-                        Text { text: FindStore.tab-dialog == "rename" ? @tr("Save") : @tr("Remove"); color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                        Text { text: FindStore.tab-dialog == "rename" ? @tr("Save") : @tr("Remove"); color: FindStore.tab-dialog == "remove" ? Theme.on-danger : Theme.on-accent; font-size: 12px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
                         TouchArea {
                             mouse-cursor: pointer;
                             clicked => {

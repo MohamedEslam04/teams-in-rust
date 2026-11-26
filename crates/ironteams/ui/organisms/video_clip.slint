@@ -8,6 +8,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { VoiceStore } from "../molecules/voice_player.slint";
 import { VideoClipItem } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global ClipStore {
     // "idle" | "opening" | "ready" | "recording" | "stopping" | "recorded"
@@ -52,7 +53,7 @@ component ClipButton inherits Rectangle {
     }
     label-text := Text {
         text: root.label;
-        color: root.primary && root.enabled ? #ffffff : root.enabled ? Theme.fg : Theme.fg-subtle;
+        color: root.primary && root.enabled ? Theme.on-accent : root.enabled ? Theme.fg : Theme.fg-subtle;
         font-size: 13px * Theme.font-scale;
         font-weight: 600;
         horizontal-alignment: center;
@@ -100,7 +101,7 @@ export component ClipRecorderPanel inherits Rectangle {
     property <string> state: ClipStore.state;
     property <bool> recorded: root.state == "recorded";
     border-radius: Theme.radius;
-    background: Theme.sidebar;
+    background: Theme.panel;
     accessible-role: groupbox;
     accessible-label: @tr("Record video clip");
     forward-focus: keys;
@@ -142,7 +143,7 @@ export component ClipRecorderPanel inherits Rectangle {
                 width: 320px;
                 height: 180px;
                 border-radius: 6px;
-                background: #000000;
+                background: Fixed.black;
                 clip: true;
                 if ClipStore.has-picture: Image {
                     width: parent.width;
@@ -156,7 +157,7 @@ export component ClipRecorderPanel inherits Rectangle {
                     x: 12px;
                     width: parent.width - 24px;
                     text: ClipStore.problem != "" ? ClipStore.problem : root.state == "opening" ? @tr("Starting the camera…") : root.state == "stopping" ? @tr("Making the clip…") : @tr("Waiting for the camera…");
-                    color: ClipStore.problem != "" ? #ff7e83 : #cccccc;
+                    color: ClipStore.problem != "" ? Fixed.media-error : Fixed.media-fg;
                     font-size: 13px * Theme.font-scale;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -167,11 +168,11 @@ export component ClipRecorderPanel inherits Rectangle {
                     width: 48px;
                     height: 48px;
                     border-radius: 24px;
-                    background: play-take.has-hover ? #000000cc : #00000099;
+                    background: play-take.has-hover ? Fixed.black-cc : Fixed.black-99;
                     accessible-role: button;
                     accessible-label: @tr("Play the clip");
                     accessible-action-default => { ClipStore.play-take(); }
-                    Icon { source: @image-url("../icons/play.svg"); width: 22px; height: 22px; tint: #ffffff; }
+                    Icon { source: @image-url("../icons/play.svg"); width: 22px; height: 22px; tint: Fixed.white; }
                     play-take := TouchArea {
                         mouse-cursor: pointer;
                         clicked => { ClipStore.play-take(); }
@@ -184,7 +185,7 @@ export component ClipRecorderPanel inherits Rectangle {
                     width: timer.preferred-width + 24px;
                     height: 22px;
                     border-radius: 11px;
-                    background: #000000aa;
+                    background: Fixed.black-aa;
                     if root.state == "recording": Rectangle {
                         x: 8px;
                         width: 8px;
@@ -195,7 +196,7 @@ export component ClipRecorderPanel inherits Rectangle {
                     timer := Text {
                         x: 20px;
                         text: VoiceStore.clock(ClipStore.elapsed-ms) + " / " + VoiceStore.clock(ClipStore.limit-ms);
-                        color: #ffffff;
+                        color: Theme.on-danger;
                         font-size: 12px * Theme.font-scale;
                         vertical-alignment: center;
                         accessible-role: text;
@@ -261,7 +262,7 @@ export component VideoClipCard inherits Rectangle {
     width: 260px;
     height: 146px;
     border-radius: 6px;
-    background: #000000;
+    background: Fixed.black;
     clip: true;
     accessible-role: button;
     accessible-label: @tr("Play video clip, {}", VoiceStore.clock(root.item.duration-ms));
@@ -276,14 +277,14 @@ export component VideoClipCard inherits Rectangle {
         source: @image-url("../icons/video.svg");
         width: 36px;
         height: 36px;
-        tint: #8a8a8a;
+        tint: Fixed.media-muted;
     }
     Rectangle {
         width: 44px;
         height: 44px;
         border-radius: 22px;
-        background: touch.has-hover ? #000000cc : #00000099;
-        Icon { source: @image-url("../icons/play.svg"); width: 20px; height: 20px; tint: #ffffff; }
+        background: touch.has-hover ? Fixed.black-cc : Fixed.black-99;
+        Icon { source: @image-url("../icons/play.svg"); width: 20px; height: 20px; tint: Fixed.white; }
     }
     if root.item.duration-ms > 0: Rectangle {
         x: parent.width - self.width - 8px;
@@ -291,10 +292,10 @@ export component VideoClipCard inherits Rectangle {
         width: length-text.preferred-width + 12px;
         height: 20px;
         border-radius: 4px;
-        background: #000000aa;
+        background: Fixed.black-aa;
         length-text := Text {
             text: VoiceStore.clock(root.item.duration-ms);
-            color: #ffffff;
+            color: Fixed.white;
             font-size: 11px * Theme.font-scale;
             horizontal-alignment: center;
             vertical-alignment: center;

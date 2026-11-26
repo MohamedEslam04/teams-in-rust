@@ -5,6 +5,7 @@ import { PersonItem } from "../tokens/types.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { PeopleStore, PersonHover } from "../molecules/people.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component ParticipantsPanel inherits Rectangle {
     in property <[PersonItem]> members;
@@ -28,7 +29,7 @@ export component ParticipantsPanel inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: "Participants";
 
@@ -47,7 +48,7 @@ export component ParticipantsPanel inherits Rectangle {
             Rectangle {
                 height: 32px;
                 border-radius: 4px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: add-input.has-focus ? Theme.accent : Theme.border;
                 add-input := TextInput {
@@ -80,7 +81,7 @@ export component ParticipantsPanel inherits Rectangle {
                         border-width: 1px;
                         border-color: root.history ? Theme.accent : Theme.fg-subtle;
                         background: root.history ? Theme.accent-strong : transparent;
-                        Text { text: root.history ? "✓" : ""; color: #ffffff; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: root.history ? "✓" : ""; color: Theme.on-accent; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
                     }
                     Text { text: "Include chat history"; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; }
                 }
@@ -168,7 +169,7 @@ export component ParticipantsPanel inherits Rectangle {
             if root.can-leave: leave-btn := Rectangle {
                 height: 32px;
                 border-radius: 4px;
-                background: leave-touch.has-hover ? #3b1f22 : transparent;
+                background: leave-touch.has-hover ? Theme.danger-soft : transparent;
                 accessible-role: button;
                 accessible-label: "Leave";
                 Text { text: "Leave"; color: Theme.danger; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
@@ -188,7 +189,7 @@ export component LeaveConfirm inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: "Leave this chat?";
     VerticalLayout {
@@ -215,7 +216,7 @@ export component LeaveConfirm inherits Rectangle {
                 background: confirm-touch.has-hover ? Theme.danger-hover : Theme.danger;
                 accessible-role: button;
                 accessible-label: "Leave chat";
-                Text { text: "Leave"; color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: "Leave"; color: Theme.on-danger; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                 confirm-touch := TouchArea { mouse-cursor: pointer; clicked => { root.confirm(); } }
             }
         }

@@ -3,6 +3,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Reactor } from "../tokens/types.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { ReactionHover } from "../atoms/reaction_hover.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // One person who reacted: a small round photo (their initials without one) and their full name.
 // Keyboard focus draws a white outline around the row.
@@ -11,7 +12,7 @@ component ReactorRow inherits Rectangle {
     height: 28px;
     border-radius: 4px;
     border-width: scope.has-focus ? 1px : 0px;
-    border-color: #ffffff;
+    border-color: Theme.fg-strong;
     accessible-role: list-item;
     accessible-label: root.p.name;
     HorizontalLayout {
@@ -57,11 +58,11 @@ export component ReactionCard inherits Rectangle {
     x: max(8px, min(ReactionHover.ax, root.win-w - self.width - 8px));
     y: self.below-y + self.height <= root.win-h - 8px ? self.below-y : max(8px, ReactionHover.ay - 4px - self.height);
     border-radius: 4px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
     accessible-role: groupbox;
     accessible-label: ReactionHover.name;
 

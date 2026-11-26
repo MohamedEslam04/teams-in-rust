@@ -4,6 +4,7 @@ import { Theme } from "../tokens/theme.slint";
 import { LinkCard } from "../tokens/types.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { Spinner } from "../tokens/motion.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global MediaStore {
     in property <bool> viewer-open: false;
@@ -25,7 +26,7 @@ export component LinkCardView inherits Rectangle {
     border-radius: 6px;
     border-width: 1px;
     border-color: Theme.border;
-    background: touch.has-hover ? Theme.surface : Theme.sidebar;
+    background: touch.has-hover ? Theme.surface : Theme.panel;
     clip: true;
     accessible-role: button;
     accessible-label: "Open link " + (root.c.title != "" ? root.c.title : root.c.domain);
@@ -96,7 +97,7 @@ export component ImageViewer inherits Rectangle {
         MediaStore.command("image-step", d + "");
     }
 
-    background: #000000ea;
+    background: Fixed.black-ea;
 
     scope := FocusScope {
         init => { self.focus(); }
@@ -175,7 +176,7 @@ export component ImageViewer inherits Rectangle {
     Rectangle {
         y: 0px;
         height: 52px;
-        background: #000000b0;
+        background: Fixed.black-b0;
         HorizontalLayout {
             padding-left: 20px;
             padding-right: 12px;
@@ -212,7 +213,7 @@ export component ImageViewer inherits Rectangle {
         width: 48px;
         height: 48px;
         border-radius: 24px;
-        background: prev-touch.has-hover ? #444444cc : #00000090;
+        background: prev-touch.has-hover ? Fixed.media-hover : Fixed.black-90;
         accessible-role: button;
         accessible-label: "Previous image";
         accessible-action-default => { root.step(-1); }
@@ -225,7 +226,7 @@ export component ImageViewer inherits Rectangle {
         width: 48px;
         height: 48px;
         border-radius: 24px;
-        background: next-touch.has-hover ? #444444cc : #00000090;
+        background: next-touch.has-hover ? Fixed.media-hover : Fixed.black-90;
         accessible-role: button;
         accessible-label: "Next image";
         accessible-action-default => { root.step(1); }
@@ -239,7 +240,7 @@ export component ImageViewer inherits Rectangle {
         width: status-text.preferred-width + 28px;
         height: 32px;
         border-radius: 16px;
-        background: #000000c0;
+        background: Fixed.black-c0;
         status-text := Text { text: MediaStore.viewer-status; color: Theme.fg; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
     }
 }
