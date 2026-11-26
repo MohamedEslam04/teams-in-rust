@@ -20,7 +20,7 @@ use slint::{PhysicalSize, Rgb8Pixel};
 use std::time::Duration;
 use teams_proto::user_settings::PrivacySettings;
 
-const PAGES: [&str; 13] = [
+const PAGES: [&str; 14] = [
     "general",
     "chats",
     "accounts",
@@ -28,6 +28,7 @@ const PAGES: [&str; 13] = [
     "notifications",
     "appearance",
     "accessibility",
+    "shortcuts",
     "devices",
     "calls",
     "files",

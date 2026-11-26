@@ -1,45 +1,16 @@
 //! Window-level keyboard shortcuts like Teams (plan chat 5.9): which chord means which action, and
-//! the "edit my last message" lookup. The effects (focusing, filters, views) live in
-//! `ui/app.slint`; the composer's formatting chords are in `render::edit::shortcut`.
-//! Ctrl+Alt+E, Alt+Shift+N, Shift+Esc and Alt+Q stay in `app.slint` where they always were.
+//! the "edit my last message" lookup. The chords are a table the user can change
+//! (`shortcut_keys.rs`); the effects (focusing, filters, views) live in `ui/organisms/app_keys.slint`;
+//! the composer's formatting chords are in `render::edit::shortcut`. Shift+Esc and
+//! Ctrl+Shift+1 to 9 stay in `app_keys.slint` with their own keys.
 
 use crate::{AppWindow, Msg, ShortcutApi};
-use slint::platform::Key;
 use slint::{ComponentHandle, Model, ModelRc, SharedString};
 
-/// The action of a chord, or `""`. `key` is the key's text (case is ignored).
+/// The action of a chord, or `""`. `key` is the key's text (case is ignored). Which chord means
+/// which action is the user's choice (Settings > Keyboard shortcuts): see `shortcut_keys.rs`.
 pub fn action(key: &str, ctrl: bool, alt: bool, shift: bool) -> &'static str {
-    // Ctrl+Alt+Home: the open chat's very first message (Ctrl+Home stays with the text boxes).
-    if ctrl && alt && !shift && key.chars().eq([char::from(Key::Home)]) {
-        return "jump-first";
-    }
-    let k = key.to_lowercase();
-    match (ctrl, alt, shift, k.as_str()) {
-        // Find in chat (or in channel).
-        (true, false, false, "f") => "find",
-        (true, false, false, ".") => "shortcuts",
-        (true, false, true, "p") => "palette",
-        (true, false, false, "e") => "search-box",
-        (true, false, false, "/") => "commands",
-        (true, true, false, "g") => "goto",
-        (true, false, true, "f") => "filter-box",
-        (true, true, false, "u") => "filter-unread",
-        (true, true, false, "c") => "filter-chats",
-        (true, true, false, "a") => "filter-channels",
-        (true, true, false, "z") => "filter-clear",
-        (false, true, true, "r") => "focus-composer",
-        (false, true, true, "m") => "focus-messages",
-        // Unreads: every unread message, by conversation.
-        (false, true, true, "u") => "unreads",
-        (true, false, true, "x") => "expand-composer",
-        (false, true, true, "o") => "attach-file",
-        // The call button's Audio call and Video call (1:1 chats).
-        (false, true, true, "a") => "audio-call",
-        (false, true, true, "v") => "video-call",
-        // The chat header's "More chat options" › Share screen (1:1 chats).
-        (true, false, true, "e") => "share-screen",
-        _ => "",
-    }
+    crate::shortcut_keys::action(key, ctrl, alt, shift)
 }
 
 /// The newest message of mine that can be edited (sent, not deleted, not a system line).
@@ -56,6 +27,7 @@ pub fn wire(window: &AppWindow) {
     let api = window.global::<ShortcutApi>();
     api.on_action(|key: SharedString, ctrl, alt, shift| action(&key, ctrl, alt, shift).into());
     api.on_last_own(|msgs| last_own(&msgs).into());
+    crate::shortcut_keys::wire(window);
     crate::catch_up::attach(window);
 }
 
@@ -63,6 +35,7 @@ pub fn wire(window: &AppWindow) {
 mod tests {
     use super::*;
     use slint::VecModel;
+    use slint::platform::Key;
 
     #[test]
     fn every_chord_of_the_plan_has_an_action() {
@@ -100,11 +73,36 @@ mod tests {
     }
 
     #[test]
-    fn the_older_chords_and_the_formatting_chords_are_not_taken() {
-        // Ctrl+Alt+E, Alt+Shift+N, Shift+Esc and Alt+Q are handled in app.slint.
-        assert_eq!(action("e", true, true, false), "");
-        assert_eq!(action("n", false, true, true), "");
-        assert_eq!(action("q", false, true, false), "");
+    fn the_older_chords_have_actions_too_and_the_formatting_chords_are_not_taken() {
+        // Ctrl+Alt+E, Alt+Shift+N, Ctrl+Shift+, and Alt+Q, Alt+Left and Alt+Right, Alt+Down and
+        // Alt+Up were once routed by hand in app_keys.slint.
+        assert_eq!(action("e", true, true, false), "search");
+        assert_eq!(action("n", false, true, true), "new-chat");
+        assert_eq!(action(",", true, false, true), "settings");
+        assert_eq!(action("<", true, false, true), "settings");
+        assert_eq!(action("q", false, true, false), "collapse-all");
+        let key = |k: Key| char::from(k).to_string();
+        assert_eq!(action(&key(Key::LeftArrow), false, true, false), "back");
+        assert_eq!(action(&key(Key::RightArrow), false, true, false), "forward");
+        assert_eq!(
+            action(&key(Key::DownArrow), false, true, false),
+            "next-unread"
+        );
+        assert_eq!(
+            action(&key(Key::UpArrow), false, true, false),
+            "previous-unread"
+        );
+        // Alt+Shift+Down / Alt+Shift+Up wrap around the list.
+        assert_eq!(
+            action(&key(Key::DownArrow), false, true, true),
+            "next-unread-wrap"
+        );
+        assert_eq!(
+            action(&key(Key::UpArrow), false, true, true),
+            "previous-unread-wrap"
+        );
+        // With another modifier they are other chords: no action.
+        assert_eq!(action(&key(Key::DownArrow), true, true, false), "");
         // Ctrl+Alt+Shift+C is inline code in the composer, not the Chats filter.
         assert_eq!(action("c", true, true, true), "");
         assert_eq!(action("b", true, false, false), "");

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------------------------
 // Find in Settings.
 
-pub const PAGES: [(&str, &str); 13] = [
+pub const PAGES: [(&str, &str); 14] = [
     ("general", "General"),
     ("chats", "Chats and channels"),
     ("accounts", "Accounts and orgs"),
@@ -9,6 +9,7 @@ pub const PAGES: [(&str, &str); 13] = [
     ("notifications", "Notifications and activity"),
     ("appearance", "Appearance"),
     ("accessibility", "Accessibility"),
+    ("shortcuts", "Keyboard shortcuts"),
     ("devices", "Devices"),
     ("calls", "Calls"),
     ("files", "Files and links"),
@@ -183,6 +184,16 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("accessibility", "Single-pointer controls", "gesture"),
     ("accessibility", "TTY mode", "telephone"),
     ("accessibility", "Sign language mode", "interpreter"),
+    (
+        "shortcuts",
+        "Change a keyboard shortcut",
+        "hotkey keys rebind remap customize binding chord combination key",
+    ),
+    (
+        "shortcuts",
+        "Reset all shortcuts",
+        "default restore keys hotkey",
+    ),
     ("devices", "Speaker", "audio output sound headphones"),
     ("devices", "Microphone", "audio input mic"),
     ("devices", "Camera", "video webcam"),

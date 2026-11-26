@@ -103,13 +103,22 @@ pub fn push_recent(recents: &str, id: &str) -> String {
         .join(",")
 }
 
+/// The chord shown beside an action: the one the user has bound (Settings > Keyboard shortcuts)
+/// when the action is one of those, else the catalog's own text. No chord stays none.
+fn shown_keys(a: &PaletteAction) -> slint::SharedString {
+    if a.keys.is_empty() {
+        return a.keys.clone();
+    }
+    crate::shortcut_keys::display(&a.id).map_or_else(|| a.keys.clone(), Into::into)
+}
+
 fn action_item(a: &PaletteAction, section: &str) -> PaletteItem {
     PaletteItem {
         id: a.id.clone(),
         cmd: a.cmd.clone(),
         arg: a.arg.clone(),
         label: a.label.clone(),
-        keys: a.keys.clone(),
+        keys: shown_keys(a),
         kind: "action".into(),
         section: section.into(),
         icon: a.icon.clone(),

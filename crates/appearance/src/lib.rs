@@ -5,6 +5,7 @@
 //! - [`portal`]: reads and watches the desktop's color scheme and accent over the XDG portal.
 //! - [`GeneralPrefs`] (language, formats, start-up) and [`AccessibilityPrefs`] (contrast, motion,
 //!   larger text), each in its own file next to `appearance.json`.
+//! - [`ShortcutPrefs`]: the keyboard shortcuts the user rebound, in `shortcuts.json`.
 //! - [`resolve`]: pure functions that combine the two into what the UI should draw.
 
 pub mod accessibility;
@@ -15,6 +16,7 @@ pub mod portal;
 pub mod prefs;
 pub mod renderer;
 pub mod resolve;
+pub mod shortcuts;
 pub mod snippets;
 mod store;
 
@@ -34,5 +36,6 @@ pub use renderer::Renderer;
 pub use resolve::{
     Resolved, ResolvedTheme, resolve, resolve_accent, resolve_font_scale, resolve_theme,
 };
+pub use shortcuts::ShortcutPrefs;
 pub use snippets::{Snippet, SnippetPrefs};
 pub use store::{Error, config_dir};

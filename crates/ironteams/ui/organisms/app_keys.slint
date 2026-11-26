@@ -1,5 +1,6 @@
-// The window's keyboard shortcuts (Teams' chords, see src/shortcuts.rs) and Esc. It holds the
-// focus when no input has it, and wraps the window's content (`@children`).
+// The window's keyboard shortcuts (Teams' chords; the user can rebind them in Settings, see
+// src/shortcut_keys.rs and src/shortcuts.rs) and Esc. It holds the focus when no input has it,
+// and wraps the window's content (`@children`).
 import { AppsStore } from "../stores/apps_store.slint";
 import { ChannelStore } from "channel_posts.slint";
 import { DirectCallStore } from "call_incoming.slint";
@@ -56,53 +57,17 @@ export component AppKeys inherits FocusScope {
             root.mark-all-read();
             return accept;
         }
-        // Alt+Down / Alt+Up: the next / previous unread chat or channel in the list.
-        if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            root.catch-up(event.text == Key.DownArrow ? 1 : -1);
-            return accept;
-        }
-        // Alt+Shift+Down / Alt+Shift+Up (2 / -2): the same, wrapping around the list.
-        if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && event.modifiers.shift {
-            root.catch-up(event.text == Key.DownArrow ? 2 : -2);
-            return accept;
-        }
-        // Alt+Q: collapse every section of the chat list.
-        if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
-            ListStore.command("collapse-all", "");
-            return accept;
-        }
-        // Alt+Left and Alt+Right: Back and Forward.
-        if event.text == Key.LeftArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            TopBarStore.command("back", "");
-            return accept;
-        }
-        if event.text == Key.RightArrow && event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift {
-            TopBarStore.command("forward", "");
-            return accept;
-        }
-        // Ctrl+Alt+E: Search.
-        if ((event.text == "E" || event.text == "e") && event.modifiers.control && event.modifiers.alt) {
-            root.view = "search";
-            FindStore.focus-tick += 1;
-            return accept;
-        }
-        if (event.text == "," || event.text == "<") && event.modifiers.control && event.modifiers.shift { SettingsStore.show("general"); return accept; } // Ctrl+Shift+,: Settings.
-        // Alt+Shift+N: New chat.
-        if ((event.text == "N" || event.text == "n") && event.modifiers.alt && event.modifiers.shift) {
-            root.view = "chat";
-            PeopleStore.new-chat-open = true;
-            PeopleStore.command("new-chat-open", "");
-            return accept;
-        }
         // Ctrl+Shift+1 to 9: the nth entry of the app bar. In the composer Ctrl+Shift+7 and 8
         // are the numbered and bullet list (Teams), so they stay with the composer there.
         if (event.modifiers.control && event.modifiers.shift && AppsStore.shortcut-index(event.text) > 0 && !(root.composer-focused && (AppsStore.shortcut-index(event.text) == 7 || AppsStore.shortcut-index(event.text) == 8))) {
             AppsStore.command("shortcut", "" + AppsStore.shortcut-index(event.text));
             return accept;
         }
-        // The other Teams chords (plan chat 5.9); the mapping is in src/shortcuts.rs.
-        if ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift) != "" {
-            root.run-shortcut(ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift));
+        // The other chords: which key means which action is a table the user can change
+        // (src/shortcut_keys.rs); `run-shortcut` does the action.
+        let a = ShortcutApi.action(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift);
+        if a != "" {
+            root.run-shortcut(a);
             return accept;
         }
         reject
@@ -121,6 +86,30 @@ export component AppKeys inherits FocusScope {
         reject
     }
     function run-shortcut(a: string) {
+        // Alt+Down and Alt+Up: the next / previous unread chat or channel in the list.
+        if a == "next-unread" { root.catch-up(1); }
+        if a == "previous-unread" { root.catch-up(-1); }
+        // Alt+Shift+Down / Alt+Shift+Up (2 / -2): the same, wrapping around the list.
+        if a == "next-unread-wrap" { root.catch-up(2); }
+        if a == "previous-unread-wrap" { root.catch-up(-2); }
+        // Alt+Q: collapse every section of the chat list.
+        if a == "collapse-all" { ListStore.command("collapse-all", ""); }
+        // Alt+Left and Alt+Right: Back and Forward.
+        if a == "back" { TopBarStore.command("back", ""); }
+        if a == "forward" { TopBarStore.command("forward", ""); }
+        // Ctrl+Alt+E: Search.
+        if a == "search" {
+            root.view = "search";
+            FindStore.focus-tick += 1;
+        }
+        // Ctrl+Shift+,: Settings.
+        if a == "settings" { SettingsStore.show("general"); }
+        // Alt+Shift+N: New chat.
+        if a == "new-chat" {
+            root.view = "chat";
+            PeopleStore.new-chat-open = true;
+            PeopleStore.command("new-chat-open", "");
+        }
         // Alt+Shift+A and Alt+Shift+V: the call button's Audio call and Video call.
         if a == "audio-call" && root.view == "chat" && DirectCallStore.available && DirectCallStore.is-direct(root.current-id) {
             DirectCallStore.command("dial", root.current-id);

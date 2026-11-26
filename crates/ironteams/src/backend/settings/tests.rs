@@ -237,6 +237,23 @@ fn the_storage_page_is_listed_and_its_settings_are_found() {
 }
 
 #[test]
+fn the_keyboard_shortcuts_page_is_listed_and_its_settings_are_found() {
+    assert_eq!(page_title("shortcuts"), "Keyboard shortcuts");
+    assert!(PAGES.iter().any(|(k, _)| *k == "shortcuts"));
+    let on_shortcuts = |q: &str| {
+        find(q)
+            .into_iter()
+            .filter(|f| f.page == "shortcuts")
+            .map(|f| f.label)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(on_shortcuts("rebind"), ["Change a keyboard shortcut"]);
+    assert!(on_shortcuts("hotkey").contains(&"Reset all shortcuts"));
+    // The page's title is part of what a search matches, so both settings come up.
+    assert_eq!(on_shortcuts("keyboard").len(), 2);
+}
+
+#[test]
 fn raw_alsa_entries_hide_unless_asked_or_chosen() {
     let d = |id: &str, def: bool| devices::AudioDevice {
         id: id.into(),
