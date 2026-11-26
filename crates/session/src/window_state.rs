@@ -757,21 +757,12 @@ mod tests {
     fn an_older_build_reading_the_new_file_ignores_the_views() {
         // What a build from before the per-account views reads: the geometry, and nothing it
         // would take for a last chat.
-        #[derive(Deserialize)]
+        #[derive(Default, Deserialize)]
         #[serde(default)]
         struct Old {
             width: i32,
             last_chat: Option<String>,
             collapsed_sections: BTreeSet<String>,
-        }
-        impl Default for Old {
-            fn default() -> Self {
-                Old {
-                    width: 0,
-                    last_chat: None,
-                    collapsed_sections: BTreeSet::new(),
-                }
-            }
         }
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join(FILE_NAME);
