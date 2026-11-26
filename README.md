@@ -361,4 +361,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit f0777396 ("feat(accounts): switch by relaunch from the profile menu, with a loss check and saved unread counts", 2026-11-26)
+Docs synced to commit c96a9357 ("Merge pull request #56 from MohamedEslam04/feat/accounts-switch", 2026-11-26)
