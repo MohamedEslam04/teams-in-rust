@@ -3,6 +3,9 @@ use super::*;
 /// Plays the test sound on an output (`None`: the default one).
 pub type PlaySound = Arc<dyn Fn(Option<String>) -> Result<(), String> + Send + Sync>;
 
+/// Puts text on the clipboard.
+pub type CopyText = Box<dyn Fn(&str) -> Result<(), String>>;
+
 /// Turns the autostart entry on or off, and says whether it is on.
 pub struct Autostart {
     pub set: Box<dyn Fn(bool) -> Result<(), String>>,
@@ -45,7 +48,7 @@ pub struct Hooks {
     pub test_notification: Box<dyn Fn()>,
     pub open_url: Box<dyn Fn(&str)>,
     /// Puts text on the clipboard (Copy theme).
-    pub copy_text: Box<dyn Fn(&str) -> Result<(), String>>,
+    pub copy_text: CopyText,
     /// Quits this process; `main` then starts IronTeams again (`relaunch`).
     pub restart: Box<dyn Fn()>,
     /// The account switch: quits this process, and `main` starts IronTeams again on the
