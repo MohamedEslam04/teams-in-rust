@@ -2316,6 +2316,10 @@ fn files_become_chips_per_chat_and_each_can_be_removed() {
         let run = run.clone();
         move |i| run(Cmd::RemoveAttachment(i as usize))
     });
+    // The composer lost the image's taller line with the chat switch: let it lay out again
+    // before the X is clicked where it now is.
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+    testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     ids(&h.app, "ComposerAttachments::chip-x")[0].mock_single_click(PointerEventButton::Left);
     assert!(chips(&h.app).is_empty());
     assert_eq!(
