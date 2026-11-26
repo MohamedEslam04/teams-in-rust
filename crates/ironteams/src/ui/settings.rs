@@ -8,7 +8,7 @@
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
 //! open, close, page, query, profile, theme, theme-pick, theme-mode, theme-slot, theme-time,
-//! reset-theme, accent, density, message-style, show-avatars, show-timestamps, show-reactions,
+//! reset-theme, font-code, font-ui, accent, density, message-style, show-avatars, show-timestamps, show-reactions,
 //! font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
 //! larger-text, a11y, rail-move, rail-show, rail-auto, notify, pause, test-notification, privacy, unblock, priority-remove,
@@ -67,6 +67,7 @@ mod updates;
 pub use updates::*;
 mod command;
 use command::*;
+mod fonts;
 mod switch;
 
 /// Polls a running microphone test; `None` when there is no new reading.

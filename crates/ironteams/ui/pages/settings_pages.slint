@@ -10,7 +10,7 @@ import { SettingsStore, SOption, SNotify } from "../stores/settings_store.slint"
 import { EmojiItem } from "../tokens/types.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { SRadio, SRadioList, ThemeTile, ThemeTileMetrics } from "../molecules/settings_widgets.slint";
-import { SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsOrderRow, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow, ThemeChoiceRow } from "../molecules/settings_kit.slint";
+import { FontChoiceRow, SettingsBlock, SettingsButtonRow, SettingsChoiceRow, SettingsMetrics, SettingsNote, SettingsOrderRow, SettingsRow, SettingsSection, SettingsSections, SettingsSwitchRow, SPersonRow, ThemeChoiceRow } from "../molecules/settings_kit.slint";
 import { SnippetsSection } from "settings_snippets.slint";
 import { ListStore } from "../organisms/lists.slint";
 import { AppsStore, RailItems } from "../stores/apps_store.slint";
@@ -37,7 +37,7 @@ component DryRuns inherits SettingsSection {
                 text: d;
                 color: Theme.fg-muted;
                 font-size: Theme.font-small;
-                font-family: "monospace";
+                font-family: Theme.font-code;
                 wrap: word-wrap;
                 vertical-alignment: center;
             }
@@ -858,6 +858,20 @@ export component AppearancePage inherits SettingsSections {
             label: "Preview: the quick brown fox. نص تجريبي.";
             button-label: @tr("Reset font size");
             clicked => { SettingsStore.command("font-scale", "1"); }
+        }
+        FontChoiceRow {
+            label: @tr("Code font");
+            description: @tr("Code blocks and other fixed-width text. Inline code in messages keeps the default font.");
+            families: SettingsStore.font-families;
+            value: SettingsStore.font-code;
+            picked(v) => { SettingsStore.font-code = v; SettingsStore.command("font-code", v); }
+        }
+        FontChoiceRow {
+            label: @tr("Interface font");
+            description: @tr("Text in every window. Emoji and Arabic keep their own fonts where this one has no letters for them.");
+            families: SettingsStore.font-families;
+            value: SettingsStore.font-ui;
+            picked(v) => { SettingsStore.font-ui = v; SettingsStore.command("font-ui", v); }
         }
     }
     SettingsSection {

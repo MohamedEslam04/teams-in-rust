@@ -25,6 +25,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             if arg == "storage" {
                 open_storage(w, shared);
             }
+            if arg == "appearance" {
+                push_font_families(w);
+            }
         }
         "close" => {
             let mut c = shared.borrow_mut();
@@ -139,6 +142,20 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
                 Ok(()) if name == "reset-theme" => notice(w, "Theme reset."),
                 r => saved(w, r),
             }
+        }
+        // A family name, or "" for the default font.
+        "font-code" | "font-ui" => {
+            let mut c = shared.borrow_mut();
+            let family = Some(arg.to_string()).filter(|f| !f.is_empty());
+            if name == "font-code" {
+                c.local.themes.font_code = family;
+            } else {
+                c.local.themes.font_ui = family;
+            }
+            let r = c.local.save_themes();
+            look_changed(w, &mut c);
+            push_themes(w, &c);
+            saved(w, r);
         }
         "accent" | "density" | "font-step" | "font-scale" | "message-style" | "show-avatars"
         | "show-timestamps" | "show-reactions" => {
