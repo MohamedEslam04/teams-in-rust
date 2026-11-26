@@ -56,11 +56,10 @@ pub fn install(
     env: SettingsEnv,
 ) {
     let mut local = Local::load(&env.paths.config_dir);
-    let open_chat_at = env
-        .paths
-        .load_config()
-        .map(|c| c.open_chat_at)
-        .unwrap_or_default();
+    let config = env.paths.load_config().ok();
+    let open_chat_at = config.as_ref().map(|c| c.open_chat_at).unwrap_or_default();
+    // The active account: its own theme (themes.json `accounts`) wins over the app choice.
+    let account = config.map(|c| c.account).filter(|a| !a.is_empty());
     // The autostart entry is the truth: it may have been added or removed outside ironteams.
     local.general.auto_start = (env.hooks.autostart.get)();
     let portal = if env.portal { read_portal() } else { None };
@@ -91,6 +90,9 @@ pub fn install(
         status_before: None,
         switching: None,
         last_look: None,
+        account,
+        logged_fallbacks: HashSet::new(),
+        schedule_timer: None,
     }));
     CTL.with(|c| *c.borrow_mut() = Some(shared.clone()));
     {

@@ -61,11 +61,11 @@ Files:
 - `[index.rs:DeviceRow]` pub type (id,name)
 - `[index.rs:audio_rows]` pub fn(&[AudioDevice], all, chosen) -> Vec<DeviceRow>; hides raw ALSA hw ids unless all/chosen
 - `[index.rs:camera_rows]` pub fn(&[Camera]) -> Vec<DeviceRow> (bus,name)
-- `[look.rs:Palette/DARK/LIGHT/CONTRAST_DARK/CONTRAST_LIGHT]` pub palette struct and constants: the 49 token colours of ui/tokens/types.slint `Tokens` in the same order, each 0xRRGGBBAA, and `dark`; `bg` (was main) and `panel` (was sidebar)
-- `[look.rs:opaque]` pub const fn(u32) -> u32; 0xRRGGBB to 0xRRGGBBAA with alpha ff
-- `[look.rs:nav_of]` pub fn(&Palette) -> Palette; the content palette with bg = panel (the nav of a literal palette)
-- `[look.rs:palette]` pub fn(ResolvedTheme, high_contrast, Option<Rgb>) -> Palette; the accent rules (mix on 0xRRGGBB, then opaque) apply only to DARK and LIGHT
-- `[look.rs:Look/look]` pub struct {content, nav, call: Palette, font_scale, compact, high_contrast, reduced_motion, h24, accent} and fn(&Local, Option<&PortalSettings>) -> Look; nav = nav_of(content), call = content, h24 from general.time_format == H24
+- `[look.rs:Look/look]` pub struct (Clone, PartialEq) {content, nav, call: appearance::Tokens, theme_id, accent_applies, schedule, report: appearance::Report, fallbacks: Vec<appearance::Fallback>, font_ui, font_code, font_scale, compact, high_contrast, reduced_motion, h24, accent} and fn(&Local, Option<&PortalSettings>, account: Option<&str>, now_min: u16) -> Look; the colours come from `appearance::resolve_look(&local.appearance, &local.themes, account, portal, high_contrast, now_min)` (the token values of the literal palettes are `appearance::tokens::{DARK, LIGHT, CONTRAST_DARK, CONTRAST_LIGHT}`), h24 from general.time_format == H24
+- `[prefs.rs:Local.themes]` pub appearance::ThemesFile, loaded from `themes.json` in `Local::load` (`load_themes` logs skipped entries or a renamed `.bad` file once with tracing::warn)
+- `[prefs.rs:Local::theme_choice]` pub fn(&self) -> appearance::ThemeChoice; themes.choice, or the old appearance.json theme mapped by `choice_from_legacy`
+- `[prefs.rs:Local::save_themes]` pub fn(&mut self) -> anyhow::Result<()>; writes themes.json, then appearance.json with `theme` = `legacy_theme(theme_choice, themes)` (Light/Dark for a fixed theme of that kind, System for a pair)
+- `[prefs.rs:reset_theme_files]` pub fn(dir: &Path, account: Option<&str>) -> anyhow::Result<()>; Local::load, ThemesFile::reset(account), save_themes; used by `--reset-theme` before any window opens
 - `[look.rs:step_font_scale/FONT_STEP]` pub fn(f32,i32)->f32 and 0.05 step; plus pub slug fns switch_slug/switch_from_slug/date_slug/date_from_slug/time_slug/time_from_slug
 - `[notifications.rs:remember_notification_settings/remember_priority_people/is_priority_person]` pub store/query of global settings; plus pub(in super::super) remembered_notification_settings
 

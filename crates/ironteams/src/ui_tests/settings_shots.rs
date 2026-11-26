@@ -212,15 +212,35 @@ fn settings_pages_to_png() {
             key(&app, Key::Shift, false);
         }
     };
-    for (page, first, back, name) in [
-        ("notifications", "Show the sender's photo", false, "switch"),
-        ("appearance", "Message density: Comfy", false, "pill"),
-        ("appearance", "Reset font size", true, "button"),
-        ("devices", "Speaker: System default", false, "radio"),
+    // `row`: a row to scroll to first, as a Find result does (the Appearance page starts with the
+    // theme gallery, so its text and layout rows are below the window). Two `settle`s let the
+    // row's short tint end before the picture.
+    for (page, row, first, back, name) in [
+        (
+            "notifications",
+            "",
+            "Show the sender's photo",
+            false,
+            "switch",
+        ),
+        (
+            "appearance",
+            "Font size",
+            "Message density: Comfy",
+            false,
+            "pill",
+        ),
+        ("appearance", "Font size", "Reset font size", true, "button"),
+        ("devices", "", "Speaker: System default", false, "radio"),
     ] {
         g.invoke_show(page.into());
         window.set_size(PhysicalSize::new(900, 1080));
         settle();
+        if !row.is_empty() {
+            g.set_target(row.into());
+            settle();
+            settle();
+        }
         click(first);
         // A switch was flipped by the click: Tab, then put it back with the mouse after the shot.
         tab(back);

@@ -111,7 +111,11 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
     and the call window's microphone meter can no longer freeze the window. In a 1:1 call the
     camera stays on from the click until you turn it off, a media update lost to a dropped
     connection is sent again, and a camera another app holds says so instead of failing quietly.
-- **Settings:** theme (light, dark, system), accent, density and text size; app language with
+- **Settings:** theme: a gallery of ten built-in themes (IronTeams Dark and Light, Dusk, Harbor,
+  Moss, Sandstone, Ember, Glacier, Graphite, Orchard), shown as one theme, a light and a dark theme
+  that follow the system, or a light and a dark theme on a schedule (switched within a minute of
+  each time); the accent colour (for IronTeams Dark and Light), density and text size; Reset theme
+  in the command palette (Ctrl+Shift+P) or `--reset-theme`; app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; storage (the active account's media and the total over all accounts,
@@ -256,6 +260,7 @@ under the old keyring name is moved to the new one when it is first read, so you
 |---|---|
 | `--account label[@tenant]` | Start on that account, or on an organization of it, and keep it as the active one. An unknown label falls back to the saved choice |
 | `--hidden` | Start in the tray without showing the window |
+| `--reset-theme` | Put the theme back to the default (IronTeams Light and Dark following the system), drop the active account's own theme, the call theme and the fonts, then start as usual. Custom themes stay |
 | `--report-problem` | Write the local problem report (see below) |
 
 Switching accounts and Settings › Restart use these flags to start IronTeams again. A second launch

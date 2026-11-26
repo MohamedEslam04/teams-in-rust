@@ -1,5 +1,8 @@
 use super::*;
-use appearance::{PortalScheme, Theme};
+use appearance::tokens::{
+    CONTRAST_DARK, CONTRAST_LIGHT, DARK, LIGHT, literal, nav_of_literal, opaque,
+};
+use appearance::{CallChoice, PortalScheme, ResolvedTheme, Switch, Theme, ThemeChoice, Tokens};
 use serde_json::json;
 
 #[test]
@@ -39,19 +42,19 @@ fn tempfile_dir(tag: &str) -> PathBuf {
 }
 
 #[test]
-fn palettes_follow_theme_contrast_and_accent() {
-    assert_eq!(palette(ResolvedTheme::Dark, false, None), DARK);
-    assert_eq!(palette(ResolvedTheme::Light, false, None), LIGHT);
-    assert_eq!(palette(ResolvedTheme::Dark, true, None), CONTRAST_DARK);
+fn literal_tokens_follow_theme_contrast_and_accent() {
+    assert_eq!(literal(ResolvedTheme::Dark, false, None), DARK);
+    assert_eq!(literal(ResolvedTheme::Light, false, None), LIGHT);
+    assert_eq!(literal(ResolvedTheme::Dark, true, None), CONTRAST_DARK);
     // High contrast keeps its highlights even with an accent.
     assert_eq!(
-        palette(ResolvedTheme::Light, true, Some(Rgb::new(1, 2, 3))),
+        literal(ResolvedTheme::Light, true, Some(Rgb::new(1, 2, 3))),
         CONTRAST_LIGHT
     );
-    let p = palette(ResolvedTheme::Dark, false, Some(Rgb::new(0x0f, 0x6c, 0xbd)));
+    let p = literal(ResolvedTheme::Dark, false, Some(Rgb::new(0x0f, 0x6c, 0xbd)));
     assert_eq!(p.accent_strong, 0x0f6cbdff);
     assert_ne!(p.accent, DARK.accent);
-    let l = palette(
+    let l = literal(
         ResolvedTheme::Light,
         false,
         Some(Rgb::new(0x0f, 0x6c, 0xbd)),
@@ -63,60 +66,9 @@ fn palettes_follow_theme_contrast_and_accent() {
 /// CONTRAST_LIGHT, as `0xRRGGBBAA` (docs/designs/theme-engine.md, "Values in the four literal
 /// palettes"). These are the colours the screens drew before the tokens, so nothing moves.
 #[test]
-fn literal_palettes_hold_todays_colours() {
-    let token = |p: &Palette, name: &str| -> u32 {
-        match name {
-            "bg" => p.bg,
-            "surface" => p.surface,
-            "surface-hover" => p.surface_hover,
-            "selected" => p.selected,
-            "border" => p.border,
-            "panel" => p.panel,
-            "rail" => p.rail,
-            "topbar" => p.topbar,
-            "bg-alt" => p.bg_alt,
-            "bg-sunk" => p.bg_sunk,
-            "grid-line" => p.grid_line,
-            "grid-line-soft" => p.grid_line_soft,
-            "fg" => p.fg,
-            "fg-muted" => p.fg_muted,
-            "fg-subtle" => p.fg_subtle,
-            "fg-strong" => p.fg_strong,
-            "accent" => p.accent,
-            "accent-strong" => p.accent_strong,
-            "on-accent" => p.on_accent,
-            "accent-soft" => p.accent_soft,
-            "accent-subtle" => p.accent_subtle,
-            "accent-muted" => p.accent_muted,
-            "accent-faint" => p.accent_faint,
-            "accent-wash" => p.accent_wash,
-            "accent-tint" => p.accent_tint,
-            "bubble-mine" => p.bubble_mine,
-            "bubble-other" => p.bubble_other,
-            "bubble-mention" => p.bubble_mention,
-            "mention" => p.mention,
-            "code-bg" => p.code_bg,
-            "danger" => p.danger,
-            "danger-hover" => p.danger_hover,
-            "on-danger" => p.on_danger,
-            "danger-text" => p.danger_text,
-            "danger-soft" => p.danger_soft,
-            "warning" => p.warning,
-            "warning-soft" => p.warning_soft,
-            "success" => p.success,
-            "success-soft" => p.success_soft,
-            "info-soft" => p.info_soft,
-            "unread-badge" => p.unread_badge,
-            "on-badge" => p.on_badge,
-            "presence-available" => p.presence_available,
-            "presence-busy" => p.presence_busy,
-            "presence-away" => p.presence_away,
-            "presence-offline" => p.presence_offline,
-            "scrim" => p.scrim,
-            "overlay-soft" => p.overlay_soft,
-            "shimmer" => p.shimmer,
-            _ => panic!("no token {name}"),
-        }
+fn appearance_literal_tokens_keep_todays_colours() {
+    let token = |p: &Tokens, name: &str| -> u32 {
+        p.get(name).unwrap_or_else(|| panic!("no token {name}"))
     };
     let table: [(&str, [u32; 4]); 49] = [
         ("bg", [0x141414ff, 0xffffffff, 0x000000ff, 0xffffffff]),
@@ -273,11 +225,11 @@ fn literal_palettes_hold_todays_colours() {
 #[test]
 fn nav_of_takes_the_panel_as_background() {
     for p in [DARK, LIGHT, CONTRAST_DARK, CONTRAST_LIGHT] {
-        let nav = nav_of(&p);
+        let nav = nav_of_literal(&p);
         assert_eq!(nav.bg, p.panel);
-        assert_eq!(Palette { bg: p.bg, ..nav }, p, "only the background moves");
+        assert_eq!(Tokens { bg: p.bg, ..nav }, p, "only the background moves");
     }
-    assert_eq!(nav_of(&DARK).bg, opaque(0x1f1f1f));
+    assert_eq!(nav_of_literal(&DARK).bg, opaque(0x1f1f1f));
 }
 
 #[test]
@@ -285,16 +237,16 @@ fn look_carries_h24_and_three_regions() {
     let mut l = Local::load(&tempfile_dir("regions"));
     l.appearance.theme = Theme::Light;
     l.appearance.accent = Some(Rgb::new(0x0f, 0x6c, 0xbd));
-    let lk = look(&l, None);
+    let lk = look(&l, None, None, 0);
     assert_eq!(lk.call, lk.content);
     assert_eq!(lk.nav.bg, lk.content.panel);
-    assert_eq!(lk.nav, nav_of(&lk.content));
+    assert_eq!(lk.nav, nav_of_literal(&lk.content));
     assert!(!lk.content.dark);
     assert!(!lk.h24, "12-hour is the default");
     l.general.time_format = TimeFormat::H24;
-    assert!(look(&l, None).h24);
+    assert!(look(&l, None, None, 0).h24);
     l.general.time_format = TimeFormat::H12;
-    assert!(!look(&l, None).h24);
+    assert!(!look(&l, None, None, 0).h24);
 }
 
 #[test]
@@ -313,20 +265,113 @@ fn look_resolves_system_theme_contrast_motion_and_text_scale() {
         animations_enabled: Some(false),
         ..Default::default()
     };
-    let lk = look(&l, Some(&dark_portal));
+    let lk = look(&l, Some(&dark_portal), None, 0);
     assert!(lk.content.dark && lk.reduced_motion && !lk.high_contrast);
     assert!(
-        look(&l, None).content.dark,
+        look(&l, None, None, 0).content.dark,
         "no portal: dark, the built-in look"
     );
     l.appearance.theme = Theme::Dark;
     l.appearance.set_font_scale(1.2);
     l.a11y.larger_text = true;
     l.a11y.high_contrast = AutoSwitch::On;
-    let lk = look(&l, None);
+    let lk = look(&l, None, None, 0);
     assert!(lk.content.dark && lk.high_contrast);
     assert!((lk.font_scale - 1.5).abs() < 1e-6);
     assert_eq!(lk.content, CONTRAST_DARK);
+}
+
+#[test]
+fn local_loads_and_saves_themes() {
+    let dir = tempfile_dir("themes");
+    let mut l = Local::load(&dir);
+    assert_eq!(l.themes, appearance::ThemesFile::default());
+    assert_eq!(
+        l.theme_choice(),
+        appearance::themes::default_choice(),
+        "the old System field"
+    );
+    l.themes.choice = Some(ThemeChoice::Fixed("builtin:dusk".into()));
+    l.themes
+        .accounts
+        .insert("work".into(), "builtin:moss".into());
+    l.save_themes().unwrap();
+    let back = Local::load(&dir);
+    assert_eq!(back.themes, l.themes);
+    // Dusk is dark, so a build without themes opens dark.
+    assert_eq!(back.appearance.theme, Theme::Dark);
+    l.themes.choice = Some(ThemeChoice::Fixed("builtin:harbor".into()));
+    l.save_themes().unwrap();
+    assert_eq!(Local::load(&dir).appearance.theme, Theme::Light);
+    l.themes.choice = Some(appearance::themes::default_choice());
+    l.save_themes().unwrap();
+    assert_eq!(Local::load(&dir).appearance.theme, Theme::System);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn reset_theme_files_resets_choice_account_call_and_fonts() {
+    let dir = tempfile_dir("reset-theme");
+    let mut l = Local::load(&dir);
+    let custom = l
+        .themes
+        .add("Mine", appearance::themes::builtins()[2].base, false)
+        .unwrap();
+    l.themes.choice = Some(ThemeChoice::Fixed(custom.clone()));
+    l.themes.set_account("work", Some("builtin:moss"));
+    l.themes.set_account("home", Some("builtin:ember"));
+    l.themes.call = CallChoice::Fixed("builtin:dark".into());
+    l.themes.font_ui = Some("Inter".into());
+    l.themes.font_code = Some("Fira Code".into());
+    l.save_themes().unwrap();
+    reset_theme_files(&dir, Some("work")).unwrap();
+    let back = Local::load(&dir);
+    assert_eq!(
+        back.themes.choice,
+        Some(appearance::themes::default_choice())
+    );
+    assert_eq!(back.appearance.theme, Theme::System);
+    assert!(!back.themes.accounts.contains_key("work"));
+    assert_eq!(
+        back.themes.accounts.get("home").map(String::as_str),
+        Some("builtin:ember"),
+        "another account keeps its theme"
+    );
+    assert_eq!(back.themes.call, CallChoice::SameAsApp);
+    assert_eq!((back.themes.font_ui, back.themes.font_code), (None, None));
+    assert_eq!(back.themes.custom.len(), 1, "custom themes stay");
+    assert_eq!(back.themes.custom[0].id, custom);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn look_uses_the_account_entry_and_the_clock() {
+    let mut l = Local::load(&tempfile_dir("look-account"));
+    l.themes.choice = Some(ThemeChoice::Pair {
+        light: "builtin:harbor".into(),
+        dark: "builtin:moss".into(),
+        switch: Switch::Schedule {
+            light_from: 480,
+            dark_from: 1140,
+        },
+    });
+    let lk = look(&l, None, None, 1139);
+    assert_eq!(lk.theme_id, "builtin:harbor");
+    assert!(lk.schedule && !lk.accent_applies);
+    assert!(!lk.content.dark, "Harbor's content is light");
+    assert!(lk.nav.dark, "and its nav dark");
+    assert_eq!(look(&l, None, None, 1140).theme_id, "builtin:moss");
+    assert_eq!(look(&l, None, None, 479).theme_id, "builtin:moss");
+    l.themes.set_account("work", Some("builtin:dusk"));
+    let lk = look(&l, None, Some("work"), 1139);
+    assert_eq!(lk.theme_id, "builtin:dusk");
+    assert!(!lk.schedule, "an account theme is one fixed theme");
+    assert_eq!(lk.content.bg, opaque(0x17141c));
+    assert_eq!(
+        look(&l, None, Some("home"), 1139).theme_id,
+        "builtin:harbor",
+        "another account uses the app choice"
+    );
 }
 
 #[test]

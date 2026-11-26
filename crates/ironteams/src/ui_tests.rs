@@ -87,6 +87,7 @@ mod splash;
 mod split_view;
 mod teams;
 mod theme_shots;
+mod themes;
 mod topbar;
 mod unreads;
 #[cfg(feature = "calls")]
