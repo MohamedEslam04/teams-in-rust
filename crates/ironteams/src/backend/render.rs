@@ -115,6 +115,10 @@ impl Engine {
             }
             self.release_held_render();
             self.render_dirty();
+            // A cache-first start draws the saved chats while not yet connected.
+            if !self.connected.load(std::sync::atomic::Ordering::Relaxed) {
+                crate::start_timing::mark(crate::start_timing::Stage::CachedChatsPainted);
+            }
             let (typing, lapse) = {
                 let mut v = self.view.lock().unwrap();
                 v.typing.expire(Instant::now());

@@ -20,6 +20,7 @@ use teams_proto::Client;
 mod activity;
 mod appstore;
 mod cache;
+mod cache_first;
 mod call;
 #[cfg(feature = "calls")]
 mod call_direct;

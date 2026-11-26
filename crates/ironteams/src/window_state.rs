@@ -451,20 +451,41 @@ pub fn restore_command(w: &AppWindow, id: &str) -> Option<Cmd> {
     })
 }
 
-/// Loads the saved state, applies it to `window`, starts the save timer and the restore of the
-/// last chat. `persist` is false in demo mode: the state is neither restored nor written.
-/// Returns the restore timer; keep it alive for the life of the app. The save timer lives in
-/// [`set_autosave`]'s hands.
+/// The key of the account the config makes active ([`session::Config::active_token_key`]): what
+/// the per-account part of the window state is stored under. `default` (the first account's
+/// label) when the config cannot be read.
+pub fn active_account_key() -> String {
+    session::Paths::new()
+        .and_then(|p| p.load_config())
+        .map(|c| c.active_token_key())
+        .unwrap_or_else(|_| "default".to_owned())
+}
+
+/// Loads the saved state for the account `key`, applies it to `window`, starts the save timer
+/// and the restore of that account's last chat. `persist` is false in demo mode: the state is
+/// neither restored nor written. Returns the restore timer; keep it alive for the life of the
+/// app. The save timer lives in [`set_autosave`]'s hands.
 pub fn install(
     window: &AppWindow,
     persist: bool,
+    key: &str,
     tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
 ) -> Vec<Timer> {
     let state = if persist {
-        WindowState::load()
+        WindowState::load_for(key)
     } else {
         WindowState::default()
     };
+    install_state(window, persist, state, tx)
+}
+
+/// [`install`] with the state already loaded (for the account `state` was loaded for).
+fn install_state(
+    window: &AppWindow,
+    persist: bool,
+    state: WindowState,
+    tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
+) -> Vec<Timer> {
     let plan = restore_plan(&state);
     let last_chat = state.active_view().last_chat.clone();
     let last_channel = state.active_view().last_channel.clone();
@@ -513,37 +534,48 @@ pub fn install(
 
     // IRONTEAMS_OPEN is a development aid that opens its own chat.
     if let Some(id) = last_chat.filter(|_| compat::var_os("IRONTEAMS_OPEN").is_none()) {
-        let restore = Timer::default();
-        let weak = window.as_weak();
-        let mut ticks = 0;
-        let mut finished = false;
-        restore.start(TimerMode::Repeated, RESTORE_POLL, move || {
-            let Some(w) = weak.upgrade() else { return };
-            if finished {
-                return;
-            }
-            // Wait for sign-in, and for the window to be shown: a chat opened behind a hidden
-            // window would count as read.
-            if w.get_login_state() != "ready" || !w.window().is_visible() {
-                return;
-            }
-            let done = !w.get_current_id().is_empty()
-                || match restore_command(&w, &id) {
-                    Some(cmd) => {
-                        let _ = tx.send(cmd);
-                        true
-                    }
-                    None => {
-                        ticks += 1;
-                        ticks > RESTORE_TICKS
-                    }
-                };
-            // A timer cannot stop itself from inside; it only does nothing from now on.
-            finished = done;
-        });
-        timers.push(restore);
+        timers.push(start_restore(window, id, tx));
     }
     timers
+}
+
+/// Opens the chat `id` once the app is signed in, shown, and has it in the sidebar; gives up
+/// after [`RESTORE_TICKS`] polls. A cache-first start has the saved chats on screen at once, so
+/// the chat is found before the network answers.
+pub(crate) fn start_restore(
+    window: &AppWindow,
+    id: String,
+    tx: tokio::sync::mpsc::UnboundedSender<Cmd>,
+) -> Timer {
+    let restore = Timer::default();
+    let weak = window.as_weak();
+    let mut ticks = 0;
+    let mut finished = false;
+    restore.start(TimerMode::Repeated, RESTORE_POLL, move || {
+        let Some(w) = weak.upgrade() else { return };
+        if finished {
+            return;
+        }
+        // Wait for sign-in, and for the window to be shown: a chat opened behind a hidden
+        // window would count as read.
+        if w.get_login_state() != "ready" || !w.window().is_visible() {
+            return;
+        }
+        let done = !w.get_current_id().is_empty()
+            || match restore_command(&w, &id) {
+                Some(cmd) => {
+                    let _ = tx.send(cmd);
+                    true
+                }
+                None => {
+                    ticks += 1;
+                    ticks > RESTORE_TICKS
+                }
+            };
+        // A timer cannot stop itself from inside; it only does nothing from now on.
+        finished = done;
+    });
+    restore
 }
 
 thread_local! {

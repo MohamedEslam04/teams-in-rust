@@ -634,18 +634,26 @@ impl Engine {
         self.start_online();
     }
 
-    /// Starts from the saved chats while the sign-in could not reach Microsoft: only the render
-    /// loop and the saved calendar. Sends wait in the outbox, as when the connection drops later;
-    /// [`Engine::go_online`] starts the rest once the session is refreshed.
+    /// Starts from the saved chats, before the session is refreshed: only the render loop and
+    /// the saved calendar. This is the start of every account that has run before (the window
+    /// paints from its database while the tokens are refreshed in the background), and of a
+    /// start that could not reach Microsoft. Sends wait in the outbox, as when the connection
+    /// drops later; [`Engine::go_online`] starts the rest once the session is refreshed. A
+    /// non-empty `notice` is shown as an info banner (an empty one is a normal start, not a
+    /// failure).
     pub fn start_cached(self: &Arc<Self>, notice: &str) {
         self.connected.store(false, Ordering::Relaxed);
         self.ui.connected(false);
-        self.ui.info(notice.into());
+        if !notice.is_empty() {
+            self.ui.info(notice.into());
+        }
         self.start_local();
     }
 
     /// The session was refreshed after a [`Engine::start_cached`]: saves the (rotated) token and
-    /// runs the normal start-up (outbox, sync, live connection, ...).
+    /// runs the online start-up (outbox, sync, live connection, ...). What `start_cached`
+    /// started (render loop, saved calendar) is not started again: [`Engine::start`] is the
+    /// local part followed by the same online part.
     pub async fn go_online(self: &Arc<Self>) {
         let cfg = self.cfg.lock().unwrap().clone();
         if let Err(err) = session::persist(&cfg, &self.client).await {
@@ -654,6 +662,7 @@ impl Engine {
         self.connected.store(true, Ordering::Relaxed);
         self.ui.connected(true);
         self.start_online();
+        crate::start_timing::mark(crate::start_timing::Stage::Online);
     }
 
     /// What needs no network: preferences, the render loop and the saved calendar.

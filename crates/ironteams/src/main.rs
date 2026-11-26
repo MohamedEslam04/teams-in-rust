@@ -36,6 +36,7 @@ mod shortcuts;
 mod sign_in_failure;
 mod snippets;
 mod spell;
+mod start_timing;
 mod suggest;
 mod support;
 mod topbar;
@@ -79,10 +80,10 @@ async fn app_main(
         }
         return;
     }
-    let (engine, offline) = loop {
+    let (engine, cached) = loop {
         match sign_in(&ui).await {
             Ok(SignedIn::Online(e)) => break (e, false),
-            Ok(SignedIn::Offline(e)) => break (e, true),
+            Ok(SignedIn::Cached(e)) => break (e, true),
             Err(err) => {
                 tracing::error!(%err, "sign-in failed");
                 show_sign_in_failure(&ui, &err);
@@ -108,14 +109,29 @@ async fn app_main(
             }
         }
     });
-    if offline {
-        engine.start_cached(offline_start::OFFLINE_NOTICE);
-        if !reconnect(&ui, &engine, &mut cmds).await {
+    if cached {
+        // Cache-first: the saved chats paint now; the session refreshes in the background and
+        // the engine goes online on success (`reconnect`).
+        engine.start_cached("");
+        let ui_ref = &ui;
+        let refreshed = reconnect(
+            ui_ref,
+            &engine,
+            &mut cmds,
+            true,
+            || engine.refresh_session(),
+            |cfg| async move { device_code(ui_ref, &cfg).await },
+        )
+        .await;
+        if !refreshed {
             return;
         }
+        start_timing::mark(start_timing::Stage::SignedIn);
         engine.go_online().await;
     } else {
+        start_timing::mark(start_timing::Stage::SignedIn);
         engine.start();
+        start_timing::mark(start_timing::Stage::Online);
     }
     // Development aid: open a conversation on startup.
     if let Ok(target) = compat::var("IRONTEAMS_OPEN") {
@@ -158,10 +174,11 @@ fn demo_engine(ui: &UiHandle) -> anyhow::Result<Arc<Engine>> {
     Ok(engine)
 }
 
-/// How [`sign_in`] ended: with fresh tokens, or with the saved chats while Microsoft is out of reach.
+/// How [`sign_in`] ended: with fresh tokens, or with the saved chats to show first (the session
+/// is refreshed afterwards, in the background: `reconnect`).
 enum SignedIn {
     Online(Arc<Engine>),
-    Offline(Arc<Engine>),
+    Cached(Arc<Engine>),
 }
 
 /// Waits for the sign-in screen's Retry, dropping other commands. False when the app quits.
@@ -174,28 +191,43 @@ async fn wait_for_retry(cmds: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>) ->
     false
 }
 
-/// Offline start: runs the commands of the saved-chats view while refreshing the session again
-/// (5 s, 10, 20, 40, then every minute) until it works. A session Microsoft rejects meanwhile
-/// goes to the sign-in screen, and the new sign-in takes over the engine's client. False when
-/// the app quits.
-async fn reconnect(
+/// Cache-first start: runs the commands of the saved-chats view while the session is refreshed
+/// (at once when `cache_first`, the first start of the process; after that, and for a start
+/// that already failed once, 5 s, 10, 20, 40, then every minute) until it works. No answer from
+/// Microsoft shows the offline notice once and keeps trying. A session Microsoft rejects goes to
+/// the sign-in screen, and the new sign-in takes over the engine's client. False when the app
+/// quits.
+///
+/// `refresh_session` refreshes the stored session; `sign_in_again` signs in from scratch with the
+/// config (the device-code flow). They are parameters so a test can answer for the network.
+async fn reconnect<R, RF, S, SF>(
     ui: &UiHandle,
     engine: &Arc<Engine>,
     cmds: &mut tokio::sync::mpsc::UnboundedReceiver<Cmd>,
-) -> bool {
+    cache_first: bool,
+    refresh_session: R,
+    sign_in_again: S,
+) -> bool
+where
+    R: Fn() -> RF,
+    RF: std::future::Future<Output = teams_proto::Result<()>>,
+    S: Fn(session::Config) -> SF,
+    SF: std::future::Future<Output = anyhow::Result<Client>>,
+{
     let mut attempt = 0;
     let mut failed_shown = false;
+    let mut offline_shown = false;
     loop {
-        let delay = offline_start::retry_delay(attempt);
-        let refresh = async {
+        let delay = offline_start::refresh_delay(attempt, cache_first);
+        let pending = async {
             tokio::time::sleep(delay).await;
-            engine.refresh_session().await
+            refresh_session().await
         };
-        tokio::pin!(refresh);
+        tokio::pin!(pending);
         // The saved chats stay usable while a refresh waits for its answer.
         let refreshed = loop {
             tokio::select! {
-                r = &mut refresh => break r,
+                r = &mut pending => break r,
                 cmd = cmds.recv() => match cmd {
                     Some(cmd) => engine.dispatch(cmd),
                     None => return false,
@@ -213,6 +245,10 @@ async fn reconnect(
         match offline_start::on_refresh_error(&err, true) {
             offline_start::OnRefreshError::Offline => {
                 tracing::info!(%err, attempt, "still offline");
+                if !offline_shown {
+                    offline_shown = true;
+                    ui.info(offline_start::OFFLINE_NOTICE.into());
+                }
                 continue;
             }
             // Not a rejected session and not a missing network (a 403 from Teams, say): the
@@ -227,10 +263,12 @@ async fn reconnect(
             }
             offline_start::OnRefreshError::SignIn => {}
         }
-        tracing::warn!(%err, "stored session rejected while offline, signing in again");
+        tracing::warn!(%err, "stored session rejected, signing in again");
+        // The saved chats give way to the sign-in screen at once, not when the code arrives.
+        ui.login_checking();
         loop {
             let cfg = engine.config();
-            match device_code(ui, &cfg).await {
+            match sign_in_again(cfg).await {
                 Ok(client) => {
                     engine.adopt_sign_in(client).await;
                     ui.ready(data::initials(engine.my_name()));
@@ -255,20 +293,34 @@ async fn sign_in(ui: &UiHandle) -> anyhow::Result<SignedIn> {
     let client = match session::stored_session(&cfg)? {
         Some(sess) => {
             let client = Client::restore(sess)?;
+            // Cache-first: an account that ran here before shows its saved chats at once; the
+            // session is refreshed in the background (`reconnect`). Nothing below waits for
+            // the network on this path.
+            if offline_start::cache_first(
+                cfg.self_mri.as_deref(),
+                paths.db_path_for(&cfg).is_file(),
+            ) {
+                match saved_engine(ui, &paths, cfg.clone(), client.clone()) {
+                    Ok(engine) => {
+                        tracing::info!("starting from the saved chats");
+                        return Ok(SignedIn::Cached(engine));
+                    }
+                    Err(err) => {
+                        tracing::warn!(%err, "the saved chats do not open, signing in first");
+                    }
+                }
+            }
             match client.sign_in_stored().await {
                 Ok(()) => client,
                 Err(e) => {
-                    let has_cache = cfg.self_mri.is_some() && paths.db_path_for(&cfg).is_file();
-                    match offline_start::on_refresh_error(&e, has_cache) {
-                        offline_start::OnRefreshError::Offline => {
-                            tracing::warn!(err = %e, "Teams unreachable, starting from the saved chats");
-                            return Ok(SignedIn::Offline(saved_engine(ui, &paths, cfg, client)?));
-                        }
+                    // Nothing saved to show: a refresh that cannot reach Teams is a failure.
+                    match offline_start::on_refresh_error(&e, false) {
+                        offline_start::OnRefreshError::Offline
+                        | offline_start::OnRefreshError::Fail => return Err(e.into()),
                         offline_start::OnRefreshError::SignIn => {
                             tracing::warn!(err = %e, "stored session rejected, signing in again");
                             device_code(ui, &cfg).await?
                         }
-                        offline_start::OnRefreshError::Fail => return Err(e.into()),
                     }
                 }
             }
@@ -305,7 +357,7 @@ async fn sign_in(ui: &UiHandle) -> anyhow::Result<SignedIn> {
     )))
 }
 
-/// The engine of an offline start: who the user is comes from the config, the chats from the
+/// The engine of a cache-first start: who the user is comes from the config, the chats from the
 /// account's database. `client` has the stored session, not refreshed yet.
 fn saved_engine(
     ui: &UiHandle,
@@ -449,6 +501,7 @@ fn report_problem(args: &[String]) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    start_timing::init();
     // Before any thread exists: two malloc arenas instead of one per thread (`malloc_arenas`).
     malloc_arenas::limit();
     // Then Velopack's install, update and uninstall hooks run (and exit) here. A
@@ -881,10 +934,13 @@ fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Saved size, position, last chat and collapsed teams; demo mode neither restores nor saves.
+    // Saved size and position, and the active account's last chat and collapsed teams; demo mode
+    // neither restores nor saves. The account is the one the config names now, after any
+    // account chosen on the command line was applied to it.
     let _window_state_timers = window_state::install(
         &window,
         compat::var_os("IRONTEAMS_DEMO").is_none(),
+        &window_state::active_account_key(),
         tx.clone(),
     );
     let hidden = args.iter().any(|a| a == "--hidden");
@@ -903,6 +959,10 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     rt.spawn(app_main(ui, rx, window_status));
+    // The first turn of the event loop has the window up.
+    slint::Timer::single_shot(std::time::Duration::ZERO, || {
+        start_timing::mark(start_timing::Stage::WindowShown);
+    });
     // Tray, close-to-tray and the event loop (stays up with the window hidden).
     tray_wiring::run(&window, hidden)?;
     window_state::finish(&window);
