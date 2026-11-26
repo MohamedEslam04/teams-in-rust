@@ -1218,7 +1218,7 @@ mod tests {
     async fn scheduled_messages_before_the_first_refresh_is_not_ready_and_sends_nothing() {
         let c = before_the_first_refresh();
         assert_eq!(c.chat_service().await, "", "no host before the refresh");
-        let err = c.scheduled_messages().await.unwrap_err();
+        let err = c.scheduled_messages().await.err().unwrap();
         assert!(matches!(err, Error::NotReady), "{err:?}");
         assert!(err.is_transient());
     }
@@ -1228,16 +1228,21 @@ mod tests {
         // The guard is in the shared request path, not in one feature's call: the chat service,
         // middle tier and presence hosts are all empty until the refresh answers.
         let c = before_the_first_refresh();
-        let err = c.messages("48:notes", None, 30).await.unwrap_err();
+        let err = c.messages("48:notes", None, 30).await.err().unwrap();
         assert!(matches!(err, Error::NotReady), "messages: {err:?}");
-        let err = c.consumption_horizons("19:a@thread.v2").await.unwrap_err();
+        let err = c
+            .consumption_horizons("19:a@thread.v2")
+            .await
+            .err()
+            .unwrap();
         assert!(matches!(err, Error::NotReady), "horizons: {err:?}");
         let err = c
             .conversation_live_call("19:a@thread.v2")
             .await
-            .unwrap_err();
+            .err()
+            .unwrap();
         assert!(matches!(err, Error::NotReady), "live call: {err:?}");
-        let err = c.bytes("/v1/objects/x", &[], 1024).await.unwrap_err();
+        let err = c.bytes("/v1/objects/x", &[], 1024).await.err().unwrap();
         assert!(matches!(err, Error::NotReady), "bytes: {err:?}");
         let err = c
             .request_raw_as(

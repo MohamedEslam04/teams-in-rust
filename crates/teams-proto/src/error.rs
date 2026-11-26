@@ -154,7 +154,10 @@ mod tests {
     fn a_request_before_the_first_refresh_is_transient_and_says_so_plainly() {
         assert!(Error::NotReady.is_transient());
         let shown = Error::NotReady.to_string();
-        assert!(!shown.contains("url") && !shown.contains("protocol"), "{shown}");
+        assert!(
+            !shown.contains("url") && !shown.contains("protocol"),
+            "{shown}"
+        );
     }
 
     // The answer for a meeting chat the user was invited to and has not joined (made-up ids).
