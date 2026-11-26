@@ -1027,6 +1027,63 @@ fn the_chats_page_sets_the_mouse_wheel_speed_and_keeps_it() {
     assert_eq!(Local::load(&config).general.wheel_speed, 1.0);
 }
 
+/// Chats > Reactions: a slot opens the reaction picker above Settings, the reaction picked there
+/// replaces it (an empty slot adds one) and is kept, and Reset to default brings Teams' four back.
+#[test]
+fn the_chats_page_chooses_the_quick_reactions_and_resets_them() {
+    let ui = window(Home::new("quick-reactions"));
+    let app = &ui.app;
+    let config = ui.home.paths().config_dir;
+    let keys = |app: &AppWindow| -> Vec<String> {
+        store(app)
+            .get_quick_reactions()
+            .iter()
+            .map(|i| i.key.to_string())
+            .collect()
+    };
+    let pick = |name: &str| {
+        let cell = ElementHandle::find_by_element_id(app, "ReactionPicker::cell")
+            .find(|c| label(c) == name)
+            .unwrap_or_else(|| panic!("no {name:?} in the picker"));
+        click(&cell);
+    };
+    open_page(app, "chats");
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised"]);
+
+    // An empty slot adds.
+    press(app, "Quick reaction 5: empty");
+    assert!(app.get_picker_open());
+    assert_eq!(app.get_picker_msg_id(), "quick-slot");
+    pick("Sad");
+    assert!(!app.get_picker_open());
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised", "sad"]);
+    assert_eq!(
+        Local::load(&config).general.quick_reactions,
+        ["like", "heart", "laugh", "surprised", "sad"]
+    );
+
+    // A filled slot is replaced.
+    press(app, "Quick reaction 1: Like");
+    pick("Angry");
+    assert_eq!(keys(app), ["angry", "heart", "laugh", "surprised", "sad"]);
+
+    // A new window starts with the saved reactions.
+    let again = window(Home(ui.home.0.clone()));
+    assert_eq!(keys(&again.app).len(), 5);
+
+    // Only reactions Teams accepts are kept.
+    store(app).invoke_command("quick-reaction".into(), "0:follow".into());
+    store(app).invoke_command("quick-reaction".into(), "x:like".into());
+    assert_eq!(keys(app)[0], "angry");
+
+    press(app, "Reset to default");
+    assert_eq!(keys(app), ["like", "heart", "laugh", "surprised"]);
+    assert_eq!(
+        Local::load(&config).general.quick_reactions,
+        ["like", "heart", "laugh", "surprised"]
+    );
+}
+
 #[test]
 fn find_in_settings_reaches_the_chats_page() {
     let ui = window(Home::new("chats-find"));

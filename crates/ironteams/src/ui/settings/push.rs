@@ -187,6 +187,9 @@ pub(super) fn push_local(w: &AppWindow, c: &Ctl) {
     ));
     g.set_link_previews(gp.link_previews);
     g.set_wheel_speed(appearance::general::clamp_wheel_speed(gp.wheel_speed));
+    g.set_quick_reactions(emoji_model(crate::reactions::quick_items(
+        &gp.quick_reactions,
+    )));
     g.set_open_chat_at(s(match c.open_chat_at {
         OpenChatAt::FirstUnread => "last-read",
         OpenChatAt::Newest => "newest",

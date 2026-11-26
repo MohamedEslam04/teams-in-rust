@@ -757,6 +757,31 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             push_local(w, &c);
             saved(w, r);
         }
+        // `<slot>:<reaction key>` from the reaction picker Chats opened for a slot of the hover bar.
+        "quick-reaction" => {
+            let mut c = shared.borrow_mut();
+            if let Some((slot, key)) = arg.split_once(':')
+                && let Ok(slot) = slot.parse::<usize>()
+                && crate::reactions::is_accepted_key(key)
+            {
+                let next = appearance::general::with_quick_reaction(
+                    &c.local.general.quick_reactions,
+                    slot,
+                    key,
+                );
+                c.local.general.quick_reactions = next;
+                let r = c.local.save_general();
+                push_local(w, &c);
+                saved(w, r);
+            }
+        }
+        "quick-reaction-reset" => {
+            let mut c = shared.borrow_mut();
+            c.local.general.quick_reactions = appearance::general::default_quick_reactions();
+            let r = c.local.save_general();
+            push_local(w, &c);
+            saved(w, r);
+        }
         "link-previews" => {
             let mut c = shared.borrow_mut();
             c.local.general.link_previews = bit(arg);

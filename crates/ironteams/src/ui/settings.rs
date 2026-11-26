@@ -20,7 +20,7 @@
 //! photo-remove, check-updates-menu, beta-updates, restart-update,
 //! media-cache-limit, clear-media-cache, clear-all-cache, delete-update-backups.
 
-use super::{UiHandle, model, rgb};
+use super::{UiHandle, emoji_model, model, rgb};
 use crate::backend::Cmd;
 use crate::backend::call_feedback::Ask;
 use crate::backend::expiry;

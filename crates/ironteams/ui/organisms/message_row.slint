@@ -4,6 +4,7 @@ import { AddReactionChip, Icon, IconButton, ReactionChip } from "../atoms/widget
 import { FileCard, LoopCardView, MeetLinkCard } from "../molecules/cards.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { CalStore } from "../stores/calendar_store.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
 import { CardView } from "../molecules/card_view.slint";
 import { LinkCardView, MediaStore } from "media.slint";
 import { VoicePlayer } from "../molecules/voice_player.slint";
@@ -638,12 +639,13 @@ export component MessageRow inherits TouchArea {
                 // The part above the row is not the row's, so the bar keeps itself shown while the
                 // pointer is on it (`bar-touch`); hidden, that area takes no events.
                 if !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed: bar-touch := TouchArea {
-                    // Four quick reactions, More reactions, Reply with quote, Edit (mine) and More
-                    // actions are 30px each, plus the divider and the padding.
+                    // The quick reactions (Settings > Chats, four to start with), More reactions,
+                    // Reply with quote, Edit (mine) and More actions are 30px each, plus the
+                    // divider and the padding.
                     property <length> left-in-row: parent.absolute-position.x - root.absolute-position.x;
                     property <length> above: -(self.height - 8px);
                     enabled: root.has-hover || self.has-hover;
-                    width: (root.m.mine ? 8 : 7) * 30px + 1px + 8px;
+                    width: (SettingsStore.quick-reactions.length + (root.m.mine ? 4 : 3)) * 30px + 1px + 8px;
                     height: 32px;
                     x: max(8px - self.left-in-row, min(root.width - 8px - self.left-in-row - self.width, root.m.mine && !root.card-style ? parent.width - self.width - 8px : max(0px, parent.width - self.width - 8px)));
                     y: parent.absolute-position.y + self.above < root.pane-top ? 4px : self.above;
@@ -658,14 +660,14 @@ export component MessageRow inherits TouchArea {
                             padding-left: 4px;
                             padding-right: 4px;
                             spacing: 0px;
-                            // Teams' quick reactions, then the rest of the buttons.
-                            for e in [{k: "like", t: "👍"}, {k: "heart", t: "❤️"}, {k: "laugh", t: "😆"}, {k: "surprised", t: "😮"}]: Rectangle {
+                            // The chosen quick reactions, then the rest of the buttons.
+                            for e in SettingsStore.quick-reactions: Rectangle {
                                 width: 30px;
                                 background: et.has-hover ? Theme.surface-hover : transparent;
                                 animate background { duration: Motion.quick; }
                                 border-radius: 4px;
-                                Text { text: e.t; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-                                et := TouchArea { mouse-cursor: pointer; clicked => { root.react(e.k); } }
+                                Text { text: e.emoji; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                                et := TouchArea { mouse-cursor: pointer; clicked => { root.react(e.key); } }
                             }
                             IconButton {
                                 icon: @image-url("../icons/emoji-add.svg"); tooltip: @tr("More reactions");

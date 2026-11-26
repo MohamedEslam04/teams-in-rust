@@ -126,6 +126,8 @@ impl UiHandle {
                 copy_theme(&app.global::<Theme>(), &cw.global::<Theme>());
                 cw.global::<SettingsStore>()
                     .set_wheel_speed(app.global::<SettingsStore>().get_wheel_speed());
+                cw.global::<SettingsStore>()
+                    .set_quick_reactions(app.global::<SettingsStore>().get_quick_reactions());
                 if cw.get_conv_id().as_str() != conv {
                     cw.set_draft("".into());
                     // The next messages are a new chat's: they start at the newest one.
