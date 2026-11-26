@@ -98,7 +98,7 @@ Files:
 - `[topbar.rs:RECENT_MAX]` pub const usize = 8
 - `[ui.rs:UiHandle::login_checking/login_code/login_error/ready]` pub login-state transitions (checking|code|error|ready) setting user code, verify url, error, my initials
 - `[window_state.rs:restore_plan]` pub fn(&WindowState) -> RestorePlan; maximized => only maximized; default state => nothing; else size+position
-- `[catch_up.rs:Step]` pub enum {First, Next, Previous}
+- `[catch_up.rs:Step]` pub enum {First, Next, Previous, NextWrap, PreviousWrap} (the Wrap pair is Alt+Shift+Down/Up, UI step 2 / -2)
 - `[demo.rs:drive_libraries]` pub fn drive_libraries() -> Vec<(String,String)>: (drive id, name) for Quick access
 - `[find_data.rs:matches_all]` pub fn(text:&str, terms:&[String])->bool: case-insensitive contains-all; false for empty terms
 - `[native_tray.rs:shutdown]` pub fn shutdown(); drops the tray state/icon
@@ -106,7 +106,7 @@ Files:
 - `[topbar.rs:RECENT_FILE]` pub const &str = "recent-searches.json"
 - `[ui.rs:UiHandle::banner/info]` pub transient banner (error/notice), text passed through `support::error_text::plain_banner`, cleared after 8 s if unchanged
 - `[window_state.rs:Observed]` pub struct {size, position: Option<(i32,i32)>, maximized: bool} live window snapshot
-- `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; no wrap-around
+- `[catch_up.rs:target]` pub fn(current:&str, rows:&[Row], step:Step)->Option<String>: chat to open; Next/Previous do not wrap, NextWrap/PreviousWrap do and skip the open chat
 - `[demo.rs:drive_favorites]` pub fn drive_favorites() -> HashSet<String>: initial favorite item ids
 - `[find_data.rs:highlight_md]` pub fn(text,&[String] terms,max:usize)->String: Markdown snippet around first match with matches bold, newlines->spaces
 - `[native_tray.rs:IronTeamsTray]` slint-generated component (SystemTrayIcon) with callbacks open/toggle-mute/toggle-focus/quit

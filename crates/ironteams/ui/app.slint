@@ -337,7 +337,8 @@ export component AppWindow inherits Window {
     property <int> catch-chats: root.catch-counts.length > 0 ? root.catch-counts[0] : 0;
     // Catching up everything ends the card, so it does not come back with the next message.
     changed catch-chats => { if root.synced && root.catch-chats == 0 { root.away-dismissed = true; } }
-    // Alt+Down / Alt+Up (1 / -1) and the chip (0) open an unread chat, or say there is none.
+    // Alt+Down / Alt+Up (1 / -1), Alt+Shift+Down / Alt+Shift+Up (2 / -2, wrapping around the list)
+    // and the chip (0) open an unread chat, or say there is none.
     function catch-up(step: int) {
         if ShortcutApi.catch-up-target(root.current-id, step, root.chats-favorites, ListStore.sections, root.chats-main, root.chats-channels) != "" {
             root.view = "chat";
@@ -517,6 +518,8 @@ export component AppWindow inherits Window {
             FindStore.focus-tick += 1;
         }
         if cmd == "mark-all-read" { root.mark-all-read(); root.palette-done(); }
+        if cmd == "next-unread" { root.leave-settings(); root.catch-up(2); root.palette-done(); }
+        if cmd == "previous-unread" { root.leave-settings(); root.catch-up(-2); root.palette-done(); }
         if cmd == "settings" { SettingsStore.show(arg); }
         if cmd == "toggle-theme" { SettingsStore.command("theme", SettingsStore.theme-shown == "dark" ? "light" : "dark"); root.palette-done(); }
         if cmd == "shortcuts" { root.shortcuts-open = true; root.palette-done(); }

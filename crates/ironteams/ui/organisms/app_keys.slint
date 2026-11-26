@@ -61,6 +61,11 @@ export component AppKeys inherits FocusScope {
             root.catch-up(event.text == Key.DownArrow ? 1 : -1);
             return accept;
         }
+        // Alt+Shift+Down / Alt+Shift+Up (2 / -2): the same, wrapping around the list.
+        if (event.text == Key.DownArrow || event.text == Key.UpArrow) && event.modifiers.alt && !event.modifiers.control && event.modifiers.shift {
+            root.catch-up(event.text == Key.DownArrow ? 2 : -2);
+            return accept;
+        }
         // Alt+Q: collapse every section of the chat list.
         if ((event.text == "Q" || event.text == "q") && event.modifiers.alt && !event.modifiers.shift) {
             ListStore.command("collapse-all", "");

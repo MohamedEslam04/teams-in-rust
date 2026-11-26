@@ -1701,6 +1701,18 @@ msgstr "المجتمعات"
 msgid "{} (hidden)"
 msgstr "{} (مخفية)"
 
+msgid "Next unread chat"
+msgstr "المحادثة التالية غير المقروءة"
+
+msgid "Previous unread chat"
+msgstr "المحادثة السابقة غير المقروءة"
+
+msgid "Next unread chat (wraps around)"
+msgstr "المحادثة التالية غير المقروءة (تعود إلى البداية)"
+
+msgid "Previous unread chat (wraps around)"
+msgstr "المحادثة السابقة غير المقروءة (تعود إلى النهاية)"
+
 msgid "Mark all as read"
 msgstr "وضع علامة «مقروء» على الكل"
 
