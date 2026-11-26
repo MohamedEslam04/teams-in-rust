@@ -361,6 +361,17 @@ export component AccountsPage inherits SettingsSections {
         }
     }
     SettingsSection {
+        title: @tr("Theme for each account");
+        description: @tr("Give an account its own theme to tell the accounts apart. Same as app uses the theme chosen in Appearance. The theme of the account in use shows at once; another account's shows when IronTeams starts with it.");
+        for a in SettingsStore.accounts: ThemeChoiceRow {
+            label: a.name != "" ? a.name : a.label;
+            themes: SettingsStore.themes;
+            with-same: true;
+            value: a.theme;
+            picked(id) => { SettingsStore.command("account-theme", SettingsStore.j2(a.label, id)); }
+        }
+    }
+    SettingsSection {
         title: @tr("Add an account");
         description: @tr("Pick a short name (letters, digits, - _ .), then restart IronTeams: it shows a code to sign in with, on this computer, for the new account. The accounts stay separate.");
         SettingsBlock {
@@ -826,11 +837,13 @@ export component AppearancePage inherits SettingsSections {
                 }
             }
         }
-        SettingsSwitchRow {
-            label: @tr("Always use dark theme for calls and meetings");
-            description: @tr("IronTeams's call window follows the theme above. A separate call theme is not available yet.");
-            enabled: false;
-            checked: false;
+        ThemeChoiceRow {
+            label: @tr("Calls and meetings");
+            description: @tr("The call screen and the menus opened from it.");
+            themes: SettingsStore.themes;
+            with-same: true;
+            value: SettingsStore.call-theme;
+            picked(id) => { SettingsStore.command("call-theme", id); }
         }
     }
     SettingsSection {

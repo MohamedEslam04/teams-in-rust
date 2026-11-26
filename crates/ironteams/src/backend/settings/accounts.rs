@@ -12,11 +12,13 @@ pub struct AccountRow {
     /// The unread total the account had when it last quit (`Account.last_unread`); 0 when
     /// unknown.
     pub unread: u32,
+    /// The id of the theme set for this account (`ThemesFile.accounts`); "" for the app's.
+    pub theme: String,
 }
 
 /// The usable accounts (an account of a kind this version does not know is left out), each with
-/// the unread count it had when it last ran.
-pub fn account_rows(cfg: &session::Config) -> Vec<AccountRow> {
+/// the unread count it had when it last ran and the theme set for it.
+pub fn account_rows(cfg: &session::Config, themes: &appearance::ThemesFile) -> Vec<AccountRow> {
     let mut cfg = cfg.clone();
     cfg.sync_active();
     cfg.usable_accounts()
@@ -26,6 +28,7 @@ pub fn account_rows(cfg: &session::Config) -> Vec<AccountRow> {
             upn: a.upn.clone().unwrap_or_default(),
             active: a.label == cfg.account,
             unread: a.last_unread.unwrap_or(0),
+            theme: themes.accounts.get(&a.label).cloned().unwrap_or_default(),
         })
         .collect()
 }

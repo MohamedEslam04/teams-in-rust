@@ -115,7 +115,8 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   Moss, Sandstone, Ember, Glacier, Graphite, Orchard), shown as one theme, a light and a dark theme
   that follow the system, or a light and a dark theme on a schedule (switched within a minute of
   each time); the accent colour (for IronTeams Dark and Light), density and text size; Reset theme
-  in the command palette (Ctrl+Shift+P) or `--reset-theme`; app language with
+  in the command palette (Ctrl+Shift+P) or `--reset-theme`; a theme for each account
+  (Accounts page) and one for calls and meetings (Appearance page); app language with
   Arabic for the main screens; date and time format and time zone; notifications; devices;
   privacy; files and links (open Office files in the browser, the desktop app or IronTeams);
   app permissions; accounts; storage (the active account's media and the total over all accounts,
@@ -372,4 +373,4 @@ panel's other backgrounds are drawn by IronTeams itself.
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
 
-Docs synced to commit 19b4adf0 ("Merge pull request #62 from MohamedEslam04/fix/cache-first-chat-service", 2026-11-26)
+Docs synced to commit 5997752a ("Merge pull request #97 from MohamedEslam04/feat/theme-gallery", 2026-11-26)

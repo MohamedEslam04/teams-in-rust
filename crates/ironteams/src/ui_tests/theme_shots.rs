@@ -313,4 +313,20 @@ fn theme_screens_to_png() {
         cal.invoke_close_all();
         app.set_view("chat".into());
     }
+
+    // A light app with a dark call (PR 5): the call screen and the audio menu opened from it take
+    // the call theme; the pictures are new, so the comparison has nothing to hold them against.
+    settings.invoke_command("theme".into(), "light".into());
+    settings.invoke_command("call-theme".into(), "builtin:dark".into());
+    assert!(app.global::<Theme>().get_call().dark);
+    assert!(!app.global::<Theme>().get_content().dark);
+    open_chat(&app);
+    in_call(&app);
+    shot("callthemed-call");
+    let call = app.global::<CallStore>();
+    call.set_menu("devices".into());
+    shot("callthemed-audio-menu");
+    call.set_menu("".into());
+    call.set_phase("".into());
+    settle();
 }
