@@ -12,6 +12,8 @@
 #     (`call_set`); the other organisms and the pages may read the flat colours. The forbidden
 #     names are read from tokens/theme.slint. Non-colour `Theme` properties (`Theme.radius`,
 #     `Theme.font-body`, ...) stay readable. Comments are not checked.
+#  4. Every `Theme.x` and `Fixed.x` read names a property the global declares, so a removed
+#     alias (`Theme.sidebar`, `Theme.card`) or a misspelt token fails here, not only in CI.
 #
 # Run from anywhere: bash scripts/check-ui-layers.sh. Exits 1 and names each offence.
 set -euo pipefail
@@ -118,6 +120,34 @@ for area in $rule3_areas; do
         done < <(sed -E 's#//.*$##' "$f" | grep -oE "Theme\.($names)([^a-z0-9-]|$)" \
             | sed -E 's/^Theme\.([a-z-]+).*/\1/' | sort -u)
     done
+done
+
+# --- 4. unknown Theme and Fixed names ---
+# A read of a removed alias (`Theme.sidebar`, `Theme.card`) or a misspelt token only fails at
+# Slint compile time in CI; catch it here. Names are the properties each global declares.
+for global in Theme:tokens/theme.slint Fixed:tokens/fixed.slint; do
+    gname=${global%%:*}
+    gfile=${global#*:}
+    mapfile -t declared < <(sed -nE 's/^\s*(in |out |in-out )?property\s*<[^>]+>\s*([a-z][a-z0-9-]*).*/\2/p' "$gfile" | sort -u)
+    if [ "${#declared[@]}" -eq 0 ]; then
+        echo "names: no properties found in $gfile"
+        fail=1
+        continue
+    fi
+    # A lookup table, not `printf | grep -q`: under pipefail an early grep exit is a false alarm.
+    declare -A known=()
+    for name in "${declared[@]}"; do known[$name]=1; done
+    for f in "${files[@]}"; do
+        while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            if [ -z "${known[$name]:-}" ]; then
+                echo "names: $f reads $gname.$name, which $gfile does not declare"
+                fail=1
+            fi
+        done < <(sed -E 's#//.*$##' "$f" | grep -oE "\b$gname\.[a-z][a-z0-9-]*" \
+            | sed -E "s/^$gname\.//" | sort -u)
+    done
+    unset known
 done
 
 if [ "$fail" -ne 0 ]; then
