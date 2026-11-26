@@ -237,6 +237,10 @@ fn settings_pages_to_png() {
         window.set_size(PhysicalSize::new(900, 1080));
         settle();
         if !row.is_empty() {
+            // The page's rows are made when the tree is next read: read it, or no row exists yet
+            // to answer `target` with its place, and the page never scrolls.
+            let _ = ElementHandle::find_by_accessible_label(&app, "Settings page").count();
+            settle();
             g.set_target(row.into());
             settle();
             settle();
