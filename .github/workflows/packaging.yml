@@ -121,6 +121,16 @@ jobs:
           '
           cat /proc/swaps
           grep -q /mnt/swapfile /proc/swaps
+      - name: Writable Flatpak installation
+        # The image's runtimes sit in a lower layer of the container's overlay filesystem. When
+        # Flathub has an update for one, ostree renames directories inside it and overlayfs answers
+        # EXDEV ("Invalid cross-device link"), so flatpak-builder fails to update the SDK. A copy
+        # made inside the container is in the upper layer, where those renames work.
+        run: |
+          cp -a /var/lib/flatpak /var/lib/flatpak.rw
+          rm -rf /var/lib/flatpak
+          mv /var/lib/flatpak.rw /var/lib/flatpak
+          flatpak --system update -y --noninteractive
       - uses: actions/checkout@v7
       - name: Generate cargo-sources.json
         id: gen
