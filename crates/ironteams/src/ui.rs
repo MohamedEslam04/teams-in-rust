@@ -474,9 +474,10 @@ fn recipient(r: RecipientData) -> Recipient {
     }
 }
 
-fn picker_model(query: &str) -> ModelRc<EmojiItem> {
+/// The "More reactions" rows for `query`, in the saved skin tone `tone`.
+fn picker_model(query: &str, tone: i32) -> ModelRc<EmojiItem> {
     model(
-        reactions::picker_items(query)
+        reactions::picker_items(query, u8::try_from(tone).unwrap_or(0))
             .into_iter()
             .map(|i| EmojiItem {
                 key: i.key.into(),
@@ -493,11 +494,11 @@ pub fn install_local(window: &AppWindow) {
     crate::loop_compose::install_local(window);
     palette::wire(window);
     message_toast::install_local(window);
-    window.set_picker_items(picker_model(""));
+    window.set_picker_items(picker_model("", window.get_skin_tone()));
     let weak = window.as_weak();
     window.on_picker_search(move |q| {
         if let Some(w) = weak.upgrade() {
-            w.set_picker_items(picker_model(&q));
+            w.set_picker_items(picker_model(&q, w.get_skin_tone()));
         }
     });
 }

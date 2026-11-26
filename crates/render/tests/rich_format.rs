@@ -421,6 +421,15 @@ fn decode_links_in_teams_shapes_and_bad_schemes() {
 }
 
 #[test]
+fn decode_teams_emoticon_ids_through_the_catalog() {
+    let blocks = dec(concat!(
+        r#"<p>a<img itemscope itemtype="http://schema.skype.com/Emoji" itemid="muscle-tone1" src="https://e.test/m.png">"#,
+        r#"b<emoji id="cwl" title="Crying with laughter"></emoji>c</p>"#,
+    ));
+    assert_eq!(blocks, vec![para(vec![sp("a💪🏻b😂c")])]);
+}
+
+#[test]
 fn decode_rule_mention_emoji_image_and_line_breaks() {
     let blocks = dec(concat!(
         r#"<p>hi <span itemscope itemtype="http://schema.skype.com/Mention" itemid="0">Sam Doe</span>"#,

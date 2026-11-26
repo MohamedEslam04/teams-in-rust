@@ -417,7 +417,7 @@ fn more_reactions_picker_lists_teams_keys_and_filters_by_search() {
     let first: Vec<_> = all.iter().take(6).map(label).collect();
     assert_eq!(
         first,
-        ["like", "heart", "laugh", "surprised", "sad", "angry"],
+        ["Like", "Heart", "Laugh", "Surprised", "Sad", "Angry"],
         "Teams reactions come first"
     );
 
@@ -428,10 +428,11 @@ fn more_reactions_picker_lists_teams_keys_and_filters_by_search() {
     type_text(&app, "fire");
     let found = cells();
     assert!(!found.is_empty() && found.len() < all.len());
-    let fire = found.iter().find(|c| label(c) == "fire").expect("fire");
+    let fire = found.iter().find(|c| label(c) == "Fire").expect("fire");
     click(fire);
 
-    assert_eq!(*log.borrow(), vec!["react m1 1f525_fire"]);
+    // Teams' own id for the emoji, as the official client sends it.
+    assert_eq!(*log.borrow(), vec!["react m1 fire"]);
     assert!(!app.get_picker_open(), "picking closes the picker");
 }
 

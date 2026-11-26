@@ -112,6 +112,25 @@ pub(crate) fn is_emoji_img(el: &ElementRef) -> bool {
     attr_lower(el, "itemtype").ends_with("/emoji")
 }
 
+/// What a Teams emoticon shows, from its `alt` and its Teams id (`itemid` on an emoji `<img>`,
+/// `id` on an `<emoji>` element): a real emoji in `alt` as sent, else the id decoded through
+/// Teams' catalog (`muscle-tone1` is 💪🏻), else the shortcut in `alt` (`(oreo)`) decoded, else
+/// `alt` itself. None when there is nothing to show.
+pub(crate) fn emoticon_text(alt: Option<&str>, id: Option<&str>) -> Option<String> {
+    let alt = alt.map(str::trim).filter(|a| !a.is_empty());
+    let id = id.map(str::trim).filter(|i| !i.is_empty());
+    let shortcut = |a: &str| a.starts_with('(') && a.ends_with(')');
+    if let Some(a) = alt
+        && !shortcut(a)
+        && Some(a) != id
+    {
+        return Some(a.to_owned());
+    }
+    id.and_then(emoji::teams::glyph_of_key)
+        .or_else(|| alt.and_then(emoji::teams::by_shortcut).map(|e| e.glyph(0)))
+        .or_else(|| alt.map(str::to_owned))
+}
+
 /// Collapse HTML whitespace runs to single spaces (keeps a leading/trailing
 /// space if present).
 pub(crate) fn collapse_ws(s: &str) -> String {
@@ -354,6 +373,13 @@ impl Walker {
                 }
             }
             "img" => self.image(el, ctx),
+            // Graph's form of an emoticon: `<emoji id="cool" alt="😎" title="Cool"></emoji>`.
+            "emoji" => {
+                if let Some(text) = emoticon_text(attr(&el, "alt"), attr(&el, "id")) {
+                    self.push_span(text, ctx);
+                }
+                self.walk_children(el, ctx, depth);
+            }
             "b" | "strong" => self.walk_children(el, &styled(|s| s.bold = true), depth),
             "i" | "em" => self.walk_children(el, &styled(|s| s.italic = true), depth),
             "u" => self.walk_children(el, &styled(|s| s.underline = true), depth),
@@ -383,8 +409,8 @@ impl Walker {
 
     fn image(&mut self, el: ElementRef, ctx: &Ctx) {
         if is_emoji_img(&el) {
-            if let Some(alt) = attr(&el, "alt") {
-                self.push_span(alt.to_owned(), ctx);
+            if let Some(text) = emoticon_text(attr(&el, "alt"), attr(&el, "itemid")) {
+                self.push_span(text, ctx);
             }
             return;
         }
@@ -904,6 +930,56 @@ mod tests {
         assert_eq!(
             parse(r#"<b><img itemtype="http://schema.skype.com/Emoji" alt="👍"></b>"#),
             vec![para(Dir::Ltr, vec![styled("👍", |s| s.bold = true)])]
+        );
+    }
+
+    #[test]
+    fn emoji_without_alt_is_decoded_from_its_teams_id() {
+        assert_eq!(
+            parse(
+                r#"<p>go<img itemscope itemtype="http://schema.skype.com/Emoji" itemid="muscle-tone1" src="https://e/50.png"></p>"#
+            ),
+            vec![ltr("go💪🏻")]
+        );
+        // An alt that only repeats the id, or is a shortcut, is decoded too.
+        assert_eq!(
+            parse(
+                r#"<p><img itemtype="http://schema.skype.com/Emoji" itemid="cwl" alt="cwl"></p>"#
+            ),
+            vec![ltr("😂")]
+        );
+        assert_eq!(
+            parse(r#"<p><img itemtype="http://schema.skype.com/Emoji" alt="(flex)"></p>"#),
+            vec![ltr("💪")]
+        );
+        // A Teams-only animation shows its stand-in, never the raw code.
+        assert_eq!(
+            parse(
+                r#"<p><img itemtype="http://schema.skype.com/Emoji" itemid="oreo" alt="(oreo)"></p>"#
+            ),
+            vec![ltr("🍪")]
+        );
+    }
+
+    #[test]
+    fn graph_emoji_elements_show_their_emoji() {
+        assert_eq!(
+            parse(r#"<p>ok <emoji id="cool" alt="😎" title="Cool"></emoji> then</p>"#),
+            vec![ltr("ok 😎 then")]
+        );
+        assert_eq!(
+            parse(r#"<p><emoji id="yes-tone3" title="Yes"></emoji></p>"#),
+            vec![ltr("👍🏽")]
+        );
+    }
+
+    #[test]
+    fn an_unknown_emoticon_keeps_its_alt() {
+        assert_eq!(
+            parse(
+                r#"<p><img itemtype="http://schema.skype.com/Emoji" itemid="zzqq" alt="(zzqq)"></p>"#
+            ),
+            vec![ltr("(zzqq)")]
         );
     }
 

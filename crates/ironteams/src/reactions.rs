@@ -1,23 +1,20 @@
 //! Teams reaction keys and the "More reactions" picker rows.
 //!
-//! Teams names six reactions (`like heart laugh surprised sad angry`); every other emoji is
-//! `<hex>_<name>` (for example `1f525_fire`), which [`crate::markdown::reaction_emoji`] decodes.
+//! A reaction key is an id of Teams' emoticon catalog ([`emoji::teams`]): `like`, `cwl`,
+//! `1f389_partypopper`, and `<id>-tone<n>` with a skin tone (`muscle-tone1`). An emoji the catalog
+//! lacks (flags) goes out as `<hex>_<name>`; [`crate::markdown::reaction_emoji`] decodes both.
+
+use std::collections::HashSet;
 
 use crate::data::{Pixels, ReactorData, color_for, initials};
 use emoji::Emoji;
+use emoji::teams::{self, Emoticon};
 
 /// Most rows the picker shows at once.
 pub const PICKER_LIMIT: usize = 96;
 
 /// Teams' own reactions, first in the picker.
-const NAMED: [(&str, &str, &str); 6] = [
-    ("like", "👍", "like"),
-    ("heart", "❤️", "heart"),
-    ("laugh", "😆", "laugh"),
-    ("surprised", "😮", "surprised"),
-    ("sad", "😢", "sad"),
-    ("angry", "😡", "angry"),
-];
+const NAMED: [&str; 6] = ["like", "heart", "laugh", "surprised", "sad", "angry"];
 
 /// One picker cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,12 +24,13 @@ pub struct PickerItem {
     pub name: String,
 }
 
-/// Reaction key for an emoji: the Teams name for the six named ones, else `<hex>_<name>`.
-/// Variation selectors are left out of the codepoints, as Teams does.
+/// Reaction key for an emoji: Teams' id for it (`like`, `fire`, `yes-tone2` for 👍🏼), else
+/// `<hex>_<name>`. Variation selectors are left out of the codepoints, as Teams does.
 pub fn reaction_key(e: &Emoji) -> String {
-    if let Some((key, _, _)) = NAMED.iter().find(|(_, ch, _)| *ch == e.ch) {
-        return (*key).to_string();
-    }
+    teams::key_for_glyph(e.ch).unwrap_or_else(|| codepoint_key(e))
+}
+
+fn codepoint_key(e: &Emoji) -> String {
     let hex: Vec<String> =
         e.ch.chars()
             .filter(|c| *c != '\u{fe0f}')
@@ -48,19 +46,22 @@ pub fn reaction_key(e: &Emoji) -> String {
     format!("{}_{name}", hex.join("-"))
 }
 
-fn named_items() -> impl Iterator<Item = PickerItem> {
-    NAMED.iter().map(|(key, ch, name)| PickerItem {
-        key: (*key).to_string(),
-        emoji: (*ch).to_string(),
-        name: (*name).to_string(),
-    })
+/// A catalog emoticon as a picker cell, in skin tone `tone` when Teams offers tones for it.
+fn emoticon_item(e: &Emoticon, tone: u8) -> PickerItem {
+    let tone = if e.diverse { tone } else { 0 };
+    PickerItem {
+        key: e.key(tone),
+        emoji: e.glyph(tone),
+        name: e.description.to_string(),
+    }
 }
 
-fn item(e: &Emoji) -> PickerItem {
+/// An emoji outside the catalog (flags, ...) as a picker cell.
+fn emoji_item(e: &Emoji) -> PickerItem {
     PickerItem {
         key: reaction_key(e),
         emoji: e.ch.to_string(),
-        name: e.name.to_string(),
+        name: capitalize(e.name),
     }
 }
 
@@ -73,24 +74,32 @@ fn capitalize(s: &str) -> String {
     }
 }
 
-/// The reaction's name for the hover card's header: the six Teams names ("Laugh"), else the emoji
-/// table's name ("Fire"), else the key's words title-cased.
+/// The reaction's name for the hover card's header: the catalog's ("Laugh", "Muscle: light skin
+/// tone"), else the emoji table's ("Fire"), else the key's words title-cased. A tone suffix is
+/// never shown raw.
 pub fn reaction_name(key: &str) -> String {
-    if let Some((_, _, name)) = NAMED.iter().find(|(k, _, _)| *k == key) {
-        return capitalize(name);
+    if let Some(name) = teams::name_of_key(key) {
+        return name;
     }
+    let (base, tone) = teams::split_tone(key);
     let plain = |s: &str| s.replace('\u{fe0f}', "");
-    let ch = plain(&crate::markdown::reaction_emoji(key));
-    if let Some(e) = emoji::all().iter().find(|e| plain(e.ch) == ch) {
-        return capitalize(e.name);
+    let ch = plain(&crate::markdown::reaction_emoji(base));
+    let name = match emoji::all().iter().find(|e| plain(e.ch) == ch) {
+        Some(e) => capitalize(e.name),
+        None => {
+            let words = base.split_once('_').map_or(base, |(_, rest)| rest);
+            words
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|w| !w.is_empty())
+                .map(capitalize)
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    };
+    match teams::tone_name(tone) {
+        Some(t) => format!("{name}: {t} skin tone"),
+        None => name,
     }
-    let words = key.split_once('_').map_or(key, |(_, rest)| rest);
-    words
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(capitalize)
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// The people on a reaction's card, in order. I show under my own full name, as Teams does;
@@ -130,21 +139,32 @@ pub fn reactors(
     (people, missing)
 }
 
-/// Picker rows for a search. An empty query lists the Teams reactions, then the emoji table;
-/// a query lists the best matches, so the six Teams names (`heart`, `like`, ...) work too.
-pub fn picker_items(query: &str) -> Vec<PickerItem> {
+/// Picker rows for a search, in the user's skin tone `tone` (0 for none). An empty query lists
+/// the six Teams reactions, then Teams' catalog in its own order; a query lists the catalog's
+/// best matches by id, shortcut (`(flex)`), name or keyword, then emoji the catalog lacks.
+/// Emoticons that would look the same (several Teams animations share one emoji) show once.
+pub fn picker_items(query: &str, tone: u8) -> Vec<PickerItem> {
     let q = query.trim();
-    let mut out: Vec<PickerItem> = Vec::new();
-    if q.is_empty() {
-        out.extend(named_items());
-        out.extend(
-            emoji::all()
-                .iter()
-                .filter(|e| !NAMED.iter().any(|(_, ch, _)| *ch == e.ch))
-                .map(item),
-        );
+    let named = NAMED.into_iter().filter_map(teams::by_id);
+    let found: Vec<&'static Emoticon> = if q.is_empty() {
+        named.chain(teams::all().iter()).collect()
     } else {
-        out.extend(emoji::search(q, PICKER_LIMIT).into_iter().map(item));
+        teams::search(q, PICKER_LIMIT * 2)
+    };
+    let mut seen = HashSet::new();
+    let mut out: Vec<PickerItem> = found
+        .into_iter()
+        .map(|e| emoticon_item(e, tone))
+        .filter(|i| seen.insert(i.emoji.clone()))
+        .take(PICKER_LIMIT)
+        .collect();
+    if !q.is_empty() {
+        let rest = emoji::search(q, PICKER_LIMIT)
+            .into_iter()
+            .filter(|e| teams::key_for_glyph(e.ch).is_none())
+            .map(emoji_item)
+            .filter(|i| seen.insert(i.emoji.clone()));
+        out.extend(rest);
     }
     out.truncate(PICKER_LIMIT);
     out
@@ -164,24 +184,33 @@ mod tests {
     }
 
     #[test]
-    fn other_emoji_use_codepoint_keys_that_decode_back() {
+    fn other_emoji_use_teams_ids_that_decode_back() {
         let fire = emoji::by_shortcode("fire").unwrap();
-        assert_eq!(reaction_key(fire), "1f525_fire");
-        assert_eq!(reaction_emoji("1f525_fire"), "🔥");
+        assert_eq!(reaction_key(fire), "fire");
+        assert_eq!(reaction_emoji("fire"), "🔥");
         let clap = emoji::search("clapping hands", 1)[0];
-        assert!(reaction_key(clap).starts_with("1f44f_"));
         assert_eq!(reaction_emoji(&reaction_key(clap)), clap.ch);
     }
 
     #[test]
-    fn variation_selector_is_dropped_from_keys() {
-        let sun = emoji::all().iter().find(|e| e.ch == "☀\u{fe0f}").unwrap();
-        assert!(reaction_key(sun).starts_with("2600_"));
+    fn emoji_outside_the_catalog_use_codepoint_keys_without_variation_selectors() {
+        let flag = emoji::all()
+            .iter()
+            .find(|e| e.category == emoji::Category::Flags && e.name.contains("Egypt"))
+            .unwrap();
+        let key = reaction_key(flag);
+        assert!(key.starts_with("1f1ea-1f1ec_"), "{key}");
+        assert_eq!(reaction_emoji(&key), flag.ch);
+        for e in emoji::all() {
+            if teams::key_for_glyph(e.ch).is_none() {
+                assert!(!reaction_key(e).contains("fe0f"), "{}", e.name);
+            }
+        }
     }
 
     #[test]
     fn empty_query_lists_teams_reactions_first() {
-        let items = picker_items("");
+        let items = picker_items("", 0);
         let keys: Vec<_> = items.iter().take(6).map(|i| i.key.as_str()).collect();
         assert_eq!(
             keys,
@@ -190,6 +219,10 @@ mod tests {
         assert_eq!(items.len(), PICKER_LIMIT);
         let named = items.iter().filter(|i| i.key == "like").count();
         assert_eq!(named, 1, "no duplicate of the named reactions");
+        let mut glyphs: Vec<_> = items.iter().map(|i| i.emoji.as_str()).collect();
+        glyphs.sort_unstable();
+        glyphs.dedup();
+        assert_eq!(glyphs.len(), items.len(), "no emoji shown twice");
     }
 
     #[test]
@@ -205,12 +238,21 @@ mod tests {
     }
 
     #[test]
-    fn other_reactions_use_the_emoji_name_or_the_key_words() {
+    fn other_reactions_use_the_catalog_or_emoji_name_or_the_key_words() {
         assert_eq!(reaction_name("1f525_fire"), "Fire");
-        assert_eq!(reaction_name("loudlycrying"), "Loudly crying face");
+        assert_eq!(reaction_name("loudlycrying"), "Loudly crying");
+        assert_eq!(reaction_name("cwl"), "Crying with laughter");
         // A key that decodes to no emoji: its words, title-cased.
         assert_eq!(reaction_name("zzz_party_time"), "Party Time");
-        assert_eq!(reaction_name("zzqx"), "Zzqx");
+        assert_eq!(reaction_name("zzqq"), "Zzqq");
+    }
+
+    #[test]
+    fn toned_reactions_are_named_with_their_skin_tone_never_the_raw_key() {
+        assert_eq!(reaction_name("muscle"), "Muscle");
+        assert_eq!(reaction_name("muscle-tone1"), "Muscle: light skin tone");
+        assert_eq!(reaction_name("yes-tone5"), "Yes: dark skin tone");
+        assert_eq!(reaction_name("zzqq-tone2"), "Zzqq: medium-light skin tone");
     }
 
     fn lookup(mri: &str) -> Option<String> {
@@ -264,11 +306,34 @@ mod tests {
     }
 
     #[test]
-    fn search_finds_by_name_and_by_teams_alias() {
-        let fire = picker_items("fire");
-        assert!(fire.iter().any(|i| i.key == "1f525_fire"), "{fire:?}");
-        let heart = picker_items("heart");
+    fn search_finds_by_name_id_and_shortcut() {
+        let fire = picker_items("fire", 0);
+        assert_eq!(fire[0].key, "fire", "{fire:?}");
+        let heart = picker_items("heart", 0);
         assert_eq!(heart[0].key, "heart");
-        assert!(picker_items("zzzzqqq").is_empty());
+        let flex = picker_items("(flex)", 0);
+        assert_eq!(flex[0].key, "muscle", "by shortcut: {flex:?}");
+        assert_eq!(picker_items("flex", 0)[0].key, "muscle");
+        assert!(picker_items("zzzzqqq", 0).is_empty());
+    }
+
+    #[test]
+    fn the_picker_honours_the_saved_skin_tone() {
+        let muscle = &picker_items("muscle", 1)[0];
+        assert_eq!(muscle.key, "muscle-tone1");
+        assert_eq!(muscle.emoji, "💪🏻");
+        // No tone on an emoticon Teams does not tone, nor on the named Like.
+        assert_eq!(picker_items("fire", 3)[0].key, "fire");
+        assert_eq!(picker_items("", 2)[0].key, "like");
+        assert_eq!(picker_items("", 2)[0].emoji, "👍");
+    }
+
+    #[test]
+    fn search_reaches_emoji_the_catalog_lacks() {
+        let egypt = picker_items("egypt", 0);
+        assert!(
+            egypt.iter().any(|i| i.key.starts_with("1f1ea-1f1ec_")),
+            "{egypt:?}"
+        );
     }
 }

@@ -631,98 +631,44 @@ pub fn upgrade_rich(r: &mut Rendered, html: &str) {
     set_body(r, md);
 }
 
-/// Emoji for a Teams reaction key (`like`, `heart`, or a codepoint key like `1f525_fire`).
+/// Emoji for a Teams reaction key: an id of Teams' emoticon catalog, with or without its skin
+/// tone (`like`, `cwl`, `muscle-tone1`), or a codepoint key (`1f525_fire`). An unknown key shows
+/// its words without the tone suffix, never `-tone1`.
 pub fn reaction_emoji(key: &str) -> String {
-    match key {
-        "like" => "👍".into(),
-        "heart" => "❤️".into(),
-        "laugh" => "😆".into(),
-        "surprised" => "😮".into(),
-        "sad" => "😢".into(),
-        "angry" => "😡".into(),
-        _ => {
-            let code = key.split('_').next().unwrap_or_default();
-            let parsed: Option<String> = code
-                .split('-')
-                .map(|h| u32::from_str_radix(h, 16).ok().and_then(char::from_u32))
-                .collect();
-            parsed
-                .filter(|s| !s.is_empty() && code.len() >= 4)
-                .or_else(|| named_reaction(key))
-                .unwrap_or_else(|| key.to_string())
-        }
+    if let Some(glyph) = emoji::teams::glyph_of_key(key) {
+        return glyph;
     }
+    let (base, tone) = emoji::teams::split_tone(key);
+    codepoint_key(base)
+        .or_else(|| named_reaction(base))
+        .map(|g| emoji::teams::apply_tone(&g, tone))
+        .unwrap_or_else(|| base.to_string())
 }
 
-/// Teams' named reactions from the Skype emoticon set (`loudlycrying`, `cwl`, `yes`, …).
-const NAMED: &[(&str, &str)] = &[
-    ("smile", "🙂"),
-    ("happy", "😊"),
-    ("bigsmile", "😃"),
-    ("grinning", "😁"),
-    ("cwl", "😂"),
-    ("rofl", "🤣"),
-    ("wink", "😉"),
-    ("cool", "😎"),
-    ("tongueout", "😛"),
-    ("blush", "😊"),
-    ("inlove", "😍"),
-    ("kiss", "😘"),
-    ("cry", "😢"),
-    ("loudlycrying", "😭"),
-    ("sweat", "😓"),
-    ("speechless", "😐"),
-    ("wonder", "🤔"),
-    ("think", "🤔"),
-    ("sleepy", "😪"),
-    ("yawn", "🥱"),
-    ("dull", "😑"),
-    ("worry", "😟"),
-    ("puke", "🤮"),
-    ("devil", "😈"),
-    ("angel", "😇"),
-    ("nerd", "🤓"),
-    ("lipssealed", "🤐"),
-    ("party", "🥳"),
-    ("facepalm", "🤦"),
-    ("shock", "😱"),
-    ("rage", "😡"),
-    ("smirk", "😏"),
-    ("eg", "😈"),
-    ("wasntme", "🙄"),
-    ("hug", "🤗"),
-    ("yes", "👍"),
-    ("no", "👎"),
-    ("ok", "👌"),
-    ("clap", "👏"),
-    ("fire", "🔥"),
-    ("star", "⭐"),
-    ("brokenheart", "💔"),
-    ("muscle", "💪"),
-    ("punch", "👊"),
-    ("handshake", "🤝"),
-    ("praying", "🙏"),
-    ("victory", "✌️"),
-    ("hi", "👋"),
-    ("wave", "👋"),
-    ("rock", "🤘"),
-    ("cake", "🎂"),
-    ("coffee", "☕"),
-    ("beer", "🍺"),
-    ("100", "💯"),
-    ("tada", "🎉"),
-    ("eyes", "👀"),
-    ("rocket", "🚀"),
-];
+/// The emoji spelled by a codepoint key: `1f525_fire`, `2764-fe0f_heart`,
+/// `1f468_200d_1f9b0_redhair` (every `_` or `-` part before the name is a hex codepoint).
+fn codepoint_key(key: &str) -> Option<String> {
+    let parts: Vec<&str> = key.split('_').collect();
+    // A bare codepoint needs five digits, so a word like `face` or `cafe` is not read as hex.
+    let (hex, min) = match parts.len() {
+        1 => (&parts[..], 5),
+        n => (&parts[..n - 1], 4),
+    };
+    if hex.first()?.split('-').next()?.len() < min {
+        return None;
+    }
+    let glyph: Option<String> = hex
+        .iter()
+        .flat_map(|p| p.split('-'))
+        .map(|h| u32::from_str_radix(h, 16).ok().and_then(char::from_u32))
+        .collect();
+    glyph.filter(|g| !g.is_empty())
+}
 
-/// A named reaction: the Teams table, then the emoji with that short name ("thumbs_up"), then
-/// the emoji whose name starts with it once spaces are dropped (`loudlycrying` is "loudly crying
-/// face").
+/// A key the Teams catalog lacks: the emoji with that short name ("thumbs_up"), then the emoji
+/// whose name starts with it once spaces are dropped (`loudlycrying` is "loudly crying face").
 fn named_reaction(key: &str) -> Option<String> {
     let key = key.to_lowercase();
-    if let Some((_, e)) = NAMED.iter().find(|(k, _)| *k == key) {
-        return Some((*e).to_string());
-    }
     if let Some(e) = emoji::by_shortcode(&key) {
         return Some(e.ch.to_string());
     }
@@ -775,11 +721,36 @@ mod tests {
         assert_eq!(reaction_emoji("loudlycrying"), "😭");
         assert_eq!(reaction_emoji("cwl"), "😂");
         assert_eq!(reaction_emoji("yes"), "👍");
-        // Not in the table: found by the emoji's name.
         assert_eq!(reaction_emoji("pensive"), "😔");
         assert_eq!(reaction_emoji("1f525_fire"), "🔥");
         // Unknown names stay as they are.
         assert_eq!(reaction_emoji("zzqq"), "zzqq");
+    }
+
+    #[test]
+    fn teams_emoticon_ids_decode_with_their_skin_tone() {
+        assert_eq!(reaction_emoji("muscle"), "💪");
+        assert_eq!(reaction_emoji("muscle-tone1"), "💪🏻");
+        assert_eq!(reaction_emoji("yes-tone5"), "👍🏿");
+        assert_eq!(
+            reaction_emoji("manfacepalming-tone2"),
+            "\u{1F926}\u{1F3FC}\u{200D}\u{2642}\u{FE0F}"
+        );
+        // Teams' ids, not look-alike names: `hug` is the teddy bear, `punch` the boxing glove.
+        assert_eq!(reaction_emoji("hug"), "🧸");
+        assert_eq!(reaction_emoji("punch"), "🥊");
+        // A Teams-only animation shows a stand-in emoji.
+        assert_eq!(reaction_emoji("oreo"), "🍪");
+    }
+
+    #[test]
+    fn codepoint_keys_decode_every_codepoint_and_a_tone() {
+        assert_eq!(reaction_emoji("1f468_200d_1f9b0_zzredhair"), "👨‍🦰");
+        assert_eq!(reaction_emoji("1f44b_zzwave-tone3"), "👋🏽");
+        // A tone suffix on an unknown key is dropped, never shown raw.
+        assert_eq!(reaction_emoji("zzqq-tone1"), "zzqq");
+        // A word that happens to be hex is not a codepoint.
+        assert_eq!(reaction_emoji("cafe"), "cafe");
     }
 
     #[test]
