@@ -1,0 +1,345 @@
+// The dialogs of custom themes (docs/designs/theme-engine.md, PR 4): the editor for a new theme, an
+// edit and an import preview, and the two small ones, Import (paste a theme line) and Rename. They
+// read `SettingsStore.editor-*` and send `editor-*` and `theme-*` commands (`ui/settings/themes.rs`).
+import { ScrollView } from "std-widgets.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Theme } from "../tokens/theme.slint";
+import { SettingsStore, SBaseRow } from "../stores/settings_store.slint";
+import { DialogFrame } from "../atoms/dialog_frame.slint";
+import { Field, FieldVariant } from "../atoms/field.slint";
+import { Check } from "../atoms/check.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { ColourPicker } from "../atoms/colour_picker.slint";
+
+// The hex box of a colour: it shows the colour stored, also after the user typed something else.
+component HexField inherits Field {
+    in property <string> hex;
+    text: root.hex;
+    changed hex => { root.text = root.hex; }
+}
+
+// One base colour: its name, the hex box and the picker. An import preview shows the hex only.
+component ThemeColourRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <int> index;
+    in property <SBaseRow> entry;
+    in property <bool> readonly;
+    pure function colour-name(i: int) -> string {
+        return i == 0 ? @tr("Nav background")
+            : i == 1 ? @tr("Nav text")
+            : i == 2 ? @tr("Nav selected item")
+            : i == 3 ? @tr("Content background")
+            : i == 4 ? @tr("Content text")
+            : i == 5 ? @tr("Accent")
+            : i == 6 ? @tr("Mention highlight")
+            : @tr("Unread badge");
+    }
+    property <string> name: root.colour-name(root.index);
+    height: 66px;
+    VerticalLayout {
+        spacing: 4px;
+        Text { text: root.name; color: root.c.fg; font-size: Theme.font-body; font-weight: 600; accessible-role: none; }
+        HorizontalLayout {
+            spacing: 12px;
+            Rectangle {
+                width: 96px;
+                HexField {
+                    c: root.c;
+                    variant: FieldVariant.bare;
+                    placeholder: @tr("{}: hex colour", root.name);
+                    hex: root.entry.hex;
+                    committed(t) => {
+                        SettingsStore.command("editor-hex", SettingsStore.j2("" + root.index, t));
+                        self.text = root.entry.hex;
+                    }
+                }
+            }
+            if !root.readonly: ColourPicker {
+                c: root.c;
+                label: root.name;
+                l: root.entry.l;
+                chroma: root.entry.c;
+                hue: root.entry.h;
+                colour: root.entry.colour;
+                edited(l, ch, h) => { SettingsStore.command("editor-lch", SettingsStore.j4("" + root.index, "" + l, "" + ch, "" + h)); }
+            }
+            if root.readonly: Rectangle {
+                width: 24px;
+                height: 24px;
+                y: 3px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: root.c.border;
+                background: root.entry.colour;
+            }
+        }
+    }
+}
+
+// The preview: a nav strip with three chats (the second selected, the first unread), and a content
+// area with two bubbles, a mention and a primary button, drawn with the regions of the theme being
+// built.
+component ThemePreview inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    height: 150px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.c.border;
+    clip: true;
+    background: SettingsStore.editor-content.bg;
+    accessible-role: groupbox;
+    accessible-label: @tr("Theme preview");
+    HorizontalLayout {
+        Rectangle {
+            width: 150px;
+            background: SettingsStore.editor-nav.bg;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 4px;
+                for n[k] in [@tr("Design team"), @tr("Alex Morgan"), @tr("Project updates")]: Rectangle {
+                    height: 30px;
+                    border-radius: 4px;
+                    background: k == 1 ? SettingsStore.editor-nav.selected : transparent;
+                    Text {
+                        x: 8px;
+                        width: parent.width - 16px - (k == 0 ? 24px : 0px);
+                        text: n;
+                        color: SettingsStore.editor-nav.fg;
+                        font-size: 12px * Theme.font-scale;
+                        font-weight: k == 0 ? 700 : 400;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
+                    if k == 0: Rectangle {
+                        x: parent.width - self.width - 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 9px;
+                        background: SettingsStore.editor-nav.unread-badge;
+                        Text { text: "3"; color: SettingsStore.editor-nav.on-badge; font-size: 10px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            padding: 10px;
+            spacing: 6px;
+            Rectangle {
+                height: 28px;
+                border-radius: 6px;
+                background: SettingsStore.editor-content.bubble-other;
+                Text { x: 10px; width: parent.width - 20px; text: @tr("Are you around?"); color: SettingsStore.editor-content.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
+            }
+            Rectangle {
+                height: 28px;
+                border-radius: 6px;
+                background: SettingsStore.editor-content.bubble-mine;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    spacing: 4px;
+                    alignment: start;
+                    Text { text: "@Alex"; color: SettingsStore.editor-content.mention; font-size: 12px * Theme.font-scale; font-weight: 700; vertical-alignment: center; accessible-role: none; }
+                    Text { text: @tr("yes, one minute"); color: SettingsStore.editor-content.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                Button { c: SettingsStore.editor-content; variant: ButtonVariant.settings; label: @tr("Send"); primary: true; }
+            }
+        }
+    }
+}
+
+// The editor: the name, the 8 colours, the preview and the contrast report. In `import` mode the
+// colours are only shown, with the pasted line and, for a line that was refused, the sentence.
+export component ThemeEditorLayer inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    background: root.c.scrim;
+    TouchArea { }
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { SettingsStore.command("editor-cancel", ""); return accept; }
+            reject
+        }
+        DialogFrame {
+            c: root.c;
+            title: SettingsStore.editor-mode == "import" ? @tr("Import theme") : SettingsStore.editor-mode == "edit" ? @tr("Edit theme") : @tr("New custom theme");
+            dialog-width: min(580px, root.width - 32px);
+            height: min(root.height - 32px, 800px);
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            close => { SettingsStore.command("editor-cancel", ""); }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 12px;
+                    padding-right: 12px;
+                    Field {
+                        c: root.c;
+                        label: @tr("Name");
+                        text: SettingsStore.editor-name;
+                        autofocus: SettingsStore.editor-mode != "import";
+                        edited(t) => {
+                            SettingsStore.command("editor-name", t);
+                            if self.text != SettingsStore.editor-name { self.text = SettingsStore.editor-name; }
+                        }
+                    }
+                    if SettingsStore.editor-mode == "import" && SettingsStore.editor-line != "": Text {
+                        text: SettingsStore.editor-line;
+                        color: root.c.fg-muted;
+                        font-size: 11px * Theme.font-scale;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: @tr("Theme line");
+                        accessible-value: self.text;
+                    }
+                    if SettingsStore.editor-error != "": Text {
+                        text: SettingsStore.share-error(SettingsStore.editor-error);
+                        color: root.c.danger-text;
+                        font-size: Theme.font-body;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: @tr("Problem");
+                        accessible-value: self.text;
+                    }
+                    if SettingsStore.editor-mode != "import" || SettingsStore.editor-error == "": VerticalLayout {
+                        spacing: 12px;
+                        for r[i] in SettingsStore.editor-rows: ThemeColourRow {
+                            c: root.c;
+                            index: i;
+                            entry: r;
+                            readonly: SettingsStore.editor-mode == "import";
+                        }
+                        ThemePreview { c: root.c; }
+                        Text { text: @tr("Contrast"); color: root.c.fg; font-size: Theme.font-body; font-weight: 600; accessible-role: none; }
+                        if SettingsStore.editor-failing.length == 0: Text {
+                            text: @tr("All contrast checks pass.");
+                            color: root.c.fg-muted;
+                            font-size: Theme.font-small;
+                            accessible-role: text;
+                            accessible-label: @tr("Contrast report");
+                            accessible-value: self.text;
+                        }
+                        for p in SettingsStore.editor-failing: Text {
+                            text: @tr("{} on {}: {}, needs {}", p.fg, p.bg, p.ratio, p.min);
+                            color: root.c.danger-text;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                            accessible-label: @tr("Contrast report");
+                            accessible-value: self.text;
+                        }
+                        if SettingsStore.editor-adjusted.length > 0: Text {
+                            text: @tr("Colours moved to be readable (picked, then drawn):");
+                            color: root.c.fg-muted;
+                            font-size: Theme.font-small;
+                            wrap: word-wrap;
+                        }
+                        for a in SettingsStore.editor-adjusted: HorizontalLayout {
+                            height: 22px;
+                            spacing: 8px;
+                            Text { text: a.token; color: root.c.fg; font-size: Theme.font-small; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                            Rectangle { width: 40px; border-radius: 4px; border-width: 1px; border-color: root.c.border; background: a.picked; accessible-role: none; }
+                            Rectangle { width: 40px; border-radius: 4px; border-width: 1px; border-color: root.c.border; background: a.drawn; accessible-role: none; }
+                        }
+                        Check {
+                            c: root.c;
+                            label: @tr("Keep my colours");
+                            hint: @tr("Draw the text colours as picked, even when they are hard to read.");
+                            checked: SettingsStore.editor-keep;
+                            toggled(on) => { SettingsStore.command("editor-keep", on ? "1" : "0"); }
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.command("editor-cancel", ""); } }
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Save"); primary: true; enabled: SettingsStore.editor-can-save; clicked => { SettingsStore.command("editor-save", ""); } }
+            }
+        }
+    }
+}
+
+// Import: a line someone sent, pasted here. Preview opens the editor in `import` mode with it.
+export component ImportThemeLayer inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    background: root.c.scrim;
+    TouchArea { }
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { SettingsStore.import-open = false; return accept; }
+            reject
+        }
+        DialogFrame {
+            c: root.c;
+            title: @tr("Import theme");
+            dialog-width: min(480px, root.width - 32px);
+            height: 250px;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            close => { SettingsStore.import-open = false; }
+            Text { text: @tr("Paste the theme line you were sent."); color: root.c.fg-muted; font-size: Theme.font-small; wrap: word-wrap; }
+            line := Field {
+                c: root.c;
+                variant: FieldVariant.bare;
+                multiline: true;
+                placeholder: @tr("Theme line");
+                autofocus: true;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.import-open = false; } }
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Preview"); primary: true; clicked => { SettingsStore.command("theme-import", line.text); } }
+            }
+        }
+    }
+}
+
+// Rename: the name of a custom theme.
+export component RenameThemeLayer inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    background: root.c.scrim;
+    TouchArea { }
+    FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { SettingsStore.rename-id = ""; return accept; }
+            reject
+        }
+        DialogFrame {
+            c: root.c;
+            title: @tr("Rename theme");
+            dialog-width: min(420px, root.width - 32px);
+            height: 190px;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            close => { SettingsStore.rename-id = ""; }
+            rename-field := Field {
+                c: root.c;
+                label: @tr("Name");
+                text: SettingsStore.rename-name;
+                autofocus: true;
+                accepted(t) => { SettingsStore.command("theme-rename", SettingsStore.j2(SettingsStore.rename-id, t)); }
+            }
+            Text {
+                text: SettingsStore.share-error(SettingsStore.editor-error);
+                color: root.c.danger-text;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: @tr("Problem");
+                accessible-value: self.text;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.rename-id = ""; } }
+                Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Save"); primary: true; clicked => { SettingsStore.command("theme-rename", SettingsStore.j2(SettingsStore.rename-id, rename-field.text)); } }
+            }
+        }
+    }
+}

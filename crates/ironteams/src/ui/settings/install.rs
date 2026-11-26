@@ -93,6 +93,7 @@ pub fn install(
         account,
         logged_fallbacks: HashSet::new(),
         schedule_timer: None,
+        editor: None,
     }));
     CTL.with(|c| *c.borrow_mut() = Some(shared.clone()));
     {

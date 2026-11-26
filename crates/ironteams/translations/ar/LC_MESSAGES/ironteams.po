@@ -2657,6 +2657,144 @@ msgstr "السمة: {}"
 msgid "Low contrast"
 msgstr "تباين منخفض"
 
+msgid "Lightness"
+msgstr "السطوع"
+
+msgid "Chroma"
+msgstr "التشبّع"
+
+msgid "Hue"
+msgstr "الصبغة"
+
+msgid "IronTeams theme"
+msgstr "سمة IronTeams"
+
+msgid "Nav background"
+msgstr "خلفية الشريط الجانبي"
+
+msgid "Nav text"
+msgstr "نص الشريط الجانبي"
+
+msgid "Nav selected item"
+msgstr "العنصر المحدد في الشريط الجانبي"
+
+msgid "Content background"
+msgstr "خلفية المحتوى"
+
+msgid "Content text"
+msgstr "نص المحتوى"
+
+msgid "Accent"
+msgstr "لون التمييز"
+
+msgid "Mention highlight"
+msgstr "تمييز الإشارة"
+
+msgid "Unread badge"
+msgstr "شارة غير المقروء"
+
+msgid "{}: hex colour"
+msgstr "{}: اللون بالنظام السداسي عشر"
+
+msgid "Theme preview"
+msgstr "معاينة السمة"
+
+msgid "Design team"
+msgstr "فريق التصميم"
+
+msgid "Alex Morgan"
+msgstr "أليكس مورغان"
+
+msgid "Project updates"
+msgstr "مستجدات المشروع"
+
+msgid "Are you around?"
+msgstr "هل أنت متاح؟"
+
+msgid "yes, one minute"
+msgstr "نعم، دقيقة واحدة"
+
+msgid "Import theme"
+msgstr "استيراد سمة"
+
+msgid "Edit theme"
+msgstr "تعديل السمة"
+
+msgid "New custom theme"
+msgstr "سمة مخصصة جديدة"
+
+msgid "Theme line"
+msgstr "سطر السمة"
+
+msgid "Problem"
+msgstr "مشكلة"
+
+msgid "Contrast"
+msgstr "التباين"
+
+msgid "All contrast checks pass."
+msgstr "نجحت كل فحوص التباين."
+
+msgid "Contrast report"
+msgstr "تقرير التباين"
+
+msgid "{} on {}: {}, needs {}"
+msgstr "{} على {}: {}، والمطلوب {}"
+
+msgid "Colours moved to be readable (picked, then drawn):"
+msgstr "ألوان عُدّلت لتصبح مقروءة (المختار ثم المرسوم):"
+
+msgid "Keep my colours"
+msgstr "احتفظ بألواني"
+
+msgid "Draw the text colours as picked, even when they are hard to read."
+msgstr "ارسم ألوان النص كما اخترتها حتى لو كانت صعبة القراءة."
+
+msgid "Paste the theme line you were sent."
+msgstr "الصق سطر السمة الذي وصلك."
+
+msgid "Rename theme"
+msgstr "إعادة تسمية السمة"
+
+msgid "Theme options: {}"
+msgstr "خيارات السمة: {}"
+
+msgid "Copy theme"
+msgstr "نسخ السمة"
+
+msgid "Delete \"{}\"?"
+msgstr "حذف «{}»؟"
+
+msgid "Import"
+msgstr "استيراد"
+
+msgid "The line is longer than 200 characters."
+msgstr "السطر أطول من 200 حرف."
+
+msgid "This is not an IronTeams theme line."
+msgstr "هذا ليس سطر سمة من IronTeams."
+
+msgid "This theme line comes from a newer IronTeams."
+msgstr "سطر السمة هذا من إصدار أحدث من IronTeams."
+
+msgid "The theme has no name."
+msgstr "السمة بلا اسم."
+
+msgid "The name is longer than 40 characters."
+msgstr "الاسم أطول من 40 حرفًا."
+
+msgid "The name may not contain a colon."
+msgstr "لا يجوز أن يحتوي الاسم على نقطتين رأسيتين."
+
+msgid "The name contains hidden or control characters."
+msgstr "يحتوي الاسم على أحرف مخفية أو أحرف تحكم."
+
+msgid "The line must hold exactly 8 colours written as #rrggbb."
+msgstr "يجب أن يحتوي السطر على 8 ألوان بالضبط مكتوبة بصيغة #rrggbb."
+
+msgid "You have 50 custom themes, the most IronTeams keeps. Delete one first."
+msgstr "لديك 50 سمة مخصصة، وهذا أقصى ما يحتفظ به IronTeams. احذف واحدة أولًا."
+
 msgid "Same as app"
 msgstr "مثل التطبيق"
 

@@ -890,7 +890,14 @@ fn main() -> anyhow::Result<()> {
     }
     {
         let tx = tx.clone();
+        let weak = window.as_weak();
         window.global::<MediaStore>().on_command(move |name, arg| {
+            // "Preview" on a theme chip in a message (a chat popout forwards its commands here).
+            if let Some(w) = weak.upgrade()
+                && ui::settings::route_theme_preview(&w, &name, &arg)
+            {
+                return;
+            }
             if let Some(c) = backend::MediaCmd::parse(&name, &arg) {
                 let _ = tx.send(Cmd::Media(c));
             }
