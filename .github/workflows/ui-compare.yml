@@ -98,8 +98,9 @@ jobs:
         env:
           IRONTEAMS_SHOTS_DIR: ${{ github.workspace }}/shots-head
         run: |
-          cargo test -p ironteams --bin ironteams -- --ignored --exact ui_tests::theme_shots::theme_screens_to_png
-          cargo test -p ironteams --bin ironteams -- --ignored --exact ui_tests::settings_shots::settings_pages_to_png
+          cargo test -p ironteams --bin ironteams --no-run
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::theme_shots::theme_screens_to_png
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::settings_shots::settings_pages_to_png
       - uses: actions/upload-artifact@v7
         with:
           name: ui-shots-head
@@ -116,8 +117,9 @@ jobs:
           # which would no longer match the CI `check` cache.
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
-          cargo test -p ironteams --bin ironteams -- --ignored --exact ui_tests::theme_shots::theme_screens_to_png
-          cargo test -p ironteams --bin ironteams -- --ignored --exact ui_tests::settings_shots::settings_pages_to_png
+          cargo test -p ironteams --bin ironteams --no-run
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::theme_shots::theme_screens_to_png
+          timeout -k 10 600 cargo test -p ironteams --bin ironteams -- --ignored --exact --nocapture ui_tests::settings_shots::settings_pages_to_png
       - name: Compare the pictures
         id: compare
         if: steps.base.outputs.present == 'true'
