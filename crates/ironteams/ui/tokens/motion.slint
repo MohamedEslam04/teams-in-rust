@@ -6,6 +6,7 @@
 // Nothing here runs while idle: a looping animation reads `animation-tick()` only while its element
 // exists (the skeletons and the spinner are created under an `if` on the loading flag, so they are
 // gone once the content is there) and not at all with reduced motion.
+import { Tokens } from "types.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { Theme } from "theme.slint";
 
@@ -43,10 +44,11 @@ export global TypingStore {
 // A grey bar or block with a highlight passing over it (about 1.4 s a pass). With reduced motion it
 // is a still grey shape.
 export component Skeleton inherits Rectangle {
-    property <color> hl: Theme.dark ? #ffffff14 : #ffffffb0;
+    in property <Tokens> c: Theme.content;
+    property <color> hl: root.c.shimmer;
     property <float> phase: Motion.running ? mod(animation-tick() / 1ms, 1400) / 1400 : 0;
     border-radius: 4px;
-    background: Theme.dark ? #ffffff10 : #0000000f;
+    background: root.c.overlay-soft;
     clip: true;
     if Motion.running: Rectangle {
         width: root.width * 0.6;
@@ -64,6 +66,7 @@ export component SkeletonCircle inherits Skeleton {
 
 // An avatar and two lines of text, like a chat, activity or search row.
 export component SkeletonRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     // 0 draws no avatar.
     in property <length> avatar: 32px;
     // Width of the first line as a share of the room (the second one is shorter).
@@ -74,20 +77,22 @@ export component SkeletonRow inherits Rectangle {
         padding-right: 12px;
         spacing: 10px;
         if root.avatar > 0px: SkeletonCircle {
+            c: root.c;
             size: root.avatar;
             y: (parent.height - root.avatar) / 2;
         }
         VerticalLayout {
             alignment: center;
             spacing: 8px;
-            Rectangle { height: 12px; Skeleton { width: parent.width * root.share; height: 12px; } }
-            Rectangle { height: 10px; Skeleton { width: parent.width * root.share * 0.7; height: 10px; } }
+            Rectangle { height: 12px; Skeleton { c: root.c; width: parent.width * root.share; height: 12px; } }
+            Rectangle { height: 10px; Skeleton { c: root.c; width: parent.width * root.share * 0.7; height: 10px; } }
         }
     }
 }
 
 // Several rows, fading out towards the bottom. `label` is what a screen reader says.
 export component SkeletonList inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <int> count: 6;
     in property <length> avatar: 32px;
     in property <length> row-height: 56px;
@@ -98,6 +103,7 @@ export component SkeletonList inherits Rectangle {
     lay := VerticalLayout {
         alignment: start;
         for i in root.count: SkeletonRow {
+            c: root.c;
             avatar: root.avatar;
             height: root.row-height;
             share: mod(i, 2) == 0 ? 0.6 : 0.45;
@@ -108,6 +114,7 @@ export component SkeletonList inherits Rectangle {
 
 // The open chat's messages while its history is read: a few bubbles on both sides.
 export component SkeletonMessages inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label: @tr("Loading messages");
     accessible-role: text;
     accessible-label: root.label;
@@ -119,13 +126,15 @@ export component SkeletonMessages inherits Rectangle {
             property <bool> mine: mod(i, 2) == 1;
             height: 64px;
             opacity: max(0.3, 1.0 - i * 0.16);
-            if !bubble.mine: SkeletonCircle { size: 32px; }
+            if !bubble.mine: SkeletonCircle { c: root.c; size: 32px; }
             Skeleton {
+                c: root.c;
                 x: bubble.mine ? parent.width - self.width : 42px;
                 width: 90px + 40px * mod(i, 3);
                 height: 12px;
             }
             Skeleton {
+                c: root.c;
                 x: bubble.mine ? parent.width - self.width : 42px;
                 y: 18px;
                 width: 220px + 40px * mod(i, 2);
@@ -138,8 +147,9 @@ export component SkeletonMessages inherits Rectangle {
 
 // A small arc turning while a button or an inline action works. Still with reduced motion.
 export component Spinner inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <length> size: 14px;
-    in property <color> tint: Theme.fg-muted;
+    in property <color> tint: root.c.fg-muted;
     width: root.size;
     height: root.size;
     accessible-role: none;
@@ -156,12 +166,13 @@ export component Spinner inherits Rectangle {
 
 // A picture that shows a soft placeholder until it is `loaded`, then fades in (150 ms).
 export component FadeImage inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <image> source;
     in property <bool> loaded;
     in property <ImageFit> image-fit: ImageFit.cover;
-    background: Theme.sidebar;
+    background: root.c.panel;
     clip: true;
-    if !root.loaded: Skeleton { width: root.width; height: root.height; border-radius: 0px; }
+    if !root.loaded: Skeleton { c: root.c; width: root.width; height: root.height; border-radius: 0px; }
     Image {
         source: root.source;
         width: root.width;
@@ -211,7 +222,8 @@ export component Reveal inherits Rectangle {
 
 // Three dots rising one after the other (1.2 s a round, 0.15 s apart). Still with reduced motion.
 export component TypingDots inherits Rectangle {
-    in property <color> tint: Theme.fg-muted;
+    in property <Tokens> c: Theme.content;
+    in property <color> tint: root.c.fg-muted;
     in property <length> dot: 4px;
     property <float> t: Motion.running ? mod(animation-tick() / 1ms, 1200) / 1200 : 0;
     width: root.dot * 3 + root.dot * 2 * 0.75;
@@ -233,6 +245,7 @@ export component TypingDots inherits Rectangle {
 // "<Name> is typing…" at the bottom of the message list, above the composer. It fades in and out
 // (150 ms) and keeps its text while it fades out.
 export component TypingIndicator inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     property <bool> active: TypingStore.names.length > 0;
     property <float> fade: root.active ? 1.0 : 0.0;
     property <string> now: TypingStore.text;
@@ -251,10 +264,10 @@ export component TypingIndicator inherits Rectangle {
     if root.fade > 0.01: HorizontalLayout {
         padding-left: 24px;
         spacing: 8px;
-        TypingDots { y: (parent.height - self.height) / 2; }
+        TypingDots { c: root.c; y: (parent.height - self.height) / 2; }
         Text {
             text: root.active ? TypingStore.text : root.last;
-            color: Theme.fg-muted;
+            color: root.c.fg-muted;
             font-size: 12px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;

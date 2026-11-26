@@ -1,4 +1,6 @@
 // People and teams: a photo, or initials on a coloured shape, with an optional presence dot.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "widgets.slint";
 
@@ -6,18 +8,19 @@ import { Icon } from "widgets.slint";
 // unknown status). `presence` takes `Available`, `Busy`, `DoNotDisturb`, `BeRightBack`, `Away`,
 // `Offline` and their `…Idle` forms.
 export component PresenceDot inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> presence;
     property <string> p: root.presence;
     width: 8px;
     height: self.width;
     border-radius: self.width / 2;
     border-width: 2px;
-    border-color: Theme.surface;
+    border-color: root.c.surface;
     property <bool> ring: !(p == "Available" || p == "AvailableIdle" || p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb" || p == "BeRightBack" || p == "Away");
-    background: (p == "Available" || p == "AvailableIdle") ? Theme.presence-available
-        : (p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb") ? Theme.presence-busy
-        : (p == "BeRightBack" || p == "Away") ? Theme.presence-away
-        : Theme.surface;
+    background: (p == "Available" || p == "AvailableIdle") ? root.c.presence-available
+        : (p == "Busy" || p == "BusyIdle" || p == "DoNotDisturb") ? root.c.presence-busy
+        : (p == "BeRightBack" || p == "Away") ? root.c.presence-away
+        : root.c.surface;
     accessible-role: image;
     accessible-label: @tr("Presence");
     accessible-value: root.presence;
@@ -28,14 +31,15 @@ export component PresenceDot inherits Rectangle {
         height: self.width;
         border-radius: self.width / 2;
         border-width: max(1px, self.width * 0.2);
-        border-color: Theme.presence-offline;
+        border-color: root.c.presence-offline;
     }
 }
 
 // A photo, or initials on `tone`. Round by default; `corner` squares it (team pictures).
 export component Avatar inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> initials;
-    in property <color> tone: Theme.accent-strong;
+    in property <color> tone: root.c.accent-strong;
     in property <image> img;
     in property <bool> has-img: false;
     in property <length> size: 32px;
@@ -54,7 +58,7 @@ export component Avatar inherits Rectangle {
     background: root.has-img && !root.tone-under-img ? transparent : root.tone;
     if !root.has-img: Text {
         text: root.initials;
-        color: #ffffff;
+        color: Fixed.white;
         font-size: root.text-size;
         font-weight: root.text-weight;
         horizontal-alignment: center;
@@ -74,6 +78,7 @@ export component Avatar inherits Rectangle {
         }
     }
     if root.presence != "": PresenceDot {
+        c: root.c;
         presence: root.presence;
         width: max(8px, root.size * 0.3);
         x: root.size - self.width + 1px;
@@ -83,6 +88,7 @@ export component Avatar inherits Rectangle {
 
 // A round avatar drawing a glyph instead of initials (group and meeting chats).
 export component GlyphAvatar inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <image> icon;
     in property <color> tone;
     in property <color> tint;
@@ -92,5 +98,5 @@ export component GlyphAvatar inherits Rectangle {
     border-radius: size / 2;
     background: root.tone;
     accessible-role: image;
-    Icon { source: root.icon; width: root.size * 0.56; height: root.size * 0.56; tint: root.tint; }
+    Icon { c: root.c; source: root.icon; width: root.size * 0.56; height: root.size * 0.56; tint: root.tint; }
 }

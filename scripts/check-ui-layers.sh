@@ -3,7 +3,7 @@
 #
 #  1. A file only imports from its own layer or a lower one:
 #       tokens, stores  <-  atoms  <-  molecules  <-  organisms  <-  pages  <-  app.slint
-#  2. Colour literals (#rgb, #rrggbb, #rrggbbaa) live in ui/tokens/ and ui/atoms/. The colours
+#  2. Colour literals (#rgb, #rrggbb, #rrggbbaa) live in ui/tokens/. The colours
 #     that still sit elsewhere are listed, file by file, in scripts/ui-hex-allowlist.txt; that
 #     list may only shrink. Comments are not checked.
 #  3. Region colours: the files of an area named in `rule3_areas` read their colours from their
@@ -24,7 +24,7 @@ allowlist="$repo/scripts/ui-hex-allowlist.txt"
 fail=0
 
 # Rule 3 is switched on area by area, as the sweep reaches each (docs/designs/theme-engine.md).
-rule3_areas=""
+rule3_areas="atoms"
 # The nav: the rail, the sidebar and the chat list.
 nav_set=(organisms/app_rail.slint organisms/apps_rail.slint organisms/sidebar.slint
     organisms/lists.slint organisms/chat_list_extras.slint organisms/communities_section.slint
@@ -80,7 +80,7 @@ done
 # --- 2. colour literals ---
 hex='#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b'
 for f in "${files[@]}"; do
-    case "$f" in tokens/*|atoms/*) continue ;; esac
+    case "$f" in tokens/*) continue ;; esac
     # Drop `//` comments (a `//` inside a string is rare in our files), then list the colours.
     while IFS= read -r colour; do
         [ -z "$colour" ] && continue

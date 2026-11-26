@@ -1,3 +1,4 @@
+import { Fixed } from "../tokens/fixed.slint";
 // Covers what is behind a popover or a dialog and catches the clicks outside it.
 
 export enum ScrimVariant {
@@ -10,7 +11,7 @@ export enum ScrimVariant {
 export component Scrim inherits Rectangle {
     in property <ScrimVariant> variant: ScrimVariant.clear;
     callback dismissed();
-    background: root.variant == ScrimVariant.dim ? #00000099 : transparent;
+    background: root.variant == ScrimVariant.dim ? Fixed.black-99 : transparent;
     TouchArea { clicked => { root.dismissed(); } }
     @children
 }

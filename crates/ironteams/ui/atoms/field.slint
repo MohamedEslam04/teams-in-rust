@@ -5,6 +5,7 @@
 // `text` is what the box holds: a binding to it is the starting text, which typing replaces.
 // `edited` fires on every keystroke, `accepted` on Enter, and `committed` on Enter and when the
 // focus leaves the box.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export enum FieldVariant {
@@ -19,6 +20,7 @@ export enum FieldVariant {
 }
 
 export component Field inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <FieldVariant> variant: FieldVariant.dialog;
     in property <string> label;
     in property <string> placeholder;
@@ -52,7 +54,7 @@ export component Field inherits Rectangle {
         if !root.bare: Text {
             horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
             text: root.label;
-            color: root.settings ? Theme.fg : Theme.fg-muted;
+            color: root.settings ? root.c.fg : root.c.fg-muted;
             font-size: root.settings ? Theme.font-body : 12px * Theme.font-scale;
             overflow: root.variant == FieldVariant.kit ? TextOverflow.elide : TextOverflow.clip;
         }
@@ -60,9 +62,9 @@ export component Field inherits Rectangle {
             height: root.bare ? root.bare-height : root.settings ? max(30px, input.preferred-height + 12px) : 32px;
             max-width: root.settings ? 360px : 100000px;
             border-radius: 4px;
-            background: root.settings ? Theme.surface : Theme.sidebar;
+            background: root.settings ? root.c.surface : root.c.panel;
             border-width: 1px;
-            border-color: input.has-focus ? Theme.accent : Theme.border;
+            border-color: input.has-focus ? root.c.accent : root.c.border;
             input := TextInput {
                 x: root.inset;
                 y: root.bare ? (root.multiline ? 6px : 0px) : (parent.height - self.height) / 2;
@@ -70,7 +72,7 @@ export component Field inherits Rectangle {
                 height: root.bare ? (root.multiline ? parent.height - 12px : parent.height)
                     : root.variant == FieldVariant.kit ? parent.height
                     : self.preferred-height;
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: root.text-size;
                 single-line: !root.multiline;
                 wrap: root.multiline ? TextWrap.word-wrap : TextWrap.no-wrap;
@@ -94,7 +96,7 @@ export component Field inherits Rectangle {
                 y: root.bare && root.multiline ? 6px : (parent.height - self.height) / 2;
                 height: root.bare ? (root.multiline ? 20px : parent.height) : self.preferred-height;
                 text: root.placeholder;
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: root.text-size;
                 vertical-alignment: center;
             }

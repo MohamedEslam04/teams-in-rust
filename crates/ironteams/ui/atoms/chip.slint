@@ -1,5 +1,7 @@
 // Pills (rounded, clickable choices) and badges (small read-only labels). Each variant draws
 // exactly like the copy it replaces (ui/README.md maps the old names).
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Motion } from "../tokens/motion.slint";
 
@@ -12,6 +14,7 @@ export enum PillVariant {
 }
 
 export component Pill inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <PillVariant> variant: PillVariant.filter;
     in property <string> label;
     in property <bool> active;
@@ -23,8 +26,8 @@ export component Pill inherits Rectangle {
     height: 26px;
     border-radius: 13px;
     border-width: 1px;
-    border-color: root.active ? Theme.accent : Theme.border;
-    background: root.active ? #3b3d6b : (t.has-hover ? Theme.surface-hover : transparent);
+    border-color: root.active ? root.c.accent : root.c.border;
+    background: root.active ? root.c.accent-soft : (t.has-hover ? root.c.surface-hover : transparent);
     animate background { duration: root.toggle ? 0ms : Motion.quick; }
     animate border-color { duration: root.toggle ? 0ms : Motion.quick; }
     accessible-role: button;
@@ -36,7 +39,7 @@ export component Pill inherits Rectangle {
         padding-right: root.pad;
         lbl := Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 12px * Theme.font-scale;
             horizontal-alignment: root.toggle ? TextHorizontalAlignment.center : TextHorizontalAlignment.left;
             vertical-alignment: center;
@@ -53,22 +56,23 @@ export enum BadgeVariant {
 }
 
 export component Badge inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <BadgeVariant> variant: BadgeVariant.status;
     in property <string> text;
     in property <string> tone;
     property <bool> tag: root.variant == BadgeVariant.tag;
-    property <color> tag-color: root.tone == "warn" ? Theme.warning : root.tone == "accent" ? Theme.accent : Theme.fg-muted;
+    property <color> tag-color: root.tone == "warn" ? root.c.warning : root.tone == "accent" ? root.c.accent : root.c.fg-muted;
     height: root.tag ? 18px : 20px;
     width: lbl.preferred-width + (root.tag ? 12px : 16px);
     border-radius: root.tag ? 9px : 10px;
     border-width: root.tag ? 1px : 0px;
     border-color: root.tag-color;
     background: root.tag ? transparent
-        : root.tone == "ok" ? #1d3a2a : (root.tone == "bad" ? #4a1f24 : (root.tone == "warn" ? #4a3b14 : Theme.surface-hover));
+        : root.tone == "ok" ? Fixed.badge-ok-bg : (root.tone == "bad" ? Fixed.badge-bad-bg : (root.tone == "warn" ? Fixed.badge-warn-bg : root.c.surface-hover));
     lbl := Text {
         text: root.text;
         color: root.tag ? root.tag-color
-            : root.tone == "ok" ? #6bd69b : (root.tone == "bad" ? #ff8a8f : (root.tone == "warn" ? #ffd166 : Theme.fg-muted));
+            : root.tone == "ok" ? Fixed.badge-ok-fg : (root.tone == "bad" ? Fixed.badge-bad-fg : (root.tone == "warn" ? Fixed.badge-warn-fg : root.c.fg-muted));
         font-size: (root.tag ? 10px : 11px) * Theme.font-scale;
         font-weight: root.tag ? 400 : 600;
         horizontal-alignment: center;
@@ -78,16 +82,17 @@ export component Badge inherits Rectangle {
 
 // A red pill with an unread count ("99+" above 99), as on the rail.
 export component CountBadge inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <int> count;
     height: 16px;
     width: max(16px, count-text.preferred-width + 8px);
     border-radius: 8px;
-    background: Theme.unread-badge;
+    background: root.c.unread-badge;
     accessible-role: text;
     accessible-label: @tr("{} unread", root.count);
     count-text := Text {
         text: root.count > 99 ? "99+" : root.count;
-        color: #ffffff;
+        color: root.c.on-badge;
         font-size: 10px * Theme.font-scale;
         font-weight: 700;
         horizontal-alignment: center;

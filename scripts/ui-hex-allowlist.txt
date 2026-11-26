@@ -1,4 +1,4 @@
-# Colour literals still allowed outside ui/tokens/ and ui/atoms/ (scripts/check-ui-layers.sh).
+# Colour literals still allowed outside ui/tokens/ (scripts/check-ui-layers.sh).
 # One "<path under crates/ironteams/ui/> <#colour>" per line, colours in lower case.
 #
 # These are the colours the screens drew before the atomic-UI refactor, kept so the refactor
