@@ -40,7 +40,7 @@ The window has three colour regions, each a full set of colours: the content are
 rail, the sidebar, the chat list) and the call screen. A set is a `Tokens` struct
 (`tokens/types.slint`: 49 colours from `bg` to `shimmer`, and `dark`), and `Theme` holds one per
 region: `Theme.content`, `Theme.nav` and `Theme.call`. Rust sets all three, with the non-colour
-properties (`font-scale`, `compact`, `high-contrast`, `reduced-motion`, `h24`), through one
+properties (`font-scale`, `compact`, `high-contrast`, `reduced-motion`, `h24`, `font-code`, `font-ui`), through one
 function, `apply_look` (`src/ui/settings/push.rs`), for the main window and each chat popout.
 In the four built-in palettes the nav is the content set on the content's `panel`, and the call
 screen is the content set.

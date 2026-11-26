@@ -554,14 +554,14 @@ export component FontSelect inherits VerticalLayout {
     in property <string> value;
     callback picked(string);
     property <bool> open: false;
-    property <length> row: 30px * max(1, Theme.font-scale);
+    property <length> item-height: 30px * max(1, Theme.font-scale);
     spacing: 4px;
     alignment: start;
     HorizontalLayout {
         alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
         Rectangle {
             width: 240px;
-            height: root.row;
+            height: root.item-height;
             border-radius: 4px;
             border-width: 1px;
             border-color: root.open ? root.c.accent : root.c.border;
@@ -595,7 +595,7 @@ export component FontSelect inherits VerticalLayout {
         }
     }
     if root.open: Flickable {
-        height: min(10, root.families.length + 1) * (root.row + 2px);
+        height: min(10, root.families.length + 1) * (root.item-height + 2px);
         content-height: list.preferred-height;
         list := VerticalLayout {
             width: root.width;
