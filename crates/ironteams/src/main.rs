@@ -423,6 +423,14 @@ fn right_click_released(w: &AppWindow) {
     p.set_right_clicks(p.get_right_clicks().wrapping_add(1));
 }
 
+/// The window saw a left button go up: the message under the pointer hands the keyboard to the
+/// window (`MessagePointer` in `message_row.slint`), so E over it edits it even when the
+/// composer had the focus.
+fn left_click_released(w: &AppWindow) {
+    let p = w.global::<MessagePointer>();
+    p.set_left_clicks(p.get_left_clicks().wrapping_add(1));
+}
+
 /// A mouse button is going down at `at`, before the window handles it: the message menu and
 /// the profile menu close when it is outside them, so the press reaches what is under them
 /// (`pointer-pressed` in `app.slint`) instead of only closing the menu.
@@ -673,6 +681,31 @@ fn main() -> anyhow::Result<()> {
     cmd!(on_react, |id, key| Cmd::React(id.into(), key.into()));
     cmd!(on_reply, |id| Cmd::Reply(id.into()));
     cmd!(on_cancel_reply, || Cmd::CancelReply);
+    // The editor of a sent message, in the message's row (`EditStore`), sends what the composer's
+    // own callbacks send.
+    {
+        let edit = window.global::<EditStore>();
+        let t = tx.clone();
+        edit.on_save(move |text| {
+            let _ = t.send(Cmd::SaveEdit(text.into()));
+        });
+        let t = tx.clone();
+        edit.on_cancel(move || {
+            let _ = t.send(Cmd::CancelReply);
+        });
+        let t = tx.clone();
+        edit.on_draft_edited(move |text| {
+            let _ = t.send(Cmd::DraftEdited(text.into()));
+        });
+        let t = tx.clone();
+        edit.on_emoji_used(move |e| {
+            let _ = t.send(Cmd::EmojiUsed(e.into()));
+        });
+        let t = tx.clone();
+        edit.on_skin_tone_changed(move |tone| {
+            let _ = t.send(Cmd::SetSkinTone(tone.clamp(0, 5) as u8));
+        });
+    }
     cmd!(on_edit, |id| Cmd::Edit(id.into()));
     cmd!(on_delete, |id| Cmd::Delete(id.into()));
     // Until sign-in is done the backend loop is busy signing in and reads no commands, so a link
@@ -941,6 +974,15 @@ fn main() -> anyhow::Result<()> {
                 && let Some(w) = weak.upgrade()
             {
                 right_click_released(&w);
+            }
+            if let WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: MouseButton::Left,
+                ..
+            } = event
+                && let Some(w) = weak.upgrade()
+            {
+                left_click_released(&w);
             }
             // The mouse's own Back and Forward buttons move through the history like the arrows.
             if let WindowEvent::MouseInput {

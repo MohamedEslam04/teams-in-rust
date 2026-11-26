@@ -1,6 +1,8 @@
 // The row of buttons under the composer's text: Format, Emoji, Attach, "…", GIF and Loop (when
 // there is room), the apps, the voice message, and Send with its options. The composer owns the
-// popups these open.
+// popups these open. In `inline-edit` (the editor of a sent message) only Format and Emoji stay,
+// and Cancel and Save take the place of Send.
+import { Button, ButtonVariant } from "../atoms/button.slint";
 import { ComposerAppsButton } from "composer_apps.slint";
 import { FormatToggle } from "composer_format.slint";
 import { IconButton } from "../atoms/widgets.slint";
@@ -14,6 +16,9 @@ export component ComposerToolbar inherits HorizontalLayout {
     in-out property <string> emoji-query;
     in-out property <bool> format-open;
     in property <bool> narrow-bar;
+    // The editor of a sent message: no attachments, GIF, Loop, apps, voice message or Send options.
+    in property <bool> inline-edit;
+    callback cancel;
     callback open-gifs;
     in property <[PendingAttachment]> pending-attachments;
     callback submit;
@@ -29,27 +34,39 @@ export component ComposerToolbar inherits HorizontalLayout {
     alignment: end;
     FormatToggle { on: root.format-open; clicked => { root.format-open = !root.format-open; } }
     IconButton { icon: @image-url("../icons/emoji.svg"); clicked => { root.emoji-query = ""; root.show-emoji(); } }
-    IconButton { icon: @image-url("../icons/attach.svg"); tooltip: @tr("Attach file"); clicked => { root.show-attach(); } }
-    IconButton { icon: @image-url("../icons/more.svg"); clicked => { root.show-more(); } }
-    if !root.narrow-bar: IconButton {
+    if !root.inline-edit: IconButton { icon: @image-url("../icons/attach.svg"); tooltip: @tr("Attach file"); clicked => { root.show-attach(); } }
+    if !root.inline-edit: IconButton { icon: @image-url("../icons/more.svg"); clicked => { root.show-more(); } }
+    if !root.narrow-bar && !root.inline-edit: IconButton {
         icon: @image-url("../icons/gif.svg");
         tooltip: @tr("GIF");
         clicked => { root.open-gifs(); }
     }
-    if !root.narrow-bar: IconButton {
+    if !root.narrow-bar && !root.inline-edit: IconButton {
         icon: @image-url("../icons/loop.svg");
         tooltip: @tr("Loop paragraph");
         active: LoopStore.open;
         clicked => { LoopStore.open = true; }
     }
-    ComposerAppsButton { }
-    IconButton {
+    if !root.inline-edit: ComposerAppsButton { }
+    if !root.inline-edit: IconButton {
         icon: @image-url("../icons/mic.svg");
         tooltip: @tr("Record a voice message (Ctrl+Shift+R)");
         clicked => { VoiceRecStore.start(); }
     }
     Rectangle { width: 1px; background: Theme.border; }
-    SendButton {
+    if root.inline-edit: Button {
+        variant: ButtonVariant.dialog;
+        label: @tr("Cancel");
+        clicked => { root.cancel(); }
+    }
+    if root.inline-edit: Button {
+        variant: ButtonVariant.dialog;
+        label: @tr("Save");
+        primary: true;
+        enabled: root.has-text;
+        clicked => { root.submit(); }
+    }
+    if !root.inline-edit: SendButton {
         ready: root.has-text || root.pending-attachments.length > 0 || LoopStore.open;
         send => { root.submit(); }
         options => { root.show-send-options(); }

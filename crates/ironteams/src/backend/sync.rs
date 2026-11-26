@@ -352,7 +352,9 @@ impl Engine {
             v.limit = PAGE;
             v.older_done = false;
             v.reply_to = None;
-            v.editing = None;
+            if v.editing.take().is_some() {
+                self.ui.inline_edit(String::new(), String::new());
+            }
             v.selected.clear();
             v.fresh.clear();
             v.forward = None;

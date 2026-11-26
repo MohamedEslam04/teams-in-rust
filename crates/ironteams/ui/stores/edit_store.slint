@@ -1,0 +1,22 @@
+import { ComposerEmoji } from "../tokens/types.slint";
+
+// Editing a sent message in place: the row of the message `id` shows an editor (the composer in
+// its `inline-edit` mode) instead of the words. The backend (`Cmd::Edit`) fills `id` and `draft`;
+// Save and Cancel go back to it. The editor takes its look and behaviour from the composer, so the
+// settings the composer reads from the window are mirrored here (`ui.rs: prefs`).
+export global EditStore {
+    // The message being edited, or "".
+    in-out property <string> id;
+    // The editor's text, in the composer's Markdown-style source.
+    in-out property <string> draft;
+    // The editor holds the keyboard focus (the window leaves Ctrl+Shift+7 and 8 to it).
+    in-out property <bool> focused;
+    in-out property <bool> enter-sends: true;
+    in-out property <int> skin-tone: 0;
+    in property <[ComposerEmoji]> recent-emoji;
+    callback save(string);
+    callback cancel();
+    callback draft-edited(string);
+    callback emoji-used(string);
+    callback skin-tone-changed(int);
+}

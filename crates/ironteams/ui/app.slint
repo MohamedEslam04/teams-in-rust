@@ -9,6 +9,7 @@ import { Avatar, GlyphAvatar } from "atoms/avatar.slint";
 import { Sidebar } from "organisms/sidebar.slint";
 import { MessageRow } from "organisms/message_row.slint";
 export { MessagePointer } from "organisms/message_row.slint";
+export { EditStore } from "stores/edit_store.slint";
 import { Composer, EmojiApi } from "organisms/composer.slint";
 import { MessageMenu } from "molecules/message_menu.slint";
 import { SeenByList } from "molecules/seen_by.slint";
@@ -587,6 +588,7 @@ export component AppWindow inherits Window {
         edit-message(a0) => { root.edit(a0); }
         composer-expanded <=> root.composer-expanded;
         composer-focused: root.composer-focused;
+        composer-empty: root.draft == "";
         current-id: root.current-id;
         filter <=> root.filter;
         focus-tick <=> root.focus-tick;

@@ -234,15 +234,239 @@ fn e_does_nothing_once_the_pointer_left_the_message_or_with_a_modifier() {
 }
 
 #[test]
-fn typing_e_in_the_composer_types_the_letter_even_over_a_message_of_mine() {
+fn typing_e_in_a_composer_that_holds_text_types_the_letter_even_over_a_message_of_mine() {
     let app = app_with_messages(vec![msg("m1", "mine", true)]);
     let log = record_actions(&app);
     focus_composer(&app);
+    type_text(&app, "h");
     hover(&app, &rows(&app)[0]);
     settle_hover();
     type_text(&app, "e");
-    assert_eq!(app.get_draft(), "e");
+    assert_eq!(app.get_draft(), "he");
     assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+}
+
+/// Stands in for the backend's `Cmd::Edit`: the editor opens in the message's row with `text`.
+fn editor_opens_on_edit(app: &AppWindow, text: &'static str) -> Log {
+    let log = Log::default();
+    let (l, weak) = (log.clone(), app.as_weak());
+    app.on_edit(move |id| {
+        l.borrow_mut().push(format!("edit {id}"));
+        let app = weak.upgrade().unwrap();
+        let edit = app.global::<crate::EditStore>();
+        edit.set_draft(text.into());
+        edit.set_id(id);
+    });
+    log
+}
+
+/// What the editor's Save and Cancel send to the backend.
+fn record_editor(app: &AppWindow) -> Log {
+    let log = Log::default();
+    let edit = app.global::<crate::EditStore>();
+    let l = log.clone();
+    edit.on_save(move |t| l.borrow_mut().push(format!("save {t}")));
+    let l = log.clone();
+    edit.on_cancel(move || l.borrow_mut().push("cancel".into()));
+    log
+}
+
+/// The composer's text boxes from the top: the editor of a sent message (when one is open), then
+/// the composer under the list.
+fn text_boxes(app: &AppWindow) -> Vec<ElementHandle> {
+    let mut v: Vec<_> =
+        ElementHandle::find_by_element_id(app, "Composer::composer-input").collect();
+    v.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
+    v
+}
+
+fn inside(row: &ElementHandle, el: &ElementHandle) -> bool {
+    let (top, y) = (row.absolute_position().y, el.absolute_position().y);
+    y >= top && y < top + row.size().height
+}
+
+/// Hover `row` and press E.
+fn hover_and_press_e(app: &AppWindow, row: &ElementHandle) {
+    hover(app, row);
+    settle_hover();
+    press_letter(app, "e");
+    settle_hover();
+}
+
+fn edit_draft(app: &AppWindow) -> String {
+    app.global::<crate::EditStore>().get_draft().to_string()
+}
+
+#[test]
+fn e_with_an_empty_composer_opens_the_editor_in_that_message_only() {
+    let app = app_with_messages(vec![
+        msg("m1", "first", true),
+        msg("m2", "theirs", false),
+        msg("m3", "latest", true),
+    ]);
+    let log = editor_opens_on_edit(&app, "first");
+    focus_composer(&app);
+    assert_eq!(text_boxes(&app).len(), 1, "no editor yet");
+    let rows = rows(&app);
+
+    hover_and_press_e(&app, &rows[0]);
+    assert_eq!(*log.borrow(), vec!["edit m1"]);
+    assert_eq!(app.get_draft(), "", "the E was not typed into the composer");
+    let boxes = text_boxes(&app);
+    assert_eq!(boxes.len(), 2, "the editor and the composer");
+    assert!(
+        inside(&rows[0], &boxes[0]),
+        "the editor is in the row of m1"
+    );
+    assert!(!inside(&rows[2], &boxes[0]));
+
+    // The editor starts with the message's text and the cursor at its end, and has the keys.
+    type_text(&app, "!");
+    assert_eq!(edit_draft(&app), "first!");
+    assert_eq!(app.get_draft(), "");
+
+    // A click on another message of mine takes the keys off the editor, and E edits that one:
+    // only that one has an editor.
+    hover(&app, &rows[2]);
+    settle_hover();
+    crate::left_click_released(&app);
+    settle_hover();
+    press_letter(&app, "e");
+    settle_hover();
+    assert_eq!(app.global::<crate::EditStore>().get_id(), "m3");
+    assert_eq!(text_boxes(&app).len(), 2, "one editor at a time");
+    assert!(inside(&rows[2], &text_boxes(&app)[0]));
+}
+
+#[test]
+fn e_over_someone_elses_message_does_nothing() {
+    let app = app_with_messages(vec![msg("m1", "theirs", false), msg("m2", "mine", true)]);
+    let log = editor_opens_on_edit(&app, "x");
+    focus_composer(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+    assert!(log.borrow().is_empty(), "{:?}", log.borrow());
+    assert_eq!(app.get_draft(), "", "no letter in the composer either");
+    assert_eq!(text_boxes(&app).len(), 1);
+}
+
+#[test]
+fn a_click_on_a_message_then_e_edits_it_even_when_the_composer_holds_text() {
+    let app = app_with_messages(vec![msg("m1", "first", true)]);
+    let log = editor_opens_on_edit(&app, "first");
+    focus_composer(&app);
+    type_text(&app, "draft");
+    let row = rows(&app).remove(0);
+    hover(&app, &row);
+    settle_hover();
+
+    // Without the click the E is a letter.
+    press_letter(&app, "e");
+    assert_eq!(app.get_draft(), "drafte");
+    assert!(log.borrow().is_empty());
+
+    crate::left_click_released(&app);
+    settle_hover();
+    press_letter(&app, "e");
+    assert_eq!(*log.borrow(), vec!["edit m1"]);
+    assert_eq!(app.get_draft(), "drafte", "the composer keeps its text");
+}
+
+#[test]
+fn enter_saves_the_edit_and_shift_enter_adds_a_line() {
+    let app = app_with_messages(vec![msg("m1", "first", true)]);
+    editor_opens_on_edit(&app, "first");
+    let saved = record_editor(&app);
+    focus_composer(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+
+    type_text(&app, " more");
+    key(&app, Key::Shift, true);
+    enter(&app);
+    key(&app, Key::Shift, false);
+    type_text(&app, "two");
+    assert_eq!(edit_draft(&app), "first more\ntwo");
+    assert!(saved.borrow().is_empty(), "Shift+Enter is a new line");
+
+    enter(&app);
+    assert_eq!(*saved.borrow(), vec!["save first more\ntwo"]);
+}
+
+#[test]
+fn esc_cancels_the_edit_without_saving() {
+    let app = app_with_messages(vec![msg("m1", "first", true)]);
+    editor_opens_on_edit(&app, "first");
+    let log = record_editor(&app);
+    focus_composer(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+    type_text(&app, "x");
+    press(&app, Key::Escape);
+    assert_eq!(*log.borrow(), vec!["cancel"]);
+}
+
+#[test]
+fn the_message_menus_edit_opens_the_same_editor() {
+    let app = app_with_messages(vec![msg("m1", "first", false), msg("m2", "mine", true)]);
+    let log = editor_opens_on_edit(&app, "mine");
+    let rows = rows(&app);
+    open_menu(&app, &rows[1]);
+    click(&menu_item(&app, "Edit"));
+    assert_eq!(*log.borrow(), vec!["edit m2"]);
+    assert_eq!(app.global::<crate::EditStore>().get_id(), "m2");
+    let boxes = text_boxes(&app);
+    assert_eq!(boxes.len(), 2);
+    assert!(inside(&rows[1], &boxes[0]));
+}
+
+#[test]
+fn the_editor_formats_like_the_composer_and_drops_what_makes_no_sense_in_an_edit() {
+    let app = app_with_messages(vec![msg("m1", "first", true)]);
+    editor_opens_on_edit(&app, "first");
+    focus_composer(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+
+    // Ctrl+A, Ctrl+B: the shortcut acts in the editor, not in the composer.
+    chord(&app, &[Key::Control], "a");
+    chord(&app, &[Key::Control], "b");
+    assert_eq!(edit_draft(&app), "**first**");
+    assert_eq!(app.get_draft(), "");
+
+    // The toolbar keeps Format and Emoji; attachments and Send are the composer's alone, and
+    // Cancel and Save take Send's place.
+    assert_eq!(find_label(&app, "Show formatting options").len(), 2);
+    assert_eq!(find_label(&app, "Attach file").len(), 1);
+    assert_eq!(find_label(&app, "Send").len(), 1);
+    assert_eq!(find_label(&app, "Save").len(), 1);
+    assert_eq!(find_label(&app, "Cancel").len(), 1);
+    let mut toggles = find_label(&app, "Show formatting options");
+    toggles.sort_by(|a, b| a.absolute_position().y.total_cmp(&b.absolute_position().y));
+    assert!(find_label(&app, "Bold").is_empty());
+    click(&toggles[0]);
+    assert!(
+        !find_label(&app, "Bold").is_empty(),
+        "the editor's formatting bar opened"
+    );
+}
+
+#[test]
+fn the_editor_offers_mentions_above_itself_like_the_composer() {
+    let app = app_with_messages(vec![msg("m1", "first", true)]);
+    editor_opens_on_edit(&app, "first");
+    app.global::<crate::PeopleStore>()
+        .set_mention_items(ModelRc::new(VecModel::from(vec![crate::PersonItem {
+            id: "8:sara".into(),
+            name: "Sara".into(),
+            kind: "person".into(),
+            ..Default::default()
+        }])));
+    focus_composer(&app);
+    hover_and_press_e(&app, &rows(&app)[0]);
+
+    assert!(find_label(&app, "Mention").is_empty());
+    type_text(&app, " @");
+    settle_hover();
+    let picker = find_label(&app, "Mention");
+    assert_eq!(picker.len(), 1, "one mention picker, for the editor");
+    assert!(picker[0].absolute_position().y < text_boxes(&app)[0].absolute_position().y);
 }
 
 #[test]

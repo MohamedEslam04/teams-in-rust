@@ -29,6 +29,11 @@ export component Composer inherits Rectangle {
     in property <string> reply-author;
     in property <string> reply-preview;
     in property <string> editing-id;
+    // The editor of a sent message, drawn in the message's row (`message_row.slint`): no frame
+    // around it, no attachments, subject, schedule, Loop, voice message or video clip, Save and
+    // Cancel instead of Send, and Esc cancels. Everything else is the composer: lines aligned by
+    // their own direction, formatting, @mentions, emoji, snippets and spell check.
+    in property <bool> inline-edit: false;
     in-out property <string> draft;
     in-out property <string> post-subject;
     in-out property <int> focus-tick;
@@ -128,6 +133,17 @@ export component Composer inherits Rectangle {
         }
     }
 
+    // The editor of a sent message opens with the cursor at the end of the text and the keyboard
+    // focus, once its first layout exists.
+    Timer {
+        interval: 1ms;
+        running: root.inline-edit;
+        triggered => {
+            self.running = false;
+            composer-input.set-selection-offsets(2000000000, 2000000000);
+        }
+    }
+
     function pick-snippet(i: int) {
         if i >= 0 && i < root.snippet-matches.length {
             root.put(SnippetApi.complete(root.draft, composer-input.cursor-position-byte-offset, root.snippet-matches[i].text));
@@ -154,6 +170,7 @@ export component Composer inherits Rectangle {
     // A toolbar action or shortcut on the selection (`a`, `c`: anchor and cursor byte offsets).
     function format(act: string, a: int, c: int) {
         if act == "important" {
+            if root.inline-edit { return; }
             root.important = !root.important;
             root.urgent = false;
             root.focus-tick += 1;
@@ -199,7 +216,7 @@ export component Composer inherits Rectangle {
     property <bool> can-schedule: !root.current-is-channel && root.thread-root == "" && root.editing-id == "";
 
     function submit() {
-        if LoopStore.open { LoopStore.send(); }
+        if LoopStore.open && !root.inline-edit { LoopStore.send(); }
         // A chosen send time: the text is scheduled instead of sent (attachments stay here).
         if SendStore.schedule-at != "" && root.can-schedule {
             if composer-input.text != "" {
@@ -252,10 +269,10 @@ export component Composer inherits Rectangle {
     max-height: body.max-height;
 
     body := HorizontalLayout {
-        padding-left: 20px;
-        padding-right: 20px;
-        padding-bottom: 16px;
-        padding-top: 6px;
+        padding-left: root.inline-edit ? 0px : 20px;
+        padding-right: root.inline-edit ? 0px : 20px;
+        padding-bottom: root.inline-edit ? 0px : 16px;
+        padding-top: root.inline-edit ? 0px : 6px;
         Rectangle {
             border-radius: 6px;
             background: Theme.surface;
@@ -299,10 +316,10 @@ export component Composer inherits Rectangle {
                     }
                 }
                 // "Record video clip" (the "…" menu) and the Loop paragraph sit above the text.
-                if ClipStore.state != "idle": ClipRecorderPanel {
+                if ClipStore.state != "idle" && !root.inline-edit: ClipRecorderPanel {
                     init => { self.focus(); }
                 }
-                if LoopStore.open: HorizontalLayout {
+                if LoopStore.open && !root.inline-edit: HorizontalLayout {
                     padding: 8px;
                     padding-bottom: 0px;
                     LoopEditor { }
@@ -321,7 +338,7 @@ export component Composer inherits Rectangle {
                     composer-scope := FocusScope {
                         capture-key-pressed(event) => {
                             // Not consumed: a text paste still happens. Rust adds an image if the clipboard holds one.
-                            if event.text == "v" && (event.modifiers.control || event.modifiers.meta) {
+                            if event.text == "v" && (event.modifiers.control || event.modifiers.meta) && !root.inline-edit {
                                 root.paste-image();
                             }
                             if root.try-shortcut(event) {
@@ -391,8 +408,13 @@ export component Composer inherits Rectangle {
                                 root.edit-last();
                                 return accept;
                             }
+                            // Esc in the editor of a sent message drops the edit.
+                            if root.inline-edit && event.text == Key.Escape {
+                                root.cancel-reply();
+                                return accept;
+                            }
                             // Ctrl+Shift+R records a voice message (ui/organisms/voice_recorder.slint).
-                            if event.modifiers.control && event.modifiers.shift && (event.text == "R" || event.text == "r") {
+                            if event.modifiers.control && event.modifiers.shift && (event.text == "R" || event.text == "r") && !root.inline-edit {
                                 VoiceRecStore.start();
                                 return accept;
                             }
@@ -444,6 +466,8 @@ export component Composer inherits Rectangle {
                     }
                 }
                 ComposerToolbar {
+                    inline-edit: root.inline-edit;
+                    cancel => { root.cancel-reply(); }
                     emoji-query <=> root.emoji-query;
                     format-open <=> root.format-open;
                     narrow-bar: root.narrow-bar;
@@ -463,7 +487,7 @@ export component Composer inherits Rectangle {
                 background: composer-input.focused ? Theme.accent : transparent;
             }
             // While a voice message is recorded or listened back, its bar takes the box.
-            if VoiceRecStore.state != "idle": Rectangle {
+            if VoiceRecStore.state != "idle" && !root.inline-edit: Rectangle {
                 background: Theme.surface;
                 border-radius: Theme.radius;
                 VoiceRecorderBar {
@@ -478,7 +502,7 @@ export component Composer inherits Rectangle {
 
     if root.snippet-open: SnippetPicker {
         z: 100;
-        x: 20px;
+        x: root.inline-edit ? 0px : 20px;
         y: -self.height - 4px;
         items: root.snippet-matches;
         index: root.snippet-index;
@@ -487,7 +511,7 @@ export component Composer inherits Rectangle {
 
     if root.mention-open: MentionPicker {
         z: 100;
-        x: 20px;
+        x: root.inline-edit ? 0px : 20px;
         y: -self.height - 4px;
         items: PeopleStore.mention-items;
         index: root.mention-index;
@@ -550,8 +574,10 @@ export component Composer inherits Rectangle {
     }
 
     emoji-popup := PopupWindow {
-        x: parent.width - 420px;
-        y: parent.height - 530px;
+        x: root.inline-edit ? max(0px, parent.width - 360px) : parent.width - 420px;
+        // The editor of a sent message sits anywhere in the list: the panel opens above it, or
+        // below it when there is no room above.
+        y: root.inline-edit ? (root.absolute-position.y > 470px ? -448px : parent.height + 8px) : parent.height - 530px;
         width: 360px;
         height: 440px;
         close-policy: close-on-click-outside;

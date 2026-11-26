@@ -69,9 +69,8 @@ impl Engine {
             return Ok(());
         };
         if let Some(id) = editing {
-            // The composer shows the draft that was there before the edit again.
-            let draft = self.view.lock().unwrap().draft_text.clone();
-            self.ui.set_draft(draft);
+            // The editor in the message's row goes; the composer was not touched.
+            self.ui.inline_edit(String::new(), String::new());
             // The forwarded or quoted message of the original goes back exactly as it was.
             let html = mentions::finish(
                 &render::markdown_to_composer_html(&prepared.text),
@@ -329,6 +328,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use slint::ComponentHandle;
     use store::{ConvKind, ConversationRow, MessageRow};
 
     pub(super) const FORWARD: &str = r#"<blockquote itemscope="" itemtype="http://schema.skype.com/Forward" itemid="1731234567890"><strong itemprop="mri" itemid="8:orgid:aaa">Sara</strong><span itemprop="time" itemid="1731234567890"></span><p itemprop="preview">https://linear.app/x/issue/ABC-1 &amp; more</p></blockquote>"#;
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn editing_a_message_with_a_forward_puts_only_the_own_text_in_the_composer() {
+    async fn editing_a_message_with_a_forward_puts_only_the_own_text_in_the_editor() {
         let conv = "48:notes";
         let (e, window) = engine(ConvKind::Notes, conv);
         let html = format!("{FORWARD}<p>my own comment</p>");
@@ -397,7 +397,10 @@ mod tests {
         e.clone()
             .handle(crate::backend::Cmd::Edit("m1".into()))
             .await;
-        assert_eq!(window.get_draft(), "my own comment");
+        let edit = window.global::<crate::EditStore>();
+        assert_eq!(edit.get_draft(), "my own comment");
+        assert_eq!(edit.get_id(), "m1", "the editor opens in the message's row");
+        assert_eq!(window.get_draft(), "", "the composer is left alone");
         let v = e.view.lock().unwrap();
         assert_eq!(v.editing.as_deref(), Some("m1"));
         assert_eq!(
