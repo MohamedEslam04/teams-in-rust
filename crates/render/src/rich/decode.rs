@@ -7,8 +7,8 @@ use super::{
     TableCell, clean_language, is_http_url, is_safe_link, parse_css_color,
 };
 use crate::parse::{
-    MAX_DEPTH, attr, attr_lower, collapse_ws, has_markup, is_emoji_img, non_empty, own_mark_free,
-    parse_dim, raw_text, trim_spans,
+    MAX_DEPTH, attr, attr_lower, collapse_ws, emoticon_text, has_markup, is_emoji_img, non_empty,
+    own_mark_free, parse_dim, raw_text, trim_spans,
 };
 use crate::{FontSize, Span, Style, parse_teams_html};
 
@@ -291,6 +291,12 @@ impl Walker {
                 self.push_text(" ", &ctx);
             }
             "img" => self.image(el, &ctx),
+            "emoji" => {
+                if let Some(text) = emoticon_text(attr(&el, "alt"), attr(&el, "id")) {
+                    self.push_span(text, &ctx);
+                }
+                self.walk_children(el, &ctx, depth);
+            }
             "b" | "strong" => self.walk_children(el, &styled(|s| s.bold = true), depth),
             "i" | "em" => self.walk_children(el, &styled(|s| s.italic = true), depth),
             "u" => self.walk_children(el, &styled(|s| s.underline = true), depth),
@@ -335,8 +341,8 @@ impl Walker {
 
     fn image(&mut self, el: ElementRef, ctx: &Ctx) {
         if is_emoji_img(&el) {
-            if let Some(alt) = attr(&el, "alt") {
-                self.push_span(alt.to_owned(), ctx);
+            if let Some(text) = emoticon_text(attr(&el, "alt"), attr(&el, "itemid")) {
+                self.push_span(text, ctx);
             }
             return;
         }

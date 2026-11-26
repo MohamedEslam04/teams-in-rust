@@ -15,6 +15,7 @@ flowchart TD
   apps["apps (imported as app_store)"]
   proto[teams-proto]
   app --> proto & calendar & onedrive & preview & apps & store & session & appearance & render & emoji & voice & devices & tray & webhost & diag & compat
+  render --> emoji
   app -. feature calls .-> calling
   cli --> proto & calendar & onedrive & preview & apps & session & appearance & render & devices & tray & webhost & diag & calling & compat
   calendar --> proto
@@ -37,7 +38,7 @@ flowchart TD
 
 - **Protocol layer:** `teams-proto` owns sign-in, token minting and every Teams, Graph and Substrate request. It depends on no other workspace crate.
 - **Feature services:** `calendar`, `onedrive`, `preview`, `apps` and `calling` each wrap one service family on top of `teams-proto`.
-- **Local and platform crates:** `store` (SQLite), `session` (keyring and config; depends on `teams-proto` and `compat`), `appearance` (prefs and portal), `render` (pure HTML and Markdown), `emoji` (static table), `voice` (depends on `devices`), `devices`, `tray`, `webhost`, `diag` (depends on `session`). `store`, `render`, `emoji`, `tray`, `devices` and `teams-proto` have no workspace dependencies.
+- **Local and platform crates:** `store` (SQLite), `session` (keyring and config; depends on `teams-proto` and `compat`), `appearance` (prefs and portal), `render` (pure HTML and Markdown), `emoji` (static table), `voice` (depends on `devices`), `devices`, `tray`, `webhost`, `diag` (depends on `session`). `render` depends on `emoji` (Teams' emoticon catalog); `store`, `emoji`, `tray`, `devices` and `teams-proto` have no workspace dependencies.
 - **`compat`:** reads `KELMA_*` env vars as a fallback and migrates old `kelma` data folders. `appearance`, `calling`, `session`, `diag`, `voice`, `webhost` and both binaries depend on it.
 - **Binaries:** `ironteams` depends on every library (`calling` only through the `calls` feature). `ironteams-cli` depends on all of them except `store`, `emoji` and `voice`; `calling` is not optional there. The `apps` package is imported as `app_store` in both.
 
@@ -54,7 +55,7 @@ flowchart TD
 - session: [./session/EGM.md](./session/EGM.md) - refresh tokens in the system keyring, `config.json`, accounts and tenants, window state.
 - appearance: [./appearance/EGM.md](./appearance/EGM.md) - theme, accent, density, font scale, accessibility, snippets, language and formats, XDG desktop portal reader.
 - render: [./render/EGM.md](./render/EGM.md) - pure text: Teams HTML to and from rich text, Markdown to Teams HTML, link detection, composer edits with undo. Sub-contract [./render/src/rich/EGM.md](./render/src/rich/EGM.md).
-- emoji: [./emoji/EGM.md](./emoji/EGM.md) - generated static emoji table with search, shortcodes, autocomplete, skin tones.
+- emoji: [./emoji/EGM.md](./emoji/EGM.md) - generated static emoji table with search, shortcodes, autocomplete, skin tones, plus Teams' own emoticon catalog (`emoji::teams`).
 - voice: [./voice/EGM.md](./voice/EGM.md) - voice messages: record, AAC-in-MP4 encode (ffmpeg or native), decode, waveform peaks, playback.
 - devices: [./devices/EGM.md](./devices/EGM.md) - audio and camera enumeration, streams, level meter, loopback, device prefs.
 - tray: [./tray/EGM.md](./tray/EGM.md) - StatusNotifierItem tray (Linux only), unread badge, launcher badge, screen-lock probe, input-idle probe (`idle::idle_for`, used for presence Away; Linux and Windows), autostart.
