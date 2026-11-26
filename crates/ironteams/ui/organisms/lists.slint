@@ -46,6 +46,13 @@ export global ListStore {
     in-out property <string> dialog;
     in-out property <string> dialog-target;
     in-out property <string> dialog-text;
+    // Opens the name dialog for a section with no chat in it (the list's "New section" menu row
+    // and the Chats page of Settings).
+    public function open-new-section() {
+        ListStore.dialog-target = "";
+        ListStore.dialog-text = "";
+        ListStore.dialog = "new-section";
+    }
     // About the channel whose menu is open.
     in property <string> channel-level: "feed"; // all | feed | off
     in property <bool> channel-private: false;

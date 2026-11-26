@@ -70,7 +70,8 @@ component ChatItem inherits Rectangle {
     callback toggle-favorite();
     callback mark-unread();
     callback leave();
-    height: 56px;
+    // One line (the title) when the previews are off, as in Teams' compact list.
+    height: ListStore.show-previews ? 56px : 40px;
     border-radius: 4px;
     background: selected ? Theme.selected : (t.has-hover ? Theme.surface-hover : transparent);
     animate background { duration: Motion.quick; }
@@ -229,7 +230,7 @@ component ChatItem inherits Rectangle {
             }
             if t.has-hover: IconButton {
                 x: parent.width - 30px;
-                y: 30px;
+                y: ListStore.show-previews ? 30px : (parent.height - self.height) / 2;
                 size: 22px;
                 icon: @image-url("../icons/star.svg");
                 tint: root.data.favorite ? #ffd335 : Theme.fg-subtle;
@@ -238,7 +239,7 @@ component ChatItem inherits Rectangle {
             // The same menu as a right click.
             if t.has-hover: IconButton {
                 x: parent.width - 54px;
-                y: 30px;
+                y: ListStore.show-previews ? 30px : (parent.height - self.height) / 2;
                 size: 22px;
                 icon: @image-url("../icons/more.svg");
                 tooltip: @tr("More options");
@@ -730,7 +731,7 @@ export component Sidebar inherits Rectangle {
             list-items := VerticalLayout {
                 padding: 4px;
                 MenuItem { variant: MenuItemVariant.plain; label: @tr("Mark all as read"); clicked => { list-menu.close(); root.mark-all-read(); } }
-                MenuItem { variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.dialog-target = ""; ListStore.dialog-text = ""; ListStore.dialog = "new-section"; } }
+                MenuItem { variant: MenuItemVariant.plain; label: @tr("New section"); clicked => { list-menu.close(); ListStore.open-new-section(); } }
                 MenuItem { variant: MenuItemVariant.plain; label: @tr("Collapse all sections"); clicked => { list-menu.close(); ListStore.command("collapse-all", ""); } }
                 // Teams' "Customize view": the list's display options, behind a chevron.
                 MenuItem { variant: MenuItemVariant.parity; label: @tr("Customize view"); chevron: true; checked: root.customize-open; clicked => { root.customize-open = !root.customize-open; } }

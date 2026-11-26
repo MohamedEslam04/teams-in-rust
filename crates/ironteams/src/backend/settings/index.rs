@@ -60,6 +60,26 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("chats", "Link previews", "url cards preview website"),
     (
         "chats",
+        "Show message previews",
+        "chat list preview line compact one line customize view",
+    ),
+    (
+        "chats",
+        "Show time stamps",
+        "chat list time timestamp customize view",
+    ),
+    (
+        "chats",
+        "Chats and channels together",
+        "chat list combine merge channels customize view",
+    ),
+    (
+        "chats",
+        "New section",
+        "chat list sections group folder customize view",
+    ),
+    (
+        "chats",
         "Mouse wheel speed",
         "scroll scrolling wheel mouse fast slow faster speed",
     ),

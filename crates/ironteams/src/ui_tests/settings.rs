@@ -844,6 +844,8 @@ fn the_chats_page_sets_where_a_chat_opens_enter_to_send_receipts_and_link_previe
             .on_command(move |n, a| l.borrow_mut().push(format!("{n} {a}")));
     }
     open_page(app, "chats");
+    // The Chat list section pushes the later rows below the window.
+    tall_window(app);
     while rx.try_recv().is_ok() {}
     assert_eq!(value_of(app, "Settings page"), "Chats and channels");
     assert!(checked(app, "When I open a chat take me to: Last read"));

@@ -1254,6 +1254,8 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && (ListStore.dialog == "new-section" || ListStore.dialog == "rename-section"): SectionDialogLayer {
+        // Above Settings (z 60): its Chats page has a "New section" button.
+        z: 80;
         width: root.width;
         height: root.height;
     }

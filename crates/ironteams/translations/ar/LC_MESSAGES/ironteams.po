@@ -2475,3 +2475,21 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+msgid "Chat list"
+msgstr "قائمة المحادثات"
+
+msgid "Off: each chat takes one line, with the name only."
+msgstr "عند الإيقاف: تأخذ كل محادثة سطرًا واحدًا فيه الاسم فقط."
+
+msgid "The time of the last message at the end of each chat."
+msgstr "وقت آخر رسالة في نهاية كل محادثة."
+
+msgid "Channels are listed in the Chats section instead of their own."
+msgstr "تظهر القنوات في قسم المحادثات بدل قسمها الخاص."
+
+msgid "Sections"
+msgstr "الأقسام"
+
+msgid "Group chats in a section of your own in the chat list."
+msgstr "اجمع المحادثات في قسم خاص بك في قائمة المحادثات."
