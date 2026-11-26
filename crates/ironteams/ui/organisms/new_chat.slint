@@ -34,7 +34,7 @@ export component NewChatPane inherits Rectangle {
         VerticalLayout {
             Rectangle {
                 height: 60px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 HorizontalLayout {
                     padding-left: 20px;
                     padding-right: 16px;
@@ -59,7 +59,7 @@ export component NewChatPane inherits Rectangle {
                         height: 26px;
                         width: min(chip-text.preferred-width, 200px) + 30px;
                         border-radius: 13px;
-                        background: #34365c;
+                        background: Theme.accent-subtle;
                         accessible-role: button;
                         accessible-label: @tr("Remove {}", p.name);
                         chip-text := Text { x: 10px; width: parent.width - 30px; text: p.name; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
@@ -106,7 +106,7 @@ export component NewChatPane inherits Rectangle {
                     padding-bottom: 8px;
                     Rectangle {
                         border-radius: 4px;
-                        background: Theme.sidebar;
+                        background: Theme.panel;
                         border-width: 1px;
                         border-color: group-input.has-focus ? Theme.accent : Theme.border;
                         group-input := TextInput {
@@ -211,7 +211,7 @@ export component NewChatPane inherits Rectangle {
                         accessible-role: button;
                         accessible-label: @tr("Send");
                         accessible-enabled: root.to.length > 0 && msg-input.text != "";
-                        Text { text: "➤"; color: #ffffff; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: "➤"; color: root.to.length > 0 && msg-input.text != "" ? Theme.on-accent : Theme.fg-strong; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
                         TouchArea {
                             mouse-cursor: pointer;
                             clicked => {

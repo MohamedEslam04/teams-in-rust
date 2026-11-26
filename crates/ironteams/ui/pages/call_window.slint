@@ -23,10 +23,13 @@ import { TransferCard } from "../organisms/call_transfer.slint";
 import { CameraMenu } from "../organisms/call_camera_menu.slint";
 import { AudioMenu } from "../organisms/call_audio_menu.slint";
 import { VideoEffectsPanel } from "../organisms/video_effects.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export { CallStore, CallPerson, CallCaption, CallFound, CallVideo }
 
 component InCall inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     callback open-chat();
     // Below this width the top bar's ~15 buttons do not fit: the less used ones go to More.
     property <bool> fold: root.width < 840px;
@@ -74,37 +77,41 @@ component InCall inherits Rectangle {
             clip: true;
             height: CallStore.fullscreen ? 0px : root.bar-h;
             animate height { duration: 150ms; easing: ease; }
-            bar := TopBar { fold: root.fold; x: 0; y: 0; width: parent.width; height: root.bar-h; open-chat => { root.open-chat(); } }
+            bar := TopBar { c: root.c; fold: root.fold; x: 0; y: 0; width: parent.width; height: root.bar-h; open-chat => { root.open-chat(); } }
         }
         // A meeting on hold (call waiting) has the "On hold" bar instead, with its Resume.
         if CallStore.held && CallStore.kind == "direct": Banner {
+            c: root.c;
             message: "You put the call on hold. Select Resume to continue.";
-            tone: #4b4f8a;
+            tone: Fixed.call-banner-hold;
         }
-        if CallStore.held-name != "": HeldBar { }
-        if CallStore.other-device || CallStore.sound-off: DeviceBar { }
+        if CallStore.held-name != "": HeldBar { c: root.c; }
+        if CallStore.other-device || CallStore.sound-off: DeviceBar { c: root.c; }
         if CallStore.phase == "reconnecting": Banner {
+            c: root.c;
             message: "Reconnecting… Your connection was interrupted.";
-            tone: #8a5a00;
+            tone: Fixed.call-banner-warn;
         }
         if CallStore.error != "": Banner {
+            c: root.c;
             message: CallStore.error;
-            tone: #8b2a2d;
+            tone: Fixed.call-banner-error;
             dismissable: true;
         }
         if CallStore.notice != "": Banner {
+            c: root.c;
             message: CallStore.notice;
-            tone: #3d3e66;
+            tone: Fixed.call-banner-info;
             dismissable: true;
             dismiss: "dismiss-notice";
             dismiss-label: "Dismiss notice";
         }
-        if CallStore.control-mode != "": ControlBanner { }
+        if CallStore.control-mode != "": ControlBanner { c: root.c; }
         HorizontalLayout {
-            Stage { horizontal-stretch: 1; }
-            if VideoFxStore.open: VideoEffectsPanel { width: 320px; }
-            if !VideoFxStore.open && CallStore.panel == "people": PeoplePanel { width: 320px; }
-            if !VideoFxStore.open && CallStore.panel == "more": MorePanel { width: 320px; fold: root.fold; }
+            Stage { c: root.c; horizontal-stretch: 1; }
+            if VideoFxStore.open: VideoEffectsPanel { c: root.c; width: 320px; }
+            if !VideoFxStore.open && CallStore.panel == "people": PeoplePanel { c: root.c; width: 320px; }
+            if !VideoFxStore.open && CallStore.panel == "more": MorePanel { c: root.c; width: 320px; fold: root.fold; }
         }
     }
     }
@@ -116,24 +123,24 @@ component InCall inherits Rectangle {
         width: fscontrols.preferred-width;
         height: 56px;
         border-radius: 28px;
-        background: Theme.surface;
+        background: root.c.surface;
         border-width: 1px;
-        border-color: Theme.border;
+        border-color: root.c.border;
         drop-shadow-blur: 16px;
-        drop-shadow-color: Theme.scrim;
+        drop-shadow-color: root.c.scrim;
         z: 40;
         fscontrols := HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
             spacing: 6px;
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
                 label: CallStore.muted ? "Unmute" : "Mute";
                 checkable: true;
                 active: CallStore.muted;
                 clicked => { CallStore.command("mute", ""); }
             }
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
                 label: "Camera";
                 checkable: true;
@@ -141,7 +148,7 @@ component InCall inherits Rectangle {
                 enabled: CallStore.can-camera || CallStore.camera;
                 clicked => { CallStore.command("camera", ""); }
             }
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: @image-url("../icons/screen-share.svg");
                 label: CallStore.sharing ? "Stop sharing" : "Share";
                 checkable: true;
@@ -149,12 +156,12 @@ component InCall inherits Rectangle {
                 enabled: CallStore.can-share || CallStore.sharing;
                 clicked => { CallStore.command("share", ""); }
             }
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: @image-url("../icons/expand.svg");
                 label: "Exit full screen";
                 clicked => { CallStore.fullscreen = false; }
             }
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: @image-url("../icons/call-end.svg");
                 label: "Leave";
                 danger: true;
@@ -164,6 +171,7 @@ component InCall inherits Rectangle {
     }
     // The View button's dropdown, under the button.
     if CallStore.menu == "view": ViewMenu {
+        c: root.c;
         x: root.fold ? root.width - self.width - 332px : min(bar.view-x, root.width - self.width - 12px);
         y: 64px;
         z: 30;
@@ -184,12 +192,14 @@ component InCall inherits Rectangle {
         z: 15;
     }
     if CallStore.menu == "react" && CallStore.phase == "connected": ReactionMenu {
+        c: root.c;
         x: Math.max(12px, root.fold ? root.width - self.width - 332px : Math.min(bar.react-x, root.width - self.width - 12px));
         y: 64px;
         z: 30;
     }
     // The transfer dialog, under the top bar.
     if CallStore.menu == "transfer": TransferCard {
+        c: root.c;
         x: root.width - self.width - 12px;
         y: 64px;
         z: 30;
@@ -197,6 +207,7 @@ component InCall inherits Rectangle {
     }
     // The Share chevron's dropdown (Give control).
     if CallStore.menu == "share": ShareMenu {
+        c: root.c;
         x: root.width - self.width - 12px;
         y: 64px;
         z: 30;
@@ -204,12 +215,14 @@ component InCall inherits Rectangle {
     // The Camera chevron's menu and the Mic chevron's, under their buttons and inside the window
     // (never over the side panel); they scroll when the window is short.
     if CallStore.menu == "camera": CameraMenu {
+        c: root.c;
         x: max(12px, min(bar.camera-x - 139px, root.width - self.width - root.side - 12px));
         y: 64px;
         z: 30;
         avail-height: root.height - 64px - 12px;
     }
     if CallStore.menu == "devices": AudioMenu {
+        c: root.c;
         x: max(12px, min(bar.mic-x - 139px, root.width - self.width - root.side - 12px));
         y: 64px;
         z: 30;
@@ -218,13 +231,14 @@ component InCall inherits Rectangle {
 }
 
 component Ended inherits Rectangle {
-    background: Theme.main;
+    in property <Tokens> c: Theme.call;
+    background: root.c.bg;
     VerticalLayout {
         alignment: center;
         spacing: 12px;
         Text {
             text: CallStore.title;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 20px * Theme.font-scale;
             font-weight: 600;
             horizontal-alignment: center;
@@ -232,20 +246,20 @@ component Ended inherits Rectangle {
         }
         Text {
             text: CallStore.ended;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 15px * Theme.font-scale;
             horizontal-alignment: center;
             wrap: word-wrap;
         }
         if CallStore.timer != "00:00": Text {
             text: "Call duration " + CallStore.timer;
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 13px * Theme.font-scale;
             horizontal-alignment: center;
         }
         if CallStore.error != "": Text {
             text: CallStore.error;
-            color: Theme.danger;
+            color: root.c.danger;
             font-size: 13px * Theme.font-scale;
             horizontal-alignment: center;
             wrap: word-wrap;
@@ -253,12 +267,12 @@ component Ended inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             spacing: 8px;
-            if CallStore.can-rejoin: Button { variant: ButtonVariant.action;
+            if CallStore.can-rejoin: Button { c: root.c; variant: ButtonVariant.action;
                 label: "Rejoin";
                 primary: true;
                 clicked => { CallStore.command("rejoin", ""); }
             }
-            Button { variant: ButtonVariant.action;
+            Button { c: root.c; variant: ButtonVariant.action;
                 label: "Close";
                 clicked => { CallStore.command("close", ""); }
             }
@@ -267,6 +281,7 @@ component Ended inherits Rectangle {
     // The quality survey; Send and Dismiss both close the screen, as Close does. Send is one
     // command (the backend keeps the answer, then closes): two would run in no set order.
     if CallStore.feedback-open: CallFeedback {
+        c: root.c;
         width: root.width;
         height: root.height;
         sent(answer) => { CallStore.command("feedback", answer); }
@@ -275,16 +290,18 @@ component Ended inherits Rectangle {
 }
 
 export component CallWindow inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // The meeting chat: shrink the call to its floating bar and show the chat.
     callback open-chat();
-    background: Theme.main;
+    background: root.c.bg;
     // Nothing behind the call window takes clicks.
     TouchArea { }
-    if CallStore.phase == "prejoin": PreJoin { width: root.width; height: root.height; }
+    if CallStore.phase == "prejoin": PreJoin { c: root.c; width: root.width; height: root.height; }
     if CallStore.in-call-phase(): InCall {
+        c: root.c;
         width: root.width;
         height: root.height;
         open-chat => { root.open-chat(); }
     }
-    if CallStore.phase == "ended": Ended { width: root.width; height: root.height; }
+    if CallStore.phase == "ended": Ended { c: root.c; width: root.width; height: root.height; }
 }

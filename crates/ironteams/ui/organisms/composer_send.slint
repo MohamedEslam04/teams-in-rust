@@ -205,7 +205,7 @@ component QuickChip inherits Rectangle {
     border-radius: 15px;
     border-width: 1px;
     border-color: root.active ? Theme.accent : Theme.border;
-    background: touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+    background: touch.has-hover ? Theme.surface-hover : Theme.panel;
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
@@ -346,7 +346,7 @@ export component SchedulePicker inherits Rectangle {
                 Rectangle {
                     horizontal-stretch: 1;
                     border-radius: 4px;
-                    background: date-touch.has-hover ? Theme.surface-hover : Theme.sidebar;
+                    background: date-touch.has-hover ? Theme.surface-hover : Theme.panel;
                     border-width: 1px;
                     border-color: Theme.border;
                     accessible-role: button;
@@ -389,7 +389,7 @@ export component SchedulePicker inherits Rectangle {
                     }
                     Rectangle {
                         border-radius: 4px;
-                        background: Theme.sidebar;
+                        background: Theme.panel;
                         border-width: 1px;
                         border-color: SendStore.time-error ? Theme.danger : (time-input.has-focus ? Theme.accent : Theme.border);
                         time-input := TextInput {
@@ -447,7 +447,7 @@ export component SchedulePicker inherits Rectangle {
                     accessible-label: @tr("Continue");
                     accessible-enabled: root.can-go;
                     accessible-action-default => { root.confirm(); }
-                    Text { text: @tr("Continue"); color: !root.can-go ? Theme.fg-subtle : #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                    Text { text: @tr("Continue"); color: !root.can-go ? Theme.fg-subtle : Theme.on-accent; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
                     continue-touch := TouchArea { mouse-cursor: !root.can-go ? MouseCursor.default : MouseCursor.pointer; clicked => { root.confirm(); } }
                 }
             }
@@ -503,7 +503,7 @@ export component SchedulePicker inherits Rectangle {
                     background: c.enabled && c.day == SendStore.pick-day ? Theme.accent-strong : (c.enabled && cell-touch.has-hover ? Theme.surface-hover : transparent);
                     Text {
                         text: c.number;
-                        color: c.enabled && c.day == SendStore.pick-day ? #ffffff : (c.in-month ? Theme.fg : Theme.fg-muted);
+                        color: c.enabled && c.day == SendStore.pick-day ? Theme.on-accent : (c.in-month ? Theme.fg : Theme.fg-muted);
                         opacity: c.enabled ? 1.0 : 0.4;
                         font-size: 12px * Theme.font-scale;
                         horizontal-alignment: center;

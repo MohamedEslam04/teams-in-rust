@@ -18,6 +18,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export struct ToastCard {
     id: int,
@@ -73,8 +74,8 @@ component CardButton inherits Rectangle {
     in property <string> label;
     // Shown instead of the label when set ("5 min" for "Snooze for 5 minutes").
     in property <string> text: "";
-    in property <color> tone: #ffffff2e;
-    in property <color> fg: #ffffff;
+    in property <color> tone: Fixed.white-2e;
+    in property <color> fg: Fixed.white;
     callback clicked();
     height: 32px;
     horizontal-stretch: 1;
@@ -107,13 +108,13 @@ component HeaderButton inherits Rectangle {
     width: 26px;
     height: 26px;
     border-radius: 13px;
-    background: touch.has-hover ? #ffffff33 : transparent;
+    background: touch.has-hover ? Fixed.white-33 : transparent;
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
     Icon {
         source: root.icon;
-        tint: #ffffff;
+        tint: Fixed.white;
         width: 14px;
         height: 14px;
         x: (parent.width - self.width) / 2;
@@ -135,7 +136,7 @@ component QuickReaction inherits Rectangle {
     height: 28px;
     border-radius: 6px;
     border-width: touch.has-hover ? 1px : 0px;
-    border-color: #ffffff;
+    border-color: Fixed.white;
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.picked(); }
@@ -172,7 +173,7 @@ export component MessageToast inherits Rectangle {
     border-radius: MessageToastStore.square ? 0px : 8px;
     background: Theme.accent-strong;
     drop-shadow-blur: MessageToastStore.square ? 0px : 24px;
-    drop-shadow-color: #000000b0;
+    drop-shadow-color: Fixed.black-b0;
     accessible-role: groupbox;
     accessible-label: (root.is-call ? @tr("Incoming call") : root.is-calendar ? @tr("Reminder") : @tr("New message")) + ": " + root.card.title;
 
@@ -208,7 +209,7 @@ export component MessageToast inherits Rectangle {
                     width: 16px;
                     Icon {
                         source: @image-url("../icons/logo.svg");
-                        tint: #ffffff;
+                        tint: Fixed.white;
                         width: 16px;
                         height: 16px;
                         y: (parent.height - self.height) / 2;
@@ -216,7 +217,7 @@ export component MessageToast inherits Rectangle {
                 }
                 Text {
                     text: "IronTeams";
-                    color: #ffffff;
+                    color: Fixed.white;
                     font-size: 12px * Theme.font-scale;
                     font-weight: 600;
                     vertical-alignment: center;
@@ -262,7 +263,7 @@ export component MessageToast inherits Rectangle {
                             width: 40px;
                             height: 40px;
                             border-radius: 20px;
-                            background: #e8e9fa;
+                            background: Fixed.toast-light;
                             accessible-role: none;
                             Icon {
                                 source: @image-url("../icons/calendar.svg");
@@ -280,7 +281,7 @@ export component MessageToast inherits Rectangle {
                         spacing: 2px;
                         Text {
                             text: root.card.title;
-                            color: #ffffff;
+                            color: Fixed.white;
                             font-size: 14px * Theme.font-scale;
                             font-weight: 700;
                             overflow: elide;
@@ -290,7 +291,7 @@ export component MessageToast inherits Rectangle {
                         }
                         if root.card.sender != "": Text {
                             text: root.card.sender;
-                            color: #ffffff;
+                            color: Fixed.white;
                             font-size: 13px * Theme.font-scale;
                             overflow: elide;
                             horizontal-alignment: root.card.rtl-text ? right : left;
@@ -312,7 +313,7 @@ export component MessageToast inherits Rectangle {
                                     y: 0px;
                                     width: parent.width;
                                     text: root.card.text;
-                                    color: #ffffff;
+                                    color: Fixed.white;
                                     font-size: 13px * Theme.font-scale;
                                     wrap: word-wrap;
                                     horizontal-alignment: root.card.rtl-text ? right : left;
@@ -327,7 +328,7 @@ export component MessageToast inherits Rectangle {
                                 width: 3px;
                                 height: max(16px, parent.height * parent.height / body.preferred-height);
                                 border-radius: 1.5px;
-                                background: #ffffffb3;
+                                background: Fixed.white-b3;
                             }
                         }
                     }
@@ -360,9 +361,9 @@ export component MessageToast inherits Rectangle {
                     width: pill-row.preferred-width + 8px;
                     height: 34px;
                     border-radius: 8px;
-                    background: #2b2b2b;
+                    background: Fixed.toast-panel;
                     drop-shadow-blur: 8px;
-                    drop-shadow-color: #00000080;
+                    drop-shadow-color: Fixed.black-80;
                     pill-touch := TouchArea { }
                     pill-row := HorizontalLayout {
                         padding: 3px;
@@ -396,7 +397,7 @@ export component MessageToast inherits Rectangle {
                 spacing: 8px;
                 if root.card.can-join: CardButton {
                     label: @tr("Join");
-                    tone: #ffffff;
+                    tone: Fixed.white;
                     fg: Theme.accent-strong;
                     clicked => { root.act("join"); }
                 }
@@ -434,12 +435,12 @@ export component MessageToast inherits Rectangle {
                 spacing: 8px;
                 CardButton {
                     label: @tr("Accept");
-                    tone: #237b4b;
+                    tone: Fixed.call-accept;
                     clicked => { root.act("accept"); }
                 }
                 CardButton {
                     label: @tr("Decline");
-                    tone: #a4262c;
+                    tone: Fixed.call-decline;
                     clicked => { root.act("decline"); }
                 }
             }
@@ -448,16 +449,16 @@ export component MessageToast inherits Rectangle {
             if root.is-message && root.card.can-reply: reply-box := Rectangle {
                 height: 36px;
                 border-radius: 6px;
-                background: #ffffff2e;
+                background: Fixed.white-2e;
                 border-width: reply-input.has-focus ? 1px : 0px;
-                border-color: #ffffff;
+                border-color: Fixed.white;
                 HorizontalLayout {
                     padding-left: 12px;
                     padding-right: 4px;
                     spacing: 6px;
                     reply-input := TextInput {
                         horizontal-stretch: 1;
-                        color: #ffffff;
+                        color: Fixed.white;
                         font-size: 13px * Theme.font-scale;
                         single-line: true;
                         vertical-alignment: center;
@@ -471,13 +472,13 @@ export component MessageToast inherits Rectangle {
                     Rectangle {
                         width: 32px;
                         border-radius: 6px;
-                        background: send-touch.has-hover ? #ffffff33 : transparent;
+                        background: send-touch.has-hover ? Fixed.white-33 : transparent;
                         accessible-role: button;
                         accessible-label: @tr("Send reply");
                         accessible-action-default => { reply-box.submit(); }
                         Icon {
                             source: @image-url("../icons/send.svg");
-                            tint: reply-input.text != "" ? #ffffff : #ffffffa0;
+                            tint: reply-input.text != "" ? Fixed.white : Fixed.white-a0;
                             width: 16px;
                             height: 16px;
                             x: (parent.width - self.width) / 2;
@@ -494,7 +495,7 @@ export component MessageToast inherits Rectangle {
                     width: parent.width - 52px;
                     height: parent.height;
                     text: @tr("Send a quick reply");
-                    color: #ffffffb3;
+                    color: Fixed.white-b3;
                     font-size: 13px * Theme.font-scale;
                     vertical-alignment: center;
                     overflow: elide;
@@ -521,7 +522,7 @@ export component MessageToast inherits Rectangle {
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 12px;
-        drop-shadow-color: #00000090;
+        drop-shadow-color: Fixed.black-90;
         accessible-role: button;
         accessible-label: @tr("Turn off notifications for this chat");
         accessible-action-default => { root.mute(); }
@@ -578,7 +579,7 @@ export component CardHost inherits Window {
     title: "IronTeams notifications";
     no-frame: true;
     always-on-top: true;
-    background: MessageToastStore.square ? #1f1f1f : transparent;
+    background: MessageToastStore.square ? Fixed.toast-host : transparent;
     default-font-size: 14px * Theme.font-scale;
     cards := MessageToasts {
         x: root.pad;

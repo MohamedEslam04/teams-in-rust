@@ -15,6 +15,7 @@ import { SettingsStore } from "../stores/settings_store.slint";
 import { SkeletonList } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "../stores/calls_page_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 export { CallsPageStore, CallHistoryItem, CallPersonItem, VoicemailItem } from "../stores/calls_page_store.slint";
 
 // A person with a Call button and the speed-dial star; on the speed dial also up and down.
@@ -241,7 +242,7 @@ export component CallsPage inherits Rectangle {
         // Left: Type a name, results, Speed dial.
         Rectangle {
             width: root.narrow ? 240px : 320px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
@@ -466,7 +467,7 @@ export component CallsPage inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 12px;
-            drop-shadow-color: #00000090;
+            drop-shadow-color: Fixed.black-90;
             accessible-role: groupbox;
             accessible-label: @tr("Call actions");
             TouchArea { }

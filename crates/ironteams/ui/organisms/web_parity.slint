@@ -9,6 +9,7 @@ import { TeamsStore, TeamsActions } from "../stores/teams_store.slint";
 import { FlowsStore } from "../stores/apps_store.slint";
 import { ChannelStore } from "channel_posts.slint";
 import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
+import { Tokens } from "../tokens/types.slint";
 
 export global WebParityStore {
     // A line for an action IronTeams cannot do yet, shown until dismissed.
@@ -17,11 +18,12 @@ export global WebParityStore {
 
 // The notice of `WebParityStore`, at the bottom of the window.
 export component ParityNotice inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     height: 40px;
     border-radius: 6px;
-    background: #1f2a3b;
+    background: root.c.info-soft;
     border-width: 1px;
-    border-color: Theme.accent;
+    border-color: root.c.accent;
     accessible-role: text;
     accessible-label: @tr("Notice");
     accessible-value: WebParityStore.notice;
@@ -29,20 +31,21 @@ export component ParityNotice inherits Rectangle {
         padding-left: 12px;
         padding-right: 6px;
         spacing: 8px;
-        Text { text: WebParityStore.notice; color: #ffffff; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; accessible-role: none; }
-        IconButton { icon: @image-url("../icons/close.svg"); size: 26px; y: 7px; tint: #ffffff; tooltip: @tr("Dismiss"); clicked => { WebParityStore.notice = ""; } }
+        Text { text: WebParityStore.notice; color: root.c.fg-strong; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; accessible-role: none; }
+        IconButton { c: root.c; icon: @image-url("../icons/close.svg"); size: 26px; y: 7px; tint: root.c.fg-strong; tooltip: @tr("Dismiss"); clicked => { WebParityStore.notice = ""; } }
     }
 }
 
 // The chat list's New chat button and its chevron: New chat, or Meet now.
 export component NewChatSplit inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     callback new-chat();
     callback meet-now();
     width: 52px;
     height: 32px;
     HorizontalLayout {
-        IconButton { icon: @image-url("../icons/compose.svg"); tooltip: @tr("New chat"); clicked => { root.new-chat(); } }
-        IconButton { width: 20px; size: 32px; icon: @image-url("../icons/chevron-down.svg"); tooltip: @tr("New chat options"); clicked => { pop.show(); } }
+        IconButton { c: root.c; icon: @image-url("../icons/compose.svg"); tooltip: @tr("New chat"); clicked => { root.new-chat(); } }
+        IconButton { c: root.c; width: 20px; size: 32px; icon: @image-url("../icons/chevron-down.svg"); tooltip: @tr("New chat options"); clicked => { pop.show(); } }
     }
     pop := PopupWindow {
         x: root.width - 220px;
@@ -50,11 +53,11 @@ export component NewChatSplit inherits Rectangle {
         width: 220px;
         height: 2 * 32px + 10px;
         close-policy: close-on-click-outside;
-        MenuFrame { variant: MenuFrameVariant.parity;
+        MenuFrame { c: root.c; variant: MenuFrameVariant.parity;
             VerticalLayout {
                 padding: 4px;
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("New chat"); keys: "Alt+Shift+N"; clicked => { pop.close(); root.new-chat(); } }
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("Meet now"); clicked => { pop.close(); root.meet-now(); } }
+                MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("New chat"); keys: "Alt+Shift+N"; clicked => { pop.close(); root.new-chat(); } }
+                MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Meet now"); clicked => { pop.close(); root.meet-now(); } }
             }
         }
     }
@@ -62,13 +65,14 @@ export component NewChatSplit inherits Rectangle {
 
 // The channel header's "Meet now" and its chevron: Meet now, or Schedule a meeting.
 export component ChannelMeetButton inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     callback meet-now();
     callback schedule-meeting();
     width: meet-label.preferred-width + 60px;
     height: 32px;
     border-radius: 4px;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     HorizontalLayout {
         Rectangle {
             accessible-role: button;
@@ -77,12 +81,12 @@ export component ChannelMeetButton inherits Rectangle {
             HorizontalLayout {
                 padding-left: 8px;
                 spacing: 6px;
-                Icon { source: @image-url("../icons/video.svg"); width: 16px; height: 16px; y: 8px; }
-                meet-label := Text { text: @tr("Meet now"); color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
+                Icon { c: root.c; source: @image-url("../icons/video.svg"); width: 16px; height: 16px; y: 8px; }
+                meet-label := Text { text: @tr("Meet now"); color: root.c.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; accessible-role: none; }
             }
             TouchArea { mouse-cursor: pointer; clicked => { root.meet-now(); } }
         }
-        IconButton { width: 22px; size: 30px; icon: @image-url("../icons/chevron-down.svg"); tooltip: @tr("Meeting options"); clicked => { pop.show(); } }
+        IconButton { c: root.c; width: 22px; size: 30px; icon: @image-url("../icons/chevron-down.svg"); tooltip: @tr("Meeting options"); clicked => { pop.show(); } }
     }
     pop := PopupWindow {
         x: root.width - 220px;
@@ -90,11 +94,11 @@ export component ChannelMeetButton inherits Rectangle {
         width: 220px;
         height: 2 * 32px + 10px;
         close-policy: close-on-click-outside;
-        MenuFrame { variant: MenuFrameVariant.parity;
+        MenuFrame { c: root.c; variant: MenuFrameVariant.parity;
             VerticalLayout {
                 padding: 4px;
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("Meet now"); clicked => { pop.close(); root.meet-now(); } }
-                MenuItem { variant: MenuItemVariant.parity; label: @tr("Schedule a meeting"); clicked => { pop.close(); root.schedule-meeting(); } }
+                MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Meet now"); clicked => { pop.close(); root.meet-now(); } }
+                MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Schedule a meeting"); clicked => { pop.close(); root.schedule-meeting(); } }
             }
         }
     }
@@ -102,20 +106,21 @@ export component ChannelMeetButton inherits Rectangle {
 
 // The meeting chat header's Join: filled while the meeting is live, outlined otherwise.
 export component MeetingJoinButton inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <bool> live;
     callback clicked();
     width: join-label.preferred-width + 32px;
     height: 32px;
     border-radius: 4px;
     border-width: root.live ? 0px : 1px;
-    border-color: Theme.border;
-    background: root.live ? (touch.has-hover ? Theme.accent : Theme.accent-strong) : (touch.has-hover ? Theme.surface-hover : transparent);
+    border-color: root.c.border;
+    background: root.live ? (touch.has-hover ? root.c.accent : root.c.accent-strong) : (touch.has-hover ? root.c.surface-hover : transparent);
     accessible-role: button;
     accessible-label: @tr("Join meeting");
     accessible-action-default => { root.clicked(); }
     join-label := Text {
         text: @tr("Join");
-        color: root.live ? #ffffff : Theme.fg;
+        color: root.live ? root.c.on-accent : root.c.fg;
         font-size: 13px * Theme.font-scale;
         font-weight: 600;
         horizontal-alignment: center;
@@ -128,32 +133,33 @@ export component MeetingJoinButton inherits Rectangle {
 // The channel items of the header's More menu. Edit channel, Get email address and Delete
 // channel need the channel's team, so they show once "Your teams and channels" knows it.
 export component ChannelHeaderItems inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
     in property <string> channel;
     callback done();
     callback sections();
     callback notify();
-    MenuItem { variant: MenuItemVariant.parity;
+    MenuItem { c: root.c; variant: MenuItemVariant.parity;
         label: @tr("See new posts at the top");
         checked: ChannelStore.newest-top;
         clicked => { ChannelStore.command("order", ChannelStore.newest-top ? "bottom" : "top"); root.done(); }
     }
-    MenuItem { variant: MenuItemVariant.parity; label: @tr("Manage notifications"); chevron: true; clicked => { ListStore.command("channel-menu", root.channel); root.notify(); } }
-    MenuItem { variant: MenuItemVariant.parity; label: @tr("Move to section"); chevron: true; clicked => { root.sections(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Manage notifications"); chevron: true; clicked => { ListStore.command("channel-menu", root.channel); root.notify(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Move to section"); chevron: true; clicked => { root.sections(); } }
     for t in TeamsStore.all-teams: VerticalLayout {
         for c in t.channels: VerticalLayout {
-            if c.id == root.channel && !c.general: MenuItem { variant: MenuItemVariant.parity; label: @tr("Edit channel"); clicked => { root.done(); TeamsActions.open-dialog("edit-channel", t.id, c.id); } }
+            if c.id == root.channel && !c.general: MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Edit channel"); clicked => { root.done(); TeamsActions.open-dialog("edit-channel", t.id, c.id); } }
         }
     }
-    MenuItem { variant: MenuItemVariant.parity; label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Copy link"); clicked => { ListStore.command("channel-link", root.channel); root.done(); } }
     for t in TeamsStore.all-teams: VerticalLayout {
         for c in t.channels: VerticalLayout {
-            if c.id == root.channel: MenuItem { variant: MenuItemVariant.parity; label: @tr("Get email address"); clicked => { root.done(); TeamsActions.open-dialog("email", t.id, c.id); } }
+            if c.id == root.channel: MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Get email address"); clicked => { root.done(); TeamsActions.open-dialog("email", t.id, c.id); } }
         }
     }
-    MenuItem { variant: MenuItemVariant.parity; label: @tr("Workflows"); clicked => { root.done(); FlowsStore.command("flows-enter", ""); } }
+    MenuItem { c: root.c; variant: MenuItemVariant.parity; label: @tr("Workflows"); clicked => { root.done(); FlowsStore.command("flows-enter", ""); } }
     for t in TeamsStore.all-teams: VerticalLayout {
         for c in t.channels: VerticalLayout {
-            if c.id == root.channel && !c.general && (t.owner || c.owner): MenuItem { variant: MenuItemVariant.parity;
+            if c.id == root.channel && !c.general && (t.owner || c.owner): MenuItem { c: root.c; variant: MenuItemVariant.parity;
                 label: @tr("Delete channel");
                 danger: true;
                 clicked => {

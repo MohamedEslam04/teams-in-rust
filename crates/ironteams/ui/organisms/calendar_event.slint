@@ -87,8 +87,8 @@ component EventActions inherits VerticalLayout {
             if CalStore.peek.notes-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting notes"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "notes"); } }
             if CalStore.peek.recap-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Recap"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "recap"); } }
             if CalStore.peek.options-url != "": MenuItem { variant: MenuItemVariant.calendar; label: "Meeting options"; hint: "↗"; clicked => { CalStore.peek-menu = ""; CalStore.command("meeting-link", "options"); } }
-            if CalStore.peek.can-cancel: MenuItem { variant: MenuItemVariant.calendar; label: "Cancel meeting"; tone: #ff8a8d; clicked => { CalStore.ask("cancel", "Cancel meeting", "Everyone invited gets a cancellation.", "Message to attendees (optional)", "", CalStore.peek.recurring ? "Cancel the whole series" : "", "Cancel meeting"); } }
-            if CalStore.peek.can-delete: MenuItem { variant: MenuItemVariant.calendar; label: "Delete"; tone: #ff8a8d; clicked => { CalStore.ask("delete", "Delete event", "Delete \"" + CalStore.peek.title + "\"? This can't be undone.", "", "", "", "Delete"); } }
+            if CalStore.peek.can-cancel: MenuItem { variant: MenuItemVariant.calendar; label: "Cancel meeting"; tone: Theme.danger-text; clicked => { CalStore.ask("cancel", "Cancel meeting", "Everyone invited gets a cancellation.", "Message to attendees (optional)", "", CalStore.peek.recurring ? "Cancel the whole series" : "", "Cancel meeting"); } }
+            if CalStore.peek.can-delete: MenuItem { variant: MenuItemVariant.calendar; label: "Delete"; tone: Theme.danger-text; clicked => { CalStore.ask("delete", "Delete event", "Delete \"" + CalStore.peek.title + "\"? This can't be undone.", "", "", "", "Delete"); } }
         }
     }
 }
@@ -106,7 +106,7 @@ component EventSummary inherits VerticalLayout {
     if CalStore.peek.location != "": Text { text: "Location: " + CalStore.peek.location; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
     if CalStore.peek.organizer != "": Text { text: CalStore.peek.organizer; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
     if CalStore.peek.counts != "": Text { text: CalStore.peek.counts; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
-    if CalStore.peek.cancelled: Text { text: "This event was cancelled."; color: #ff8a8d; font-size: 13px * Theme.font-scale; }
+    if CalStore.peek.cancelled: Text { text: "This event was cancelled."; color: Theme.danger-text; font-size: 13px * Theme.font-scale; }
 }
 
 export component EventPeek inherits MenuFrame { variant: MenuFrameVariant.card;
@@ -150,7 +150,7 @@ export component EventFull inherits MenuFrame { variant: MenuFrameVariant.card;
                 EventSummary { }
                 EventActions { full: true; }
                 if CalStore.detail.loading: Text { text: "Loading details…"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; }
-                if CalStore.detail.error != "": Text { text: CalStore.detail.error; color: #ffb900; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                if CalStore.detail.error != "": Text { text: CalStore.detail.error; color: Theme.warning; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
                 if CalStore.detail.dial-in != "": VerticalLayout {
                     spacing: 4px;
                     Text { text: "Dial in"; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; }

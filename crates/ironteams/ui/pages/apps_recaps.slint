@@ -181,7 +181,7 @@ component PlayCard inherits Rectangle {
                 height: 56px;
                 border-radius: 28px;
                 background: Theme.accent-strong;
-                Icon { x: 18px; y: 16px; width: 24px; height: 24px; source: @image-url("../icons/play.svg"); tint: #ffffff; }
+                Icon { x: 18px; y: 16px; width: 24px; height: 24px; source: @image-url("../icons/play.svg"); tint: Theme.on-accent; }
             }
         }
         Text { text: RecapsStore.part-label; color: Theme.fg; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; accessible-role: none; }

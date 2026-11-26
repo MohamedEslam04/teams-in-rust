@@ -23,11 +23,10 @@ layer, from the smallest pieces up:
    `tokens`, `stores` ← `atoms` ← `molecules` ← `organisms` ← `pages` ← `app.slint`.
    When an organism needs something from a page, the shared piece moves down (a struct or global
    to `stores/`, a widget to an organism or lower).
-2. **Colours live in `tokens/`.** Elsewhere use a `Theme` token, a `Fixed` colour or an atom variant.
-   The colours screens still draw themselves are listed in `scripts/ui-hex-allowlist.txt`
-   (the composer's colour palette, drop shadows, brand colours, the always-dark call surfaces,
-   and the rest of what the screens drew before this layout); the list may only shrink. When you
-   move a colour into a token, delete its line.
+2. **Colours live in `tokens/`.** No colour literal (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) appears
+   outside `tokens/`: use a `Theme` token (a theme colour), a `Fixed` colour (one that does not
+   follow the theme: scrims, shadows, brand colours, the composer's palette, the always-dark call
+   surfaces) or an atom variant. A new colour is a new `Fixed` property or a `Tokens` field.
 3. **Use the atom, don't copy it.** A control that looks a little different is a new variant of
    the atom (an `enum` value), not a new component. Callback and property names that Rust binds
    (`src/ui/*.rs`) and the component and element names the UI tests look for
@@ -51,9 +50,10 @@ screen is the content set.
   every colour from `root.c`. Inside such a component, every instance of another component that
   takes `c` gets `c: root.c`. Popups opened from the nav float over the content area and use
   `Theme.content`; menus and panels of the call screen use `Theme.call`.
-- **Flat aliases.** `Theme.main` (`content.bg`), `Theme.sidebar` and `Theme.card`
-  (`content.panel`), `Theme.dark` and one read-only alias per other token (`Theme.fg`,
-  `Theme.danger-hover`, …) stay for the pages outside the nav and the call screen.
+- **Flat aliases.** `Theme.main` (`content.bg`), `Theme.dark` and one read-only alias per other
+  token (`Theme.fg`, `Theme.panel`, `Theme.danger-hover`, …) stay for the organisms and pages
+  outside the nav and the call screen. There is no `Theme.sidebar` or `Theme.card`: both are
+  `Theme.panel`.
 - **`Fixed`** (`tokens/fixed.slint`): named colours that do not follow the theme, such as
   `Fixed.black` for the video surface, the file-kind colours, the call buttons, the calendar
   slots, the composer's text and highlight colours and the accent choices.
@@ -64,10 +64,13 @@ screen is the content set.
 - **Region colours rule** (rule 3 of the script): the files of an area named in `rule3_areas`
   may not read the flat colour aliases or `Theme.dark`; they read their `c` input. The names
   are read from `tokens/theme.slint`. Areas: `atoms` (with `tokens/motion.slint`), `molecules`,
-  `nav`, `call`. The rule is switched on area by area as the components take `c`; today the
-  `atoms` and `molecules` areas are on. Every atom, `tokens/motion.slint` and every molecule that
-  reads a colour or instantiates a component with a `c` input takes `c` (an `in property
-  <Tokens>`, default `Theme.content`), reads its colours from `root.c` and passes `c: root.c` on.
+  `nav`, `call`: the four are on, and the other organisms and the pages read the flat aliases.
+  Every atom, `tokens/motion.slint`, every
+  molecule, every nav component and every call component that reads a colour or instantiates a
+  component with a `c` input takes `c` (an `in property <Tokens>`, default `Theme.content`,
+  `Theme.nav` for the nav or `Theme.call` for the call set; `CallHeaderButtons`, drawn in the chat
+  header, keeps `Theme.content`), reads its colours from `root.c` and passes `c: root.c` on. The popups of the sidebar and the menus and
+  dialogs of the chat list float over the content area and read `Theme.content`.
 
 ## Atom catalog
 
@@ -174,7 +177,7 @@ scale (`Space.xxs` 2px to `Space.xxl` 32px) and `SettingsMetrics` the kit's size
 row padding, smallest row height, content width), both exported to Rust for the UI tests.
 
 - `SettingsSections`: a page's column of sections, `SettingsMetrics.section-gap` apart.
-- `SettingsSection` (`title`, `description`, `danger`): a heading over a card (`Theme.card`, a
+- `SettingsSection` (`title`, `description`, `danger`): a heading over a card (`Theme.panel`, a
   border, rounded); `danger` draws the heading and border in `Theme.danger`.
 - `SettingsRow` (`label`, `description`, `enabled`, `stacked`, `divider`): text on the start side,
   the children (the control) on the end side, mirrored for a right-to-left language; `stacked`

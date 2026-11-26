@@ -15,7 +15,7 @@ component PickColumn inherits Rectangle {
     in property <length> col-width: 220px;
     callback picked(string);
     width: root.col-width;
-    background: Theme.sidebar;
+    background: Theme.panel;
     VerticalLayout {
         Rectangle { height: 34px; Text { x: 14px; width: parent.width - 28px; text: root.title; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; font-weight: 700; vertical-alignment: bottom; } }
         ScrollView {
@@ -112,7 +112,7 @@ export component ListsView inherits Rectangle {
             if ListsStore.status != "": KitNote { text: ListsStore.status; }
             if ListsStore.columns.length > 0: Rectangle {
                 height: 32px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 HorizontalLayout {
                     padding-left: 20px + root.edit-col;
                     spacing: 8px;

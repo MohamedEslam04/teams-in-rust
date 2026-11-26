@@ -6,6 +6,7 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { SearchBox } from "../atoms/search_box.slint";
 import { DialogFrame } from "../atoms/dialog_frame.slint";
 import { DriveStore } from "../stores/drive_store.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component DriveShareDialog inherits DialogFrame {
     title: "Share " + DriveStore.share-name;
@@ -35,7 +36,7 @@ export component DriveShareDialog inherits DialogFrame {
                     height: 24px;
                     width: min(pn.preferred-width, 160px) + 26px;
                     border-radius: 12px;
-                    background: Theme.dark ? #34365c : #e3e4fa;
+                    background: Theme.dark ? Fixed.share-tint-dark : Fixed.share-tint-light;
                     accessible-role: button;
                     accessible-label: "Remove " + p.name;
                     pn := Text { x: 10px; width: parent.width - 26px; text: p.name; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
@@ -69,7 +70,7 @@ export component DriveShareDialog inherits DialogFrame {
             Rectangle {
                 height: 32px;
                 border-radius: 4px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: note.has-focus ? Theme.accent : Theme.border;
                 note := TextInput {

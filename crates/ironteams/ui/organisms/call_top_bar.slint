@@ -3,8 +3,11 @@ import { Theme } from "../tokens/theme.slint";
 import { CallStore } from "../stores/call_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component TopBar inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // A narrow window: People, Hold, Transfer, Raise, React and View are in the More panel.
     in property <bool> fold: false;
     callback open-chat();
@@ -16,7 +19,7 @@ export component TopBar inherits Rectangle {
     out property <length> camera-x;
     out property <length> mic-x;
     height: 62px;
-    background: Theme.topbar;
+    background: root.c.topbar;
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 8px;
@@ -31,14 +34,14 @@ export component TopBar inherits Rectangle {
                     width: 10px;
                     height: 10px;
                     border-radius: 5px;
-                    background: Theme.danger;
+                    background: root.c.danger;
                     accessible-role: text;
                     accessible-label: "Recording";
                 }
             }
             Text {
                 text: CallStore.timer;
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 14px * Theme.font-scale;
                 font-weight: 600;
                 vertical-alignment: center;
@@ -48,13 +51,13 @@ export component TopBar inherits Rectangle {
         }
         Text {
             text: CallStore.title;
-            color: Theme.fg-muted;
+            color: root.c.fg-muted;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
         }
-        Button { variant: ButtonVariant.call;
+        Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/chat.svg");
             label: "Chat";
             enabled: CallStore.chat-id != "";
@@ -63,7 +66,7 @@ export component TopBar inherits Rectangle {
                 : (CallStore.chat-id != "" ? "Open the meeting chat" : "This meeting's chat isn't available here");
             clicked => { root.open-chat(); }
         }
-        if !root.fold: Button { variant: ButtonVariant.call;
+        if !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/people.svg");
             label: "People";
             checkable: true;
@@ -71,7 +74,7 @@ export component TopBar inherits Rectangle {
             clicked => { CallStore.panel = CallStore.panel == "people" ? "" : "people"; }
         }
         // A 1:1 call's Hold and Transfer (Teams has them under "..." > More actions).
-        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
+        if CallStore.kind == "direct" && !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/pause.svg");
             label: CallStore.held ? "Resume" : "Hold";
             checkable: true;
@@ -79,7 +82,7 @@ export component TopBar inherits Rectangle {
             tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
             clicked => { CallStore.command("hold", ""); }
         }
-        if CallStore.kind == "direct" && !root.fold: Button { variant: ButtonVariant.call;
+        if CallStore.kind == "direct" && !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/forward.svg");
             label: "Transfer";
             active: CallStore.menu == "transfer";
@@ -93,14 +96,14 @@ export component TopBar inherits Rectangle {
                 }
             }
         }
-        if !root.fold: Button { variant: ButtonVariant.call;
+        if !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/hand.svg");
             label: CallStore.hand ? "Lower" : "Raise";
             checkable: true;
             active: CallStore.hand;
             clicked => { CallStore.command("hand", ""); }
         }
-        if !root.fold: Button { variant: ButtonVariant.call;
+        if !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/emoji.svg");
             label: "React";
             enabled: CallStore.phase == "connected";
@@ -111,7 +114,7 @@ export component TopBar inherits Rectangle {
                 CallStore.menu = CallStore.menu == "react" ? "" : "react";
             }
         }
-        if !root.fold: Button { variant: ButtonVariant.call;
+        if !root.fold: Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/grid.svg");
             label: "View";
             tip: "Gallery, speaker or focus on content";
@@ -121,7 +124,7 @@ export component TopBar inherits Rectangle {
                 CallStore.menu = CallStore.menu == "view" ? "" : "view";
             }
         }
-        Button { variant: ButtonVariant.call;
+        Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/more.svg");
             label: "More";
             checkable: true;
@@ -131,10 +134,10 @@ export component TopBar inherits Rectangle {
         }
         Rectangle {
             width: 1px;
-            background: Theme.border;
+            background: root.c.border;
         }
         HorizontalLayout {
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
                 label: "Camera";
                 checkable: true;
@@ -145,7 +148,7 @@ export component TopBar inherits Rectangle {
                 clicked => { CallStore.command("camera", ""); }
             }
             // The camera menu: our picture, the camera, the background.
-            if CallStore.camera-available: Button { variant: ButtonVariant.call;
+            if CallStore.camera-available: Button { c: root.c; variant: ButtonVariant.call;
                 width: 22px;
                 icon: @image-url("../icons/chevron-down.svg");
                 label: "";
@@ -159,14 +162,14 @@ export component TopBar inherits Rectangle {
             }
         }
         HorizontalLayout {
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
                 label: CallStore.muted ? "Unmute" : "Mute";
                 checkable: true;
                 active: CallStore.muted;
                 clicked => { CallStore.command("mute", ""); }
             }
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 width: 22px;
                 icon: @image-url("../icons/chevron-down.svg");
                 label: "";
@@ -180,7 +183,7 @@ export component TopBar inherits Rectangle {
             }
         }
         HorizontalLayout {
-            Button { variant: ButtonVariant.call;
+            Button { c: root.c; variant: ButtonVariant.call;
                 icon: @image-url("../icons/screen-share.svg");
                 label: CallStore.sharing ? "Stop sharing" : "Share";
                 checkable: true;
@@ -191,7 +194,7 @@ export component TopBar inherits Rectangle {
                 clicked => { CallStore.command("share", ""); }
             }
             // Give control (remote control of our share).
-            if CallStore.remote-control && CallStore.sharing: Button { variant: ButtonVariant.call;
+            if CallStore.remote-control && CallStore.sharing: Button { c: root.c; variant: ButtonVariant.call;
                 width: 22px;
                 icon: @image-url("../icons/chevron-down.svg");
                 label: "";
@@ -201,7 +204,7 @@ export component TopBar inherits Rectangle {
                 clicked => { CallStore.menu = CallStore.menu == "share" ? "" : "share"; }
             }
         }
-        Button { variant: ButtonVariant.call;
+        Button { c: root.c; variant: ButtonVariant.call;
             icon: @image-url("../icons/call-end.svg");
             label: "Leave";
             danger: true;
@@ -213,20 +216,21 @@ export component TopBar inherits Rectangle {
 // The Share chevron's dropdown: give control of our screen to someone in the call, or take it
 // back.
 export component ShareMenu inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     width: 240px;
     height: card.preferred-height;
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.surface;
+    border-color: root.c.border;
+    background: root.c.surface;
     drop-shadow-blur: 12px;
-    drop-shadow-color: #00000080;
+    drop-shadow-color: Fixed.black-80;
     accessible-role: list;
     accessible-label: "Give control";
     card := VerticalLayout {
         padding: 6px;
         spacing: 2px;
-        if CallStore.control-mode == "controlled": MenuItem { variant: MenuItemVariant.share;
+        if CallStore.control-mode == "controlled": MenuItem { c: root.c; variant: MenuItemVariant.share;
             label: "Take back control";
             clicked => {
                 CallStore.command("control-take-back", "");
@@ -235,12 +239,12 @@ export component ShareMenu inherits Rectangle {
         }
         Text {
             text: "Give control";
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 12px * Theme.font-scale;
             height: 24px;
             vertical-alignment: center;
         }
-        for p in CallStore.people: MenuItem { variant: MenuItemVariant.share;
+        for p in CallStore.people: MenuItem { c: root.c; variant: MenuItemVariant.share;
             visible: !p.me && !p.lobby && p.id != "";
             height: self.visible ? 32px : 0px;
             label: p.name;
@@ -253,6 +257,7 @@ export component ShareMenu inherits Rectangle {
 }
 
 export component Banner inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> message;
     in property <color> tone;
     in property <bool> dismissable;
@@ -268,13 +273,13 @@ export component Banner inherits Rectangle {
         padding-right: 8px;
         Text {
             text: root.message;
-            color: #ffffff;
+            color: Fixed.white;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.dismissable: Button { variant: ButtonVariant.action;
+        if root.dismissable: Button { c: root.c; variant: ButtonVariant.action;
             label: "Dismiss";
             accessible-label: root.dismiss-label;
             y: 1px;
@@ -285,10 +290,11 @@ export component Banner inherits Rectangle {
 
 // Remote control's banners: who controls whose screen, and a viewer's request to ours.
 export component ControlBanner inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     property <string> mode: CallStore.control-mode;
     property <string> who: CallStore.control-name != "" ? CallStore.control-name : "Someone";
     height: 40px;
-    background: mode == "incoming" ? #3d3e66 : mode == "requested" ? #3d3e66 : #8a5a00;
+    background: mode == "incoming" ? Fixed.call-banner-info : mode == "requested" ? Fixed.call-banner-info : Fixed.call-banner-warn;
     accessible-role: text;
     accessible-label: msg.text;
     // While someone controls our screen, a key pressed here takes control back (Escape twice
@@ -311,35 +317,35 @@ export component ControlBanner inherits Rectangle {
                 : root.mode == "controlling" ? @tr("You're controlling {}'s screen", root.who)
                 : root.mode == "incoming" ? @tr("{} wants control of your screen", root.who)
                 : @tr("You asked {} for control", root.who);
-            color: #ffffff;
+            color: Fixed.white;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
             horizontal-stretch: 1;
         }
-        if root.mode == "controlled": Button { variant: ButtonVariant.action;
+        if root.mode == "controlled": Button { c: root.c; variant: ButtonVariant.action;
             label: "Take back";
             primary: true;
             y: 3px;
             clicked => { CallStore.command("control-take-back", ""); }
         }
-        if root.mode == "controlling": Button { variant: ButtonVariant.action;
+        if root.mode == "controlling": Button { c: root.c; variant: ButtonVariant.action;
             label: "Release";
             y: 3px;
             clicked => { CallStore.command("control-release", ""); }
         }
-        if root.mode == "requested": Button { variant: ButtonVariant.action;
+        if root.mode == "requested": Button { c: root.c; variant: ButtonVariant.action;
             label: "Cancel request";
             y: 3px;
             clicked => { CallStore.command("control-release", ""); }
         }
-        if root.mode == "incoming": Button { variant: ButtonVariant.action;
+        if root.mode == "incoming": Button { c: root.c; variant: ButtonVariant.action;
             label: "Allow";
             primary: true;
             y: 3px;
             clicked => { CallStore.command("control-allow", ""); }
         }
-        if root.mode == "incoming": Button { variant: ButtonVariant.action;
+        if root.mode == "incoming": Button { c: root.c; variant: ButtonVariant.action;
             label: "Deny";
             y: 3px;
             clicked => { CallStore.command("control-deny", ""); }

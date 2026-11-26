@@ -12,8 +12,10 @@ import { Heading, HeadingVariant } from "../atoms/heading.slint";
 import { RadioRow } from "../atoms/radio_row.slint";
 import { LinkRow } from "../atoms/link_row.slint";
 import { BackgroundTile } from "../molecules/background_tile.slint";
+import { Tokens } from "../tokens/types.slint";
 
 export component CameraMenu inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // The tallest it may be (the window under the top bar).
     in property <length> avail-height: 600px;
     // The blur's strengths are listed under its row.
@@ -24,10 +26,10 @@ export component CameraMenu inherits Rectangle {
     height: min(col.preferred-height, root.avail-height);
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: Theme.border;
-    background: Theme.surface;
+    border-color: root.c.border;
+    background: root.c.surface;
     drop-shadow-blur: 12px;
-    drop-shadow-color: Theme.scrim;
+    drop-shadow-color: root.c.scrim;
     accessible-role: list;
     accessible-label: "Camera settings";
     ScrollView {
@@ -42,7 +44,7 @@ export component CameraMenu inherits Rectangle {
                 height: 150px;
                 border-radius: 6px;
                 clip: true;
-                background: Theme.rail;
+                background: root.c.rail;
                 if VideoFxStore.has-preview: Image {
                     width: parent.width;
                     height: parent.height;
@@ -63,21 +65,23 @@ export component CameraMenu inherits Rectangle {
                     width: parent.width - 24px;
                     x: 12px;
                     text: VideoFxStore.preview-status != "" ? VideoFxStore.preview-status : "Starting your camera…";
-                    color: Theme.fg-subtle;
+                    color: root.c.fg-subtle;
                     font-size: 12px * Theme.font-scale;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     wrap: word-wrap;
                 }
             }
-            Heading { variant: HeadingVariant.caption; text: "Camera"; height: 28px; vertical-alignment: bottom; }
+            Heading { c: root.c; variant: HeadingVariant.caption; text: "Camera"; height: 28px; vertical-alignment: bottom; }
             for cam[i] in VideoFxStore.cameras: RadioRow {
+                c: root.c;
                 label: cam;
                 selected: i == VideoFxStore.camera;
                 picked => { CallStore.command("camera-device", "" + i); }
             }
-            Heading { variant: HeadingVariant.caption; text: "Backgrounds"; height: 28px; vertical-alignment: bottom; }
+            Heading { c: root.c; variant: HeadingVariant.caption; text: "Backgrounds"; height: 28px; vertical-alignment: bottom; }
             RadioRow {
+                c: root.c;
                 label: "None";
                 selected: VideoFxStore.background == "none";
                 picked => { CallStore.command("fx-background", "none"); }
@@ -85,6 +89,7 @@ export component CameraMenu inherits Rectangle {
             Rectangle {
                 height: 32px;
                 RadioRow {
+                    c: root.c;
                     width: parent.width;
                     height: parent.height;
                     label: "Standard blur";
@@ -93,6 +98,7 @@ export component CameraMenu inherits Rectangle {
                 }
                 // The blur's strength.
                 IconButton {
+                    c: root.c;
                     x: parent.width - self.width - 4px;
                     y: (parent.height - self.height) / 2;
                     icon: root.strengths ? @image-url("../icons/chevron-down.svg") : @image-url("../icons/chevron-right.svg");
@@ -104,11 +110,13 @@ export component CameraMenu inherits Rectangle {
             if root.strengths: VerticalLayout {
                 padding-left: 26px;
                 RadioRow {
+                    c: root.c;
                     label: "Standard";
                     selected: VideoFxStore.background == "blur";
                     picked => { CallStore.command("fx-background", "blur"); }
                 }
                 RadioRow {
+                    c: root.c;
                     label: "Strong";
                     selected: VideoFxStore.background == "strong-blur";
                     picked => { CallStore.command("fx-background", "strong-blur"); }
@@ -117,6 +125,7 @@ export component CameraMenu inherits Rectangle {
             if root.pictures > 0: Rectangle {
                 height: ceil(root.pictures / 4) * 44px + 4px;
                 for c[i] in VideoFxStore.backgrounds: BackgroundTile {
+                    c: root.c;
                     visible: i >= 2 && i < 10;
                     x: 8px + mod(i - 2, 4) * 68px;
                     y: 4px + floor((i - 2) / 4) * 44px;
@@ -127,13 +136,14 @@ export component CameraMenu inherits Rectangle {
                     picked => { CallStore.command("fx-background", c.id); }
                 }
             }
-            Rectangle { height: 1px; background: Theme.border; }
-            Switch { variant: SwitchVariant.panel;
+            Rectangle { height: 1px; background: root.c.border; }
+            Switch { c: root.c; variant: SwitchVariant.panel;
                 label: "Adjust brightness";
                 checked: VideoFxStore.brighten;
                 toggled => { CallStore.command("fx-brighten", VideoFxStore.brighten ? "off" : "on"); }
             }
             LinkRow {
+                c: root.c;
                 label: "More video effects and settings";
                 clicked => {
                     CallStore.menu = "";

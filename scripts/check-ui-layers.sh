@@ -3,28 +3,25 @@
 #
 #  1. A file only imports from its own layer or a lower one:
 #       tokens, stores  <-  atoms  <-  molecules  <-  organisms  <-  pages  <-  app.slint
-#  2. Colour literals (#rgb, #rrggbb, #rrggbbaa) live in ui/tokens/. The colours
-#     that still sit elsewhere are listed, file by file, in scripts/ui-hex-allowlist.txt; that
-#     list may only shrink. Comments are not checked.
+#  2. Colour literals (#rgb, #rgba, #rrggbb, #rrggbbaa) live in ui/tokens/ and nowhere else. Comments
+#     are not checked.
 #  3. Region colours: the files of an area named in `rule3_areas` read their colours from their
 #     `c` input (a `Tokens`), never from the flat colour properties of `Theme` (`Theme.main`,
 #     `Theme.fg`, `Theme.dark`, ...), so the nav and the call screen can have colours of their
 #     own. Areas: atoms (ui/atoms/ and tokens/motion.slint), molecules, nav (`nav_set`) and call
-#     (`call_set`). The forbidden names are read from tokens/theme.slint. Non-colour `Theme`
-#     properties (`Theme.radius`, `Theme.font-body`, ...) stay readable. Comments are not checked.
+#     (`call_set`); the other organisms and the pages may read the flat colours. The forbidden
+#     names are read from tokens/theme.slint. Non-colour `Theme` properties (`Theme.radius`,
+#     `Theme.font-body`, ...) stay readable. Comments are not checked.
 #
 # Run from anywhere: bash scripts/check-ui-layers.sh. Exits 1 and names each offence.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ui="$repo/crates/ironteams/ui"
-allowlist="$repo/scripts/ui-hex-allowlist.txt"
-# Once every literal is gone the allowlist is deleted: no file is an empty list.
-[ -f "$allowlist" ] || allowlist=/dev/null
 fail=0
 
-# Rule 3 is switched on area by area, as the sweep reaches each (docs/designs/theme-engine.md).
-rule3_areas="atoms molecules"
+# The areas rule 3 covers (docs/designs/theme-engine.md).
+rule3_areas="atoms molecules nav call"
 # The nav: the rail, the sidebar and the chat list.
 nav_set=(organisms/app_rail.slint organisms/apps_rail.slint organisms/sidebar.slint
     organisms/lists.slint organisms/chat_list_extras.slint organisms/communities_section.slint
@@ -78,31 +75,16 @@ for f in "${files[@]}"; do
 done
 
 # --- 2. colour literals ---
-hex='#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b'
+hex='#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{4}\b|#[0-9a-fA-F]{3}\b'
 for f in "${files[@]}"; do
     case "$f" in tokens/*) continue ;; esac
     # Drop `//` comments (a `//` inside a string is rare in our files), then list the colours.
     while IFS= read -r colour; do
         [ -z "$colour" ] && continue
-        if ! grep -qxF "$f $colour" "$allowlist"; then
-            echo "colour: $f uses $colour; use a Theme token (ui/tokens/) or an atom variant instead"
-            fail=1
-        fi
+        echo "colour: $f uses $colour; use a Theme token or a Fixed colour (ui/tokens/) instead"
+        fail=1
     done < <(sed -E 's#//.*$##' "$f" | grep -oE "$hex" | tr 'A-F' 'a-f' | sort -u)
 done
-
-# Allowlist entries that no longer match anything: the list only shrinks.
-while IFS= read -r line; do
-    case "$line" in ''|'#'*) continue ;; esac
-    f=${line% *}
-    colour=${line##* }
-    used=""
-    [ -f "$f" ] && used=$(sed -E 's#//.*$##' "$f" | tr 'A-F' 'a-f' | grep -oE "$colour\b" || true)
-    if [ -z "$used" ]; then
-        echo "allowlist: '$line' is no longer used; remove it from scripts/ui-hex-allowlist.txt"
-        fail=1
-    fi
-done < "$allowlist"
 
 # --- 3. region colours ---
 mapfile -t flat < <(sed -nE 's/^\s*out property <(color|bool)> ([a-z-]+): content\..*/\2/p' tokens/theme.slint)
