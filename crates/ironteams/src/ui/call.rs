@@ -103,6 +103,9 @@ fn set(w: &AppWindow, d: CallData, photos: HashMap<String, Pixels>) {
     if !matches!(d.phase, "connected" | "reconnecting") {
         s.set_has_remote_video(false);
         s.set_has_content(false);
+        // Immersive full screen only makes sense in a live call: leave it when the call ends,
+        // drops to the lobby, or a new one opens.
+        s.set_fullscreen(false);
     }
     s.set_presenter(d.presenter.into());
     follow_share(&s, was_shared);

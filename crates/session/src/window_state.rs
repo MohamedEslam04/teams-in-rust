@@ -52,6 +52,9 @@ pub struct WindowState {
     pub collapsed_sections: BTreeSet<String>,
     /// Width of the chat and teams list the user dragged it to; `None` keeps the default.
     pub sidebar_width: Option<u32>,
+    /// Where the call filmstrip sits beside a shared screen: "right" | "bottom" | "hidden" |
+    /// "auto"; `None` (or an unknown value, which `clamp` drops) keeps the "auto" default.
+    pub filmstrip_pos: Option<String>,
 }
 
 impl Default for WindowState {
@@ -66,6 +69,7 @@ impl Default for WindowState {
             last_channel: None,
             collapsed_sections: BTreeSet::new(),
             sidebar_width: None,
+            filmstrip_pos: None,
         }
     }
 }
@@ -120,6 +124,14 @@ impl WindowState {
             .retain(|s| !s.is_empty() && s.len() <= MAX_SECTION_LEN);
         while self.collapsed_sections.len() > MAX_SECTIONS {
             self.collapsed_sections.pop_last();
+        }
+        // An unknown value from a newer build falls back to the "auto" default.
+        if !self
+            .filmstrip_pos
+            .as_deref()
+            .is_some_and(|p| matches!(p, "right" | "bottom" | "hidden" | "auto"))
+        {
+            self.filmstrip_pos = None;
         }
     }
 

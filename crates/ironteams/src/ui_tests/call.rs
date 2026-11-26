@@ -2461,3 +2461,229 @@ fn the_survey_fits_a_narrow_window() {
         assert_shown(&c.h.app, "Send feedback", None, width, "the call survey");
     }
 }
+
+/// The one element of a kind in the tree.
+fn only(c: &CallHarness, type_name: &str) -> Option<ElementHandle> {
+    ElementHandle::find_by_element_type_name(&c.h.app, type_name).next()
+}
+
+#[test]
+fn a_share_shows_the_people_in_a_filmstrip_the_view_menu_moves_and_hides() {
+    let c = CallHarness::new();
+    c.connected();
+    view_roster(&c);
+    // Someone shares: the stage switches to the content view.
+    c.fake.emit(Event::Presenter("Ada Lovelace".into()));
+    assert_eq!(cs(&c.h.app).get_view_mode(), "content");
+    assert!(c.shows("Ada Lovelace is presenting"));
+
+    // Default (auto → right): a filmstrip of camera tiles sits to the right of the content.
+    cs(&c.h.app).set_filmstrip_pos("right".into());
+    let strip = only(&c, "Filmstrip").expect("the filmstrip beside the share");
+    let content = only(&c, "ContentStage").expect("the content stage");
+    assert!(
+        strip.size().width > 1.0,
+        "the strip has width: {}",
+        strip.size().width
+    );
+    assert!(
+        content.absolute_position().x + content.size().width <= strip.absolute_position().x + 1.0,
+        "the content stage ({}..{}) is left of the strip ({})",
+        content.absolute_position().x,
+        content.absolute_position().x + content.size().width,
+        strip.absolute_position().x
+    );
+    assert!(
+        !tiles(&c).is_empty(),
+        "the strip holds camera tiles, not the share"
+    );
+
+    // Bottom: the strip is under the content.
+    cs(&c.h.app).set_filmstrip_pos("bottom".into());
+    let strip = only(&c, "Filmstrip").expect("the filmstrip under the share");
+    let content = only(&c, "ContentStage").expect("the content stage");
+    assert!(strip.size().width > 1.0 && strip.size().height > 1.0);
+    assert!(
+        content.absolute_position().y + content.size().height <= strip.absolute_position().y + 1.0,
+        "the content stage is above the bottom strip"
+    );
+
+    // Hidden: no filmstrip at all.
+    cs(&c.h.app).set_filmstrip_pos("hidden".into());
+    assert!(only(&c, "Filmstrip").is_none(), "the filmstrip is hidden");
+}
+
+/// The normalized point (0..1) a remote-control "move" command carries.
+fn last_move(c: &CallHarness) -> (f32, f32) {
+    let sent = c.sent();
+    let line = sent
+        .iter()
+        .rev()
+        .find(|l| l.starts_with("control-input move "))
+        .unwrap_or_else(|| panic!("no move command in {sent:?}"));
+    let rest = line.trim_start_matches("control-input move ");
+    let mut it = rest.split(' ');
+    (
+        it.next().unwrap().parse().unwrap(),
+        it.next().unwrap().parse().unwrap(),
+    )
+}
+
+/// A connected call controlling Ada's shared screen, with the people in a right-hand filmstrip so
+/// the content region is shrunk.
+fn controlling_a_shrunk_share(c: &CallHarness) {
+    c.connected();
+    view_roster(c);
+    let s = cs(&c.h.app);
+    s.set_filmstrip_pos("right".into());
+    s.set_view_mode("content".into());
+    // Through the call, not the store: every command the window sends pushes the call's state
+    // back, which would drop a presenter or control mode set on the store alone.
+    c.fake.emit(Event::Presenter("Ada Lovelace".into()));
+    c.fake.emit(Event::Control {
+        mode: "controlling",
+        name: "Ada Lovelace".into(),
+    });
+    s.set_content_video(slint::Image::from_rgb8(slint::SharedPixelBuffer::<
+        slint::Rgb8Pixel,
+    >::new(160, 90)));
+    s.set_has_content(true);
+    assert_eq!(s.get_control_mode(), "controlling");
+}
+
+#[test]
+fn the_content_pointer_mapping_still_maps_after_the_stage_shrinks() {
+    let c = CallHarness::new();
+    controlling_a_shrunk_share(&c);
+    // The letterboxed share, inside the shrunk content region.
+    let shot = ElementHandle::find_by_accessible_label(&c.h.app, "Ada Lovelace's shared screen")
+        .next()
+        .expect("the shared screen");
+    let (at, size) = (shot.absolute_position(), shot.size());
+    // The centre of the drawn picture is the centre of the content region whatever its size, so
+    // controlling there maps to (0.5, 0.5).
+    let centre = slint::LogicalPosition::new(at.x + size.width / 2., at.y + size.height / 2.);
+    c.h.app
+        .window()
+        .dispatch_event(WindowEvent::PointerMoved { position: centre });
+    let (nx, ny) = last_move(&c);
+    assert!(
+        (nx - 0.5).abs() < 0.02 && (ny - 0.5).abs() < 0.02,
+        "the centre maps to (0.5, 0.5), got ({nx}, {ny})"
+    );
+}
+
+#[test]
+fn full_screen_toggles_from_the_view_menu_and_esc_leaves_it() {
+    let c = CallHarness::new();
+    c.connected();
+    assert!(!cs(&c.h.app).get_fullscreen());
+
+    click(&c.button("View"));
+    click(&view_item(&c, "Full screen"));
+    assert!(
+        cs(&c.h.app).get_fullscreen(),
+        "the View menu enters full screen"
+    );
+    assert_eq!(cs(&c.h.app).get_menu(), "", "picking closes the menu");
+    // The floating controls' Exit leaves it, and so does Esc.
+    assert!(c.shows("Exit full screen"));
+    key(&c.h.app, Key::Escape, true);
+    key(&c.h.app, Key::Escape, false);
+    assert!(!cs(&c.h.app).get_fullscreen(), "Esc leaves full screen");
+}
+
+#[test]
+fn leaving_a_call_leaves_full_screen() {
+    let c = CallHarness::new();
+    c.connected();
+    cs(&c.h.app).set_fullscreen(true);
+    click(&c.button("Leave"));
+    assert_eq!(c.phase(), "ended");
+    assert!(
+        !cs(&c.h.app).get_fullscreen(),
+        "the call ended, so full screen is off"
+    );
+}
+
+/// Presses a chord: the modifiers, then the key, then releases them (like the window delivers it).
+fn call_chord(c: &CallHarness, mods: &[Key], text: &str) {
+    for m in mods {
+        key(&c.h.app, *m, true);
+    }
+    key(&c.h.app, text, true);
+    key(&c.h.app, text, false);
+    for m in mods.iter().rev() {
+        key(&c.h.app, *m, false);
+    }
+}
+
+#[test]
+fn in_call_keyboard_shortcuts_drive_the_call() {
+    let c = CallHarness::new();
+    c.connected();
+    c.fake.emit(Event::Camera {
+        available: true,
+        on: false,
+    });
+    c.fake.emit(Event::Share {
+        available: true,
+        sharing: false,
+    });
+    let ctrl_shift = [Key::Control, Key::Shift];
+
+    // Ctrl+Shift+M mutes and unmutes, like the Mute button.
+    call_chord(&c, &ctrl_shift, "m");
+    assert!(cs(&c.h.app).get_muted());
+    call_chord(&c, &ctrl_shift, "m");
+    assert!(!cs(&c.h.app).get_muted());
+
+    // Ctrl+Shift+O asks the camera on; Ctrl+Shift+K raises the hand.
+    call_chord(&c, &ctrl_shift, "o");
+    assert_eq!(c.fake.calls().last().unwrap(), "camera on");
+    call_chord(&c, &ctrl_shift, "k");
+    assert!(cs(&c.h.app).get_hand());
+
+    // Ctrl+Shift+E asks the screen share.
+    call_chord(&c, &ctrl_shift, "e");
+    assert_eq!(c.fake.calls().last().unwrap(), "share on");
+
+    // Ctrl+Shift+H leaves the call.
+    call_chord(&c, &ctrl_shift, "h");
+    assert_eq!(c.phase(), "ended");
+}
+
+#[test]
+fn call_chords_fire_even_while_controlling_a_shared_screen() {
+    // The shared-screen FocusScope forwards keys to the presenter, but only the Ctrl+Shift chords
+    // are taken for the call; a plain key still reaches the presenter.
+    let c = CallHarness::new();
+    controlling_a_shrunk_share(&c);
+
+    // A plain key goes to the presenter and does not touch the call controls.
+    call_chord(&c, &[], "a");
+    assert!(!cs(&c.h.app).get_muted(), "a plain key does not mute");
+    assert!(
+        c.sent().iter().any(|l| l == "control-input key-down a"),
+        "the plain key reached the presenter: {:?}",
+        c.sent()
+    );
+
+    // Ctrl+Shift+M still toggles mute while the shared-screen scope has the keys.
+    call_chord(&c, &[Key::Control, Key::Shift], "m");
+    assert!(
+        cs(&c.h.app).get_muted(),
+        "the chord mutes even while controlling"
+    );
+
+    // Control ends: the shared-screen scope goes with the focus, and the chords still work.
+    c.fake.emit(Event::Control {
+        mode: "",
+        name: String::new(),
+    });
+    call_chord(&c, &[Key::Control, Key::Shift], "m");
+    assert!(
+        !cs(&c.h.app).get_muted(),
+        "the chord unmutes after control ends"
+    );
+}

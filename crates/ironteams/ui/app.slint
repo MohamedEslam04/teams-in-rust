@@ -1347,7 +1347,7 @@ export component AppWindow inherits Window {
     }
 
     // The call window (pre-join, meeting, call ended) covers the area right of the rail; while the meeting chat is open it is a floating bar.
-    if root.login-state == "ready" && CallStore.phase != "" && !CallStore.minimized: CallWindow { x: AppsStore.rail-width; y: 48px; z: 45; width: root.width - AppsStore.rail-width; height: root.height - 48px; open-chat => { CallStore.minimized = true; root.view = "chat"; root.select-chat(CallStore.chat-id); } }
+    if root.login-state == "ready" && CallStore.phase != "" && !CallStore.minimized: CallWindow { x: CallStore.fullscreen ? 0px : AppsStore.rail-width; y: CallStore.fullscreen ? 0px : 48px; z: 45; width: CallStore.fullscreen ? root.width : root.width - AppsStore.rail-width; height: CallStore.fullscreen ? root.height : root.height - 48px; open-chat => { CallStore.minimized = true; root.view = "chat"; root.select-chat(CallStore.chat-id); } }
     if root.login-state == "ready" && CallStore.phase != "" && CallStore.minimized: CallMini { x: clamp(root.width - self.width - 16px + CallStore.mini-dx, AppsStore.rail-width, root.width - self.width); y: clamp(root.height - self.height - 16px + CallStore.mini-dy, 48px, root.height - self.height); z: 45; }
 
     // The full-size picture viewer (plan chat 9.5), above everything else.

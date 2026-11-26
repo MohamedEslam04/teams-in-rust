@@ -7,6 +7,33 @@ import { CallStore, CallPerson } from "../stores/call_store.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 
+// A video (or photo) drawn to fit its box: `contain` by default (letterboxed, never cropped),
+// `cover` for the self-view. It exposes where the picture is actually drawn inside the box
+// (draw-x/y/w/h), so the content stage's remote-control pointer mapping keeps mapping correctly
+// when the stage region shrinks to make room for the filmstrip.
+export component FitImage inherits Rectangle {
+    in property <image> source;
+    // Fill the box (crop) instead of fitting inside it (letterbox). Only the self-view uses it.
+    in property <bool> cover: false;
+    in property <string> label;
+    clip: true;
+    property <float> iw: max(1, root.source.width);
+    property <float> ih: max(1, root.source.height);
+    property <float> fit-scale: min(root.width / 1px / root.iw, root.height / 1px / root.ih);
+    out property <length> draw-w: root.cover ? root.width : root.iw * root.fit-scale * 1px;
+    out property <length> draw-h: root.cover ? root.height : root.ih * root.fit-scale * 1px;
+    out property <length> draw-x: (root.width - root.draw-w) / 2;
+    out property <length> draw-y: (root.height - root.draw-h) / 2;
+    Image {
+        source: root.source;
+        width: root.width;
+        height: root.height;
+        image-fit: root.cover ? ImageFit.cover : ImageFit.contain;
+        accessible-role: image;
+        accessible-label: root.label;
+    }
+}
+
 export component Tile inherits Rectangle {
     in property <CallPerson> p;
     // The avatar's size, at most (the speaker view's large tile has a bigger one).
@@ -35,15 +62,16 @@ export component Tile inherits Rectangle {
         mouse-cursor: root.card-enabled ? pointer : default;
         clicked => { root.open-card(self.mouse-x, self.mouse-y); }
     }
-    if root.self-view || root.gallery || root.remote: Image {
+    if root.self-view || root.gallery || root.remote: FitImage {
         source: root.self-view ? CallStore.self-view
             : root.gallery ? CallStore.slot-videos[root.p.gallery-slot - 1].frame
             : CallStore.remote-video;
         width: root.width;
         height: root.height;
-        image-fit: root.self-view ? ImageFit.cover : ImageFit.contain;
-        accessible-role: image;
-        accessible-label: root.self-view ? "Your video" : root.p.name + "'s video";
+        // Only the self-view fills its tile; the remote camera and gallery slots letterbox, so a
+        // 4:3 or portrait camera is never cropped.
+        cover: root.self-view;
+        label: root.self-view ? "Your video" : root.p.name + "'s video";
     }
     if !root.self-view && !root.gallery && !root.remote: Avatar {
         initials: root.p.initials;
@@ -296,27 +324,21 @@ component ContentStage inherits Rectangle {
         padding: 16px;
         spacing: 8px;
         screen := Rectangle {
-            // Where the picture is drawn inside (image-fit contain), for normalized points.
-            property <float> iw: max(1, CallStore.content-video.width);
-            property <float> ih: max(1, CallStore.content-video.height);
-            property <float> scale: min(self.width / 1px / iw, self.height / 1px / ih);
-            property <length> dw: iw * scale * 1px;
-            property <length> dh: ih * scale * 1px;
-            property <length> ox: (self.width - dw) / 2;
-            property <length> oy: (self.height - dh) / 2;
             vertical-stretch: 1;
             border-radius: 8px;
             clip: true;
             background: #000000;
             border-width: root.controlling ? 2px : 0px;
             border-color: Theme.accent;
-            if CallStore.has-content: Image {
+            // The shared screen, letterboxed. `fit` exposes where it is actually drawn (draw-x/y/
+            // w/h), so the remote-control pointer mapping below stays correct when this region
+            // shrinks to make room for the filmstrip.
+            fit := FitImage {
                 source: CallStore.content-video;
+                label: @tr("{}'s shared screen", root.who);
                 width: parent.width;
                 height: parent.height;
-                image-fit: ImageFit.contain;
-                accessible-role: image;
-                accessible-label: @tr("{}'s shared screen", root.who);
+                visible: CallStore.has-content;
             }
             if !CallStore.has-content: Text {
                 text: "Waiting for the shared screen…";
@@ -326,6 +348,21 @@ component ContentStage inherits Rectangle {
             if root.controlling && CallStore.has-content: keys := FocusScope {
                 init => { self.focus(); }
                 key-pressed(e) => {
+                    // Esc leaves immersive full screen first; otherwise every key goes to the
+                    // presenter. This scope holds the focus while controlling, so the in-call
+                    // chords are handled here too (the call window's capture does not reach a key
+                    // a focused child FocusScope takes) — the chords win over the presenter.
+                    if e.text == Key.Escape && CallStore.fullscreen {
+                        CallStore.fullscreen = false;
+                        return accept;
+                    }
+                    if e.modifiers.control && e.modifiers.shift {
+                        if e.text == "M" || e.text == "m" { CallStore.command("mute", ""); return accept; }
+                        if (e.text == "O" || e.text == "o") { if CallStore.can-camera || CallStore.camera { CallStore.command("camera", ""); } return accept; }
+                        if e.text == "K" || e.text == "k" { CallStore.command("hand", ""); return accept; }
+                        if e.text == "H" || e.text == "h" || e.text == "B" || e.text == "b" { CallStore.command("leave", ""); return accept; }
+                        if (e.text == "E" || e.text == "e") { if CallStore.can-share || CallStore.sharing { CallStore.command("share", ""); } return accept; }
+                    }
                     CallStore.command("control-input", "key-down " + e.text);
                     accept
                 }
@@ -338,8 +375,8 @@ component ContentStage inherits Rectangle {
                     pointer-event(e) => {
                         if e.kind == PointerEventKind.move {
                             CallStore.command("control-input", "move "
-                                + ((self.mouse-x - screen.ox) / screen.dw) + " "
-                                + ((self.mouse-y - screen.oy) / screen.dh));
+                                + ((self.mouse-x - fit.draw-x) / fit.draw-w) + " "
+                                + ((self.mouse-y - fit.draw-y) / fit.draw-h));
                         } else if e.kind == PointerEventKind.down || e.kind == PointerEventKind.up {
                             keys.focus();
                             CallStore.command("control-input", (e.kind == PointerEventKind.down ? "down " : "up ")
@@ -513,9 +550,55 @@ component GalleryPager inherits Rectangle {
     }
 }
 
+// The people beside a shared screen: a scrollable strip of 16:9 camera tiles, down the right side
+// (`vertical`) or along the bottom. The tiles that do not fit scroll (drag or trackpad). The share
+// is its own region (ContentStage); a camera tile is always a camera, never the share.
+component Filmstrip inherits Rectangle {
+    in property <[CallPerson]> people;
+    in property <bool> vertical;
+    callback more-clicked(CallPerson, length, length);
+    property <length> pad: 8px;
+    property <length> gap: 8px;
+    property <int> n: root.people.length;
+    property <length> cross: (root.vertical ? root.width : root.height) - 2 * root.pad;
+    property <length> tile-w: root.vertical ? root.cross : root.cross * 16 / 9;
+    property <length> tile-h: root.vertical ? root.cross * 9 / 16 : root.cross;
+    property <length> step: (root.vertical ? root.tile-h : root.tile-w) + root.gap;
+    property <length> content-len: max(0px, root.n * root.step - root.gap);
+    strip := Flickable {
+        x: root.pad;
+        y: root.pad;
+        width: parent.width - 2 * root.pad;
+        height: parent.height - 2 * root.pad;
+        content-width: root.vertical ? self.width : root.content-len;
+        content-height: root.vertical ? root.content-len : self.height;
+        interactive: true;
+        for p[i] in root.people: Rectangle {
+            x: root.vertical ? 0px : i * root.step;
+            y: root.vertical ? i * root.step : 0px;
+            width: root.tile-w;
+            height: root.tile-h;
+            Tile {
+                p: p;
+                menu-enabled: true;
+                more-clicked(who, ax, ay) => { root.more-clicked(who, ax, ay); }
+                width: parent.width;
+                height: parent.height;
+            }
+        }
+    }
+}
+
 // What fills the middle: the lobby, connecting, the participants' tiles, or a shared screen.
 export component Stage inherits Rectangle {
     property <bool> content: CallStore.view-mode == "content" && CallStore.content-shared();
+    // While a share holds the stage, the people show in a filmstrip beside it. Its resolved
+    // position ("auto" is right while sharing); an unknown stored value falls back to right.
+    property <string> strip-pos: (CallStore.filmstrip-pos == "right" || CallStore.filmstrip-pos == "bottom" || CallStore.filmstrip-pos == "hidden")
+        ? CallStore.filmstrip-pos : "right";
+    property <bool> content-strip: root.strip-pos != "hidden" && CallStore.speaker-people.length > 0;
+    property <length> strip-right-w: min(220px, root.width * 0.28);
+    property <length> strip-bottom-h: min(132px, root.height * 0.26);
     // The gallery's pages of `gallery-per-page` tiles: the page shown (never past the last one)
     // and the people on it. A pinned person makes it the speaker view.
     property <int> pages: max(1, Math.ceil(CallStore.in-call / CallStore.gallery-per-page));
@@ -596,9 +679,35 @@ export component Stage inherits Rectangle {
             width: parent.width;
             overflow: elide;
         }
-        if root.content: ContentStage {
+        // A share holds the Content stage, and the people show in a filmstrip beside it (right or
+        // bottom, or hidden). The share is its own region; the strip's tiles are cameras.
+        if root.content: content-area := Rectangle {
             width: root.width;
             height: root.height;
+            ContentStage {
+                x: 0;
+                y: 0;
+                width: root.content-strip && root.strip-pos == "right" ? parent.width - root.strip-right-w : parent.width;
+                height: root.content-strip && root.strip-pos == "bottom" ? parent.height - root.strip-bottom-h : parent.height;
+            }
+            if root.content-strip && root.strip-pos == "right": Filmstrip {
+                vertical: true;
+                people: CallStore.speaker-people;
+                x: parent.width - root.strip-right-w;
+                y: 0;
+                width: root.strip-right-w;
+                height: parent.height;
+                more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+            }
+            if root.content-strip && root.strip-pos == "bottom": Filmstrip {
+                vertical: false;
+                people: CallStore.speaker-people;
+                x: 0;
+                y: parent.height - root.strip-bottom-h;
+                width: parent.width;
+                height: root.strip-bottom-h;
+                more-clicked(who, ax, ay) => { root.open-menu(who, ax, ay); }
+            }
         }
         if CallStore.sharing: SharingBanner {
             x: 16px;
@@ -707,6 +816,8 @@ export component Stage inherits Rectangle {
 export component ViewMenu inherits Rectangle {
     width: 220px;
     height: card.preferred-height;
+    // The filmstrip position to show as selected ("auto" resolves to right).
+    property <string> fs-pos: CallStore.filmstrip-pos == "auto" ? "right" : CallStore.filmstrip-pos;
     border-radius: Theme.radius;
     border-width: 1px;
     border-color: Theme.border;
@@ -764,6 +875,86 @@ export component ViewMenu inherits Rectangle {
                         CallStore.menu = "";
                     }
                 }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        // Where the filmstrip of people goes while someone shares (persisted).
+        HorizontalLayout {
+            padding-left: 8px;
+            height: 24px;
+            Text {
+                text: "Filmstrip";
+                color: Theme.fg-subtle;
+                font-size: 12px * Theme.font-scale;
+                vertical-alignment: center;
+            }
+        }
+        for strip[j] in [
+            { pos: "right", label: "Right", aria: "Filmstrip on the right" },
+            { pos: "bottom", label: "Bottom", aria: "Filmstrip at the bottom" },
+            { pos: "hidden", label: "Hidden", aria: "Hide the filmstrip" },
+        ]: Rectangle {
+            height: 32px;
+            border-radius: 3px;
+            background: striptouch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: list-item;
+            accessible-label: strip.aria;
+            accessible-item-selectable: true;
+            accessible-item-selected: root.fs-pos == strip.pos;
+            accessible-action-default => { CallStore.filmstrip-pos = strip.pos; CallStore.menu = ""; }
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Text {
+                    text: root.fs-pos == strip.pos ? "✓" : "";
+                    width: 12px;
+                    color: Theme.accent;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: strip.label;
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                }
+            }
+            striptouch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { CallStore.filmstrip-pos = strip.pos; CallStore.menu = ""; }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        // Immersive full screen (Esc exits).
+        Rectangle {
+            height: 32px;
+            border-radius: 3px;
+            background: fstouch.has-hover ? Theme.surface-hover : transparent;
+            accessible-role: list-item;
+            accessible-label: CallStore.fullscreen ? "Exit full screen" : "Full screen";
+            accessible-item-selectable: true;
+            accessible-item-selected: CallStore.fullscreen;
+            accessible-action-default => { CallStore.fullscreen = !CallStore.fullscreen; CallStore.menu = ""; }
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 8px;
+                Text {
+                    text: CallStore.fullscreen ? "✓" : "";
+                    width: 12px;
+                    color: Theme.accent;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: CallStore.fullscreen ? "Exit full screen" : "Full screen";
+                    color: Theme.fg;
+                    font-size: 13px * Theme.font-scale;
+                    vertical-alignment: center;
+                }
+            }
+            fstouch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { CallStore.fullscreen = !CallStore.fullscreen; CallStore.menu = ""; }
             }
         }
     }

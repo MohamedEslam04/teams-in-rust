@@ -34,8 +34,48 @@ component InCall inherits Rectangle {
     // it is open), and the width it takes from the stage.
     property <bool> side-open: VideoFxStore.open || CallStore.panel != "";
     property <length> side: root.side-open ? 320px : 0px;
+    property <length> bar-h: 62px;
+    // Holds the keys so the in-call shortcuts fire whatever has focus. A remote-control or menu
+    // scope that grabs focus is still a descendant, so this capture handler runs first — the
+    // Ctrl+Shift chords and Esc are not swallowed by the shared-screen FocusScope.
+    keys := FocusScope {
+        width: 100%;
+        height: 100%;
+        // The call window is a sibling of the app's AppKeys, so it must hold the keys itself for
+        // the in-call shortcuts to fire; take them when the call goes live and on start.
+        property <bool> live: CallStore.in-call-phase();
+        init => { self.focus(); }
+        changed live => { if self.live { self.focus(); } }
+        // The shared-screen scope holds the focus while controlling; when control ends that
+        // scope goes away with the focus, so take it back or the in-call shortcuts go dead.
+        property <bool> controlling: CallStore.control-mode == "controlling" && CallStore.has-content;
+        changed controlling => { if !self.controlling && self.live { self.focus(); } }
+        capture-key-pressed(event) => {
+            if CallStore.in-call-phase() {
+                // Esc leaves immersive full screen before anything else can take it.
+                if event.text == Key.Escape && CallStore.fullscreen {
+                    CallStore.fullscreen = false;
+                    return accept;
+                }
+                // Teams in-call chords (also while controlling a shared screen).
+                if event.modifiers.control && event.modifiers.shift {
+                    if event.text == "M" || event.text == "m" { CallStore.command("mute", ""); return accept; }
+                    if (event.text == "O" || event.text == "o") { if CallStore.can-camera || CallStore.camera { CallStore.command("camera", ""); } return accept; }
+                    if event.text == "K" || event.text == "k" { CallStore.command("hand", ""); return accept; }
+                    if event.text == "H" || event.text == "h" || event.text == "B" || event.text == "b" { CallStore.command("leave", ""); return accept; }
+                    if (event.text == "E" || event.text == "e") { if CallStore.can-share || CallStore.sharing { CallStore.command("share", ""); } return accept; }
+                }
+            }
+            reject
+        }
     VerticalLayout {
-        bar := TopBar { fold: root.fold; open-chat => { root.open-chat(); } }
+        // The control bar is hidden while immersive (full screen); the floating controls take over.
+        barwrap := Rectangle {
+            clip: true;
+            height: CallStore.fullscreen ? 0px : root.bar-h;
+            animate height { duration: 150ms; easing: ease; }
+            bar := TopBar { fold: root.fold; x: 0; y: 0; width: parent.width; height: root.bar-h; open-chat => { root.open-chat(); } }
+        }
         // A meeting on hold (call waiting) has the "On hold" bar instead, with its Resume.
         if CallStore.held && CallStore.kind == "direct": Banner {
             message: "You put the call on hold. Select Resume to continue.";
@@ -65,6 +105,61 @@ component InCall inherits Rectangle {
             if VideoFxStore.open: VideoEffectsPanel { width: 320px; }
             if !VideoFxStore.open && CallStore.panel == "people": PeoplePanel { width: 320px; }
             if !VideoFxStore.open && CallStore.panel == "more": MorePanel { width: 320px; fold: root.fold; }
+        }
+    }
+    }
+    // Immersive full screen hides the top control bar; these floating controls stay reachable
+    // (the View menu, Esc and the Ctrl+Shift chords also leave full screen).
+    if CallStore.fullscreen && CallStore.phase == "connected": Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.height - self.height - 20px;
+        width: fscontrols.preferred-width;
+        height: 56px;
+        border-radius: 28px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: Theme.scrim;
+        z: 40;
+        fscontrols := HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 6px;
+            Button { variant: ButtonVariant.call;
+                icon: CallStore.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
+                label: CallStore.muted ? "Unmute" : "Mute";
+                checkable: true;
+                active: CallStore.muted;
+                clicked => { CallStore.command("mute", ""); }
+            }
+            Button { variant: ButtonVariant.call;
+                icon: CallStore.camera ? @image-url("../icons/video.svg") : @image-url("../icons/video-off.svg");
+                label: "Camera";
+                checkable: true;
+                active: CallStore.camera;
+                enabled: CallStore.can-camera || CallStore.camera;
+                clicked => { CallStore.command("camera", ""); }
+            }
+            Button { variant: ButtonVariant.call;
+                icon: @image-url("../icons/screen-share.svg");
+                label: CallStore.sharing ? "Stop sharing" : "Share";
+                checkable: true;
+                active: CallStore.sharing;
+                enabled: CallStore.can-share || CallStore.sharing;
+                clicked => { CallStore.command("share", ""); }
+            }
+            Button { variant: ButtonVariant.call;
+                icon: @image-url("../icons/expand.svg");
+                label: "Exit full screen";
+                clicked => { CallStore.fullscreen = false; }
+            }
+            Button { variant: ButtonVariant.call;
+                icon: @image-url("../icons/call-end.svg");
+                label: "Leave";
+                danger: true;
+                clicked => { CallStore.command("leave", ""); }
+            }
         }
     }
     // The View button's dropdown, under the button.
