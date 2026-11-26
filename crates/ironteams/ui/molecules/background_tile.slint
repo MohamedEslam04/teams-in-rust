@@ -1,19 +1,21 @@
 // A background of the video effects: its picture, or its name for None and the blurs. The camera
 // menu draws it small, the Video effects panel at 88x54. Hovering shows its name. A Teams picture
 // whose thumbnail is still on its way is a dim placeholder that cannot be picked yet.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { VideoFxStore, FxChoice } from "../stores/video_fx_store.slint";
 
 export component BackgroundTile inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <FxChoice> choice;
     in property <bool> selected;
     callback picked();
     width: 88px;
     height: 54px;
     border-radius: 6px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: root.selected ? 2px : 1px;
-    border-color: root.selected ? Theme.accent : touch.has-hover && !root.choice.loading ? Theme.fg-subtle : Theme.border;
+    border-color: root.selected ? root.c.accent : touch.has-hover && !root.choice.loading ? root.c.fg-subtle : root.c.border;
     // The tile under the pointer draws over its neighbours, so its tooltip is not covered.
     z: touch.has-hover ? 10 : 0;
     accessible-role: button;
@@ -34,7 +36,7 @@ export component BackgroundTile inherits Rectangle {
         }
         if !root.choice.has-thumb: Text {
             text: root.choice.name;
-            color: root.choice.loading ? Theme.fg-subtle : Theme.fg;
+            color: root.choice.loading ? root.c.fg-subtle : root.c.fg;
             font-size: 12px * Theme.font-scale;
             horizontal-alignment: center;
             vertical-alignment: center;
@@ -54,13 +56,13 @@ export component BackgroundTile inherits Rectangle {
         height: tip.preferred-height + 10px;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.surface;
+        border-color: root.c.border;
+        background: root.c.surface;
         tip := Text {
             x: 8px;
             y: 5px;
             text: root.choice.name;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 12px * Theme.font-scale;
         }
     }

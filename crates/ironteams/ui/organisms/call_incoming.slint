@@ -9,6 +9,8 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { CallStore } from "../stores/call_store.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export global DirectCallStore {
     // Incoming call (the toast).
@@ -18,7 +20,7 @@ export global DirectCallStore {
     in property <bool> incoming-shown: true;
     in property <string> incoming-name;
     in property <string> incoming-initials;
-    in property <color> incoming-color: #5b5fc7;
+    in property <color> incoming-color: Fixed.call-ring;
     in property <image> incoming-avatar;
     in property <bool> incoming-has-avatar: false;
     in property <bool> incoming-video: false;
@@ -31,7 +33,7 @@ export global DirectCallStore {
     in property <bool> outgoing-open: false;
     in property <string> outgoing-name;
     in property <string> outgoing-initials;
-    in property <color> outgoing-color: #5b5fc7;
+    in property <color> outgoing-color: Fixed.call-ring;
     in property <image> outgoing-avatar;
     in property <bool> outgoing-has-avatar: false;
     // "Calling…", "Ringing…", then "Declined", "No answer", "Call ended" or a failure.
@@ -50,6 +52,7 @@ export global DirectCallStore {
 
 // A round call button with its label underneath.
 export component CallRoundButton inherits VerticalLayout {
+    in property <Tokens> c: Theme.call;
     in property <image> icon;
     in property <string> label;
     in property <color> tone;
@@ -66,12 +69,12 @@ export component CallRoundButton inherits VerticalLayout {
         accessible-label: root.label;
         accessible-description: root.note;
         accessible-action-default => { root.clicked(); }
-        Icon { source: root.icon; tint: #ffffff; width: 22px; height: 22px; }
+        Icon { c: root.c; source: root.icon; tint: Fixed.white; width: 22px; height: 22px; }
         touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
     }
     Text {
         text: root.label;
-        color: Theme.fg-muted;
+        color: root.c.fg-muted;
         font-size: 11px * Theme.font-scale;
         horizontal-alignment: center;
         width: 72px;
@@ -80,14 +83,15 @@ export component CallRoundButton inherits VerticalLayout {
 }
 
 export component CallIncoming inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     width: 340px;
     height: card.preferred-height;
     border-radius: 8px;
-    background: Theme.surface;
+    background: root.c.surface;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: root.c.border;
     drop-shadow-blur: 24px;
-    drop-shadow-color: #000000b0;
+    drop-shadow-color: Fixed.black-b0;
     accessible-role: groupbox;
     accessible-label: "Incoming call from " + DirectCallStore.incoming-name;
 
@@ -100,6 +104,7 @@ export component CallIncoming inherits Rectangle {
         HorizontalLayout {
             spacing: 14px;
             Avatar {
+                c: root.c;
                 initials: DirectCallStore.incoming-initials;
                 tone: DirectCallStore.incoming-color;
                 img: DirectCallStore.incoming-avatar;
@@ -111,7 +116,7 @@ export component CallIncoming inherits Rectangle {
                 spacing: 2px;
                 Text {
                     text: DirectCallStore.incoming-name;
-                    color: Theme.fg;
+                    color: root.c.fg;
                     font-size: 16px * Theme.font-scale;
                     font-weight: 700;
                     overflow: elide;
@@ -122,7 +127,7 @@ export component CallIncoming inherits Rectangle {
                     text: DirectCallStore.incoming-status != "" ? DirectCallStore.incoming-status
                         : DirectCallStore.incoming-waiting ? "Incoming call · You're in a call"
                         : DirectCallStore.incoming-video ? "Incoming video call" : "Incoming call";
-                    color: Theme.fg-muted;
+                    color: root.c.fg-muted;
                     font-size: 13px * Theme.font-scale;
                     wrap: word-wrap;
                     accessible-role: text;
@@ -133,51 +138,57 @@ export component CallIncoming inherits Rectangle {
         if DirectCallStore.incoming-status == "" && DirectCallStore.incoming-waiting: HorizontalLayout {
             alignment: space-around;
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/call-direct.svg");
                 label: "Hold and accept";
                 note: "Puts your current call on hold";
-                tone: #237b4b;
+                tone: Fixed.call-accept;
                 clicked => { DirectCallStore.command("hold-accept", ""); }
             }
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/call-direct.svg");
                 label: "End and accept";
                 note: "Ends your current call";
-                tone: #a4262c;
+                tone: Fixed.call-decline;
                 clicked => { DirectCallStore.command("end-accept", ""); }
             }
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/call-direct-end.svg");
                 label: "Decline";
-                tone: Theme.danger;
+                tone: root.c.danger;
                 clicked => { DirectCallStore.command("decline", ""); }
             }
         }
         if DirectCallStore.incoming-status == "" && !DirectCallStore.incoming-waiting: HorizontalLayout {
             alignment: space-around;
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/video.svg");
                 label: "Accept with video";
                 note: CallStore.camera-available ? "" : "Video isn't available yet: answers with audio";
-                tone: #237b4b;
+                tone: Fixed.call-accept;
                 clicked => { DirectCallStore.command("accept-video", ""); }
             }
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/call-direct.svg");
                 label: "Accept with audio";
-                tone: #237b4b;
+                tone: Fixed.call-accept;
                 clicked => { DirectCallStore.command("accept-audio", ""); }
             }
             CallRoundButton {
+                c: root.c;
                 icon: @image-url("../icons/call-direct-end.svg");
                 label: "Decline";
-                tone: Theme.danger;
+                tone: root.c.danger;
                 clicked => { DirectCallStore.command("decline", ""); }
             }
         }
         if DirectCallStore.incoming-status == "" && !DirectCallStore.incoming-waiting && !CallStore.camera-available: Text {
             text: "Video isn't available yet: Accept with video answers with audio.";
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 11px * Theme.font-scale;
             wrap: word-wrap;
             horizontal-alignment: center;

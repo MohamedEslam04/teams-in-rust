@@ -1,16 +1,19 @@
 // An "i" icon that explains a setting in a bubble to its left while the pointer is over it.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 
 export component InfoTip inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> tip;
     width: 20px;
     height: 20px;
     accessible-role: text;
     accessible-label: root.tip;
     Icon {
+        c: root.c;
         source: @image-url("../icons/info.svg");
-        tint: touch.has-hover ? Theme.fg : Theme.fg-muted;
+        tint: touch.has-hover ? root.c.fg : root.c.fg-muted;
         width: 16px;
         height: 16px;
         x: 2px;
@@ -24,14 +27,14 @@ export component InfoTip inherits Rectangle {
         height: bubble.preferred-height + 16px;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.surface;
+        border-color: root.c.border;
+        background: root.c.surface;
         bubble := Text {
             x: 8px;
             y: 8px;
             width: parent.width - 16px;
             text: root.tip;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 12px * Theme.font-scale;
             wrap: word-wrap;
         }

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------------------------
 // Find in Settings.
 
-pub const PAGES: [(&str, &str); 13] = [
+pub const PAGES: [(&str, &str); 14] = [
     ("general", "General"),
     ("chats", "Chats and channels"),
     ("accounts", "Accounts and orgs"),
@@ -9,6 +9,7 @@ pub const PAGES: [(&str, &str); 13] = [
     ("notifications", "Notifications and activity"),
     ("appearance", "Appearance"),
     ("accessibility", "Accessibility"),
+    ("shortcuts", "Keyboard shortcuts"),
     ("devices", "Devices"),
     ("calls", "Calls"),
     ("files", "Files and links"),
@@ -43,6 +44,11 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
         "Keyword alerts",
         "keyword word phrase alert notify",
     ),
+    (
+        "general",
+        "When IronTeams starts, open",
+        "start startup launch opening page home activity chat teams calendar where i left off last",
+    ),
     ("general", "Date format", "day month year"),
     ("general", "Time format", "clock 12 24 hour"),
     ("general", "Time zone", "timezone region"),
@@ -58,6 +64,31 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ),
     ("chats", "Read receipts", "seen read"),
     ("chats", "Link previews", "url cards preview website"),
+    (
+        "chats",
+        "Show message previews",
+        "chat list preview line compact one line customize view",
+    ),
+    (
+        "chats",
+        "Show time stamps",
+        "chat list time timestamp customize view",
+    ),
+    (
+        "chats",
+        "Chats and channels together",
+        "chat list combine merge channels customize view",
+    ),
+    (
+        "chats",
+        "New section",
+        "chat list sections group folder customize view",
+    ),
+    (
+        "chats",
+        "Quick reactions",
+        "reaction react emoji hover like heart laugh favourite reset",
+    ),
     (
         "chats",
         "Mouse wheel speed",
@@ -121,8 +152,34 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("appearance", "Theme", "dark light mode system colour color"),
     ("appearance", "Accent colour", "color"),
     ("appearance", "Message density", "compact comfy"),
+    (
+        "appearance",
+        "Message style",
+        "bubble bubbles flat lines slack irc layout chat",
+    ),
+    ("appearance", "Show avatars", "photo picture profile hide"),
+    (
+        "appearance",
+        "Show time stamps",
+        "timestamp time clock hide message",
+    ),
+    (
+        "appearance",
+        "Show reactions",
+        "reaction emoji like hide message",
+    ),
     ("appearance", "Font size", "text zoom scale bigger smaller"),
     ("appearance", "Skin tone", "emoji"),
+    (
+        "appearance",
+        "Show app names",
+        "app bar rail sidebar labels",
+    ),
+    (
+        "appearance",
+        "Auto collapse app bar",
+        "rail sidebar narrow icons",
+    ),
     ("accessibility", "High contrast", "contrast"),
     ("accessibility", "Reduce motion", "animation"),
     ("accessibility", "Larger text", "font size bigger"),
@@ -137,6 +194,16 @@ pub(super) const INDEX: &[(&str, &str, &str)] = &[
     ("accessibility", "Single-pointer controls", "gesture"),
     ("accessibility", "TTY mode", "telephone"),
     ("accessibility", "Sign language mode", "interpreter"),
+    (
+        "shortcuts",
+        "Change a keyboard shortcut",
+        "hotkey keys rebind remap customize binding chord combination key",
+    ),
+    (
+        "shortcuts",
+        "Reset all shortcuts",
+        "default restore keys hotkey",
+    ),
     ("devices", "Speaker", "audio output sound headphones"),
     ("devices", "Microphone", "audio input mic"),
     ("devices", "Camera", "video webcam"),

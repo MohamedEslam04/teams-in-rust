@@ -36,7 +36,7 @@ Teams-like layout and uses a fraction of that memory: see [Memory](#memory).
   time raises the running window instead of opening another one. `--account label[@tenant]` starts
   on a given account or organization (see [Command line](#command-line)).
 - **Chat:**
-  - 1:1, group, meeting and self-notes chats, with custom sections, filters and list options
+  - 1:1, group, meeting and self-notes chats, with custom sections (each sortable by recent activity, A to Z or unread first), filters and list options
   - rich text both ways: a formatting toolbar (bold to tables, colors and code blocks) and Teams' shortcuts
   - @mentions, reply quotes, forward, pin, save, mark unread, mark as important, drafts and an offline outbox;
     editing a message changes only your own text and keeps its forwarded or quoted part

@@ -1,0 +1,200 @@
+// One second chat: its name, its messages and a plain composer, filled by the engine's pop-out
+// path. The pop-out window (`ChatWindow`) is one; the split view's pane next to the open chat
+// (`SplitStore`) is another, with a close button (and Esc) and an accent line while it is active.
+import { ListView } from "std-widgets.slint";
+import { Theme } from "../tokens/theme.slint";
+import { Msg } from "../tokens/types.slint";
+import { MessageRow } from "message_row.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { WheelGlide } from "../tokens/motion.slint";
+
+export component ChatColumn inherits Rectangle {
+    in property <string> chat-title;
+    in property <[Msg]> messages;
+    in-out property <string> draft;
+    // Bumped when a chat opens here: the list goes to the newest message.
+    in property <int> scroll-tick;
+    // Bumped to put the keyboard focus in the box.
+    in property <int> focus-tick;
+    // The split view's pane: a close button, Esc closes it.
+    in property <bool> closable: false;
+    // The split view's pane is the one the keyboard shortcuts go to.
+    in property <bool> active: false;
+    // The box takes the keyboard focus when the column shows.
+    in property <bool> take-focus: true;
+    out property <bool> at-newest: pop-list.content-y <= pop-list.visible-height - pop-list.content-height + 4px;
+    callback send(string);
+    callback react(string, string);
+    callback open-url(string);
+    callback close();
+    // Its header or box was clicked (the box took the focus).
+    callback activated();
+
+    background: Theme.main;
+
+    function send-now() {
+        if root.draft != "" {
+            root.send(root.draft);
+            root.draft = "";
+        }
+    }
+
+    property <int> focus-request: root.focus-tick;
+    changed focus-request => { pop-input.focus(); }
+
+    VerticalLayout {
+        Rectangle {
+            height: root.closable ? 60px : 52px;
+            background: root.closable ? Theme.panel : Theme.topbar;
+            TouchArea {
+                clicked => {
+                    root.activated();
+                    pop-input.focus();
+                }
+            }
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: root.closable ? 12px : 16px;
+                spacing: 8px;
+                Text {
+                    text: root.chat-title;
+                    color: Theme.fg;
+                    font-size: (root.closable ? 17px : 16px) * Theme.font-scale;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: text;
+                }
+                if root.closable: IconButton {
+                    y: 14px;
+                    icon: @image-url("../icons/close.svg");
+                    tooltip: @tr("Close split view");
+                    clicked => { root.close(); }
+                }
+            }
+            if root.closable && root.active: Rectangle {
+                y: 0px;
+                height: 2px;
+                background: Theme.accent;
+            }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        pop-list := ListView {
+            vertical-stretch: 1;
+            // Stays at the newest message while it is at the bottom, as the main view does. The
+            // list's height is an estimate that grows as rows get their real height (and the
+            // window gets its size after the rows came): a move of the list while the height or
+            // the window changed is the list following them, not the user scrolling away.
+            property <bool> pinned: true;
+            property <length> pinned-height;
+            property <length> pinned-visible;
+            property <int> tick: root.scroll-tick;
+            function to-bottom() {
+                self.pinned-height = self.content-height;
+                self.pinned-visible = self.visible-height;
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+            changed tick => {
+                pop-glide.stop();
+                self.pinned = true;
+                self.to-bottom();
+            }
+            changed content-height => {
+                if self.pinned {
+                    self.to-bottom();
+                }
+            }
+            changed visible-height => {
+                if self.pinned {
+                    self.to-bottom();
+                }
+            }
+            changed content-y => {
+                if self.content-height == self.pinned-height && self.visible-height == self.pinned-visible {
+                    self.pinned = self.content-y <= self.visible-height - self.content-height + 4px;
+                }
+            }
+            for m in root.messages: MessageRow {
+                m: m;
+                // A wheel notch scrolls by the wheel speed, smoothly, as in the main window.
+                scroll-event(e) => { return pop-glide.take(e); }
+                max-bubble: min(640px, pop-list.width * 0.8);
+                react(k) => { root.react(m.id, k); }
+                open-url(u) => { root.open-url(u); }
+            }
+        }
+        Rectangle {
+            height: 84px;
+            background: Theme.main;
+            Rectangle {
+                x: 12px;
+                y: 6px;
+                width: parent.width - 24px;
+                height: parent.height - 12px;
+                border-radius: 4px;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: pop-input.has-focus ? Theme.accent : Theme.border;
+                FocusScope {
+                    width: parent.width - 44px;
+                    capture-key-pressed(event) => {
+                        if event.text == Key.Return && !event.modifiers.shift {
+                            root.send-now();
+                            return accept;
+                        }
+                        if event.text == Key.Escape && !event.modifiers.shift && root.closable {
+                            root.close();
+                            return accept;
+                        }
+                        reject
+                    }
+                    pop-input := TextInput {
+                        x: 10px;
+                        y: 8px;
+                        width: parent.width - 20px;
+                        height: parent.height - 16px;
+                        text <=> root.draft;
+                        color: Theme.fg;
+                        font-size: 14px * Theme.font-scale;
+                        wrap: word-wrap;
+                        accessible-role: text-input;
+                        accessible-label: @tr("Type a message");
+                        init => {
+                            if root.take-focus { self.focus(); }
+                        }
+                        changed has-focus => {
+                            if self.has-focus { root.activated(); }
+                        }
+                    }
+                }
+                if root.draft == "": Text {
+                    x: 10px;
+                    y: 8px;
+                    text: @tr("Type a message");
+                    color: Theme.fg-subtle;
+                    font-size: 14px * Theme.font-scale;
+                }
+                // Send, as in the main composer (Enter sends too).
+                IconButton {
+                    x: parent.width - self.width - 6px;
+                    y: parent.height - self.height - 6px;
+                    icon: @image-url("../icons/send.svg");
+                    tooltip: @tr("Send");
+                    clicked => { root.send-now(); }
+                }
+            }
+        }
+    }
+
+    // The wheel notches the rows took: the list moves by them a little each frame.
+    pop-glide := WheelGlide {
+        glide(d) => {
+            let to = min(0px, max(pop-list.visible-height - pop-list.content-height, pop-list.content-y + d));
+            if to == pop-list.content-y {
+                self.stop();
+            }
+            pop-list.content-y = to;
+            pop-list.pinned = to <= pop-list.visible-height - pop-list.content-height + 4px;
+        }
+    }
+}

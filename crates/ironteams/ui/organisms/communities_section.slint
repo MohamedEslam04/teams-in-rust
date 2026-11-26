@@ -1,22 +1,25 @@
 // The chat list's Communities section.
 import { Theme } from "../tokens/theme.slint";
 import { TeamsStore } from "../stores/teams_store.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // The Communities section of the chat list: one row per community; a click opens its feed.
 export component CommunitiesSection inherits VerticalLayout {
+    in property <Tokens> c: Theme.nav;
     callback open(string);
     for c in TeamsStore.communities: Rectangle {
         height: 40px;
         border-radius: 4px;
-        background: ct.has-hover ? Theme.surface-hover : transparent;
+        background: ct.has-hover ? root.c.surface-hover : transparent;
         accessible-role: list-item;
         accessible-label: c.name;
         accessible-action-default => { root.open(c.id); }
         HorizontalLayout {
             padding-left: 12px;
             spacing: 10px;
-            Rectangle { width: 24px; height: 24px; y: 8px; border-radius: 12px; background: #0f7b5f; Text { text: "C"; color: #ffffff; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-            Text { text: c.name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+            Rectangle { width: 24px; height: 24px; y: 8px; border-radius: 12px; background: Fixed.community; Text { text: "C"; color: Fixed.white; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+            Text { text: c.name; color: root.c.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
         }
         ct := TouchArea { mouse-cursor: pointer; clicked => { root.open(c.id); } }
     }

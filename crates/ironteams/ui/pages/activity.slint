@@ -9,6 +9,7 @@ import { MessageRow } from "../organisms/message_row.slint";
 import { DirectCallStore } from "../organisms/call_incoming.slint";
 import { PersonHover } from "../molecules/people.slint";
 import { SkeletonList, Spinner } from "../tokens/motion.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 component MenuEntry inherits Rectangle {
     in property <string> label;
@@ -69,7 +70,7 @@ component ActivityItem inherits Rectangle {
                 width: 20px;
                 height: 20px;
                 border-radius: 10px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.border;
                 Text { text: root.data.badge; color: Theme.mention; font-size: 11px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
@@ -157,7 +158,7 @@ component ActivityItem inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 6px;
-            drop-shadow-color: #00000080;
+            drop-shadow-color: Fixed.black-80;
             toggle := MenuEntry {
                 y: 1px;
                 label: root.data.unread ? "Mark as read" : "Mark as unread";
@@ -187,7 +188,7 @@ component PreviewList inherits Rectangle {
             for m in root.messages: hl-row := Rectangle {
                 property <bool> hl: m.id == root.highlight;
                 height: mr.height;
-                background: self.hl ? #23253f : transparent;
+                background: self.hl ? Theme.accent-muted : transparent;
                 if self.hl: hl-marker := Rectangle { x: 0; width: 3px; background: Theme.accent; }
                 mr := MessageRow {
                     width: parent.width;
@@ -232,6 +233,7 @@ export component ActivityView inherits Rectangle {
     callback more-reactions(string, length, length);
     callback menu(Msg, length, length);
     callback notification-settings();
+    callback open-later();
     callback dismiss-banner();
 
     background: Theme.main;
@@ -275,7 +277,7 @@ export component ActivityView inherits Rectangle {
             // The feed
             Rectangle {
                 width: 380px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 VerticalLayout {
                     HorizontalLayout {
                         height: 56px;
@@ -283,6 +285,12 @@ export component ActivityView inherits Rectangle {
                         padding-right: 12px;
                         Text { text: "Activity"; color: Theme.fg; font-size: 20px * Theme.font-scale; font-weight: 700; vertical-alignment: center; }
                         Rectangle { horizontal-stretch: 1; }
+                        // Reminders and saved messages in one list.
+                        VerticalLayout {
+                            alignment: center;
+                            Pill { label: @tr("Later"); clicked => { root.open-later(); } }
+                        }
+                        Rectangle { width: 6px; }
                         more := IconButton {
                             icon: @image-url("../icons/more.svg");
                             y: 12px;
@@ -293,7 +301,7 @@ export component ActivityView inherits Rectangle {
                     Rectangle {
                         height: 32px;
                         border-radius: 4px;
-                        background: search-input.has-focus ? Theme.sidebar : Theme.surface;
+                        background: search-input.has-focus ? Theme.panel : Theme.surface;
                         border-width: 1px;
                         border-color: search-input.has-focus ? Theme.accent : Theme.border;
                         HorizontalLayout {
@@ -333,12 +341,12 @@ export component ActivityView inherits Rectangle {
 
                     if root.banner != "": Rectangle {
                         height: 34px;
-                        background: #3b1f22;
+                        background: Theme.danger-soft;
                         HorizontalLayout {
                             padding-left: 12px;
                             padding-right: 6px;
                             spacing: 8px;
-                            Text { text: root.banner; color: #ffffff; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                            Text { text: root.banner; color: Theme.fg-strong; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
                             IconButton { icon: @image-url("../icons/close.svg"); size: 24px; y: 5px; clicked => { root.dismiss-banner(); } }
                         }
                     }
@@ -387,7 +395,7 @@ export component ActivityView inherits Rectangle {
                 if root.selected-id != "": VerticalLayout {
                     Rectangle {
                         height: 64px;
-                        background: Theme.sidebar;
+                        background: Theme.panel;
                         HorizontalLayout {
                             padding-left: 20px;
                             padding-right: 16px;
@@ -405,7 +413,7 @@ export component ActivityView inherits Rectangle {
                                 border-radius: 4px;
                                 border-width: 1px;
                                 border-color: Theme.accent;
-                                background: go-touch.has-hover ? #3b3d6b : transparent;
+                                background: go-touch.has-hover ? Theme.accent-soft : transparent;
                                 go-text := Text {
                                     text: root.preview-is-channel ? "Go to channel" : "Go to chat";
                                     color: Theme.fg;
@@ -440,7 +448,7 @@ export component ActivityView inherits Rectangle {
                     // Reply in place: in the post's thread for a channel, in the chat otherwise.
                     Rectangle {
                         height: 56px;
-                        background: Theme.sidebar;
+                        background: Theme.panel;
                         HorizontalLayout {
                             padding: 10px;
                             spacing: 8px;
@@ -495,7 +503,7 @@ export component ActivityView inherits Rectangle {
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 6px;
-            drop-shadow-color: #00000080;
+            drop-shadow-color: Fixed.black-80;
             VerticalLayout {
                 padding-top: 1px;
                 mark-all-entry := MenuEntry {

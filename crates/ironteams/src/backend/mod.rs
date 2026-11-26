@@ -38,6 +38,7 @@ pub(crate) mod calls_page;
 mod cards;
 mod channel_tabs;
 mod channels;
+mod chat_note;
 mod clip_capture;
 pub(crate) mod composer_apps;
 mod dirty_stats;
@@ -127,7 +128,7 @@ pub use media::MediaCmd;
 pub(crate) use media::decode_for_test;
 pub use people::PeopleCmd;
 pub use quit::{QUIT_WITHIN, QuitDone};
-pub use remind::{RemindCmd, ReminderData, SnoozedData};
+pub use remind::{LaterData, RemindCmd, ReminderData, SnoozedData};
 pub use scheduled::ScheduledCmd;
 #[cfg(test)]
 pub(crate) use video_clips::RecordedClip;
@@ -156,7 +157,11 @@ pub enum Cmd {
     React(String, String),
     Reply(String),
     CancelReply,
+    /// Edit one of my messages: its row shows an editor with the message's text.
     Edit(String),
+    /// Save in that editor: the edit goes out like the composer's, and the editor closes. Ignored
+    /// when the edit was dropped meanwhile (Esc, another chat), so it never sends a new message.
+    SaveEdit(String),
     Delete(String),
     OpenUrl(String),
     OpenThread(String),
@@ -230,6 +235,8 @@ pub enum Cmd {
     ClearAllCache,
     /// The composer text changed.
     DraftEdited(String),
+    /// The text of the open chat's private note changed (`chat_note`).
+    NoteEdited(String),
     /// IronTeams is quitting: write what is pending, end every live call (a connected one, one
     /// ringing out or being answered) and leave presence, then say so through the token.
     Quit(QuitDone),
@@ -398,6 +405,7 @@ pub struct Engine {
     engage: Mutex<engage::State>,
     lists: Mutex<lists::State>,
     remind: Mutex<remind::State>,
+    chat_note: Mutex<chat_note::State>,
     voice: Mutex<voice_messages::State>,
     clips: Mutex<video_clips::State>,
     channels: Mutex<channels::State>,
@@ -539,6 +547,7 @@ impl Engine {
             engage: Mutex::new(engage::State::default()),
             lists: Mutex::new(lists::State::default()),
             remind: Mutex::new(remind::State::default()),
+            chat_note: Mutex::default(),
             voice: Mutex::default(),
             clips: Mutex::default(),
             channels: Mutex::new(channels::State::default()),
@@ -717,6 +726,7 @@ impl Engine {
         self.start_my_presence();
         self.start_people_presence();
         self.start_reminders();
+        self.start_mute_expiry();
         self.start_ongoing_calls();
         let e = self.clone();
         tokio::spawn(async move { e.live_loop().await });
@@ -770,6 +780,7 @@ impl Engine {
     pub fn dispatch(self: &Arc<Self>, cmd: Cmd) {
         match cmd {
             Cmd::DraftEdited(text) => self.draft_edited(text),
+            Cmd::NoteEdited(text) => self.note_edited(text),
             // Only reads, and the switch waits for it: answered at once.
             Cmd::InFlight => self.answer_in_flight(),
             // Its own task: it waits on the calls' hang-ups.
@@ -871,7 +882,9 @@ impl Engine {
                     self.ui
                         .reply_bar(self.sender_display_name(&r), reply_preview(&r), false);
                     let mut v = self.view.lock().unwrap();
-                    v.editing = None;
+                    if v.editing.take().is_some() {
+                        self.ui.inline_edit(String::new(), String::new());
+                    }
                     v.reply_to = Some(r);
                     drop(v);
                     self.schedule_draft_save();
@@ -882,31 +895,37 @@ impl Engine {
                 let row = self.store.lock().unwrap().message(&id)?;
                 if let Some(r) = row.filter(|r| r.sender_mri == self.me) {
                     // Only the author's own text is edited; a forwarded or quoted message is kept.
+                    // The text comes back in the composer's own source (bold, lists, links), so
+                    // sending it again gives the same message.
                     let split = ::render::split_quote_blocks(&r.content_html);
-                    let text = ::render::plain_text(&::render::parse_teams_html(&split.body));
+                    let text = ::render::composer_source(&::render::parse_rich_html(&split.body));
                     let text = self.restore_edit_mentions(&r, text);
-                    let banner = if text.is_empty() {
-                        reply_preview(&r)
-                    } else {
-                        text.chars().take(120).collect()
-                    };
-                    self.ui.reply_bar(String::new(), banner, true);
-                    self.ui.set_draft(text);
+                    // The editor is in the message's row; a reply bar over the composer would
+                    // be for a reply this edit drops.
+                    self.ui.reply_bar(String::new(), String::new(), false);
+                    self.ui.inline_edit(r.id.clone(), text);
                     let mut v = self.view.lock().unwrap();
                     v.reply_to = None;
                     v.editing = Some(r.id);
                     v.edit_quotes = (split.before, split.after);
                 }
-                self.ui.focus();
+            }
+            Cmd::SaveEdit(text) => {
+                if self.view.lock().unwrap().editing.is_some() {
+                    self.send(text, String::new()).await?;
+                } else {
+                    self.ui.inline_edit(String::new(), String::new());
+                }
             }
             Cmd::CancelReply => {
                 let mut v = self.view.lock().unwrap();
                 v.reply_to = None;
-                if v.editing.take().is_some() {
-                    // Back to the draft that was in the composer before the edit.
-                    self.ui.set_draft(v.draft_text.clone());
-                }
+                let was_editing = v.editing.take().is_some();
                 drop(v);
+                if was_editing {
+                    // The composer was left as it was; only the editor in the row goes.
+                    self.ui.inline_edit(String::new(), String::new());
+                }
                 self.ui.reply_bar(String::new(), String::new(), false);
                 self.schedule_draft_save();
             }
@@ -1049,6 +1068,7 @@ impl Engine {
             Cmd::AddFile(path) => self.add_file(path).await?,
             Cmd::RemoveAttachment(i) => self.remove_attachment(i),
             Cmd::DraftEdited(text) => self.draft_edited(text),
+            Cmd::NoteEdited(text) => self.note_edited(text),
             Cmd::Quit(done) => self.quit(done).await,
             Cmd::InFlight => self.answer_in_flight(),
             Cmd::SetEnterSends(on) => {

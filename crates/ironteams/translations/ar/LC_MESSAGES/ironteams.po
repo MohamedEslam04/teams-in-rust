@@ -339,6 +339,9 @@ msgstr "هل تريد إزالة سجل الدردشة؟"
 msgid "Remove from view"
 msgstr "إزالة من العرض"
 
+msgid "Remove image"
+msgstr "إزالة الصورة"
+
 msgid "Remove photo"
 msgstr "إزالة الصورة"
 
@@ -498,11 +501,47 @@ msgstr "الكتابة"
 msgid "Scrolling"
 msgstr "التمرير"
 
+msgid "Reactions"
+msgstr "التفاعلات"
+
+msgid "Quick reactions"
+msgstr "التفاعلات السريعة"
+
+msgid "The reactions shown when you point at a message. Choose one to replace it with any reaction Teams offers; an empty slot adds one."
+msgstr "التفاعلات التي تظهر عند تمرير المؤشر فوق رسالة. اختر تفاعلًا لاستبداله بأي تفاعل يقدمه Teams، والخانة الفارغة تضيف تفاعلًا."
+
+msgid "Quick reaction {}: {}"
+msgstr "التفاعل السريع {}: {}"
+
+msgid "Quick reaction {}: empty"
+msgstr "التفاعل السريع {}: فارغ"
+
+msgid "Reset quick reactions"
+msgstr "إعادة ضبط التفاعلات السريعة"
+
+msgid "Back to Like, Heart, Laugh and Surprised."
+msgstr "العودة إلى إعجاب وقلب وضحك ودهشة."
+
+msgid "Reset to default"
+msgstr "إعادة الضبط إلى الافتراضي"
+
 msgid "Mouse wheel speed"
 msgstr "سرعة عجلة الماوس"
 
 msgid "How far one notch of the mouse wheel scrolls messages and posts. A touchpad scrolls as it always does."
 msgstr "المسافة التي تمررها نقرة واحدة من عجلة الماوس في الرسائل والمنشورات. لوحة اللمس تمرر كما هي دائمًا."
+
+msgid "Start"
+msgstr "البدء"
+
+msgid "When IronTeams starts, open"
+msgstr "عند بدء IronTeams، افتح"
+
+msgid "Where I left off opens the page and the chat you had open when you closed IronTeams."
+msgstr "«من حيث توقفت» يفتح الصفحة والدردشة اللتين كانتا مفتوحتين عند إغلاق IronTeams."
+
+msgid "Where I left off"
+msgstr "من حيث توقفت"
 
 msgid "You asked {} for control"
 msgstr "طلبت من {} التحكم"
@@ -681,6 +720,9 @@ msgstr "الانتقال إلى الرسالة الأصلية"
 
 msgid "Find in chat or channel"
 msgstr "البحث في الدردشة أو القناة"
+
+msgid "Edit that message"
+msgstr "تحرير هذه الرسالة"
 
 msgid "Jump to the first message of the chat"
 msgstr "الانتقال إلى أول رسالة في الدردشة"
@@ -910,6 +952,21 @@ msgstr "إلغاء الكتم"
 msgid "Mute"
 msgstr "كتم"
 
+msgid "‹ Mute"
+msgstr "› كتم"
+
+msgid "Unmute (muted until {})"
+msgstr "إلغاء الكتم (مكتومة حتى {})"
+
+msgid "For 8 hours"
+msgstr "لمدة 8 ساعات"
+
+msgid "Until tomorrow 8:00"
+msgstr "حتى غد الساعة 8:00"
+
+msgid "For 1 week"
+msgstr "لمدة أسبوع"
+
 msgid "Manage notifications"
 msgstr "إدارة الإشعارات"
 
@@ -954,6 +1011,21 @@ msgstr "إعادة تسمية القسم"
 
 msgid "Delete section"
 msgstr "حذف القسم"
+
+msgid "Section options"
+msgstr "خيارات القسم"
+
+msgid "Sort by"
+msgstr "ترتيب حسب"
+
+msgid "Recent activity"
+msgstr "النشاط الأخير"
+
+msgid "A to Z"
+msgstr "من أ إلى ي"
+
+msgid "Unread first"
+msgstr "غير المقروءة أولًا"
 
 msgid "Section name"
 msgstr "اسم القسم"
@@ -1500,6 +1572,36 @@ msgstr "مريحة"
 msgid "Compact"
 msgstr "مضغوطة"
 
+msgid "Messages"
+msgstr "الرسائل"
+
+msgid "Message style"
+msgstr "نمط الرسائل"
+
+msgid "Bubbles is the usual look. Flat and Compact draw every message, yours too, as a line with the photo and name on the left. Compact also tightens the spacing."
+msgstr "«فقاعات» هو الشكل المعتاد. أما «مسطّح» و«مضغوط» فيعرضان كل رسالة، ورسائلك أيضًا، في سطر تظهر على يساره الصورة والاسم. ويقلّل «مضغوط» المسافات كذلك."
+
+msgid "Bubbles"
+msgstr "فقاعات"
+
+msgid "Flat"
+msgstr "مسطّح"
+
+msgid "Show avatars"
+msgstr "إظهار الصور الرمزية"
+
+msgid "The sender's photo beside each message. The name still opens the profile."
+msgstr "صورة المرسل بجانب كل رسالة. يظل الاسم يفتح الملف الشخصي."
+
+msgid "The time beside the sender's name. Resting the pointer on a message shows it."
+msgstr "الوقت بجانب اسم المرسل. يظهر عند تمرير المؤشر فوق الرسالة."
+
+msgid "Show reactions"
+msgstr "إظهار التفاعلات"
+
+msgid "The reactions under a message. Hiding them keeps them; you can still react from the message's hover bar."
+msgstr "التفاعلات أسفل الرسالة. إخفاؤها لا يحذفها، ويمكنك التفاعل من شريط الرسالة عند تمرير المؤشر."
+
 msgid "Larger text in Accessibility adds to this."
 msgstr "خيار «نص أكبر» في إمكانية الوصول يضاف إلى هذا."
 
@@ -1701,6 +1803,18 @@ msgstr "المجتمعات"
 msgid "{} (hidden)"
 msgstr "{} (مخفية)"
 
+msgid "Next unread chat"
+msgstr "المحادثة التالية غير المقروءة"
+
+msgid "Previous unread chat"
+msgstr "المحادثة السابقة غير المقروءة"
+
+msgid "Next unread chat (wraps around)"
+msgstr "المحادثة التالية غير المقروءة (تعود إلى البداية)"
+
+msgid "Previous unread chat (wraps around)"
+msgstr "المحادثة السابقة غير المقروءة (تعود إلى النهاية)"
+
 msgid "Mark all as read"
 msgstr "وضع علامة «مقروء» على الكل"
 
@@ -1718,6 +1832,12 @@ msgstr "الدردشات والقنوات معًا"
 
 msgid "Quick views"
 msgstr "عروض سريعة"
+
+msgid "Unreads"
+msgstr "غير المقروءة"
+
+msgid "Unread messages from your chats and channels are listed here."
+msgstr "تظهر هنا الرسائل غير المقروءة من الدردشات والقنوات."
 
 msgid "Mentions"
 msgstr "الإشارات"
@@ -1805,6 +1925,16 @@ msgstr "زر الرد يفتح المحادثة والمؤشر في مربع ا�
 
 msgid "Chat list width"
 msgstr "عرض قائمة المحادثات"
+
+# Split view: a second chat beside the open one.
+msgid "Open in split view"
+msgstr "فتح في عرض مقسّم"
+
+msgid "Close split view"
+msgstr "إغلاق العرض المقسّم"
+
+msgid "Split view width"
+msgstr "عرض اللوحة المقسّمة"
 
 msgid "Add a tab"
 msgstr "إضافة تبويب"
@@ -1965,6 +2095,33 @@ msgstr "إلغاء التأجيل"
 
 msgid "Snooze"
 msgstr "تأجيل"
+
+msgid "Later"
+msgstr "لاحقًا"
+
+msgid "Open Later"
+msgstr "فتح «لاحقًا»"
+
+msgid "Nothing here yet. Use \"Remind me\" or \"Save this message\" in a message's menu."
+msgstr "لا يوجد شيء هنا بعد. استخدم «ذكّرني» أو «حفظ هذه الرسالة» من قائمة الرسالة."
+
+msgid "Overdue · {}"
+msgstr "متأخر · {}"
+
+msgid "Due {}"
+msgstr "الموعد {}"
+
+msgid "Saved {}"
+msgstr "حُفظت {}"
+
+msgid "Mark done"
+msgstr "تمّ"
+
+msgid "Snooze 1 hour"
+msgstr "تأجيل ساعة"
+
+msgid "Snooze until tomorrow 9:00"
+msgstr "تأجيل حتى غد الساعة 9:00"
 
 msgid "‹ Snooze"
 msgstr "› تأجيل"
@@ -2463,3 +2620,177 @@ msgstr "أنواع النشاط"
 
 msgid "How each kind of activity reaches you: a banner and the Activity feed, the feed only, or nothing."
 msgstr "كيف يصلك كل نوع من النشاط: إشعار منبثق وموجز النشاط، أو الموجز فقط، أو لا شيء."
+
+msgid "Chat list"
+msgstr "قائمة المحادثات"
+
+msgid "Off: each chat takes one line, with the name only."
+msgstr "عند الإيقاف: تأخذ كل محادثة سطرًا واحدًا فيه الاسم فقط."
+
+msgid "The time of the last message at the end of each chat."
+msgstr "وقت آخر رسالة في نهاية كل محادثة."
+
+msgid "Channels are listed in the Chats section instead of their own."
+msgstr "تظهر القنوات في قسم المحادثات بدل قسمها الخاص."
+
+msgid "Sections"
+msgstr "الأقسام"
+
+msgid "Group chats in a section of your own in the chat list."
+msgstr "اجمع المحادثات في قسم خاص بك في قائمة المحادثات."
+
+msgid "Add emoji to status message"
+msgstr "إضافة رمز تعبيري إلى رسالة الحالة"
+
+msgid "Clears at {}"
+msgstr "تُمسح عند {}"
+
+msgid "Status message clears"
+msgstr "وقت مسح رسالة الحالة"
+
+# The private note on a chat (details pane and the header icon).
+
+msgid "Private note"
+msgstr "ملاحظة خاصة"
+
+msgid "Only on this computer. Never sent to Teams."
+msgstr "على هذا الكمبيوتر فقط. لا تُرسل أبدًا إلى Teams."
+
+msgid "Add a private note about this chat"
+msgstr "أضف ملاحظة خاصة عن هذه الدردشة"
+
+msgid "This chat has a private note"
+msgstr "هذه الدردشة بها ملاحظة خاصة"
+
+# Settings: Keyboard shortcuts page and the shortcut list's link to it.
+
+msgid "Show keyboard shortcuts"
+msgstr "عرض اختصارات لوحة المفاتيح"
+
+msgid "Back"
+msgstr "رجوع"
+
+msgid "Go to the search box"
+msgstr "الانتقال إلى مربع البحث"
+
+msgid "Show the list of commands"
+msgstr "عرض قائمة الأوامر"
+
+msgid "Filter the chat list"
+msgstr "تصفية قائمة المحادثات"
+
+msgid "Unread filter"
+msgstr "تصفية غير المقروء"
+
+msgid "Chats filter"
+msgstr "تصفية المحادثات"
+
+msgid "Channels filter"
+msgstr "تصفية القنوات"
+
+msgid "Clear filters"
+msgstr "مسح عوامل التصفية"
+
+msgid "Next unread chat or channel"
+msgstr "المحادثة أو القناة التالية غير المقروءة"
+
+msgid "Previous unread chat or channel"
+msgstr "المحادثة أو القناة السابقة غير المقروءة"
+
+msgid "Focus the compose box"
+msgstr "التركيز على مربع الكتابة"
+
+msgid "Focus the message pane"
+msgstr "التركيز على لوحة الرسائل"
+
+msgid "Expand the composer"
+msgstr "توسيع مربع الكتابة"
+
+msgid "Attach a file"
+msgstr "إرفاق ملف"
+
+msgid "Audio call (1:1 chat)"
+msgstr "مكالمة صوتية (محادثة فردية)"
+
+msgid "Video call (1:1 chat)"
+msgstr "مكالمة فيديو (محادثة فردية)"
+
+msgid "Share screen (1:1 chat)"
+msgstr "مشاركة الشاشة (محادثة فردية)"
+
+msgid "Default: {}"
+msgstr "الافتراضي: {}"
+
+msgid "Press the new keys…"
+msgstr "اضغط المفاتيح الجديدة…"
+
+msgid "Change shortcut: {}"
+msgstr "تغيير الاختصار: {}"
+
+msgid "Reset"
+msgstr "إعادة ضبط"
+
+msgid "Reset shortcut: {}"
+msgstr "إعادة ضبط الاختصار: {}"
+
+msgid "Already used by {}."
+msgstr "مستخدم بالفعل في: {}."
+
+msgid "Use Ctrl or Alt with the key, or a function key."
+msgstr "استخدم Ctrl أو Alt مع المفتاح، أو مفتاح وظيفي."
+
+msgid "IronTeams already uses that combination for editing, formatting or calls."
+msgstr "يستخدم IronTeams هذه التوليفة بالفعل للتحرير أو التنسيق أو المكالمات."
+
+msgid "That key cannot be used."
+msgstr "لا يمكن استخدام هذا المفتاح."
+
+msgid "Click the keys of a shortcut, then press the new ones. Esc cancels. Keys that another shortcut already uses are refused."
+msgstr "انقر على مفاتيح الاختصار ثم اضغط المفاتيح الجديدة. يلغي Esc التغيير. لا تُقبل المفاتيح التي يستخدمها اختصار آخر."
+
+msgid "Reset all shortcuts"
+msgstr "إعادة ضبط كل الاختصارات"
+
+msgid "Go back to the keys IronTeams comes with."
+msgstr "العودة إلى المفاتيح التي يأتي بها IronTeams."
+
+msgid "Reset all"
+msgstr "إعادة ضبط الكل"
+
+msgid "Shortcut error"
+msgstr "خطأ في الاختصار"
+
+msgid "Customize"
+msgstr "تخصيص"
+
+msgid "Change these shortcuts in Settings"
+msgstr "غيّر هذه الاختصارات من الإعدادات"
+
+msgid "Unreads: every unread message"
+msgstr "غير المقروءة: كل رسالة غير مقروءة"
+
+# Settings > Appearance > App bar: names, auto collapse, order and the Show box of each entry.
+
+msgid "App bar"
+msgstr "شريط التطبيقات"
+
+msgid "Show app names"
+msgstr "إظهار أسماء التطبيقات"
+
+msgid "The names under the app bar's icons (the bar's own Collapse does the same)."
+msgstr "الأسماء أسفل أيقونات شريط التطبيقات (زر الطي في الشريط يفعل الشيء نفسه)."
+
+msgid "Auto collapse app bar"
+msgstr "طي شريط التطبيقات تلقائيًا"
+
+msgid "Shows only the icons while the window is narrow."
+msgstr "يعرض الأيقونات فقط عندما تكون النافذة ضيقة."
+
+msgid "App bar order"
+msgstr "ترتيب شريط التطبيقات"
+
+msgid "Move the app bar's icons up or down and hide the ones you do not use. Chat always stays. Apps pinned from Teams are moved with a right click on their icon."
+msgstr "انقل أيقونات شريط التطبيقات لأعلى أو لأسفل وأخفِ ما لا تستخدمه. تبقى الدردشة دائمًا. التطبيقات المثبّتة من Teams تُنقل بالنقر بزر الماوس الأيمن على أيقونتها."
+
+msgid "Show"
+msgstr "إظهار"

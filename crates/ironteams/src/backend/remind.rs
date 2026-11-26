@@ -17,6 +17,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use teams_proto::time::now_ms;
 
+mod later;
+pub use later::LaterData;
+
 /// Key prefix of the saved state; the account follows, so accounts never mix.
 const KV_PREFIX: &str = "remind:";
 /// How often what is due is looked at.
@@ -73,6 +76,12 @@ pub enum RemindCmd {
     UnsnoozeChat(String),
     /// The panel opened: push the lists again.
     Refresh,
+    /// Later: "Mark done" on an item (a reminder is cancelled, a saved message unsaved).
+    LaterDone(String),
+    /// Later: snooze a reminder (id) for `1h` or until `tomorrow` 9:00.
+    LaterSnooze(String, String),
+    /// Later: "Open" an item, the chat and the message in it.
+    LaterOpen(String),
 }
 
 impl RemindCmd {
@@ -86,6 +95,9 @@ impl RemindCmd {
             "snooze" => RemindCmd::SnoozeChat(a, b),
             "unsnooze" => RemindCmd::UnsnoozeChat(a),
             "refresh" => RemindCmd::Refresh,
+            "later-done" => RemindCmd::LaterDone(a),
+            "later-snooze" => RemindCmd::LaterSnooze(a, b),
+            "later-open" => RemindCmd::LaterOpen(a),
             _ => return None,
         })
     }
@@ -289,6 +301,9 @@ impl Engine {
             RemindCmd::SnoozeChat(conv, kind) => self.remind_snooze_chat(&conv, &kind),
             RemindCmd::UnsnoozeChat(conv) => self.remind_unsnooze(&conv, false),
             RemindCmd::Refresh => self.remind_push(),
+            RemindCmd::LaterDone(id) => self.later_done(&id).await,
+            RemindCmd::LaterSnooze(id, kind) => self.later_snooze(&id, &kind),
+            RemindCmd::LaterOpen(id) => self.later_open(&id).await,
         }
         Ok(())
     }
@@ -383,7 +398,7 @@ impl Engine {
         self.remind_push();
     }
 
-    /// Sends the reminders and the snoozed chats to the panel.
+    /// Sends the reminders and the snoozed chats to the panel, and the Later list.
     pub(super) fn remind_push(&self) {
         self.remind_load();
         let now = now_ms();
@@ -419,6 +434,7 @@ impl Engine {
             .collect();
         drop(st);
         self.ui.reminders(reminders, snoozed);
+        self.later_push();
     }
 
     /// The notification's "Open": the chat, then the message in it.
@@ -858,6 +874,21 @@ mod tests {
         assert_eq!(
             RemindCmd::parse("cancel", "r"),
             Some(RemindCmd::Cancel("r".into()))
+        );
+        assert_eq!(
+            RemindCmd::parse("later-done", "saved:c\u{1f}m"),
+            Some(RemindCmd::LaterDone("saved:c\u{1f}m".into()))
+        );
+        assert_eq!(
+            RemindCmd::parse("later-snooze", "reminder:r\ttomorrow"),
+            Some(RemindCmd::LaterSnooze(
+                "reminder:r".into(),
+                "tomorrow".into()
+            ))
+        );
+        assert_eq!(
+            RemindCmd::parse("later-open", "reminder:r"),
+            Some(RemindCmd::LaterOpen("reminder:r".into()))
         );
         assert_eq!(RemindCmd::parse("nope", ""), None);
     }

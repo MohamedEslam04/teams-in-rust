@@ -73,6 +73,8 @@ use talk::*;
 mod controls;
 mod lifecycle;
 mod renegotiate;
+mod reoffers;
+use reoffers::*;
 mod run;
 
 const CSA_ME: &str = "https://teams.microsoft.com/api/csa/api/v1/teams/users/me?isPrefetch=false&enableMembershipSummary=true";
@@ -80,7 +82,7 @@ const MODALITIES: [Modality; 1] = [Modality::Audio];
 /// Incoming packets waiting for the decoder: about five seconds.
 const PLAY_QUEUE: usize = 256;
 
-/// A re-offer of ours whose answer is due, and what it asked for.
+/// One change a re-offer of ours carries (one re-offer may carry several: [`Sent::changes`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reoffer {
     /// Hold (`true`) or resume.
@@ -115,29 +117,29 @@ impl Reoffer {
 }
 
 /// Which re-offer of ours a `call/rejection` refuses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Refused {
-    /// One a media restart left behind: the session it was made on is gone, so nothing is put
-    /// back (the restart's answer already says what we send).
-    Superseded(Reoffer),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Refused<T> {
+    /// One their offer (or a media restart) left behind: nothing is put back (our answer to
+    /// theirs already said what we send).
+    Superseded(T),
     /// The one pending on the current session: put back as it was ([`Reoffer::refused`]).
-    Pending(Reoffer),
+    Pending(T),
 }
 
-/// A media restart (the other side's offer answered on a new session) while our re-offer is
-/// pending: that re-offer belonged to the old session, and its answer or rejection may still come.
-pub(crate) fn supersede(pending: &mut Option<Reoffer>, superseded: &mut Option<Reoffer>) {
+/// The other side's offer (a media restart, or glare) while our re-offer is pending: theirs wins,
+/// and the answer or rejection to ours may still come.
+pub(crate) fn supersede<T>(pending: &mut Option<T>, superseded: &mut Option<T>) {
     if let Some(r) = pending.take() {
         *superseded = Some(r);
     }
 }
 
-/// What a `call/rejection` refuses: the re-offer a media restart superseded first (it went out
+/// What a `call/rejection` refuses: the re-offer their offer superseded first (it went out
 /// earlier), else the pending one. `None`: no re-offer of ours is out, the rejection is the call's.
-pub(crate) fn refused_reoffer(
-    superseded: &mut Option<Reoffer>,
-    pending: &mut Option<Reoffer>,
-) -> Option<Refused> {
+pub(crate) fn refused_reoffer<T>(
+    superseded: &mut Option<T>,
+    pending: &mut Option<T>,
+) -> Option<Refused<T>> {
     superseded
         .take()
         .map(Refused::Superseded)
@@ -204,14 +206,9 @@ struct Call {
     share: Share,
     /// Captions, recording and transcription (the recorder bot).
     bots: Bots,
-    /// Our re-offer (hold, resume) as the media session made it, while its answer is due on the
-    /// `call/mediaAnswer` callback.
-    pending_offer: Option<String>,
-    /// Our re-offer (hold, resume, camera, share) while its answer is due: a `call/rejection`
-    /// then refuses only it, and the call goes on ([`Reoffer::refused`]).
-    reoffer: Option<Reoffer>,
-    /// Our re-offer a media restart left behind ([`supersede`]): its rejection undoes nothing.
-    superseded: Option<Reoffer>,
+    /// Our re-offers (hold, resume, camera, share): one out at a time, and what the other side
+    /// was last told ([`Reoffers`]).
+    reoffers: Reoffers,
     /// The session answering a media restart, until it connects or fails ([`NextMedia`]).
     next: Option<NextMedia>,
     /// Who we are transferring the call to, until `call/transferCompletion`.

@@ -15,10 +15,11 @@
 // ring for the keyboard (Tab, then Space or Enter) and the label read out as the switch's name,
 // so a click and a screen reader always reach the switch of the row the label is in. Sizes come
 // from `Space` and `SettingsMetrics`, colours from `Theme`.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Space } from "../tokens/space.slint";
 import { SettingsStore, SOption } from "../stores/settings_store.slint";
-import { SwitchTrack } from "../atoms/check.slint";
+import { CheckBox, SwitchTrack } from "../atoms/check.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { SChoice } from "settings_widgets.slint";
@@ -48,6 +49,7 @@ export component SettingsSections inherits VerticalLayout {
 // A heading, an optional description, and the card that holds the section's rows. `danger`
 // marks a section whose actions delete something.
 export component SettingsSection inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
     in property <string> title;
     in property <string> description;
     in property <bool> danger: false;
@@ -59,7 +61,7 @@ export component SettingsSection inherits VerticalLayout {
         if root.title != "": Text {
             horizontal-alignment: Theme.start-align;
             text: root.title;
-            color: root.danger ? Theme.danger : Theme.fg;
+            color: root.danger ? root.c.danger : root.c.fg;
             font-size: Theme.font-heading;
             font-weight: 600;
             wrap: word-wrap;
@@ -67,7 +69,7 @@ export component SettingsSection inherits VerticalLayout {
         if root.description != "": Text {
             horizontal-alignment: Theme.start-align;
             text: root.description;
-            color: Theme.fg-muted;
+            color: root.c.fg-muted;
             font-size: Theme.font-small;
             wrap: word-wrap;
         }
@@ -75,8 +77,8 @@ export component SettingsSection inherits VerticalLayout {
     card := Rectangle {
         border-radius: SettingsMetrics.radius;
         border-width: 1px;
-        border-color: root.danger ? Theme.danger : Theme.border;
-        background: Theme.card;
+        border-color: root.danger ? root.c.danger : root.c.border;
+        background: root.c.panel;
         // The rows' hover tint keeps the card's rounded corners.
         clip: true;
         VerticalLayout {
@@ -91,6 +93,7 @@ export component SettingsSection inherits VerticalLayout {
 // as wide as the row (choice pills, lists, forms). A row has a line above it unless it is the
 // first of its card.
 export component SettingsRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     in property <string> description;
     in property <bool> enabled: true;
@@ -119,7 +122,7 @@ export component SettingsRow inherits Rectangle {
         : max(SettingsMetrics.row-min, 2 * root.pad-y + max(root.text-h, root.ctl-h));
     // Opened by a Find result: the row is tinted for a moment, so the eye lands on it.
     property <bool> landed: false;
-    background: root.highlight ? Theme.surface-hover : (root.landed ? Theme.selected : transparent);
+    background: root.highlight ? root.c.surface-hover : (root.landed ? root.c.selected : transparent);
     animate background { duration: Theme.reduced-motion ? 0ms : 100ms; }
     // Opened by a Find result: tells the page where this row is.
     Timer {
@@ -141,7 +144,7 @@ export component SettingsRow inherits Rectangle {
         y: 0px;
         width: root.inner;
         height: 1px;
-        background: Theme.border;
+        background: root.c.border;
     }
     txt := VerticalLayout {
         x: Theme.rtl && !root.stack ? root.width - root.pad-x - root.text-w : root.pad-x;
@@ -152,14 +155,14 @@ export component SettingsRow inherits Rectangle {
         if root.label != "" && !root.quiet-text: Text {
             horizontal-alignment: Theme.start-align;
             text: root.label;
-            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            color: root.enabled ? root.c.fg : root.c.fg-subtle;
             font-size: Theme.font-body;
             wrap: word-wrap;
         }
         if root.label != "" && root.quiet-text: Text {
             horizontal-alignment: Theme.start-align;
             text: root.label;
-            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            color: root.enabled ? root.c.fg : root.c.fg-subtle;
             font-size: Theme.font-body;
             wrap: word-wrap;
             accessible-role: none;
@@ -167,14 +170,14 @@ export component SettingsRow inherits Rectangle {
         if root.description != "" && !root.quiet-text: Text {
             horizontal-alignment: Theme.start-align;
             text: root.description;
-            color: root.enabled ? Theme.fg-muted : Theme.fg-subtle;
+            color: root.enabled ? root.c.fg-muted : root.c.fg-subtle;
             font-size: Theme.font-small;
             wrap: word-wrap;
         }
         if root.description != "" && root.quiet-text: Text {
             horizontal-alignment: Theme.start-align;
             text: root.description;
-            color: root.enabled ? Theme.fg-muted : Theme.fg-subtle;
+            color: root.enabled ? root.c.fg-muted : root.c.fg-subtle;
             font-size: Theme.font-small;
             wrap: word-wrap;
             accessible-role: none;
@@ -197,12 +200,13 @@ export component SettingsRow inherits Rectangle {
 // Free content in a card (a paragraph, a list, a form): padded like a row, its children one
 // under the other, with the line above it unless it is the first of its card.
 export component SettingsBlock inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     if root.y > 2px: Rectangle {
         x: SettingsMetrics.row-pad-x;
         y: 0px;
         width: max(0px, root.width - 2 * SettingsMetrics.row-pad-x);
         height: 1px;
-        background: Theme.border;
+        background: root.c.border;
     }
     VerticalLayout {
         padding-left: SettingsMetrics.row-pad-x;
@@ -217,7 +221,8 @@ export component SettingsBlock inherits Rectangle {
 
 // A paragraph in a section: explanation, status or "not available yet".
 export component SettingsNote inherits Text {
-    color: Theme.fg-muted;
+    in property <Tokens> c: Theme.content;
+    color: root.c.fg-muted;
     font-size: Theme.font-small;
     wrap: word-wrap;
     horizontal-alignment: Theme.start-align;
@@ -228,6 +233,7 @@ export component SettingsNote inherits Text {
 // by its description. Like the old settings switch it flips `checked` itself, then says so
 // through `toggled`.
 export component SettingsSwitchRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     in property <string> description;
     in-out property <bool> checked;
@@ -250,6 +256,7 @@ export component SettingsSwitchRow inherits Rectangle {
         }
     }
     row := SettingsRow {
+        c: root.c;
         width: parent.width;
         divider: root.y > 2px;
         label: root.label;
@@ -258,6 +265,7 @@ export component SettingsSwitchRow inherits Rectangle {
         quiet-text: true;
         highlight: touch.has-hover && root.enabled;
         SwitchTrack {
+            c: root.c;
             checked: root.checked;
             enabled: root.enabled;
             hovered: touch.has-hover;
@@ -296,7 +304,7 @@ export component SettingsSwitchRow inherits Rectangle {
         height: parent.height - 4px;
         border-radius: SettingsMetrics.radius - 2px;
         border-width: 2px;
-        border-color: Theme.accent;
+        border-color: root.c.accent;
     }
 }
 
@@ -308,6 +316,7 @@ export component SettingsChoiceRow inherits SettingsRow {
     callback picked(string);
     stacked: true;
     SChoice {
+        c: root.c;
         group: root.label;
         options: root.options;
         value: root.value;
@@ -324,6 +333,7 @@ export component SettingsButtonRow inherits SettingsRow {
     in property <bool> button-enabled: true;
     callback clicked();
     Button {
+        c: root.c;
         variant: ButtonVariant.settings;
         label: root.button-label;
         primary: root.primary;
@@ -331,6 +341,42 @@ export component SettingsButtonRow inherits SettingsRow {
         enabled: root.button-enabled;
         clicked => { root.clicked(); }
     }
+}
+
+// One entry of a list the user orders: its name on the start side, Move up and Move down, and a
+// checkbox that shows or hides it (an entry that cannot be hidden keeps the room, without the
+// box). Each control is read out with the entry's name.
+export component SettingsOrderRow inherits SettingsRow {
+    in property <bool> shown: true;
+    in property <bool> can-hide: true;
+    in property <bool> first;
+    in property <bool> last;
+    callback up();
+    callback down();
+    callback toggled(bool);
+    Button {
+        c: root.c;
+        variant: ButtonVariant.settings;
+        label: @tr("Move up");
+        accessible-label: @tr("Move up") + ": " + root.label;
+        enabled: !root.first;
+        clicked => { root.up(); }
+    }
+    Button {
+        c: root.c;
+        variant: ButtonVariant.settings;
+        label: @tr("Move down");
+        accessible-label: @tr("Move down") + ": " + root.label;
+        enabled: !root.last;
+        clicked => { root.down(); }
+    }
+    if root.can-hide: CheckBox {
+        c: root.c;
+        checked: root.shown;
+        label: @tr("Show") + ": " + root.label;
+        toggled(on) => { root.toggled(on); }
+    }
+    if !root.can-hide: Rectangle { width: 18px; height: 18px; accessible-role: none; }
 }
 
 // A name with one action on the end side (Unblock, Remove): the button is read out as
@@ -341,6 +387,7 @@ export component SPersonRow inherits SettingsRow {
     callback act();
     label: root.name;
     Button {
+        c: root.c;
         variant: ButtonVariant.settings;
         label: root.action;
         accessible-label: root.action + " " + root.name;
@@ -351,6 +398,7 @@ export component SPersonRow inherits SettingsRow {
 // A row that takes you somewhere (a Find in Settings result): the label and where it is, a
 // chevron on the end side. The whole row is one button: click, or Tab then Space or Enter.
 export component SettingsLinkRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> label;
     in property <string> description;
     // What a screen reader says for the row ("" says the label).
@@ -363,6 +411,7 @@ export component SettingsLinkRow inherits Rectangle {
     accessible-description: root.description;
     accessible-action-default => { root.clicked(); }
     row := SettingsRow {
+        c: root.c;
         width: parent.width;
         divider: root.y > 2px;
         label: root.label;
@@ -370,8 +419,9 @@ export component SettingsLinkRow inherits Rectangle {
         quiet-text: true;
         highlight: touch.has-hover;
         Icon {
+            c: root.c;
             source: Theme.rtl ? @image-url("../icons/chevron-left.svg") : @image-url("../icons/chevron-right.svg");
-            tint: Theme.fg-muted;
+            tint: root.c.fg-muted;
             width: 16px;
             height: 16px;
         }
@@ -402,6 +452,6 @@ export component SettingsLinkRow inherits Rectangle {
         height: parent.height - 4px;
         border-radius: SettingsMetrics.radius - 2px;
         border-width: 2px;
-        border-color: Theme.accent;
+        border-color: root.c.accent;
     }
 }

@@ -292,6 +292,7 @@ export component MessagePane inherits Rectangle {
                 }
                 react(k) => { root.react(m.id, k); }
                 reply => { root.reply(m.id); }
+                key-edit: true;
                 edit => { root.edit(m.id); }
                 more-reactions(x, y) => {
                     root.picker-msg-id = m.id;
@@ -507,7 +508,7 @@ export component MessagePane inherits Rectangle {
                 border-color: Theme.accent-strong;
                 jump-text := Text {
                     text: root.new-count > 0 ? @tr("↓ Jump to newest · {}", root.new-count) : @tr("↓ Jump to newest");
-                    color: #ffffff;
+                    color: Theme.on-accent;
                     font-size: 12px * Theme.font-scale;
                     font-weight: 600;
                     horizontal-alignment: center;

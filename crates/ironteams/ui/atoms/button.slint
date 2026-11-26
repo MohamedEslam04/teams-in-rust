@@ -5,6 +5,7 @@
 // `Button` is as wide as its label (and icon); `FlexButton` is the same button sized by the
 // layout it sits in (its label width is only the preferred and minimum width), as the calendar's
 // toolbars and forms lay their buttons out.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "widgets.slint";
 
@@ -40,6 +41,7 @@ export enum ButtonVariant {
 }
 
 component ButtonBody inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <ButtonVariant> variant: ButtonVariant.dialog;
     in property <string> label;
     in property <image> icon;
@@ -101,21 +103,21 @@ component ButtonBody inherits Rectangle {
         : root.variant == ButtonVariant.kit ? (root.primary || root.active ? 0px : 1px)
         : root.variant == ButtonVariant.accent-outline || root.variant == ButtonVariant.toggle || root.variant == ButtonVariant.subtle ? 1px
         : 0px;
-    border-color: root.variant == ButtonVariant.toolbar ? (root.active ? Theme.accent : (root.danger ? Theme.danger : Theme.border))
-        : root.variant == ButtonVariant.accent-outline ? (root.enabled ? Theme.accent : Theme.border)
-        : Theme.border;
-    background: root.variant == ButtonVariant.dialog ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? (root.hover ? #e0474b : Theme.danger) : (root.hover ? Theme.surface-hover : Theme.surface))
-        : root.variant == ButtonVariant.settings ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.danger ? Theme.danger : (root.hover ? Theme.surface-hover : Theme.surface))
-        : root.variant == ButtonVariant.toolbar ? (!root.enabled ? Theme.surface : root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : root.active ? #3b3d6b : (root.hover ? Theme.surface-hover : Theme.surface))
-        : root.variant == ButtonVariant.kit ? (root.primary ? (root.hot ? Theme.accent : Theme.accent-strong) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent))
-        : root.variant == ButtonVariant.command ? (root.primary ? (root.hot ? Theme.accent : Theme.accent-strong) : (root.hot ? Theme.surface-hover : transparent))
-        : root.variant == ButtonVariant.accent-outline ? (root.hot ? #34365c : transparent)
-        : root.variant == ButtonVariant.card ? (root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : (root.hover ? Theme.surface-hover : transparent))
-        : root.variant == ButtonVariant.flat ? (root.primary ? Theme.accent-strong : root.danger ? Theme.danger : (root.hot ? Theme.surface-hover : transparent))
-        : root.variant == ButtonVariant.toggle ? (root.active ? Theme.accent-strong : (root.hover ? Theme.surface-hover : Theme.surface))
-        : root.variant == ButtonVariant.subtle ? (root.hover ? Theme.surface-hover : transparent)
-        : root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? (root.hover ? Theme.accent : Theme.accent-strong) : (root.hover ? Theme.surface-hover : Theme.surface))
-        : (root.danger ? (root.hover ? #a4262c : Theme.danger) : root.active ? Theme.selected : (root.hot ? Theme.surface-hover : transparent));
+    border-color: root.variant == ButtonVariant.toolbar ? (root.active ? root.c.accent : (root.danger ? root.c.danger : root.c.border))
+        : root.variant == ButtonVariant.accent-outline ? (root.enabled ? root.c.accent : root.c.border)
+        : root.c.border;
+    background: root.variant == ButtonVariant.dialog ? (!root.enabled ? root.c.surface : root.primary ? (root.hover ? root.c.accent : root.c.accent-strong) : root.danger ? (root.hover ? root.c.danger-hover : root.c.danger) : (root.hover ? root.c.surface-hover : root.c.surface))
+        : root.variant == ButtonVariant.settings ? (!root.enabled ? root.c.surface : root.primary ? (root.hover ? root.c.accent : root.c.accent-strong) : root.danger ? root.c.danger : (root.hover ? root.c.surface-hover : root.c.surface))
+        : root.variant == ButtonVariant.toolbar ? (!root.enabled ? root.c.surface : root.primary ? (root.hover ? root.c.accent : root.c.accent-strong) : root.active ? root.c.accent-soft : (root.hover ? root.c.surface-hover : root.c.surface))
+        : root.variant == ButtonVariant.kit ? (root.primary ? (root.hot ? root.c.accent : root.c.accent-strong) : root.active ? root.c.selected : (root.hot ? root.c.surface-hover : transparent))
+        : root.variant == ButtonVariant.command ? (root.primary ? (root.hot ? root.c.accent : root.c.accent-strong) : (root.hot ? root.c.surface-hover : transparent))
+        : root.variant == ButtonVariant.accent-outline ? (root.hot ? root.c.accent-subtle : transparent)
+        : root.variant == ButtonVariant.card ? (root.primary ? (root.hover ? root.c.accent : root.c.accent-strong) : (root.hover ? root.c.surface-hover : transparent))
+        : root.variant == ButtonVariant.flat ? (root.primary ? root.c.accent-strong : root.danger ? root.c.danger : (root.hot ? root.c.surface-hover : transparent))
+        : root.variant == ButtonVariant.toggle ? (root.active ? root.c.accent-strong : (root.hover ? root.c.surface-hover : root.c.surface))
+        : root.variant == ButtonVariant.subtle ? (root.hover ? root.c.surface-hover : transparent)
+        : root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? (root.hover ? root.c.accent : root.c.accent-strong) : (root.hover ? root.c.surface-hover : root.c.surface))
+        : (root.danger ? (root.hover ? root.c.danger-hover : root.c.danger) : root.active ? root.c.selected : (root.hot ? root.c.surface-hover : transparent));
 
     accessible-role: button;
     accessible-label: root.label;
@@ -131,19 +133,21 @@ component ButtonBody inherits Rectangle {
     }
 
     if root.inline-row && root.has-icon: Icon {
+        c: root.c;
         x: root.pad;
         y: 8px;
         source: root.icon;
         width: 16px;
         height: 16px;
-        tint: root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg-muted);
+        tint: root.primary ? root.c.on-accent : (root.danger ? root.c.danger : root.c.fg-muted);
     }
     if root.stacked: Icon {
+        c: root.c;
         x: (root.width - 20px) / 2;
         y: (root.height - 23px - lbl.preferred-height) / 2;
         opacity: root.enabled ? 1 : 0.4;
         source: root.icon;
-        tint: root.danger ? #ffffff : root.active ? Theme.accent : Theme.fg;
+        tint: root.danger ? root.c.on-danger : root.active ? root.c.accent : root.c.fg;
         width: 20px;
         height: 20px;
     }
@@ -156,15 +160,15 @@ component ButtonBody inherits Rectangle {
         height: root.inline-row ? root.height : self.preferred-height;
         opacity: root.stacked && !root.enabled ? 0.4 : 1;
         text: root.label;
-        color: root.variant == ButtonVariant.dialog ? (root.enabled ? #ffffff : Theme.fg-subtle)
-            : root.variant == ButtonVariant.settings ? (!root.enabled ? Theme.fg-subtle : (root.primary || root.danger ? #ffffff : Theme.fg))
-            : root.variant == ButtonVariant.toolbar ? (!root.enabled ? Theme.fg-subtle : (root.danger && !root.primary ? #ff8a8d : Theme.fg))
-            : root.inline-row ? (root.primary ? #ffffff : (root.danger ? Theme.danger : Theme.fg))
-            : root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? #ffffff : Theme.fg)
-            : root.variant == ButtonVariant.flat ? (root.primary || root.danger ? #ffffff : Theme.fg)
-            : root.variant == ButtonVariant.toggle ? (root.active ? #ffffff : Theme.fg)
-            : root.stacked ? (root.danger ? #ffffff : Theme.fg-muted)
-            : Theme.fg;
+        color: root.variant == ButtonVariant.dialog ? (root.enabled ? (root.primary ? root.c.on-accent : root.danger ? root.c.on-danger : root.c.fg-strong) : root.c.fg-subtle)
+            : root.variant == ButtonVariant.settings ? (!root.enabled ? root.c.fg-subtle : (root.primary || root.danger ? (root.danger ? root.c.on-danger : root.c.on-accent) : root.c.fg))
+            : root.variant == ButtonVariant.toolbar ? (!root.enabled ? root.c.fg-subtle : (root.danger && !root.primary ? root.c.danger-text : root.c.fg))
+            : root.inline-row ? (root.primary ? root.c.on-accent : (root.danger ? root.c.danger : root.c.fg))
+            : root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? (root.primary ? root.c.on-accent : root.c.fg)
+            : root.variant == ButtonVariant.flat ? (root.primary || root.danger ? (root.danger ? root.c.on-danger : root.c.on-accent) : root.c.fg)
+            : root.variant == ButtonVariant.toggle ? (root.active ? root.c.on-accent : root.c.fg)
+            : root.stacked ? (root.danger ? root.c.on-danger : root.c.fg-muted)
+            : root.c.fg;
         font-size: root.text-size;
         font-weight: root.variant == ButtonVariant.dialog || root.variant == ButtonVariant.settings || root.variant == ButtonVariant.card || root.variant == ButtonVariant.solid || root.variant == ButtonVariant.action ? 600
             : root.variant == ButtonVariant.flat && root.primary ? 600
@@ -173,12 +177,13 @@ component ButtonBody inherits Rectangle {
         vertical-alignment: root.stacked ? top : center;
     }
     if root.inline-row && root.chevron: Icon {
+        c: root.c;
         x: root.width - root.pad - 12px;
         y: 10px;
         source: @image-url("../icons/chevron-down.svg");
         width: 12px;
         height: 12px;
-        tint: root.primary ? #ffffff : Theme.fg-muted;
+        tint: root.primary ? root.c.on-accent : root.c.fg-muted;
     }
     keys := FocusScope {
         width: 0px;
@@ -219,7 +224,7 @@ component ButtonBody inherits Rectangle {
         height: parent.height + 6px;
         border-radius: 6px;
         border-width: 2px;
-        border-color: Theme.accent;
+        border-color: root.c.accent;
     }
     if root.stacked && touch.has-hover && root.tip != "": Rectangle {
         y: root.height + 4px;
@@ -229,11 +234,11 @@ component ButtonBody inherits Rectangle {
         height: tip-text.preferred-height + 10px;
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.surface;
+        border-color: root.c.border;
+        background: root.c.surface;
         tip-text := Text {
             text: root.tip;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 12px * Theme.font-scale;
         }
     }

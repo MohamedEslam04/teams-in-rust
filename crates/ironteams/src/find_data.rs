@@ -7,7 +7,7 @@ use crate::data::Pixels;
 #[derive(Clone)]
 pub struct HitData {
     pub id: String,
-    /// `message`, `file`, `person`, `channel`, `chat`, `meeting` or `thread`.
+    /// `message`, `file`, `person`, `channel`, `chat`, `meeting`, `thread` or `unread-group`.
     pub kind: &'static str,
     /// Non-empty on the first row of a section of the All tab ("Messages", "Files", …).
     pub section: String,
@@ -22,6 +22,8 @@ pub struct HitData {
     /// The person the photo shows (a message's sender, a People hit), for the hover card.
     pub person: String,
     pub rtl: bool,
+    /// On an `unread-group` header: the number of unread messages under it.
+    pub count: i32,
 }
 
 /// A suggestion in the "In" and "Person" filter editors.

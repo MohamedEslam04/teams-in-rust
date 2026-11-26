@@ -6,6 +6,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { SearchBox } from "../atoms/search_box.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // One line of the command list: an app's name (header) or one of its commands.
 export struct CaCommand {
@@ -86,10 +87,10 @@ component CaRow inherits Rectangle {
             height: 40px;
             border-radius: 4px;
             clip: true;
-            background: root.has-thumb ? #ffffff10 : Theme.accent-strong;
+            background: root.has-thumb ? Fixed.white-10 : Theme.accent-strong;
             if !root.has-thumb: Text {
                 text: root.letter;
-                color: #ffffff;
+                color: root.has-thumb ? Fixed.white : Theme.on-accent;
                 font-size: 16px * Theme.font-scale;
                 font-weight: 700;
                 horizontal-alignment: center;
@@ -139,11 +140,11 @@ export component ComposerAppsOverlay inherits Rectangle {
             x: parent.width - self.width - 24px;
             y: parent.height - self.height - 120px;
             border-radius: 8px;
-            background: #2b2b2b;
+            background: Theme.surface;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 16px;
-            drop-shadow-color: #000000a0;
+            drop-shadow-color: Fixed.black-a0;
             TouchArea { }
             VerticalLayout {
                 padding: 12px;

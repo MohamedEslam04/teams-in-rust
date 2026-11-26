@@ -10,6 +10,7 @@ import { Avatar } from "../atoms/avatar.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { ProfileActions, ProfileBody, InfoRow } from "profile_parts.slint";
 import { ScrollView } from "std-widgets.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // One tab of the bar: accent text with a 2px accent underline when active.
 component ProfileTab inherits Rectangle {
@@ -87,7 +88,7 @@ export component ProfileModal inherits Rectangle {
     callback copy-email();
     callback quick-message(string);
     callback call-number(string);
-    background: #000000a0;
+    background: Fixed.black-a0;
 
     // A click on the scrim closes it.
     TouchArea { clicked => { root.close(); } }

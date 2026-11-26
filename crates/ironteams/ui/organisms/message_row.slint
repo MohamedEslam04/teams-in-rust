@@ -1,9 +1,12 @@
 import { Theme } from "../tokens/theme.slint";
 import { Msg } from "../tokens/types.slint";
+import { EditStore } from "../stores/edit_store.slint";
+import { Composer } from "composer.slint";
 import { AddReactionChip, Icon, IconButton, ReactionChip } from "../atoms/widgets.slint";
 import { FileCard, LoopCardView, MeetLinkCard } from "../molecules/cards.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { CalStore } from "../stores/calendar_store.slint";
+import { SettingsStore } from "../stores/settings_store.slint";
 import { CardView } from "../molecules/card_view.slint";
 import { LinkCardView, MediaStore } from "media.slint";
 import { VoicePlayer } from "../molecules/voice_player.slint";
@@ -13,12 +16,19 @@ import { MeetingCardView } from "meeting_card.slint";
 import { DeliveryMark } from "../molecules/delivery_mark.slint";
 import { FadeImage, Motion, PopIn } from "../tokens/motion.slint";
 import { PostBlock, ReaderItem } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // Right clicks the window saw (`main.rs` counts them). The words of a message are selectable
 // text, which takes the press, as do its links and buttons, so the row's own `pointer-event`
 // never sees a right click on them: the hovered row opens its menu from this count instead.
 export global MessagePointer {
     in-out property <int> right-clicks;
+    // Left clicks the window saw (`main.rs`), and the request that follows from one on a message:
+    // the window takes the keyboard (`AppKeys`), so a key like E is not typed into the composer.
+    in-out property <int> left-clicks;
+    in-out property <int> focus-tick;
+    // The message of mine under the pointer that the E key edits (`key-edit` rows only), or "".
+    in-out property <string> edit-id;
 }
 
 // A reader's photo under my message: their initials in a small circle that slides in from the
@@ -201,6 +211,25 @@ export component MessageRow inherits TouchArea {
     callback react(string);
     callback reply();
     callback edit();
+    // The row's list wires `edit` to the window's, so E over the row (or its hover bar) edits it
+    // (`MessagePointer.edit-id`, read by `AppKeys`).
+    in property <bool> key-edit: false;
+    // The pointer is on the hover bar, which sits above the row.
+    property <bool> bar-hover: false;
+    // This message is the one being edited (`EditStore`): its editor takes the place of its words.
+    property <bool> editing-here: root.key-edit && root.m.id != "" && EditStore.id == root.m.id;
+    // The same condition as the hover bar's Edit button, and not while its editor is open.
+    property <string> hover-edit-id: root.key-edit && !root.editing-here && root.m.mine && !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed && (root.has-hover || root.bar-hover) ? root.m.id : "";
+    property <string> claimed-edit-id;
+    changed hover-edit-id => {
+        if self.hover-edit-id != "" {
+            MessagePointer.edit-id = self.hover-edit-id;
+            self.claimed-edit-id = self.hover-edit-id;
+        } else {
+            if MessagePointer.edit-id == self.claimed-edit-id { MessagePointer.edit-id = ""; }
+            self.claimed-edit-id = "";
+        }
+    }
     // "More reactions" and the "…" menu, anchored at window coordinates.
     callback more-reactions(length, length);
     callback menu(length, length);
@@ -220,6 +249,14 @@ export component MessageRow inherits TouchArea {
     // window coordinates: resting on it opens the hover card.
     callback photo-hover(string, bool, length, length, length, length);
     height: content.preferred-height;
+    // Flat and Compact (Settings > Appearance > Messages): no bubble, and everyone, my messages
+    // too, is drawn on the left with a photo and a name. Compact also tightens the spacing and
+    // shrinks the photo. A post keeps its own look.
+    property <bool> flat: !root.post-style && SettingsStore.message-style != "bubbles";
+    property <bool> tight: !root.post-style && SettingsStore.message-style == "compact";
+    // Everyone on the left: a channel card, or a flat line.
+    property <bool> left-side: root.card-style || root.flat;
+    property <length> photo: root.tight ? 24px : 32px;
     // A post's pictures keep the grid's size, which does not change when their pixels are
     // dropped off screen and is what they are decoded for (larger would blur), and shrink to
     // fit a card narrower than the grid. A chat bubble keeps the grid's own size.
@@ -251,17 +288,26 @@ export component MessageRow inherits TouchArea {
     changed right-clicks => {
         if root.has-hover { root.open-menu-here(); }
     }
+    // A click on the message (its words take the press themselves, so this is the window's count)
+    // moves the keyboard off the composer. Not for the hover bar, whose buttons act on their own,
+    // nor for the editor, which keeps the keyboard.
+    property <int> left-clicks: MessagePointer.left-clicks;
+    changed left-clicks => {
+        if root.key-edit && root.has-hover && !root.bar-hover && !root.editing-here && !root.select-mode {
+            MessagePointer.focus-tick += 1;
+        }
+    }
 
-    if root.m.selected: Rectangle { background: #7f85f526; }
+    if root.m.selected: Rectangle { background: Theme.accent-wash; }
     // The row a jump from the pinned banner landed on.
-    if root.m.flash: Rectangle { background: #7f85f540; }
+    if root.m.flash: Rectangle { background: Theme.accent-tint; }
 
     content := VerticalLayout {
         width: root.width;
         padding-left: root.select-mode ? 44px : (root.post-style ? 24px : 20px);
         padding-right: root.post-style ? 24px : 20px;
-        padding-top: root.post-style ? 0px : (root.m.show-header || root.m.day != "" ? 10px : 2px);
-        spacing: 4px;
+        padding-top: root.post-style ? 0px : (root.m.show-header || root.m.day != "" ? (root.tight ? 6px : 10px) : (root.tight ? 0px : 2px));
+        spacing: root.tight ? 2px : 4px;
 
         if root.m.day != "": day-line := Rectangle {
             property <bool> hover: false;
@@ -309,11 +355,11 @@ export component MessageRow inherits TouchArea {
         }
 
         if !root.m.system: HorizontalLayout {
-            alignment: root.post-style ? stretch : (root.m.mine && !root.card-style ? end : start);
+            alignment: root.post-style || root.flat ? stretch : (root.m.mine && !root.card-style ? end : start);
             spacing: 10px;
 
-            if (!root.m.mine || root.card-style) && !root.post-style: Rectangle {
-                width: 32px;
+            if (!root.m.mine || root.left-side) && !root.post-style && SettingsStore.show-avatars: Rectangle {
+                width: root.photo;
                 if root.m.show-header: Avatar {
                     y: 0;
                     initials: root.m.initials;
@@ -321,7 +367,7 @@ export component MessageRow inherits TouchArea {
                     img: root.m.avatar;
                     has-img: root.m.has-avatar;
                     presence: root.m.presence;
-                    size: 32px;
+                    size: root.photo;
                     avatar-touch := TouchArea {
                         mouse-cursor: pointer;
                         accessible-role: button;
@@ -343,19 +389,19 @@ export component MessageRow inherits TouchArea {
             bubble := Rectangle {
                 max-width: root.max-bubble;
                 // A post fills its card; a bubble is as wide as its content (`alignment` above).
-                horizontal-stretch: root.post-style ? 1 : 0;
+                horizontal-stretch: root.post-style || root.flat ? 1 : 0;
                 border-radius: Theme.radius;
-                background: root.post-style ? transparent : (root.m.mentions-me ? #3a3a63 : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other));
+                background: root.post-style ? transparent : (root.flat ? (root.m.mentions-me ? Theme.selected : transparent) : (root.m.mentions-me ? Theme.bubble-mention : (root.m.mine ? Theme.bubble-mine : Theme.bubble-other)));
                 opacity: root.m.pending ? 0.6 : 1.0;
-                border-width: root.m.failed || (root.m.mentions-me && !root.post-style) ? 1px : 0px;
+                border-width: root.m.failed || (root.m.mentions-me && !root.post-style && !root.flat) ? 1px : 0px;
                 border-color: root.m.failed ? Theme.danger : Theme.accent;
 
                 VerticalLayout {
-                    padding-left: root.post-style ? 0px : 14px;
-                    padding-right: root.post-style ? 0px : 14px;
-                    padding-top: root.post-style ? 0px : 8px;
-                    padding-bottom: root.post-style ? 0px : 10px;
-                    spacing: root.post-style ? 8px : 6px;
+                    padding-left: root.post-style ? 0px : (root.flat ? 6px : 14px);
+                    padding-right: root.post-style ? 0px : (root.flat ? 6px : 14px);
+                    padding-top: root.post-style ? 0px : (root.flat ? (root.tight ? 0px : 2px) : 8px);
+                    padding-bottom: root.post-style ? 0px : (root.flat ? (root.tight ? 0px : 4px) : 10px);
+                    spacing: root.post-style ? 8px : (root.tight ? 2px : (root.flat ? 4px : 6px));
 
                     if root.post-style: PostHeader {
                         m: root.m;
@@ -365,10 +411,12 @@ export component MessageRow inherits TouchArea {
                         photo-hover(id, on, x, y, w, h) => { root.photo-hover(id, on, x, y, w, h); }
                     }
 
-                    if (root.m.show-header || root.m.mine) && !root.post-style: HorizontalLayout {
+                    // My bubble's header is only its time (and "Edited"): with no time it has nothing
+                    // to show, so it is left out rather than drawn as an empty line.
+                    if !root.post-style && (root.m.mine && !root.left-side ? (SettingsStore.show-timestamps || root.m.edited) : (root.m.show-header || (root.m.mine && !root.flat))): HorizontalLayout {
                         spacing: 8px;
-                        alignment: root.m.mine && !root.card-style ? end : start;
-                        if !root.m.mine || root.card-style: Rectangle {
+                        alignment: root.m.mine && !root.left-side ? end : start;
+                        if !root.m.mine || root.left-side: Rectangle {
                             width: min(sender-text.preferred-width, max(80px, root.max-bubble - 160px));
                             sender-text := Text { width: parent.width; text: root.m.sender; color: Theme.fg; font-size: 12px * Theme.font-scale; font-weight: 600; overflow: elide; }
                             sender-touch := TouchArea {
@@ -384,7 +432,8 @@ export component MessageRow inherits TouchArea {
                                 }
                             }
                         }
-                        Text { text: root.m.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+                        // With time stamps off the time still shows while the pointer is on the row.
+                        if SettingsStore.show-timestamps || root.has-hover: row-time := Text { text: root.m.time; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                         if root.m.edited: Text { text: @tr("Edited"); color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
                     }
 
@@ -409,7 +458,7 @@ export component MessageRow inherits TouchArea {
 
                     for q in root.m.quotes: quote-box := Rectangle {
                         property <bool> hover: false;
-                        background: self.hover ? Theme.surface-hover : Theme.sidebar;
+                        background: self.hover ? Theme.surface-hover : Theme.panel;
                         border-radius: 4px;
                         HorizontalLayout {
                             Rectangle { width: 3px; background: Theme.accent; }
@@ -432,6 +481,24 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
+                    // The message is being edited: the composer, in its `inline-edit` mode, with the
+                    // message's text and formatting, in place of the words.
+                    if root.editing-here: Composer {
+                        inline-edit: true;
+                        editing-id: root.m.id;
+                        min-width: min(520px, max(240px, root.max-bubble - 28px));
+                        draft <=> EditStore.draft;
+                        enter-sends <=> EditStore.enter-sends;
+                        skin-tone <=> EditStore.skin-tone;
+                        recent-emoji: EditStore.recent-emoji;
+                        input-focus(f) => { EditStore.focused = f; }
+                        send(text) => { EditStore.save(text); }
+                        cancel-reply => { EditStore.cancel(); }
+                        draft-edited(text) => { EditStore.draft-edited(text); }
+                        emoji-used(e) => { EditStore.emoji-used(e); }
+                        skin-tone-changed(t) => { EditStore.skin-tone-changed(t); }
+                    }
+
                     if root.m.deleted: Text { text: @tr("This message has been deleted."); color: Theme.fg-subtle; font-italic: true; font-size: 13px * Theme.font-scale; }
 
                     if !root.m.deleted && root.m.card.length > 0: CardView {
@@ -440,7 +507,7 @@ export component MessageRow inherits TouchArea {
                         open-url(u) => { root.open-url(u); }
                     }
 
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0 && !root.by-blocks: StyledText {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length == 0 && !root.by-blocks && !root.editing-here: StyledText {
                         text: root.m.body;
                         // The layout would keep the bubble as wide as the longest word (a URL, a path);
                         // with no minimum the text wraps inside the bubble, breaking such a word.
@@ -454,7 +521,7 @@ export component MessageRow inherits TouchArea {
                     }
 
                     // A text with code blocks: its runs of text and its boxes of code, in order.
-                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0 && !root.by-blocks: VerticalLayout {
+                    if !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && root.m.parts.length > 0 && !root.by-blocks && !root.editing-here: VerticalLayout {
                         spacing: 6px;
                         for p in root.m.parts: VerticalLayout {
                             if !p.is-code: StyledText {
@@ -475,7 +542,7 @@ export component MessageRow inherits TouchArea {
                         }
                     }
 
-                    if root.post-style && root.m.blocks.length > 0 && !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != ""): PostBlocks {
+                    if root.post-style && root.m.blocks.length > 0 && !root.m.deleted && root.m.plain != "" && (root.m.card.length == 0 || root.m.headline != "") && !root.editing-here: PostBlocks {
                         blocks: root.m.blocks;
                         code-min: min(240px, root.max-bubble);
                         open-url(u) => { root.open-url(u); }
@@ -491,13 +558,13 @@ export component MessageRow inherits TouchArea {
                             width: im.w * root.grid-scale;
                             height: im.h * root.grid-scale;
                             border-radius: 4px;
-                            background: Theme.sidebar;
+                            background: Theme.panel;
                             clip: true;
                             // A soft placeholder, then the picture fades in.
                             FadeImage { source: im.img; loaded: im.loaded; width: parent.width; height: parent.height; accessible-role: image; accessible-label: im.loaded ? "" : @tr("Loading image…"); }
                             if im.overflow > 0: Rectangle {
-                                background: #000000a0;
-                                Text { text: "+" + im.overflow; color: #ffffff; font-size: 22px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                                background: Fixed.black-a0;
+                                Text { text: "+" + im.overflow; color: Fixed.white; font-size: 22px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                             }
                             TouchArea {
                                 mouse-cursor: pointer;
@@ -581,7 +648,8 @@ export component MessageRow inherits TouchArea {
                         action(a) => { MediaStore.command("file", a + "\u{1f}" + f.url); }
                     }
 
-                    if root.m.reactions.length > 0 && !root.post-style: HorizontalLayout {
+                    // Hidden reactions stay on the message: only their row is left out.
+                    if root.m.reactions.length > 0 && !root.post-style && SettingsStore.show-reactions: HorizontalLayout {
                         spacing: 4px;
                         alignment: start;
                         for r in root.m.reactions: ReactionChip {
@@ -596,7 +664,7 @@ export component MessageRow inherits TouchArea {
 
                     if root.m.failed: HorizontalLayout {
                         spacing: 6px;
-                        alignment: root.m.mine ? end : start;
+                        alignment: root.m.mine && !root.left-side ? end : start;
                         Text { text: @tr("Failed to send"); color: Theme.danger; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                         Text { text: "·"; color: Theme.fg-subtle; font-size: 12px * Theme.font-scale; vertical-alignment: center; }
                         Rectangle {
@@ -638,14 +706,16 @@ export component MessageRow inherits TouchArea {
                 // The part above the row is not the row's, so the bar keeps itself shown while the
                 // pointer is on it (`bar-touch`); hidden, that area takes no events.
                 if !root.select-mode && !root.m.system && !root.m.deleted && !root.m.pending && !root.m.failed: bar-touch := TouchArea {
-                    // Four quick reactions, More reactions, Reply with quote, Edit (mine) and More
-                    // actions are 30px each, plus the divider and the padding.
+                    // The quick reactions (Settings > Chats, four to start with), More reactions,
+                    // Reply with quote, Edit (mine) and More actions are 30px each, plus the
+                    // divider and the padding.
                     property <length> left-in-row: parent.absolute-position.x - root.absolute-position.x;
                     property <length> above: -(self.height - 8px);
                     enabled: root.has-hover || self.has-hover;
-                    width: (root.m.mine ? 8 : 7) * 30px + 1px + 8px;
+                    changed has-hover => { root.bar-hover = self.has-hover; }
+                    width: (SettingsStore.quick-reactions.length + (root.m.mine ? 4 : 3)) * 30px + 1px + 8px;
                     height: 32px;
-                    x: max(8px - self.left-in-row, min(root.width - 8px - self.left-in-row - self.width, root.m.mine && !root.card-style ? parent.width - self.width - 8px : max(0px, parent.width - self.width - 8px)));
+                    x: max(8px - self.left-in-row, min(root.width - 8px - self.left-in-row - self.width, root.m.mine && !root.left-side ? parent.width - self.width - 8px : max(0px, parent.width - self.width - 8px)));
                     y: parent.absolute-position.y + self.above < root.pane-top ? 4px : self.above;
                     if root.has-hover || bar-touch.has-hover: bar := Rectangle {
                         width: parent.width;
@@ -658,14 +728,14 @@ export component MessageRow inherits TouchArea {
                             padding-left: 4px;
                             padding-right: 4px;
                             spacing: 0px;
-                            // Teams' quick reactions, then the rest of the buttons.
-                            for e in [{k: "like", t: "👍"}, {k: "heart", t: "❤️"}, {k: "laugh", t: "😆"}, {k: "surprised", t: "😮"}]: Rectangle {
+                            // The chosen quick reactions, then the rest of the buttons.
+                            for e in SettingsStore.quick-reactions: Rectangle {
                                 width: 30px;
                                 background: et.has-hover ? Theme.surface-hover : transparent;
                                 animate background { duration: Motion.quick; }
                                 border-radius: 4px;
-                                Text { text: e.t; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
-                                et := TouchArea { mouse-cursor: pointer; clicked => { root.react(e.k); } }
+                                Text { text: e.emoji; font-size: 16px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+                                et := TouchArea { mouse-cursor: pointer; clicked => { root.react(e.key); } }
                             }
                             IconButton {
                                 icon: @image-url("../icons/emoji-add.svg"); tooltip: @tr("More reactions");
@@ -836,7 +906,7 @@ export component MessageRow inherits TouchArea {
         accessible-label: @tr("Select message");
         accessible-checkable: true;
         accessible-checked: root.m.selected;
-        Text { text: root.m.selected ? "✓" : ""; color: #ffffff; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+        Text { text: root.m.selected ? "✓" : ""; color: Theme.on-accent; font-size: 13px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
     }
     if root.select-mode && !root.m.system && !root.m.deleted: TouchArea {
         mouse-cursor: pointer;

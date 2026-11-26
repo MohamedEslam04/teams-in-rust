@@ -7,7 +7,7 @@ import { FindStore } from "../stores/find_store.slint";
 export component ChatFindBar inherits Rectangle {
     in property <bool> channel;
     height: 44px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     VerticalLayout {
         HorizontalLayout {
             padding-left: 20px;
@@ -18,7 +18,7 @@ export component ChatFindBar inherits Rectangle {
                 height: 32px;
                 max-width: 420px;
                 border-radius: 4px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: find-input.has-focus ? Theme.accent : Theme.border;
                 FocusScope {

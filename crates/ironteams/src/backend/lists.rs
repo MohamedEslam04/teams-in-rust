@@ -9,10 +9,14 @@
 //!
 //! Mute, hide and the channel items (hide, notifications) are real Teams settings: they are
 //! written to the account (`teams_proto::actions` and `teams_proto::teams`) and mirrored here.
+//! Teams' mute is on or off with no end time (see `docs/protocol.md`), so "Mute for 1 hour" and
+//! the like keep the end time here and turn the Teams mute off when it passes.
 
 use super::Engine;
 use crate::data::ChatData;
 use crate::lists_data::{ChannelMenuData, ChoiceData, ListOptions, SectionData};
+use crate::lists_sort::{SortBy, SortKey, sort_items};
+use chrono::{Duration as Days, NaiveTime, TimeZone};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -31,6 +35,10 @@ pub(super) const FAVORITES: &str = "favorites";
 const REFRESH_EVERY_MS: i64 = 60_000;
 /// Longest section name.
 const NAME_MAX: usize = 64;
+/// How often the timed mutes are looked at.
+const MUTE_TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(15);
+/// The hour "until tomorrow" means for a mute.
+const MUTE_MORNING: (u32, u32) = (8, 0);
 
 /// What "Manage apps" says: IronTeams knows no read of the apps installed in one chat.
 pub const MANAGE_APPS_NOTE: &str =
@@ -52,6 +60,8 @@ pub enum ListsCmd {
     Move(String, String),
     RemoveFromSection(String),
     Mute(String),
+    /// Mute a chat for a while (`1h`, `8h`, `tomorrow`, `week`; see [`mute_until_for`]).
+    MuteFor(String, String),
     Unmute(String),
     CopyLink(String),
     Hide(String),
@@ -65,6 +75,8 @@ pub enum ListsCmd {
     NotifyWhenAvailable(String, bool),
     /// `previews`, `times` or `combined`, on or off.
     Option(String, bool),
+    /// "Sort by" of a section: `favorites`, `chats`, `channels` or a section id.
+    Sort(String, SortBy),
     ChannelMenu(String),
     ChannelShow(String),
     ChannelHide(String),
@@ -90,6 +102,7 @@ impl ListsCmd {
             "move" => ListsCmd::Move(a, b),
             "remove-section" => ListsCmd::RemoveFromSection(a),
             "mute" => ListsCmd::Mute(a),
+            "mute-for" => ListsCmd::MuteFor(a, b),
             "unmute" => ListsCmd::Unmute(a),
             "copy-link" => ListsCmd::CopyLink(a),
             "hide" => ListsCmd::Hide(a),
@@ -98,6 +111,7 @@ impl ListsCmd {
             "notify-available" => ListsCmd::NotifyWhenAvailable(a, true),
             "notify-available-off" => ListsCmd::NotifyWhenAvailable(a, false),
             "option" => ListsCmd::Option(a, b == "on"),
+            "sort" => ListsCmd::Sort(a, SortBy::parse(&b)?),
             "channel-menu" => ListsCmd::ChannelMenu(a),
             "channel-show" => ListsCmd::ChannelShow(a),
             "channel-hide" => ListsCmd::ChannelHide(a),
@@ -123,18 +137,32 @@ pub(crate) struct Local {
     pub hidden: HashMap<String, i64>,
     /// People to notify when they turn Available (`notify_available`), by MRI.
     pub watched: BTreeSet<String>,
+    /// Chats muted for a while: id, time the mute ends. Teams only knows muted or not.
+    pub mute_until: HashMap<String, i64>,
     pub opts: ListOptions,
+    /// How a section is ordered, by `favorites`, `chats`, `channels` or section id. A section
+    /// that is not here keeps the recent-activity order.
+    pub sort: HashMap<String, SortBy>,
 }
 
 impl Local {
     pub(super) fn to_json(&self) -> Value {
+        // Recent activity is the default, so it is not stored.
+        let sort: HashMap<&str, &str> = self
+            .sort
+            .iter()
+            .filter(|(_, by)| **by != SortBy::Recent)
+            .map(|(id, by)| (id.as_str(), by.name()))
+            .collect();
         json!({
             "sections": self.sections.iter().map(|(i, n)| json!([i, n])).collect::<Vec<_>>(),
             "assign": self.assign,
             "expanded": self.expanded,
             "hidden": self.hidden,
             "watched": self.watched,
+            "mute_until": self.mute_until,
             "opts": {"previews": self.opts.previews, "times": self.opts.times, "combined": self.opts.combined},
+            "sort": sort,
         })
     }
 
@@ -175,6 +203,10 @@ impl Local {
                 .into_iter()
                 .filter_map(|(k, v)| Some((k, v.as_i64()?)))
                 .collect(),
+            mute_until: map("mute_until")
+                .into_iter()
+                .filter_map(|(k, v)| Some((k, v.as_i64()?)))
+                .collect(),
             watched: v
                 .get("watched")
                 .and_then(Value::as_array)
@@ -187,6 +219,11 @@ impl Local {
                 times: flag("times", true),
                 combined: flag("combined", false),
             },
+            sort: map("sort")
+                .into_iter()
+                .filter_map(|(k, v)| Some((k, SortBy::parse(v.as_str()?)?)))
+                .filter(|(_, by)| *by != SortBy::Recent)
+                .collect(),
         }
     }
 }
@@ -289,6 +326,11 @@ impl Overlay {
         self.muted.contains(id)
     }
 
+    /// When a timed mute of the chat ends, as Unix milliseconds.
+    pub(super) fn mute_ends(&self, id: &str) -> Option<i64> {
+        self.local.mute_until.get(id).copied()
+    }
+
     /// A chat hidden by the user stays hidden until it gets a newer message; a hidden channel
     /// stays out of the chat list (the Teams view shows it dimmed).
     pub(super) fn is_hidden(&self, id: &str, last_activity_ms: i64) -> bool {
@@ -308,6 +350,11 @@ impl Overlay {
     /// The group Teams-and-channels rows belong to when the user chose to combine them.
     pub(super) fn combined(&self) -> bool {
         self.local.opts.combined
+    }
+
+    /// How a section is ordered (`favorites`, `chats`, `channels` or a section id).
+    pub(super) fn sort_of(&self, id: &str) -> SortBy {
+        self.local.sort.get(id).copied().unwrap_or_default()
     }
 
     /// Where `id` goes. A move made here wins; then the account's sections; then Favorites.
@@ -332,6 +379,15 @@ impl Overlay {
         }
         Placement::Default
     }
+}
+
+/// Orders the rows of one section; `activity` holds the last message time of each chat.
+pub(super) fn sort_chats(items: &mut [ChatData], by: SortBy, activity: &HashMap<String, i64>) {
+    sort_items(items, by, |c| SortKey {
+        title: c.title.clone(),
+        unread: c.unread,
+        activity_ms: activity.get(&c.id).copied().unwrap_or(0),
+    });
 }
 
 /// Percent-encodes everything but letters, digits and `-_.~`.
@@ -403,6 +459,58 @@ fn level_name(l: NotifyLevel) -> &'static str {
 pub(super) fn clean_name(name: &str) -> Option<String> {
     let n = name.trim();
     (!n.is_empty() && n.chars().count() <= NAME_MAX).then(|| n.to_string())
+}
+
+/// When a mute for `kind` (`1h`, `8h`, `tomorrow`, `week`) started at `now_ms` ends, as Unix
+/// milliseconds: the hours and the week count from now, `tomorrow` is 08:00 the next local day.
+/// `None` for any other name.
+pub(crate) fn mute_until_for<Tz: TimeZone>(kind: &str, now_ms: i64, tz: &Tz) -> Option<i64> {
+    let hours = |h: i64| Some(now_ms + h * 3_600_000);
+    match kind {
+        "1h" => hours(1),
+        "8h" => hours(8),
+        "week" => hours(7 * 24),
+        "tomorrow" => {
+            let day = tz.timestamp_millis_opt(now_ms).single()?.date_naive() + Days::days(1);
+            let (h, m) = MUTE_MORNING;
+            let t = day.and_time(NaiveTime::from_hms_opt(h, m, 0)?);
+            // 08:00 can fall in a clock change; the first valid time after it will do.
+            (0..=3)
+                .find_map(|i| tz.from_local_datetime(&(t + Days::hours(i))).earliest())
+                .map(|d| d.timestamp_millis())
+        }
+        _ => None,
+    }
+}
+
+/// The chats whose timed mute has ended at `now_ms`, in id order.
+pub(crate) fn expired_mutes(mute_until: &HashMap<String, i64>, now_ms: i64) -> Vec<String> {
+    let mut ids: Vec<_> = mute_until
+        .iter()
+        .filter(|(_, until)| **until <= now_ms)
+        .map(|(id, _)| id.clone())
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// The end of a mute as the menu and the banner say it: the time when it is today ("14:30"),
+/// else the day too ("Tomorrow 08:00").
+pub(crate) fn until_label<Tz: TimeZone>(until_ms: i64, now_ms: i64, tz: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let (Some(until), Some(now)) = (
+        tz.timestamp_millis_opt(until_ms).single(),
+        tz.timestamp_millis_opt(now_ms).single(),
+    ) else {
+        return String::new();
+    };
+    if until.date_naive() == now.date_naive() {
+        appearance::formats::time_of(&until)
+    } else {
+        super::remind::when_label(until_ms, now_ms, tz)
+    }
 }
 
 impl Engine {
@@ -537,7 +645,11 @@ impl Engine {
     }
 
     /// The sections for the UI: the account's, then the ones made here, with their rows.
-    pub(super) fn push_sections(&self, mut by_section: HashMap<String, Vec<ChatData>>) {
+    pub(super) fn push_sections(
+        &self,
+        mut by_section: HashMap<String, Vec<ChatData>>,
+        activity: &HashMap<String, i64>,
+    ) {
         let st = self.lists.lock().unwrap();
         let mut sections = Vec::new();
         let mut choices = vec![ChoiceData {
@@ -566,11 +678,14 @@ impl Engine {
                         .unwrap_or(usize::MAX)
                 });
             }
+            let sort = st.local.sort.get(&id).copied().unwrap_or_default();
+            sort_chats(&mut items, sort, activity);
             choices.push(ChoiceData {
                 id: id.clone(),
                 name: name.clone(),
             });
             sections.push(SectionData {
+                sort: sort.name(),
                 expanded: st
                     .local
                     .expanded
@@ -725,8 +840,20 @@ impl Engine {
             ListsCmd::CollapseAll => self.collapse_all(),
             ListsCmd::Move(conv, to) => self.move_item(&conv, &to),
             ListsCmd::RemoveFromSection(conv) => self.move_item(&conv, ""),
-            ListsCmd::Mute(conv) => self.set_mute(&conv, true).await,
-            ListsCmd::Unmute(conv) => self.set_mute(&conv, false).await,
+            ListsCmd::Mute(conv) => self.set_mute(&conv, true, None).await,
+            ListsCmd::MuteFor(conv, kind) => {
+                let now = now_ms();
+                let Some(until) = mute_until_for(&kind, now, &chrono::Local) else {
+                    return Ok(());
+                };
+                self.set_mute(&conv, true, Some(until)).await?;
+                self.banner(&format!(
+                    "Chat muted until {}",
+                    until_label(until, now, &chrono::Local)
+                ));
+                Ok(())
+            }
+            ListsCmd::Unmute(conv) => self.set_mute(&conv, false, None).await,
             ListsCmd::CopyLink(conv) => self.copy_text(&chat_link(&conv), "Chat link copied"),
             ListsCmd::Hide(conv) => self.hide_chat(&conv).await,
             ListsCmd::RemoveHistory(conv) => self.remove_history(&conv).await,
@@ -736,6 +863,7 @@ impl Engine {
             }
             ListsCmd::NotifyWhenAvailable(person, on) => self.set_watching(&person, on),
             ListsCmd::Option(name, on) => self.set_option(&name, on),
+            ListsCmd::Sort(id, by) => self.set_sort(&id, by),
             ListsCmd::ChannelMenu(id) => self.channel_menu(&id).await,
             ListsCmd::ChannelShow(id) => self.set_channel_shown(&id, true).await,
             ListsCmd::ChannelHide(id) => self.set_channel_shown(&id, false).await,
@@ -843,6 +971,7 @@ impl Engine {
             // Its items go back to Chats and channels.
             st.local.assign.retain(|_, s| s != id);
             st.local.expanded.remove(id);
+            st.local.sort.remove(id);
         }
         self.lists_save();
         self.dirty_lists();
@@ -919,17 +1048,33 @@ impl Engine {
 
     // ---- chat item menu ----
 
-    async fn set_mute(self: &Arc<Self>, conv: &str, muted: bool) -> anyhow::Result<()> {
-        let was = {
+    /// Turns the Teams mute of a chat on or off. `until` is when a mute ends (`None`: it lasts
+    /// until the user turns it off); it is kept here, as Teams has no end time.
+    async fn set_mute(
+        self: &Arc<Self>,
+        conv: &str,
+        muted: bool,
+        until: Option<i64>,
+    ) -> anyhow::Result<()> {
+        let until = until.filter(|_| muted);
+        let (was, was_until) = {
             let mut st = self.lists.lock().unwrap();
             let was = st.muted.contains(conv);
+            let was_until = st.local.mute_until.get(conv).copied();
             if muted {
                 st.muted.insert(conv.to_string());
             } else {
                 st.muted.remove(conv);
             }
-            was
+            match until {
+                Some(t) => st.local.mute_until.insert(conv.to_string(), t),
+                None => st.local.mute_until.remove(conv),
+            };
+            (was, was_until)
         };
+        if was_until != until {
+            self.lists_save();
+        }
         // The chat header's "More chat options" shows Mute or Unmute too.
         self.mark(|d| {
             d.chats = true;
@@ -946,7 +1091,14 @@ impl Engine {
             } else {
                 st.muted.remove(conv);
             }
+            match was_until {
+                Some(t) => st.local.mute_until.insert(conv.to_string(), t),
+                None => st.local.mute_until.remove(conv),
+            };
             drop(st);
+            if was_until != until {
+                self.lists_save();
+            }
             self.mark(|d| {
                 d.chats = true;
                 d.header = true;
@@ -954,6 +1106,32 @@ impl Engine {
             return Err(err.into());
         }
         Ok(())
+    }
+
+    /// Unmutes the chats whose timed mute has ended at `now`, the way the user's Unmute does. One
+    /// the account refuses keeps its end time and is tried again at the next tick.
+    pub(super) async fn lists_expire_mutes(self: &Arc<Self>, now: i64) {
+        self.lists_load();
+        let ended = expired_mutes(&self.lists.lock().unwrap().local.mute_until, now);
+        for conv in ended {
+            if let Err(err) = self.set_mute(&conv, false, None).await {
+                tracing::warn!(%err, "unmuting a chat whose timed mute ended failed");
+            }
+        }
+    }
+
+    /// Looks at the timed mutes now (those that ended while the app was closed) and then on a
+    /// timer. Not while offline: the account's mute could not be turned off.
+    pub(super) fn start_mute_expiry(self: &Arc<Self>) {
+        let e = self.clone();
+        tokio::spawn(async move {
+            loop {
+                if !e.offline.load(std::sync::atomic::Ordering::Relaxed) {
+                    e.lists_expire_mutes(now_ms()).await;
+                }
+                tokio::time::sleep(MUTE_TICK_EVERY).await;
+            }
+        });
     }
 
     async fn hide_chat(self: &Arc<Self>, conv: &str) -> anyhow::Result<()> {
@@ -1039,6 +1217,24 @@ impl Engine {
         };
         self.lists_save();
         self.ui.list_options(opts);
+        self.mark(|d| d.chats = true);
+        Ok(())
+    }
+
+    /// "Sort by" in a section's menu. Saved here; the account has no such setting.
+    fn set_sort(&self, id: &str, by: SortBy) -> anyhow::Result<()> {
+        if id.is_empty() {
+            return Ok(());
+        }
+        {
+            let mut st = self.lists.lock().unwrap();
+            if by == SortBy::Recent {
+                st.local.sort.remove(id);
+            } else {
+                st.local.sort.insert(id.to_string(), by);
+            }
+        }
+        self.lists_save();
         self.mark(|d| d.chats = true);
         Ok(())
     }
@@ -1275,6 +1471,20 @@ impl Engine {
     }
 
     #[cfg(test)]
+    pub(crate) fn test_mute_until(&self, id: &str) -> Option<i64> {
+        self.lists.lock().unwrap().local.mute_until.get(id).copied()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_expire_mutes(self: &Arc<Self>, now: i64) {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(self.lists_expire_mutes(now));
+    }
+
+    #[cfg(test)]
     pub(crate) fn test_is_hidden(&self, id: &str) -> bool {
         self.lists.lock().unwrap().local.hidden.contains_key(id)
     }
@@ -1392,10 +1602,136 @@ mod tests {
         l.hidden.insert("c3".into(), 99);
         l.opts.previews = false;
         l.opts.combined = true;
+        l.sort.insert("chats".into(), SortBy::Alpha);
+        l.sort.insert("local-1".into(), SortBy::Unread);
         assert_eq!(Local::from_json(&l.to_json()), l);
         // Garbage or an empty value gives the defaults.
         assert_eq!(Local::from_json(&json!({})), Local::default());
         assert!(Local::default().opts.previews && Local::default().opts.times);
+    }
+
+    fn utc() -> chrono::FixedOffset {
+        chrono::FixedOffset::east_opt(0).unwrap()
+    }
+
+    fn at(tz: &chrono::FixedOffset, d: u32, h: u32, m: u32) -> i64 {
+        tz.with_ymd_and_hms(2026, 11, d, h, m, 0)
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    #[test]
+    fn parses_a_timed_mute() {
+        assert_eq!(
+            ListsCmd::parse("mute-for", "c\t8h"),
+            Some(ListsCmd::MuteFor("c".into(), "8h".into()))
+        );
+    }
+
+    #[test]
+    fn mute_durations_count_from_now_and_tomorrow_is_eight_the_next_local_day() {
+        let tz = utc();
+        let now = at(&tz, 20, 10, 0);
+        assert_eq!(mute_until_for("1h", now, &tz), Some(now + 3_600_000));
+        assert_eq!(mute_until_for("8h", now, &tz), Some(now + 8 * 3_600_000));
+        assert_eq!(mute_until_for("week", now, &tz), Some(at(&tz, 27, 10, 0)));
+        assert_eq!(
+            mute_until_for("tomorrow", now, &tz),
+            Some(at(&tz, 21, 8, 0))
+        );
+        // Late in the evening, tomorrow is still the next calendar day, in the local zone.
+        let tz = chrono::FixedOffset::east_opt(2 * 3600).unwrap();
+        assert_eq!(
+            mute_until_for("tomorrow", at(&tz, 20, 23, 50), &tz),
+            Some(at(&tz, 21, 8, 0))
+        );
+        // Just after midnight it is not "later this morning" but the next day.
+        assert_eq!(
+            mute_until_for("tomorrow", at(&tz, 21, 0, 10), &tz),
+            Some(at(&tz, 22, 8, 0))
+        );
+        // Anything else is no duration (the forever mute has no end time).
+        assert_eq!(mute_until_for("", now, &tz), None);
+        assert_eq!(mute_until_for("2h", now, &tz), None);
+    }
+
+    #[test]
+    fn a_mute_has_ended_at_its_time_and_not_before() {
+        let until: HashMap<String, i64> =
+            [("b".into(), 1000), ("a".into(), 1000), ("c".into(), 2000)].into();
+        assert!(expired_mutes(&until, 999).is_empty());
+        assert_eq!(expired_mutes(&until, 1000), ["a", "b"]);
+        assert_eq!(expired_mutes(&until, 5000), ["a", "b", "c"]);
+        assert!(expired_mutes(&HashMap::new(), 5000).is_empty());
+    }
+
+    #[test]
+    fn the_end_of_a_mute_says_the_time_today_and_the_day_after() {
+        let tz = utc();
+        let now = at(&tz, 20, 10, 0);
+        assert_eq!(
+            until_label(at(&tz, 20, 14, 30), now, &tz),
+            appearance::formats::clock(14 * 60 + 30)
+        );
+        assert_eq!(
+            until_label(at(&tz, 21, 8, 0), now, &tz),
+            format!("Tomorrow {}", appearance::formats::clock(8 * 60))
+        );
+    }
+
+    #[test]
+    fn mute_end_times_survive_a_round_trip_and_an_old_save_has_none() {
+        let mut l = Local::default();
+        l.mute_until.insert("c1".into(), 1234);
+        assert_eq!(Local::from_json(&l.to_json()), l);
+        assert!(
+            Local::from_json(&json!({"hidden": {"c": 1}}))
+                .mute_until
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_old_save_without_sort_loads_with_every_section_on_recent_activity() {
+        let old = json!({
+            "sections": [["local-1", "Ops"]],
+            "opts": {"previews": false},
+        });
+        let l = Local::from_json(&old);
+        assert!(l.sort.is_empty());
+        assert_eq!(l.sections.len(), 1);
+        let mut o = overlay();
+        o.local = l;
+        assert_eq!(o.sort_of("favorites"), SortBy::Recent);
+        assert_eq!(o.sort_of("local-1"), SortBy::Recent);
+    }
+
+    #[test]
+    fn saved_sorts_drop_unknown_names_and_recent_is_not_stored() {
+        let saved = json!({"sort": {"chats": "alpha", "favorites": "newest", "channels": "recent", "s1": 7}});
+        let l = Local::from_json(&saved);
+        assert_eq!(
+            l.sort,
+            HashMap::from([("chats".to_string(), SortBy::Alpha)])
+        );
+        let mut l = Local::default();
+        l.sort.insert("a".into(), SortBy::Recent);
+        l.sort.insert("b".into(), SortBy::Unread);
+        assert_eq!(l.to_json()["sort"], json!({"b": "unread"}));
+    }
+
+    #[test]
+    fn parses_sort_with_a_known_order_only() {
+        assert_eq!(
+            ListsCmd::parse("sort", "chats\talpha"),
+            Some(ListsCmd::Sort("chats".into(), SortBy::Alpha))
+        );
+        assert_eq!(
+            ListsCmd::parse("sort", "s1\tunread"),
+            Some(ListsCmd::Sort("s1".into(), SortBy::Unread))
+        );
+        assert_eq!(ListsCmd::parse("sort", "chats\tbogus"), None);
+        assert_eq!(ListsCmd::parse("sort", "chats"), None);
     }
 
     #[test]
@@ -1518,5 +1854,61 @@ mod tests {
             e.lists.lock().unwrap().loaded,
             "loaded once the store is free"
         );
+    }
+
+    /// A chat muted for a while is unmuted, the way Unmute does it, once its time has come, and
+    /// the end time is gone from what the next start reads.
+    #[test]
+    fn a_timed_mute_is_lifted_when_its_time_comes() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = crate::AppWindow::new().unwrap();
+        let ui = crate::ui_api::UiHandle::new(slint::ComponentHandle::as_weak(&window));
+        let e = Engine::new(
+            teams_proto::Client::offline("test").unwrap(),
+            store::Store::open_in_memory().unwrap(),
+            session::Config::default(),
+            ui,
+            "8:me".into(),
+            "Me".into(),
+        );
+        e.offline.store(true, std::sync::atomic::Ordering::Relaxed);
+        let run = |cmd| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(e.lists_cmd(cmd))
+                .unwrap()
+        };
+        let saved_until = |e: &Arc<Engine>| {
+            let t = e.store.lock().unwrap().get_kv(KV_KEY).unwrap().unwrap();
+            Local::from_json(&serde_json::from_str(&t).unwrap()).mute_until
+        };
+        run(ListsCmd::MuteFor("c1".into(), "1h".into()));
+        run(ListsCmd::Mute("c2".into()));
+        let until = e.test_mute_until("c1").expect("an end time");
+        assert!(e.is_muted("c1") && e.is_muted("c2"));
+        assert_eq!(
+            e.test_mute_until("c2"),
+            None,
+            "no end time for a plain mute"
+        );
+        assert_eq!(
+            saved_until(&e).get("c1"),
+            Some(&until),
+            "saved for the next start"
+        );
+        // Not yet: nothing changes.
+        e.test_expire_mutes(until - 1);
+        assert!(e.is_muted("c1"));
+        // Its time: c1 is unmuted, the mute with no end stays.
+        e.test_expire_mutes(until);
+        assert!(!e.is_muted("c1") && e.is_muted("c2"));
+        assert_eq!(e.test_mute_until("c1"), None);
+        assert!(saved_until(&e).is_empty());
+        // Muting again with "until I turn it off" drops an earlier end time.
+        run(ListsCmd::MuteFor("c1".into(), "8h".into()));
+        run(ListsCmd::Mute("c1".into()));
+        assert_eq!(e.test_mute_until("c1"), None);
     }
 }

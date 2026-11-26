@@ -6,12 +6,14 @@ import { ComposerApps } from "composer_apps.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { SharedLine } from "shared_view.slint";
 import { FindStore } from "../stores/find_store.slint";
+import { ChatNotePanel } from "chat_note.slint";
 
-// The right panel "In this chat": the recent shared items and "See all".
+// The right panel "In this chat": find, pinned messages, the private note and the recent shared
+// items with "See all".
 export component DetailsPane inherits Rectangle {
     in property <string> title;
     width: 320px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     border-width: 1px;
     border-color: Theme.border;
     accessible-role: groupbox;
@@ -64,6 +66,8 @@ export component DetailsPane inherits Rectangle {
                 }
             }
         }
+        // The user's private note on this chat: local, never sent to Teams.
+        ChatNotePanel { }
         HorizontalLayout {
             padding-left: 16px;
             padding-right: 16px;

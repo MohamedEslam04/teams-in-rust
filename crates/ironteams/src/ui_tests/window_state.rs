@@ -2,7 +2,9 @@
 //! maximized flag land on the window, and the last chat is found in the sidebar models.
 
 use super::*;
-use crate::window_state::{RestorePlan, apply_restore, restore_command, restore_plan};
+use crate::window_state::{
+    RestorePlan, apply_restore, restore_command, restore_plan, start_page_restore,
+};
 use crate::{ChannelRow, ChatRow, TeamRow};
 use session::window_state::WindowState;
 
@@ -149,4 +151,36 @@ fn each_account_restarts_on_its_own_last_chat() {
     // An account that never ran here starts on no chat at all.
     let c = WindowState::load_from(&path, "third");
     assert_eq!(restored_chat(&c, &listed), None);
+}
+
+/// The view a window shows after the start page `view` was applied to a signed-in, shown window.
+fn view_after_start(view: &'static str, signed_in: bool) -> String {
+    let app = new_window();
+    if signed_in {
+        app.set_login_state("ready".into());
+    }
+    app.show().unwrap();
+    let _timer = start_page_restore(&app, view);
+    testing::mock_elapsed_time(std::time::Duration::from_millis(400));
+    app.get_view().to_string()
+}
+
+#[test]
+fn the_start_page_opens_its_view_once_signed_in() {
+    assert_eq!(view_after_start("calendar", true), "calendar");
+    assert_eq!(view_after_start("activity", true), "activity");
+    assert_eq!(view_after_start("teams", true), "teams");
+    // Before sign-in the window stays on the page it starts on.
+    assert_eq!(view_after_start("calendar", false), "chat");
+}
+
+#[test]
+fn the_start_page_does_not_pull_the_user_away_from_a_page_they_opened() {
+    let app = new_window();
+    app.set_login_state("ready".into());
+    app.show().unwrap();
+    app.set_view("activity".into());
+    let _timer = start_page_restore(&app, "calendar");
+    testing::mock_elapsed_time(std::time::Duration::from_millis(400));
+    assert_eq!(app.get_view(), "activity");
 }

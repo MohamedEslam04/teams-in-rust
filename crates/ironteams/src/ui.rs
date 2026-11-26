@@ -8,16 +8,18 @@ pub use composer_apps::wire as install_composer_apps;
 pub use voice::wire as install_voice;
 
 use crate::data::{
-    AttachmentData, ChatData, HeaderData, MeetingCardData, MsgData, Pixels, RecipientData, Scroll,
-    TeamData,
+    AttachmentData, ChatData, HeaderData, InlineImageData, MeetingCardData, MsgData, Pixels,
+    RecipientData, Scroll, TeamData,
 };
 use crate::markdown::{PostKind, Segment};
 use crate::reactions;
+use crate::support::inline_images;
 use crate::ui_api::UiHandle;
 use crate::{
     AppWindow, BodyPart, ChannelRow, ChatRow, ComposerEmoji, EmojiItem, FileItem, ImageItem,
-    LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg, PendingAttachment, PostBlock, QuoteItem,
-    ReactionItem, Reactor, ReaderItem, Recipient, TeamRow, VideoClipItem, VoiceItem,
+    InlineImage, InlineImageStore, LinkCard, LoopCard, MeetingCard, MeetingPerson, Msg,
+    PendingAttachment, PostBlock, QuoteItem, ReactionItem, Reactor, ReaderItem, Recipient, TeamRow,
+    VideoClipItem, VoiceItem,
 };
 use slint::{Color, ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
 use std::cell::RefCell;
@@ -31,6 +33,7 @@ pub(crate) mod call_direct;
 #[cfg(feature = "calls")]
 pub(crate) mod calls_page;
 mod channels;
+mod chat_note;
 mod clip;
 mod composer_apps;
 pub(crate) mod drive;
@@ -49,6 +52,7 @@ pub(crate) mod popout;
 mod remind;
 pub(crate) mod row_fingerprint;
 pub(crate) mod settings;
+mod split;
 mod teams;
 pub(crate) mod topbar;
 mod voice;
@@ -112,6 +116,11 @@ fn rgb(c: u32) -> Color {
     Color::from_rgb_u8((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
 
+/// A theme token colour, `0xRRGGBBAA`.
+fn rgba(c: u32) -> Color {
+    Color::from_argb_u8(c as u8, (c >> 24) as u8, (c >> 16) as u8, (c >> 8) as u8)
+}
+
 fn img(p: &Option<Pixels>) -> (Image, bool) {
     match p {
         Some(px) => (Image::from_rgba8(px.clone()), true),
@@ -170,6 +179,7 @@ fn chat_row(c: ChatData) -> ChatRow {
         mention: c.mention,
         group: c.group,
         muted: c.muted,
+        muted_until: c.muted_until.into(),
         channel: c.channel,
         presence: c.presence.into(),
         person: c.person.into(),
@@ -476,8 +486,16 @@ fn recipient(r: RecipientData) -> Recipient {
 
 /// The "More reactions" rows for `query`, in the saved skin tone `tone`.
 fn picker_model(query: &str, tone: i32) -> ModelRc<EmojiItem> {
+    emoji_model(reactions::picker_items(
+        query,
+        u8::try_from(tone).unwrap_or(0),
+    ))
+}
+
+/// Reaction cells as the UI's `EmojiItem` rows.
+fn emoji_model(items: Vec<reactions::PickerItem>) -> ModelRc<EmojiItem> {
     model(
-        reactions::picker_items(query, u8::try_from(tone).unwrap_or(0))
+        items
             .into_iter()
             .map(|i| EmojiItem {
                 key: i.key.into(),
@@ -493,6 +511,7 @@ pub fn install_local(window: &AppWindow) {
     crate::support::watchdog::start_ui();
     crate::loop_compose::install_local(window);
     palette::wire(window);
+    find::wire(window);
     message_toast::install_local(window);
     window.set_picker_items(picker_model("", window.get_skin_tone()));
     let weak = window.as_weak();
@@ -624,6 +643,44 @@ impl UiHandle {
         });
     }
 
+    /// The images placed between the composer's lines, by slot.
+    pub fn inline_images(&self, images: Vec<InlineImageData>) {
+        self.run(move |w| {
+            w.global::<InlineImageStore>().set_images(model(
+                images
+                    .into_iter()
+                    .map(|i| InlineImage {
+                        preview: img(&i.thumb).0,
+                        live: i.live,
+                    })
+                    .collect(),
+            ));
+        });
+    }
+
+    /// Puts the line of the image in `slot` into the composer at its cursor, and the cursor after
+    /// it (docs/designs/composer-inline-images.md). The engine hears of the new text as of any
+    /// edit, once this update is done (it may be running inside the engine's own command).
+    pub fn insert_inline_image(&self, slot: u32) {
+        self.run(move |w| {
+            let store = w.global::<InlineImageStore>();
+            let caret = usize::try_from(store.get_caret()).unwrap_or(0);
+            let (text, caret) = inline_images::insert(&w.get_draft(), caret, slot);
+            let caret = i32::try_from(caret).unwrap_or(i32::MAX);
+            w.set_draft(text.into());
+            // Read by the next image at once, before the composer reports its cursor.
+            store.set_caret(caret);
+            store.set_place(caret);
+            store.set_place_tick(store.get_place_tick() + 1);
+            let weak = w.as_weak();
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                if let Some(w) = weak.upgrade() {
+                    w.invoke_draft_edited(w.get_draft());
+                }
+            });
+        });
+    }
+
     /// Replaces the composer text, with the cursor at its end.
     pub fn set_draft(&self, text: String) {
         self.run(move |w| {
@@ -666,17 +723,33 @@ impl UiHandle {
     /// Saved composer preferences: Enter behavior, emoji skin tone and the recent emoji row.
     pub fn prefs(&self, enter_sends: bool, skin_tone: u8, recent: Vec<String>) {
         self.run(move |w| {
+            let recent: Vec<ComposerEmoji> = recent
+                .into_iter()
+                .map(|ch| ComposerEmoji {
+                    ch: ch.into(),
+                    name: SharedString::new(),
+                })
+                .collect();
             w.set_enter_sends(enter_sends);
             w.set_skin_tone(skin_tone.into());
-            w.set_recent_emoji(model(
-                recent
-                    .into_iter()
-                    .map(|ch| ComposerEmoji {
-                        ch: ch.into(),
-                        name: SharedString::new(),
-                    })
-                    .collect(),
-            ));
+            w.set_recent_emoji(model(recent.clone()));
+            // The editor of a sent message is a composer too, and follows the same settings.
+            let edit = w.global::<crate::EditStore>();
+            edit.set_enter_sends(enter_sends);
+            edit.set_skin_tone(skin_tone.into());
+            edit.set_recent_emoji(model(recent));
+        });
+    }
+
+    /// The editor of a sent message opens in its row (`id`) with `text`, or closes (`id` empty).
+    pub fn inline_edit(&self, id: String, text: String) {
+        self.run(move |w| {
+            let edit = w.global::<crate::EditStore>();
+            edit.set_draft(text.into());
+            if id.is_empty() {
+                edit.set_focused(false);
+            }
+            edit.set_id(id.into());
         });
     }
 

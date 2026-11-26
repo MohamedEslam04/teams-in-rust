@@ -1,0 +1,138 @@
+import { AccentChoice } from "types.slint";
+
+// Colours that do not follow the theme: the video surface, brand colours of file kinds, the
+// composer's text-colour palette, call buttons, calendar slots and the like. Components read
+// these instead of writing a colour literal (scripts/check-ui-layers.sh, rule 2). Theme colours
+// are in theme.slint.
+export global Fixed {
+    // White and black, opaque and translucent (the suffix is the alpha in hex).
+    out property <color> white: #ffffff;
+    out property <color> white-10: #ffffff10;
+    out property <color> white-2e: #ffffff2e;
+    out property <color> white-33: #ffffff33;
+    out property <color> white-a0: #ffffffa0;
+    out property <color> white-b0: #ffffffb0;
+    out property <color> white-b3: #ffffffb3;
+    out property <color> white-cc: #ffffffcc;
+    out property <color> white-dd: #ffffffdd;
+    out property <color> black: #000000;
+    out property <color> black-30: #00000030;
+    out property <color> black-55: #00000055;
+    out property <color> black-59: #00000059;
+    out property <color> black-60: #00000060;
+    out property <color> black-80: #00000080;
+    out property <color> black-90: #00000090;
+    out property <color> black-99: #00000099;
+    out property <color> black-a0: #000000a0;
+    out property <color> black-aa: #000000aa;
+    out property <color> black-b0: #000000b0;
+    out property <color> black-c0: #000000c0;
+    out property <color> black-cc: #000000cc;
+    out property <color> black-ea: #000000ea;
+    out property <color> ink: #141414;
+    // File kinds.
+    out property <color> file-word: #2b579a;
+    out property <color> file-excel: #217346;
+    out property <color> file-powerpoint: #c43e1c;
+    out property <color> file-pdf: #b30b00;
+    out property <color> file-image: #8764b8;
+    out property <color> file-media: #038387;
+    out property <color> file-text: #4a5568;
+    out property <color> file-archive: #8a6d3b;
+    out property <color> file-other: #5a5a5a;
+    out property <color> folder: #f2c94c;
+    // Status badges.
+    out property <color> badge-ok-bg: #1d3a2a;
+    out property <color> badge-ok-fg: #6bd69b;
+    out property <color> badge-bad-bg: #4a1f24;
+    out property <color> badge-bad-fg: #ff8a8f;
+    out property <color> badge-warn-bg: #4a3b14;
+    out property <color> badge-warn-fg: #ffd166;
+    // Adaptive Cards.
+    out property <color> card-band-good: #1d3b27;
+    out property <color> card-band-attention: #4d2024;
+    out property <color> card-band-warning: #4a3912;
+    out property <color> card-band-accent: #232b5c;
+    out property <color> card-tone-accent: #9aa5ff;
+    out property <color> card-tone-good: #6fd685;
+    out property <color> card-tone-warning: #f5c451;
+    out property <color> card-tone-attention: #ff7e83;
+    // Message importance.
+    out property <color> importance-bg: #4d2024;
+    out property <color> importance-fg: #ff7e83;
+    out property <color> importance-hover: #6b2f33;
+    // Gradients: Loop components and the sign-in page.
+    out property <color> loop-from: #6b4ce6;
+    out property <color> loop-to: #2f8be6;
+    out property <color> login-from: #b4b8ff;
+    out property <color> login-mid: #7b83eb;
+    out property <color> login-to: #4b53bc;
+    out property <color> login-shadow: #3b42a859;
+    // Calls.
+    out property <color> call-ring: #5b5fc7;
+    out property <color> call-accept: #237b4b;
+    out property <color> call-decline: #a4262c;
+    out property <color> call-neutral: #555555;
+    out property <color> call-subtle-fg: #d0d0d0;
+    out property <color> call-banner-hold: #4b4f8a;
+    out property <color> call-banner-warn: #8a5a00;
+    out property <color> call-banner-error: #8b2a2d;
+    out property <color> call-banner-info: #3d3e66;
+    // Media on a dark surface (viewer, video).
+    out property <color> media-fg: #cccccc;
+    out property <color> media-error: #ff7e83;
+    out property <color> media-muted: #8a8a8a;
+    out property <color> media-hover: #444444cc;
+    // Calendar: scheduling slots, responses, the now line, conflicts and meeting cards.
+    out property <color> slot-busy: #5b5fc7;
+    out property <color> slot-tentative: #5b5fc780;
+    out property <color> slot-oof: #b146c2;
+    out property <color> slot-elsewhere: #5b5fc740;
+    out property <color> slot-unknown: #3a3a3a;
+    out property <color> slot-free: #1c1c1c;
+    out property <color> response-accepted: #6bd69b;
+    out property <color> response-declined: #ff8a8d;
+    out property <color> response-tentative: #ffd666;
+    out property <color> response-none: #8a8a8a;
+    out property <color> now-line: #e5484d;
+    out property <color> conflict: #e5484d80;
+    out property <color> meet-bg-dark: #1d3a2a;
+    out property <color> meet-bg-light: #dcf3e5;
+    out property <color> meet-icon-dark: #6bd69b;
+    out property <color> meet-icon-light: #237b4b;
+    out property <color> meet-line-dark: #2f6b4a;
+    out property <color> meet-line-light: #a6d9bb;
+    // Channel announcement banners.
+    out property <color> banner-blue: #4f6bed;
+    out property <color> banner-green: #3d9b53;
+    out property <color> banner-yellow: #d9a21b;
+    out property <color> banner-gray: #8a8a8a;
+    // Single uses.
+    out property <color> community: #0f7b5f;
+    out property <color> draft: #e97a5f;
+    out property <color> favorite: #ffd335;
+    out property <color> toggle-off: #4a4a4a;
+    out property <color> link-tile: #2d3a5f;
+    out property <color> highlight-pink: #b4009e40;
+    out property <color> share-tint-dark: #34365c;
+    out property <color> share-tint-light: #e3e4fa;
+    out property <color> accent-disabled: #3b3d6b;
+    out property <color> toast-panel: #2b2b2b;
+    out property <color> toast-host: #1f1f1f;
+    out property <color> toast-light: #e8e9fa;
+
+    // The composer's text colours (two rows) and highlight colours (two rows).
+    out property <[color]> font-colours-1: [#d13438, #ca5010, #c19c00, #13a10e, #038387];
+    out property <[color]> font-colours-2: [#0078d4, #8764b8, #c239b3, #ffffff, #8a8a8a];
+    out property <[color]> highlight-colours-1: [#df9299, #f4a593, #fdd472, #e5f18f];
+    out property <[color]> highlight-colours-2: [#82cda8, #9dd9db, #c7d4e8, #ebd3e1];
+    // The fixed accent colours of Settings > Appearance.
+    out property <[AccentChoice]> accent-choices: [
+        { v: "#5b5fc7", l: @tr("Purple"), c: #5b5fc7 },
+        { v: "#0f6cbd", l: @tr("Blue"), c: #0f6cbd },
+        { v: "#038387", l: @tr("Teal"), c: #038387 },
+        { v: "#107c10", l: @tr("Green"), c: #107c10 },
+        { v: "#ca5010", l: @tr("Orange"), c: #ca5010 },
+        { v: "#c239b3", l: @tr("Pink"), c: #c239b3 },
+    ];
+}

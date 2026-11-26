@@ -14,7 +14,7 @@
 //! 3. a message the Teams settings already banner shows a normal banner; one that would not
 //!    (muted chat, type switched off) still shows if a keyword matched.
 
-use appearance::general::{FOCUS_FOREVER, FocusDuration, GeneralPrefs, QuietHoursPrefs};
+use appearance::general::{FOCUS_FOREVER, FocusDuration, GeneralPrefs, QuietHoursPrefs, in_window};
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use std::sync::Mutex;
 
@@ -94,17 +94,18 @@ pub fn should_banner<'a>(
 /// Saturday if Friday is ticked). Equal start and end mean no window.
 pub fn in_quiet_hours(now: NaiveDateTime, q: &QuietHoursPrefs) -> bool {
     let (start, end) = (q.start_min.min(1439), q.end_min.min(1439));
-    if !q.enabled || start == end {
+    let minute = (now.hour() * 60 + now.minute()) as u16;
+    if !q.enabled || !in_window(start, end, minute) {
         return false;
     }
     let day = now.weekday().num_days_from_monday() as usize;
-    let minute = (now.hour() * 60 + now.minute()) as u16;
-    let on = |d: usize| q.days[d % 7];
-    if start < end {
-        on(day) && (start..end).contains(&minute)
+    // An over-midnight window belongs to the day it starts on.
+    let owner = if start < end || minute >= start {
+        day
     } else {
-        (on(day) && minute >= start) || (on(day + 6) && minute < end)
-    }
+        day + 6
+    };
+    q.days[owner % 7]
 }
 
 /// Focus mode is on while its end time is in the future.

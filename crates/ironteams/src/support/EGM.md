@@ -1,12 +1,13 @@
 # support
 
 ## Overview
-Small shared helpers: turning failed-command errors into readable text (`error_text.rs`), the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`), the microphone level meter's worker thread (`meter.rs`), and the freeze watchdog (`watchdog.rs`).
+Small shared helpers: turning failed-command errors into readable text (`error_text.rs`), the banner decision for pause, quiet hours, Focus and keyword alerts (`quiet.rs`), the microphone level meter's worker thread (`meter.rs`), the freeze watchdog (`watchdog.rs`), and the composer's images between lines (`inline_images.rs`).
 
 Files:
 - `error_text.rs`: Turns failed-command errors and raw 'HTTP nnn' status lines into short banner sentences.
 - `quiet.rs`: Pure banner decision (pause, quiet hours, Focus, keyword alerts), Arabic-aware keyword matching, and process-global Focus state with prefs persistence.
 - `meter.rs`: `Probe`: opens a microphone and reads its level on a worker thread (the sound server can be slow), so the Slint timers of the call window's mic menu and Settings' mic test never block; one worker per probe, newest reading only.
+- `inline_images.rs`: The draft text of images placed between the composer's lines: an image is a line holding one Private Use marker (`U+E100` + slot); insertion at the cursor, cleaning and the `U+FFFC` placeholders the send fills with the uploaded images (docs/designs/composer-inline-images.md).
 - `watchdog.rs`: Freeze watchdog: the UI thread and the async runtime beat every second; a thread of its own logs a warning when one has not beaten for over 5 s (again every 30 s, info once it runs again) and an "alive" line every 60 s.
 
 ## Interface
@@ -27,6 +28,11 @@ Files:
 - `[quiet.rs:focus_override]` pub fn() -> Option<Option<i64>>; Some(..) once init/set ran; used by Local::save_general
 - `[quiet.rs:persist_focus]` pub fn(Option<i64>); loads general prefs from config dir, sets focus_until_ms, saves
 - `[quiet.rs:load_prefs]` pub fn() -> GeneralPrefs; prefs as saved on disk, defaults if no config dir
+
+- `[inline_images.rs:insert]` pub(crate) fn(&str, caret: usize, slot: u32) -> (String, usize); splits the line at the caret, the image line between, a line to type in after; returns the offset after the image
+- `[inline_images.rs:drop_dead]` pub(crate) fn(&str, live: Fn(u32)->bool) -> String; drops image lines of slots `live` refuses and repeated ones, strips stray placeholders
+- `[inline_images.rs:to_placeholders]` pub(crate) fn(&str) -> (String, Vec<u32>); image lines -> `U+FFFC` lines, slots in order
+- `[inline_images.rs:fill_placeholders]` pub(crate) fn(&str, &[String]) -> String; k-th placeholder paragraph -> k-th block, leftover blocks appended, leftover placeholders removed
 
 - `[meter.rs:Probe::poll]` pub(crate) fn(&mut self, Option<&str>, FnOnce(Option<&str>)->Result<Reader,String>+Send) -> Reading{level,failed}; never blocks; starts a worker for the mic when none is alive; another mic abandons the old worker and its slot
 - `[meter.rs:Probe::stop]` pub(crate) fn(&mut self); the worker closes the mic and ends

@@ -11,9 +11,12 @@ import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { MenuItem, MenuItemVariant, MenuColumn } from "../atoms/menu.slint";
 import { SearchBox } from "../atoms/search_box.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // One rail button. `app` entries show the app's icon; the fixed ones show a glyph.
 component RailEntry inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in property <string> label;
     // What a screen reader says, when it should differ from the label under the icon.
     in property <string> a11y-label;
@@ -21,7 +24,7 @@ component RailEntry inherits Rectangle {
     in property <image> icon;
     in property <bool> has-icon;
     in property <string> letter;
-    in property <color> tone: Theme.accent-strong;
+    in property <color> tone: root.c.accent-strong;
     in property <bool> active;
     in property <bool> draggable: false;
     in property <int> index;
@@ -42,7 +45,7 @@ component RailEntry inherits Rectangle {
         height: 32px;
         y: 12px;
         border-radius: 2px;
-        background: root.active ? Theme.accent : transparent;
+        background: root.active ? root.c.accent : transparent;
     }
     Rectangle {
         y: root.dragging ? root.dy : 0px;
@@ -51,9 +54,9 @@ component RailEntry inherits Rectangle {
         VerticalLayout {
             alignment: center;
             spacing: 2px;
-            if root.glyph.width > 0: Icon { source: root.glyph; tint: root.active || ta.has-hover ? Theme.accent : Theme.fg-muted; width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
-            if root.glyph.width == 0: AppTile { icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 24px; x: (parent.width - 24px) / 2; }
-            if !AppsStore.rail-collapsed: Text { accessible-role: none; text: root.label; color: root.active ? Theme.accent : Theme.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
+            if root.glyph.width > 0: Icon { c: root.c; source: root.glyph; tint: root.active || ta.has-hover ? root.c.accent : root.c.fg-muted; width: 22px; height: 22px; x: (parent.width - 22px) / 2; }
+            if root.glyph.width == 0: AppTile { c: root.c; icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 24px; x: (parent.width - 24px) / 2; }
+            if !AppsStore.icons-only: Text { accessible-role: none; text: root.label; color: root.active ? root.c.accent : root.c.fg-muted; font-size: 10px * Theme.font-scale; horizontal-alignment: center; overflow: elide; }
         }
     }
     ta := TouchArea {
@@ -88,6 +91,7 @@ component RailEntry inherits Rectangle {
 }
 
 export component RailApps inherits Rectangle {
+    in property <Tokens> c: Theme.nav;
     in-out property <string> view;
     vertical-stretch: 1;
     VerticalLayout {
@@ -101,6 +105,7 @@ export component RailApps inherits Rectangle {
                 spacing: 4px;
                 alignment: start;
                 for a[i] in AppsStore.rail: RailEntry {
+                    c: root.c;
                     label: a.name;
                     icon: a.icon;
                     has-icon: a.has-icon;
@@ -123,6 +128,7 @@ export component RailApps inherits Rectangle {
                 }
                 // An app opened from "…" that is not pinned shows here while it is open.
                 if AppsStore.has-temp-app && root.view == AppsStore.temp-app.view: RailEntry {
+                    c: root.c;
                     label: AppsStore.temp-app.name;
                     icon: AppsStore.temp-app.icon;
                     has-icon: AppsStore.temp-app.has-icon;
@@ -137,6 +143,7 @@ export component RailApps inherits Rectangle {
             }
         }
         RailEntry {
+            c: root.c;
             label: "Store";
             glyph: @image-url("../icons/store.svg");
             active: root.view == "store";
@@ -152,6 +159,7 @@ export component RailApps inherits Rectangle {
             }
         }
         RailEntry {
+            c: root.c;
             label: "More";
             a11y-label: "More apps";
             glyph: @image-url("../icons/more.svg");
@@ -171,6 +179,7 @@ export component RailApps inherits Rectangle {
 
 // One installed app in the flyout.
 component FlyoutRow inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> name;
     in property <string> detail;
     in property <image> icon;
@@ -181,7 +190,7 @@ component FlyoutRow inherits Rectangle {
     callback pin();
     height: 48px;
     border-radius: 4px;
-    background: touch.has-hover || pin-touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover || pin-touch.has-hover ? root.c.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.name;
     touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
@@ -189,13 +198,13 @@ component FlyoutRow inherits Rectangle {
         padding-left: 8px;
         padding-right: 8px;
         spacing: 10px;
-        AppTile { icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 32px; y: 8px; }
+        AppTile { c: root.c; icon: root.icon; has-icon: root.has-icon; letter: root.letter; tone: root.tone; size: 32px; y: 8px; }
         VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
             min-width: 0px;
-            Text { text: root.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
-            Text { text: root.detail; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            Text { text: root.name; color: root.c.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+            Text { text: root.detail; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
         }
         pin-btn := Rectangle {
             width: 28px;
@@ -203,10 +212,10 @@ component FlyoutRow inherits Rectangle {
             y: 10px;
             border-radius: 4px;
             opacity: touch.has-hover || pin-touch.has-hover ? 1.0 : 0.45;
-            background: pin-touch.has-hover ? Theme.selected : transparent;
+            background: pin-touch.has-hover ? root.c.selected : transparent;
             accessible-role: button;
             accessible-label: "Pin " + root.name;
-            Icon { source: @image-url("../icons/pin.svg"); width: 16px; height: 16px; x: 6px; y: 6px; tint: pin-touch.has-hover ? Theme.accent : Theme.fg-muted; }
+            Icon { c: root.c; source: @image-url("../icons/pin.svg"); width: 16px; height: 16px; x: 6px; y: 6px; tint: pin-touch.has-hover ? root.c.accent : root.c.fg-muted; }
             pin-touch := TouchArea { mouse-cursor: pointer; clicked => { root.pin(); } }
         }
     }
@@ -214,6 +223,7 @@ component FlyoutRow inherits Rectangle {
 
 // The overlays of the app bar. Put it last in the window so it draws over everything.
 export component AppsOverlays inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     // The confirm button of the dialog: the text fields joined by newlines.
     function submit() {
         AppsStore.command("form-submit", AppsStore.form-text1 + "\n" + AppsStore.form-text2 + "\n" + AppsStore.form-text3);
@@ -230,25 +240,60 @@ export component AppsOverlays inherits Rectangle {
             }
         }
         MenuColumn {
+            c: root.c;
             x: AppsStore.rail-width + 4px;
             y: max(8px, min(AppsStore.menu-y, parent.height - self.height - 8px));
             menu-width: 200px;
             for a[i] in AppsStore.rail: VerticalLayout {
-                if a.id == AppsStore.menu-app: MenuItem { variant: MenuItemVariant.kit;
+                if a.id == AppsStore.menu-app: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: "Open";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("open-app", a.id); }
                 }
-                if a.id == AppsStore.menu-app && !a.locked: MenuItem { variant: MenuItemVariant.kit;
+                if a.id == AppsStore.menu-app && !a.locked: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: "Unpin";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("unpin", a.id); }
                 }
-                if a.id == AppsStore.menu-app && i > 0: MenuItem { variant: MenuItemVariant.kit;
+                if a.id == AppsStore.menu-app && i > 0: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: "Move up";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i - 1)); }
                 }
-                if a.id == AppsStore.menu-app && i < AppsStore.rail.length - 1: MenuItem { variant: MenuItemVariant.kit;
+                if a.id == AppsStore.menu-app && i < AppsStore.rail.length - 1: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: "Move down";
                     clicked => { AppsStore.menu-app = ""; AppsStore.command("move", a.id + "," + (i + 1)); }
+                }
+            }
+        }
+    }
+
+    // Right click menu of a built-in entry (Activity, Chat, Teams…): move it or hide it. The
+    // moves jump over hidden entries, so what the rail shows is what moves.
+    if AppsStore.menu-fixed != "": Rectangle {
+        width: parent.width;
+        height: parent.height;
+        TouchArea {
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    AppsStore.menu-fixed = "";
+                }
+            }
+        }
+        MenuColumn {
+            c: root.c;
+            x: AppsStore.rail-width + 4px;
+            y: max(8px, min(AppsStore.menu-fixed-y, parent.height - self.height - 8px));
+            menu-width: 200px;
+            for f in AppsStore.rail-fixed: VerticalLayout {
+                if f.key == AppsStore.menu-fixed && f.menu-up: MenuItem { c: root.c; variant: MenuItemVariant.kit;
+                    label: @tr("Move up");
+                    clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-move", f.key + "\u{1f}up\u{1f}rail"); }
+                }
+                if f.key == AppsStore.menu-fixed && f.menu-down: MenuItem { c: root.c; variant: MenuItemVariant.kit;
+                    label: @tr("Move down");
+                    clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-move", f.key + "\u{1f}down\u{1f}rail"); }
+                }
+                if f.key == AppsStore.menu-fixed && !f.locked: MenuItem { c: root.c; variant: MenuItemVariant.kit;
+                    label: @tr("Hide");
+                    clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-show", f.key + "\u{1f}0"); }
                 }
             }
         }
@@ -272,34 +317,35 @@ export component AppsOverlays inherits Rectangle {
             height: min(parent.height - 64px, 560px);
             y: parent.height - self.height - 12px;
             border-radius: 8px;
-            background: Theme.surface;
+            background: root.c.surface;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: root.c.border;
             drop-shadow-blur: 16px;
-            drop-shadow-color: #000000a0;
+            drop-shadow-color: Fixed.black-a0;
             TouchArea { }
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
                 HorizontalLayout {
                     spacing: 8px;
-                    Text { text: "Apps"; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
-                    Button { variant: ButtonVariant.kit;
+                    Text { text: "Apps"; color: root.c.fg; font-size: 16px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+                    Button { c: root.c; variant: ButtonVariant.kit;
                         label: AppsStore.rail-collapsed ? "Expand the bar" : "Collapse the bar";
                         clicked => { AppsStore.command("rail-collapse", ""); }
                     }
                 }
                 flyout-search := SearchBox {
+                    c: root.c;
                     placeholder: "Search apps";
                     label: "Search apps";
                     text <=> AppsStore.flyout-query;
                     edited(q) => { AppsStore.command("flyout-query", q); }
                     init => { self.focus-input(); }
                 }
-                if AppsStore.flyout-loading: Text { text: "Loading your apps…"; color: Theme.fg-subtle; font-size: 13px * Theme.font-scale; }
+                if AppsStore.flyout-loading: Text { text: "Loading your apps…"; color: root.c.fg-subtle; font-size: 13px * Theme.font-scale; }
                 if !AppsStore.flyout-loading && AppsStore.flyout-apps.length == 0: Text {
                     text: AppsStore.flyout-query == "" ? "No more apps. Everything you have is on the bar." : "No apps match.";
-                    color: Theme.fg-subtle;
+                    color: root.c.fg-subtle;
                     font-size: 13px * Theme.font-scale;
                     wrap: word-wrap;
                 }
@@ -309,6 +355,7 @@ export component AppsOverlays inherits Rectangle {
                     list := VerticalLayout {
                         alignment: start;
                         for a in AppsStore.flyout-apps: FlyoutRow {
+                            c: root.c;
                             name: a.name;
                             detail: a.developer;
                             icon: a.icon;
@@ -329,7 +376,7 @@ export component AppsOverlays inherits Rectangle {
     if AppsStore.form-title != "": Rectangle {
         width: parent.width;
         height: parent.height;
-        background: Theme.scrim;
+        background: root.c.scrim;
         TouchArea { }
         Rectangle {
             x: (parent.width - self.width) / 2;
@@ -337,16 +384,16 @@ export component AppsOverlays inherits Rectangle {
             width: min(520px, parent.width - 32px);
             height: dlg.preferred-height + 8px;
             border-radius: 8px;
-            background: Theme.surface;
+            background: root.c.surface;
             border-width: 1px;
-            border-color: Theme.border;
+            border-color: root.c.border;
             accessible-role: groupbox;
             accessible-label: AppsStore.form-title;
             dlg := VerticalLayout {
                 padding: 20px;
                 spacing: 12px;
-                Text { text: AppsStore.form-title; color: Theme.fg; font-size: 16px * Theme.font-scale; font-weight: 700; wrap: word-wrap; }
-                if AppsStore.form-body != "": Text { text: AppsStore.form-body; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
+                Text { text: AppsStore.form-title; color: root.c.fg; font-size: 16px * Theme.font-scale; font-weight: 700; wrap: word-wrap; }
+                if AppsStore.form-body != "": Text { text: AppsStore.form-body; color: root.c.fg-muted; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
                 if AppsStore.form-choices.length > 0: ScrollView {
                     height: min(216px, AppsStore.form-choices.length * 36px);
                     VerticalLayout {
@@ -356,31 +403,31 @@ export component AppsOverlays inherits Rectangle {
                         for c in AppsStore.form-choices: Rectangle {
                             height: 34px;
                             border-radius: 4px;
-                            background: c.selected ? Theme.selected : (pick.has-hover ? Theme.surface-hover : transparent);
+                            background: c.selected ? root.c.selected : (pick.has-hover ? root.c.surface-hover : transparent);
                             accessible-role: button;
                             accessible-label: c.title;
                             accessible-item-selected: c.selected;
-                            Text { x: 12px; width: parent.width - 24px; text: c.title; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
+                            Text { x: 12px; width: parent.width - 24px; text: c.title; color: root.c.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
                             pick := TouchArea { mouse-cursor: pointer; clicked => { AppsStore.command("form-choice", c.id); } }
                         }
                     }
                 }
-                if AppsStore.form-label1 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label1; text <=> AppsStore.form-text1; autofocus: true; accepted => { root.submit(); } }
-                if AppsStore.form-label2 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label2; text <=> AppsStore.form-text2; accepted => { root.submit(); } }
-                if AppsStore.form-label3 != "": Field { variant: FieldVariant.kit; label: AppsStore.form-label3; text <=> AppsStore.form-text3; accepted => { root.submit(); } }
-                if AppsStore.form-error != "": Text { text: AppsStore.form-error; color: Theme.danger; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Problem: " + AppsStore.form-error; }
+                if AppsStore.form-label1 != "": Field { c: root.c; variant: FieldVariant.kit; label: AppsStore.form-label1; text <=> AppsStore.form-text1; autofocus: true; accepted => { root.submit(); } }
+                if AppsStore.form-label2 != "": Field { c: root.c; variant: FieldVariant.kit; label: AppsStore.form-label2; text <=> AppsStore.form-text2; accepted => { root.submit(); } }
+                if AppsStore.form-label3 != "": Field { c: root.c; variant: FieldVariant.kit; label: AppsStore.form-label3; text <=> AppsStore.form-text3; accepted => { root.submit(); } }
+                if AppsStore.form-error != "": Text { text: AppsStore.form-error; color: root.c.danger; font-size: 12px * Theme.font-scale; wrap: word-wrap; accessible-role: text; accessible-label: "Problem: " + AppsStore.form-error; }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: end;
-                    if AppsStore.form-link-label != "": Button { variant: ButtonVariant.kit;
+                    if AppsStore.form-link-label != "": Button { c: root.c; variant: ButtonVariant.kit;
                         label: AppsStore.form-link-label;
                         clicked => { AppsStore.command("form-link", ""); }
                     }
-                    Button { variant: ButtonVariant.kit;
+                    Button { c: root.c; variant: ButtonVariant.kit;
                         label: "Cancel";
                         clicked => { AppsStore.command("form-cancel", ""); }
                     }
-                    Button { variant: ButtonVariant.kit;
+                    Button { c: root.c; variant: ButtonVariant.kit;
                         label: AppsStore.form-confirm;
                         primary: !AppsStore.form-danger;
                         danger: AppsStore.form-danger;

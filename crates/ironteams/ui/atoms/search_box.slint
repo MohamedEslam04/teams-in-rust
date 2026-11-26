@@ -1,8 +1,10 @@
 // The search box: a magnifier, a one-line text input and a placeholder.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "widgets.slint";
 
 export component SearchBox inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> placeholder;
     // A binding is the starting text; typing replaces it.
     in-out property <string> text <=> input.text;
@@ -16,16 +18,16 @@ export component SearchBox inherits Rectangle {
     public function focus-input() { input.focus(); }
     height: 32px;
     border-radius: 4px;
-    background: Theme.sidebar;
+    background: root.c.panel;
     border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.border;
+    border-color: input.has-focus ? root.c.accent : root.c.border;
     HorizontalLayout {
         padding-left: 10px;
         padding-right: 10px;
         spacing: 8px;
-        Icon { source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
+        Icon { c: root.c; source: @image-url("../icons/search.svg"); width: 16px; height: 16px; y: 8px; }
         input := TextInput {
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             single-line: true;
             vertical-alignment: center;
@@ -39,7 +41,7 @@ export component SearchBox inherits Rectangle {
         x: 36px;
         width: root.clip-placeholder ? root.width - 44px : self.preferred-width;
         text: root.placeholder;
-        color: Theme.fg-subtle;
+        color: root.c.fg-subtle;
         font-size: 13px * Theme.font-scale;
         vertical-alignment: center;
         overflow: root.clip-placeholder ? TextOverflow.elide : TextOverflow.clip;

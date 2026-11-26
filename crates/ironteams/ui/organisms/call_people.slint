@@ -11,14 +11,16 @@ import { VideoFxStore } from "../stores/video_fx_store.slint";
 import { Button, FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { Heading, HeadingVariant } from "../atoms/heading.slint";
+import { Tokens } from "../tokens/types.slint";
 
 // A row of the People panel is a click away from the person's card (`person-card`), when their
 // MRI is known.
 component PersonRow inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <CallPerson> p;
     height: 44px;
     border-radius: 4px;
-    background: row-touch.has-hover && root.p.id != "" ? Theme.surface-hover : transparent;
+    background: row-touch.has-hover && root.p.id != "" ? root.c.surface-hover : transparent;
     accessible-role: list-item;
     accessible-action-default => { if root.p.id != "" { CallStore.command("person-card", root.p.id); } }
     accessible-label: CallStore.tagged-name(root.p);
@@ -36,6 +38,7 @@ component PersonRow inherits Rectangle {
         padding-right: 4px;
         spacing: 10px;
         Avatar {
+            c: root.c;
             initials: root.p.initials;
             img: root.p.photo;
             has-img: root.p.has-photo;
@@ -52,13 +55,13 @@ component PersonRow inherits Rectangle {
             horizontal-stretch: 1;
             Text {
                 text: CallStore.tagged-name(root.p) + (root.p.me ? " (You)" : "");
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 13px * Theme.font-scale;
                 overflow: elide;
             }
             if root.p.role == "organizer" || root.p.role == "presenter": Text {
                 text: root.p.role == "organizer" ? "Organizer" : "Presenter";
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: 11px * Theme.font-scale;
                 overflow: elide;
             }
@@ -71,21 +74,23 @@ component PersonRow inherits Rectangle {
             accessible-label: root.p.name + "'s reaction: " + root.p.reaction-name;
         }
         if root.p.hand: Icon {
+            c: root.c;
             source: @image-url("../icons/hand.svg");
-            tint: Theme.accent;
+            tint: root.c.accent;
             y: 12px;
         }
         if root.p.lobby && CallStore.can-admit: VerticalLayout {
             alignment: center;
-            Button { variant: ButtonVariant.solid;
+            Button { c: root.c; variant: ButtonVariant.solid;
                 accessible-label: "Admit " + CallStore.tagged-name(root.p);
                 label: "Admit";
                 clicked => { CallStore.command("admit", root.p.id); }
             }
         }
         if !root.p.lobby: Icon {
+            c: root.c;
             source: root.p.muted ? @image-url("../icons/mic-off.svg") : @image-url("../icons/mic.svg");
-            tint: root.p.muted ? Theme.fg-subtle : Theme.fg;
+            tint: root.p.muted ? root.c.fg-subtle : root.c.fg;
             y: 12px;
         }
     }
@@ -93,10 +98,11 @@ component PersonRow inherits Rectangle {
 
 // Someone who is not in the call: an invitee with their answer, or a member of the meeting chat.
 component AbsentRow inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <CallAbsent> a;
     height: 44px;
     border-radius: 4px;
-    background: row-touch.has-hover && root.a.id != "" ? Theme.surface-hover : transparent;
+    background: row-touch.has-hover && root.a.id != "" ? root.c.surface-hover : transparent;
     accessible-role: list-item;
     accessible-label: root.a.name;
     accessible-description: root.a.status;
@@ -111,6 +117,7 @@ component AbsentRow inherits Rectangle {
         padding-right: 4px;
         spacing: 10px;
         Avatar {
+            c: root.c;
             initials: root.a.initials;
             img: root.a.photo;
             has-img: root.a.has-photo;
@@ -127,13 +134,13 @@ component AbsentRow inherits Rectangle {
             horizontal-stretch: 1;
             Text {
                 text: root.a.name;
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 13px * Theme.font-scale;
                 overflow: elide;
             }
             if root.a.status != "": Text {
                 text: root.a.status;
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: 11px * Theme.font-scale;
                 overflow: elide;
             }
@@ -142,11 +149,12 @@ component AbsentRow inherits Rectangle {
 }
 
 component PanelHeader inherits HorizontalLayout {
+    in property <Tokens> c: Theme.call;
     in property <string> title;
     height: 32px;
     Text {
         text: root.title;
-        color: Theme.fg;
+        color: root.c.fg;
         font-size: 15px * Theme.font-scale;
         font-weight: 600;
         vertical-alignment: center;
@@ -154,6 +162,7 @@ component PanelHeader inherits HorizontalLayout {
         overflow: elide;
     }
     IconButton {
+        c: root.c;
         icon: @image-url("../icons/close.svg");
         tooltip: "Close " + root.title;
         size: 28px;
@@ -164,6 +173,7 @@ component PanelHeader inherits HorizontalLayout {
 // A people search box with its results under it: `find` on every edit, `picked` with the MRI of
 // the row clicked. The invite box and the transfer dialog share it.
 export component PeopleSearch inherits VerticalLayout {
+    in property <Tokens> c: Theme.call;
     in property <string> placeholder;
     callback picked(CallFound);
     // The text of the box after each edit and when a pick empties it.
@@ -173,12 +183,12 @@ export component PeopleSearch inherits VerticalLayout {
         height: 34px;
         border-radius: 4px;
         border-width: 1px;
-        border-color: input.has-focus ? Theme.accent : Theme.border;
-        background: Theme.surface;
+        border-color: input.has-focus ? root.c.accent : root.c.border;
+        background: root.c.surface;
         input := TextInput {
             x: 10px;
             width: parent.width - 20px;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             single-line: true;
             vertical-alignment: center;
@@ -190,7 +200,7 @@ export component PeopleSearch inherits VerticalLayout {
         if input.text == "": Text {
             x: 10px;
             text: root.placeholder;
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
         }
@@ -199,7 +209,7 @@ export component PeopleSearch inherits VerticalLayout {
         for f in CallStore.found: Rectangle {
             height: 40px;
             border-radius: 4px;
-            background: row-touch.has-hover ? Theme.surface-hover : transparent;
+            background: row-touch.has-hover ? root.c.surface-hover : transparent;
             accessible-role: list-item;
             accessible-label: f.name;
             accessible-description: f.subtitle;
@@ -207,11 +217,11 @@ export component PeopleSearch inherits VerticalLayout {
             HorizontalLayout {
                 padding-left: 6px;
                 spacing: 8px;
-                Avatar { initials: f.initials; size: 26px; y: 7px; }
+                Avatar { c: root.c; initials: f.initials; size: 26px; y: 7px; }
                 VerticalLayout {
                     alignment: center;
-                    Text { text: f.name; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
-                    if f.subtitle != "": Text { text: f.subtitle; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+                    Text { text: f.name; color: root.c.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
+                    if f.subtitle != "": Text { text: f.subtitle; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
                 }
             }
             row-touch := TouchArea {
@@ -226,7 +236,8 @@ export component PeopleSearch inherits VerticalLayout {
 // to invite), Share invite, and the sections: who is in the meeting (and the lobby), who else was
 // invited, and who is only in the meeting chat. Each section folds under its header.
 export component PeoplePanel inherits Rectangle {
-    background: Theme.sidebar;
+    in property <Tokens> c: Theme.call;
+    background: root.c.panel;
     // Which sections are folded: the panel's own, gone when it closes.
     property <bool> meeting-open: true;
     property <bool> invited-open: true;
@@ -243,15 +254,16 @@ export component PeoplePanel inherits Rectangle {
     VerticalLayout {
         padding: 12px;
         spacing: 8px;
-        PanelHeader { title: "People"; }
+        PanelHeader { c: root.c; title: "People"; }
         PeopleSearch {
+            c: root.c;
             placeholder: "Type a name";
             picked(f) => { CallStore.command("invite", f.id); }
             edited(text) => { CallStore.command("people-filter", text); }
         }
         if CallStore.invite-status != "": Text {
             text: CallStore.invite-status;
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: 12px * Theme.font-scale;
             wrap: word-wrap;
             accessible-role: text;
@@ -259,6 +271,7 @@ export component PeoplePanel inherits Rectangle {
         }
         // Not for a 1:1 call: it has no link to share.
         if CallStore.can-share-invite: FlexButton {
+            c: root.c;
             variant: ButtonVariant.toolbar;
             label: root.copied ? "Link copied" : "Share invite";
             clicked => {
@@ -273,12 +286,13 @@ export component PeoplePanel inherits Rectangle {
                 alignment: start;
                 spacing: 0px;
                 SectionHeader {
+                    c: root.c;
                     label: (CallStore.kind == "direct" ? "Currently in this call (" : "In this meeting (") + CallStore.in-call + ")";
                     expanded <=> root.meeting-open;
                 }
                 if root.meeting-open: VerticalLayout {
                     for p in CallStore.people: VerticalLayout {
-                        if !p.lobby && p.listed: PersonRow { p: p; }
+                        if !p.lobby && p.listed: PersonRow { c: root.c; p: p; }
                     }
                 }
                 if CallStore.in-lobby > 0: HorizontalLayout {
@@ -287,7 +301,7 @@ export component PeoplePanel inherits Rectangle {
                     spacing: 8px;
                     Text {
                         text: "Waiting in lobby (" + CallStore.in-lobby + ")";
-                        color: Theme.fg-muted;
+                        color: root.c.fg-muted;
                         font-size: 12px * Theme.font-scale;
                         font-weight: 600;
                         vertical-alignment: bottom;
@@ -296,31 +310,33 @@ export component PeoplePanel inherits Rectangle {
                     }
                     if CallStore.can-admit: VerticalLayout {
                         alignment: end;
-                        Button { variant: ButtonVariant.solid;
+                        Button { c: root.c; variant: ButtonVariant.solid;
                             label: "Admit all";
                             clicked => { CallStore.command("admit-all", ""); }
                         }
                     }
                 }
                 for p in CallStore.people: VerticalLayout {
-                    if p.lobby && p.listed: PersonRow { p: p; }
+                    if p.lobby && p.listed: PersonRow { c: root.c; p: p; }
                 }
                 if CallStore.invited.length > 0: SectionHeader {
+                    c: root.c;
                     label: "Others invited (" + CallStore.invited.length + ")";
                     expanded <=> root.invited-open;
                 }
                 if CallStore.invited.length > 0 && root.invited-open: VerticalLayout {
                     for a in CallStore.invited: VerticalLayout {
-                        if a.listed: AbsentRow { a: a; }
+                        if a.listed: AbsentRow { c: root.c; a: a; }
                     }
                 }
                 if CallStore.chat-people.length > 0: SectionHeader {
+                    c: root.c;
                     label: "People added to the chat (" + CallStore.chat-people.length + ")";
                     expanded <=> root.chat-open;
                 }
                 if CallStore.chat-people.length > 0 && root.chat-open: VerticalLayout {
                     for a in CallStore.chat-people: VerticalLayout {
-                        if a.listed: AbsentRow { a: a; }
+                        if a.listed: AbsentRow { c: root.c; a: a; }
                     }
                 }
             }
@@ -332,13 +348,14 @@ export component PeoplePanel inherits Rectangle {
 // panel replaces this one while it is open, see call_window.slint) and the devices. The
 // service decides who may record; a refusal shows as the call's error banner.
 export component MorePanel inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // The top bar had no room for these (a narrow window): they are here instead.
     in property <bool> fold: false;
-    background: Theme.sidebar;
+    background: root.c.panel;
     VerticalLayout {
         padding: 12px;
         spacing: 12px;
-        PanelHeader { title: "More"; }
+        PanelHeader { c: root.c; title: "More"; }
         // Taller than a short window: the panel scrolls, and an open device list with it.
         ScrollView {
             // As wide as the panel, not as wide as the widest row's natural width (that one is
@@ -351,27 +368,27 @@ export component MorePanel inherits Rectangle {
                 if root.fold: HorizontalLayout {
                     alignment: start;
                     spacing: 4px;
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/people.svg");
                         label: "People";
                         checkable: true;
                         clicked => { CallStore.panel = "people"; }
                     }
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/hand.svg");
                         label: CallStore.hand ? "Lower" : "Raise";
                         checkable: true;
                         active: CallStore.hand;
                         clicked => { CallStore.command("hand", ""); }
                     }
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/grid.svg");
                         label: "View";
                         tip: "Gallery, speaker or focus on content";
                         active: CallStore.menu == "view";
                         clicked => { CallStore.menu = CallStore.menu == "view" ? "" : "view"; }
                     }
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/emoji.svg");
                         label: "React";
                         enabled: CallStore.phase == "connected";
@@ -383,7 +400,7 @@ export component MorePanel inherits Rectangle {
                 if root.fold && CallStore.kind == "direct": HorizontalLayout {
                     alignment: start;
                     spacing: 4px;
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/pause.svg");
                         label: CallStore.held ? "Resume" : "Hold";
                         checkable: true;
@@ -391,7 +408,7 @@ export component MorePanel inherits Rectangle {
                         tip: CallStore.held ? "Take the call off hold" : "Put the call on hold";
                         clicked => { CallStore.command("hold", ""); }
                     }
-                    Button { variant: ButtonVariant.call;
+                    Button { c: root.c; variant: ButtonVariant.call;
                         icon: @image-url("../icons/forward.svg");
                         label: "Transfer";
                         active: CallStore.menu == "transfer";
@@ -406,38 +423,38 @@ export component MorePanel inherits Rectangle {
                         }
                     }
                 }
-                Heading { variant: HeadingVariant.caption; text: "Record and transcribe"; }
+                Heading { c: root.c; variant: HeadingVariant.caption; text: "Record and transcribe"; }
                 HorizontalLayout {
                     alignment: start;
                     spacing: 8px;
-                    Button { variant: ButtonVariant.action;
+                    Button { c: root.c; variant: ButtonVariant.action;
                         label: CallStore.recording ? "Stop recording" : "Start recording";
                         clicked => { CallStore.command("recording", CallStore.recording ? "stop" : "start"); }
                     }
-                    Button { variant: ButtonVariant.action;
+                    Button { c: root.c; variant: ButtonVariant.action;
                         label: CallStore.transcribing ? "Stop transcription" : "Start transcription";
                         clicked => { CallStore.command("transcription", CallStore.transcribing ? "stop" : "start"); }
                     }
                 }
-                Heading { variant: HeadingVariant.caption; text: "Language and speech"; }
-                Switch { variant: SwitchVariant.row;
+                Heading { c: root.c; variant: HeadingVariant.caption; text: "Language and speech"; }
+                Switch { c: root.c; variant: SwitchVariant.row;
                     label: "Show live captions";
                     checked: CallStore.captions;
                     toggled => { CallStore.command("captions", CallStore.captions ? "off" : "on"); }
                 }
-                Heading { variant: HeadingVariant.caption; text: "Video"; }
+                Heading { c: root.c; variant: HeadingVariant.caption; text: "Video"; }
                 HorizontalLayout {
                     alignment: start;
-                    Button { variant: ButtonVariant.action;
+                    Button { c: root.c; variant: ButtonVariant.action;
                         label: "Video effects";
                         clicked => { VideoFxStore.open = true; }
                     }
                 }
-                Heading { variant: HeadingVariant.caption; text: "Device settings"; }
-                DeviceSettings { prefix: "more"; }
+                Heading { c: root.c; variant: HeadingVariant.caption; text: "Device settings"; }
+                DeviceSettings { c: root.c; prefix: "more"; }
                 Text {
                     text: "Echo cancellation, noise suppression and automatic gain are on.";
-                    color: Theme.fg-subtle;
+                    color: root.c.fg-subtle;
                     font-size: 12px * Theme.font-scale;
                     wrap: word-wrap;
                 }

@@ -33,7 +33,7 @@ component TaskRowView inherits Rectangle {
             horizontal-stretch: 1;
             min-width: 0px;
             Text { text: root.t.title; color: root.t.done ? Theme.fg-subtle : Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; }
-            Text { text: root.t.subtitle + (root.t.subtitle != "" && root.t.meta != "" ? " · " : "") + root.t.meta; color: root.t.subtitle.ends-with("(overdue)") ? #ff8a8f : Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
+            Text { text: root.t.subtitle + (root.t.subtitle != "" && root.t.meta != "" ? " · " : "") + root.t.meta; color: root.t.subtitle.ends-with("(overdue)") ? Theme.danger-text : Theme.fg-subtle; font-size: 11px * Theme.font-scale; overflow: elide; }
         }
         Badge { variant: BadgeVariant.status; y: 16px; text: root.t.badge; tone: root.t.tone; }
         IconButton { y: 12px; size: 28px; icon: @image-url("../icons/edit.svg"); tooltip: "Edit " + root.t.title; clicked => { TasksStore.command("task-edit", root.t.id); } }
@@ -55,7 +55,7 @@ component BoardCard inherits Rectangle {
         padding: 10px;
         spacing: 3px;
         Text { text: root.t.title; color: root.t.done ? Theme.fg-subtle : Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
-        if root.t.subtitle != "": Text { text: root.t.subtitle; color: root.t.subtitle.ends-with("(overdue)") ? #ff8a8f : Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+        if root.t.subtitle != "": Text { text: root.t.subtitle; color: root.t.subtitle.ends-with("(overdue)") ? Theme.danger-text : Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
         if root.t.meta != "": Text { text: root.t.meta; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
     }
 }
@@ -66,7 +66,7 @@ export component TasksView inherits Rectangle {
     HorizontalLayout {
         Rectangle {
             width: 240px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             ScrollView {
                 VerticalLayout {
                     width: parent.width - 12px;
@@ -114,7 +114,7 @@ export component TasksView inherits Rectangle {
                         accessible-role: progress-indicator;
                         accessible-value: Math.round(TasksStore.progress * 100) + "%";
                         accessible-label: "Completed";
-                        Rectangle { width: parent.width * TasksStore.progress; border-radius: 3px; background: #6bd69b; }
+                        Rectangle { width: parent.width * TasksStore.progress; border-radius: 3px; background: Theme.success; }
                     }
                 }
             }

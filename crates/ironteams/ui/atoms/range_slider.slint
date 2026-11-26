@@ -1,8 +1,10 @@
 // A slider from 0 to 100 on the theme's colours (the call menu's speaker volume). The owner keeps
 // the value: `edited` says where it was dragged to, `released` that the drag ended.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export component RangeSlider inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <float> value;
     in property <string> label;
     callback edited(float);
@@ -24,18 +26,18 @@ export component RangeSlider inherits Rectangle {
         y: (root.height - self.height) / 2;
         height: 4px;
         border-radius: 2px;
-        background: Theme.border;
+        background: root.c.border;
         Rectangle {
             width: parent.width * clamp(root.value, 0, 100) / 100;
             border-radius: 2px;
-            background: Theme.accent;
+            background: root.c.accent;
         }
     }
     Rectangle {
         width: 14px;
         height: 14px;
         border-radius: 7px;
-        background: Theme.fg;
+        background: root.c.fg;
         x: (root.width - self.width) * clamp(root.value, 0, 100) / 100;
         y: (root.height - self.height) / 2;
     }

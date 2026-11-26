@@ -5,6 +5,8 @@
 // `Check` is a box with its label: it flips `checked` itself, then says so through `toggled`.
 // `Switch` is an on/off switch with its label; `settings` flips `checked` itself, the others
 // leave the state to their owner.
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
 import { Icon } from "widgets.slint";
@@ -19,6 +21,7 @@ export enum CheckBoxVariant {
 }
 
 export component CheckBox inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <CheckBoxVariant> variant: CheckBoxVariant.square;
     in property <bool> checked;
     in property <string> label;
@@ -29,20 +32,20 @@ export component CheckBox inherits Rectangle {
     height: 18px;
     border-radius: root.round ? 9px : 3px;
     border-width: root.round ? 1.5px : 1px;
-    border-color: root.round ? (root.checked ? #6bd69b : Theme.fg-subtle)
-        : root.checked ? Theme.accent
-        : root.drive ? Theme.fg-subtle : Theme.fg-muted;
-    background: root.round ? (root.checked ? #1d3a2a : transparent)
-        : root.checked ? Theme.accent-strong
-        : root.drive ? Theme.sidebar : transparent;
+    border-color: root.round ? (root.checked ? Fixed.badge-ok-fg : root.c.fg-subtle)
+        : root.checked ? root.c.accent
+        : root.drive ? root.c.fg-subtle : root.c.fg-muted;
+    background: root.round ? (root.checked ? Fixed.badge-ok-bg : transparent)
+        : root.checked ? root.c.accent-strong
+        : root.drive ? root.c.panel : transparent;
     accessible-role: checkbox;
     accessible-label: root.label;
     accessible-checkable: root.variant == CheckBoxVariant.square;
     accessible-checked: root.checked;
     accessible-action-default => { root.toggled(!root.checked); }
-    if root.variant == CheckBoxVariant.square && root.checked: Icon { source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: #ffffff; }
-    if root.round: Text { text: root.checked ? "✓" : ""; color: #6bd69b; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-    if root.drive: Text { text: root.checked ? "✓" : ""; color: #ffffff; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    if root.variant == CheckBoxVariant.square && root.checked: Icon { c: root.c; source: @image-url("../icons/check.svg"); width: 14px; height: 14px; tint: root.c.on-accent; }
+    if root.round: Text { text: root.checked ? "✓" : ""; color: Fixed.badge-ok-fg; font-size: 11px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    if root.drive: Text { text: root.checked ? "✓" : ""; color: root.c.on-accent; font-size: 12px * Theme.font-scale; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
     TouchArea {
         mouse-cursor: pointer;
         clicked => { root.toggled(!root.checked); }
@@ -57,6 +60,7 @@ export enum CheckVariant {
 }
 
 export component Check inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <CheckVariant> variant: CheckVariant.dialog;
     in-out property <bool> checked;
     in property <string> label;
@@ -64,7 +68,7 @@ export component Check inherits Rectangle {
     in property <string> hint;
     in property <bool> enabled: true;
     // `toolbar`: the box colour when checked.
-    in property <color> tone: Theme.accent-strong;
+    in property <color> tone: root.c.accent-strong;
     callback toggled(bool);
     property <bool> toolbar: root.variant == CheckVariant.toolbar;
     property <length> text-x: root.toolbar ? 24px : 28px;
@@ -88,10 +92,10 @@ export component Check inherits Rectangle {
         height: self.width;
         border-radius: 3px;
         border-width: 1px;
-        border-color: root.checked ? (root.toolbar ? root.tone : Theme.accent) : Theme.border;
-        background: root.checked ? (root.toolbar ? root.tone : Theme.accent-strong) : transparent;
-        if root.checked && !root.toolbar: Icon { source: @image-url("../icons/check.svg"); tint: #ffffff; width: 14px; height: 14px; }
-        if root.checked && root.toolbar: Text { text: "✓"; color: #ffffff; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
+        border-color: root.checked ? (root.toolbar ? root.tone : root.c.accent) : root.c.border;
+        background: root.checked ? (root.toolbar ? root.tone : root.c.accent-strong) : transparent;
+        if root.checked && !root.toolbar: Icon { c: root.c; source: @image-url("../icons/check.svg"); tint: root.c.on-accent; width: 14px; height: 14px; }
+        if root.checked && root.toolbar: Text { text: "✓"; color: Fixed.white; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; }
     }
     col := VerticalLayout {
         x: root.text-x;
@@ -100,12 +104,12 @@ export component Check inherits Rectangle {
         alignment: center;
         lbl := Text {
             text: root.label;
-            color: root.enabled ? Theme.fg : Theme.fg-subtle;
+            color: root.enabled ? root.c.fg : root.c.fg-subtle;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: root.toolbar ? TextOverflow.elide : TextOverflow.clip;
         }
-        if !root.toolbar && root.hint != "": Text { text: root.hint; color: Theme.fg-subtle; font-size: 11px * Theme.font-scale; }
+        if !root.toolbar && root.hint != "": Text { text: root.hint; color: root.c.fg-subtle; font-size: 11px * Theme.font-scale; }
     }
     TouchArea { mouse-cursor: pointer; clicked => { root.flip(); } }
 }
@@ -123,6 +127,7 @@ export enum SwitchVariant {
 }
 
 export component Switch inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <SwitchVariant> variant: SwitchVariant.settings;
     in property <string> label;
     in property <string> hint;
@@ -146,7 +151,7 @@ export component Switch inherits Rectangle {
     // `icon`: the width it asks for (its owner sets `width: self.natural-width`).
     out property <length> natural-width: lbl.preferred-width + 90px;
     border-radius: root.with-icon ? 6px : root.settings ? 0px : 4px;
-    background: !root.settings && touch.has-hover ? Theme.surface-hover : transparent;
+    background: !root.settings && touch.has-hover ? root.c.surface-hover : transparent;
     // Opened by a Find result: tells the page where this row is.
     Timer {
         running: root.settings && root.label != "" && root.label == SettingsStore.target;
@@ -174,10 +179,11 @@ export component Switch inherits Rectangle {
         }
     }
     if root.with-icon: Icon {
+        c: root.c;
         x: 20px;
         y: 15px;
         source: root.icon;
-        tint: Theme.fg;
+        tint: root.c.fg;
     }
     col := VerticalLayout {
         x: root.col-x;
@@ -188,7 +194,7 @@ export component Switch inherits Rectangle {
         lbl := Text {
             horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
             text: root.label;
-            color: root.settings && !root.enabled ? Theme.fg-subtle : Theme.fg;
+            color: root.settings && !root.enabled ? root.c.fg-subtle : root.c.fg;
             font-size: root.settings ? Theme.font-body : 13px * Theme.font-scale;
             wrap: root.settings ? TextWrap.word-wrap : TextWrap.no-wrap;
             overflow: root.variant == SwitchVariant.panel || root.variant == SwitchVariant.row ? TextOverflow.elide : TextOverflow.clip;
@@ -197,7 +203,7 @@ export component Switch inherits Rectangle {
         if root.hint != "" && (root.settings || root.variant == SwitchVariant.panel): Text {
             horizontal-alignment: root.settings ? Theme.start-align : TextHorizontalAlignment.left;
             text: root.hint;
-            color: Theme.fg-subtle;
+            color: root.c.fg-subtle;
             font-size: root.settings ? Theme.font-small : 11px * Theme.font-scale;
             wrap: word-wrap;
         }
@@ -215,16 +221,16 @@ export component Switch inherits Rectangle {
         height: root.settings ? 20px : 18px;
         border-radius: self.height / 2;
         border-width: root.settings ? (root.checked ? 0px : 1px) : 1px;
-        border-color: root.settings ? Theme.fg-muted : (root.checked ? Theme.accent-strong : Theme.border);
-        background: root.settings ? (root.checked ? (root.enabled ? Theme.accent-strong : Theme.fg-subtle) : transparent)
-            : (root.checked ? Theme.accent-strong : Theme.surface-hover);
+        border-color: root.settings ? root.c.fg-muted : (root.checked ? root.c.accent-strong : root.c.border);
+        background: root.settings ? (root.checked ? (root.enabled ? root.c.accent-strong : root.c.fg-subtle) : transparent)
+            : (root.checked ? root.c.accent-strong : root.c.surface-hover);
         Rectangle {
             x: root.settings ? (root.checked ? parent.width - self.width - 4px : 4px) : (root.checked ? parent.width - 15px : 3px);
             y: root.settings ? 4px : 3px;
             width: 12px;
             height: 12px;
             border-radius: 6px;
-            background: root.settings && !root.checked ? Theme.fg-muted : #ffffff;
+            background: root.settings && !root.checked ? root.c.fg-muted : root.c.on-accent;
             animate x { duration: root.settings && !Theme.reduced-motion ? 120ms : 0ms; }
         }
     }
@@ -234,6 +240,7 @@ export component Switch inherits Rectangle {
 // The track and knob of a settings switch, alone: no label, no click target, nothing for a
 // screen reader. The row that owns it (molecules/settings_kit.slint) is the switch.
 export component SwitchTrack inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <bool> checked;
     in property <bool> enabled: true;
     // The row under the pointer: the track says it will flip.
@@ -242,8 +249,8 @@ export component SwitchTrack inherits Rectangle {
     height: 20px;
     border-radius: self.height / 2;
     border-width: root.checked && root.enabled ? 0px : 1px;
-    border-color: !root.enabled ? Theme.fg-subtle : root.hovered ? Theme.fg : Theme.fg-muted;
-    background: !root.checked ? transparent : !root.enabled ? Theme.surface-hover : root.hovered ? Theme.accent : Theme.accent-strong;
+    border-color: !root.enabled ? root.c.fg-subtle : root.hovered ? root.c.fg : root.c.fg-muted;
+    background: !root.checked ? transparent : !root.enabled ? root.c.surface-hover : root.hovered ? root.c.accent : root.c.accent-strong;
     accessible-role: none;
     Rectangle {
         x: root.checked ? parent.width - self.width - 4px : 4px;
@@ -251,7 +258,7 @@ export component SwitchTrack inherits Rectangle {
         width: 12px;
         height: 12px;
         border-radius: 6px;
-        background: !root.enabled ? Theme.fg-subtle : root.checked ? #ffffff : root.hovered ? Theme.fg : Theme.fg-muted;
+        background: !root.enabled ? root.c.fg-subtle : root.checked ? root.c.on-accent : root.hovered ? root.c.fg : root.c.fg-muted;
         animate x { duration: Theme.reduced-motion ? 0ms : 120ms; }
     }
 }

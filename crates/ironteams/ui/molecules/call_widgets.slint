@@ -1,5 +1,6 @@
 // Controls of the call window: the top bar's buttons (with a hover tooltip, also on the disabled
 // ones that say why), the device dropdowns and the text buttons.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 import { ScrollView } from "std-widgets.slint";
 import { Icon } from "../atoms/widgets.slint";
@@ -9,6 +10,7 @@ import { VideoFxStore } from "../stores/video_fx_store.slint";
 // A device dropdown. The list opens in place (it pushes what is below it down), so it is never
 // hidden behind a sibling. `key` names it in `CallStore.menu`.
 export component DevicePicker inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
     in property <string> caption;
     in property <[string]> options;
     in property <int> current;
@@ -18,15 +20,15 @@ export component DevicePicker inherits VerticalLayout {
     spacing: 4px;
     Text {
         text: root.caption;
-        color: Theme.fg-muted;
+        color: root.c.fg-muted;
         font-size: 12px * Theme.font-scale;
     }
     Rectangle {
         height: 34px;
         border-radius: 4px;
         border-width: 1px;
-        border-color: root.open ? Theme.accent : Theme.border;
-        background: head.has-hover ? Theme.surface-hover : Theme.surface;
+        border-color: root.open ? root.c.accent : root.c.border;
+        background: head.has-hover ? root.c.surface-hover : root.c.surface;
         accessible-role: combobox;
         accessible-label: root.caption;
         accessible-value: root.options[root.current];
@@ -39,13 +41,14 @@ export component DevicePicker inherits VerticalLayout {
             spacing: 6px;
             Text {
                 text: root.options[root.current];
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 13px * Theme.font-scale;
                 overflow: elide;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
             Icon {
+                c: root.c;
                 source: @image-url("../icons/chevron-down.svg");
                 width: 14px;
                 height: 14px;
@@ -62,8 +65,8 @@ export component DevicePicker inherits VerticalLayout {
         height: min(root.options.length * 30px + 8px, 188px);
         border-radius: 4px;
         border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.surface;
+        border-color: root.c.border;
+        background: root.c.surface;
         ScrollView {
             VerticalLayout {
                 width: parent.width - 12px;
@@ -71,7 +74,7 @@ export component DevicePicker inherits VerticalLayout {
                 for name[i] in root.options: Rectangle {
                     height: 30px;
                     border-radius: 3px;
-                    background: item.has-hover ? Theme.surface-hover : transparent;
+                    background: item.has-hover ? root.c.surface-hover : transparent;
                     accessible-role: list-item;
                     accessible-label: name;
                     accessible-item-selectable: true;
@@ -83,13 +86,13 @@ export component DevicePicker inherits VerticalLayout {
                         Text {
                             text: i == root.current ? "✓" : "";
                             width: 12px;
-                            color: Theme.accent;
+                            color: root.c.accent;
                             font-size: 13px * Theme.font-scale;
                             vertical-alignment: center;
                         }
                         Text {
                             text: name;
-                            color: Theme.fg;
+                            color: root.c.fg;
                             font-size: 13px * Theme.font-scale;
                             overflow: elide;
                             vertical-alignment: center;
@@ -108,9 +111,11 @@ export component DevicePicker inherits VerticalLayout {
 // The microphone, speaker and camera pickers, as the More panel, the mic dropdown (no camera) and
 // the pre-join screen show them. `prefix` keeps each place's dropdowns apart.
 export component DeviceSettings inherits VerticalLayout {
+    in property <Tokens> c: Theme.content;
     in property <string> prefix;
     spacing: 12px;
     DevicePicker {
+        c: root.c;
         caption: "Microphone";
         key: root.prefix + "-mic";
         options: CallStore.mics;
@@ -118,6 +123,7 @@ export component DeviceSettings inherits VerticalLayout {
         picked(i) => { CallStore.command("mic", "" + i); }
     }
     DevicePicker {
+        c: root.c;
         caption: "Speaker";
         key: root.prefix + "-speaker";
         options: CallStore.speakers;
@@ -126,6 +132,7 @@ export component DeviceSettings inherits VerticalLayout {
     }
     // The camera, where video is chosen (not the mic button's audio dropdown).
     if root.prefix != "card": DevicePicker {
+        c: root.c;
         caption: "Camera";
         key: root.prefix + "-camera";
         options: VideoFxStore.cameras;

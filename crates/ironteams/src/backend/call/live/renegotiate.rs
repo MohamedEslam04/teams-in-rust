@@ -3,7 +3,7 @@ use super::*;
 impl Call {
     /// Camera on / off: the portal opens without blocking the call (its answer comes as a
     /// [`CameraMsg`]); turning it off tells a meeting at once. A 1:1 call is told by the run loop
-    /// ([`Call::sync_camera`]), one re-offer at a time.
+    /// ([`Call::sync_reoffer`]), one re-offer at a time.
     pub(super) async fn camera_control(
         &mut self,
         on: bool,
@@ -68,57 +68,14 @@ impl Call {
         }
     }
 
-    /// Tells a 1:1 call what our camera does now, when that changed since it was last told and
-    /// no re-offer of ours waits for its answer (the run loop asks after every step). One
-    /// re-offer at a time, so each answer is applied to the offer it answers.
-    pub(super) async fn sync_camera(&mut self, sink: &EventSink) {
-        if self.meeting {
-            return;
-        }
-        let waiting = self.reoffer.is_some() || self.next.is_some();
-        if let Some(on) = self.camera.reoffer_due(waiting, Instant::now()) {
-            self.tell_camera(on, sink).await;
-        }
-    }
-
-    /// Tells the service our camera sends (or stopped): `UpdateMediaDescriptions` in a meeting,
-    /// a re-offer in a 1:1 call.
+    /// Tells a meeting our camera sends (or stopped): `UpdateMediaDescriptions`. A 1:1 call is
+    /// told by the run loop's re-offer ([`Call::sync_reoffer`]).
     pub(super) async fn tell_camera(&mut self, on: bool, sink: &EventSink) {
-        let r = if self.meeting {
-            let lines = Sending {
-                camera: on,
-                share: self.share.sharing(),
-            };
-            self.tell_meeting(camera::ROLE, lines, on).await
-        } else {
-            // The answer comes inline or on `call/mediaAnswer/`, which `apply_answer` takes.
-            self.answered = false;
-            self.camera.told(on);
-            let sharing = self.share.sharing();
-            match camera::reoffer_direct(&self.ngc, &self.s, &self.links, &self.media, on, sharing)
-                .await
-            {
-                Ok(Some(a)) => {
-                    self.apply_answer(&a).await;
-                    Ok(())
-                }
-                Ok(None) => {
-                    self.reoffer = Some(Reoffer::Camera(on));
-                    self.camera.asked(Instant::now());
-                    Ok(())
-                }
-                Err(e) => {
-                    // Not retried: the camera stops below (on), or stays off.
-                    self.camera.told(false);
-                    self.answered = true;
-                    if let Err(e) = self.media.rollback_offer().await {
-                        tracing::warn!(%e, "unsent re-offer not rolled back");
-                    }
-                    Err(e)
-                }
-            }
+        let lines = Sending {
+            camera: on,
+            share: self.share.sharing(),
         };
-        if let Err(e) = r {
+        if let Err(e) = self.tell_meeting(camera::ROLE, lines, on).await {
             tracing::warn!("camera not signalled: {e:#}");
             if on {
                 self.camera.stop(sink).await;
@@ -141,8 +98,9 @@ impl Call {
     /// media server: new mids and ufrags) is refused by the connected session and answered on a
     /// fresh one, which waits in [`Call::next`] and takes over once connected (the run loop); a
     /// follow-up offer for that one is answered on it. It supersedes our pending re-offer (hold,
-    /// resume, camera, share): the answer says what that asked for, `held` included, and its own
-    /// answer or rejection, should one still come, changes nothing.
+    /// resume, camera, share): the answer says the hold, camera and share as they are now
+    /// ([`Reoffers::told`]), and that re-offer's own answer or rejection, should one still come,
+    /// changes nothing.
     pub(super) async fn renegotiate(
         &mut self,
         offer: &SdpBlob,
@@ -166,19 +124,16 @@ impl Call {
         // Their offer met our pending re-offer (glare): theirs wins, and our answer says what
         // ours asked for (the hold, camera and share as they are now). A restart leaves ours on
         // the old session; otherwise ours is withdrawn so the session can answer.
-        if self.reoffer.is_some() {
+        if self.reoffers.pending.is_some() {
             if !restarts
                 && !for_next
                 && let Err(e) = self.media.rollback_offer().await
             {
                 tracing::warn!(%e, "pending re-offer not rolled back");
             }
-            self.pending_offer = None;
-            self.answered = true;
-            self.camera.settled();
-            supersede(&mut self.reoffer, &mut self.superseded);
+            self.reoffers.supersede();
             tracing::info!(
-                superseded = ?self.superseded,
+                superseded = ?self.reoffers.superseded.as_ref().map(|s| s.to),
                 restarts,
                 "their offer superseded our pending re-offer"
             );
@@ -193,11 +148,16 @@ impl Call {
         // the sharing line only while we share (webrtc-rs would say both send).
         let answer = answer.map(|(ans, to_next)| {
             if self.meeting {
+                self.reoffers.told.held = held;
                 return (ans, to_next);
             }
             let ans = direct_reanswer(&ans, &sdp, self.camera.on(), self.share.sharing(), held);
-            // Our answer says what the camera sends: no re-offer needed for it.
-            self.camera.told(self.camera.on());
+            // Our answer says the hold, camera and share as they are: no re-offer needed for them.
+            self.reoffers.told = Said {
+                held,
+                camera: self.camera.on(),
+                share: self.share.sharing(),
+            };
             tracing::info!(
                 held,
                 to_next,

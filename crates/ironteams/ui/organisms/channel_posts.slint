@@ -12,6 +12,7 @@ import { Avatar } from "../atoms/avatar.slint";
 import { MessageRow } from "message_row.slint";
 import { PeopleStore } from "../molecules/people.slint";
 import { Motion, Spinner, WheelGlide } from "../tokens/motion.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // Someone who replied to a post: the summary shows their photo and names the first two.
 export struct Replier {
@@ -115,7 +116,7 @@ component Link inherits Rectangle {
 // Headline and color of an announcement, above the composer while "Post in channel" is open.
 export component AnnouncementBar inherits Rectangle {
     height: 44px;
-    background: Theme.sidebar;
+    background: Theme.panel;
     HorizontalLayout {
         padding-left: 20px;
         padding-right: 20px;
@@ -127,7 +128,7 @@ export component AnnouncementBar inherits Rectangle {
             border-radius: 14px;
             border-width: 1px;
             border-color: ChannelStore.announcement ? Theme.accent : Theme.border;
-            background: ChannelStore.announcement ? #3b3d6b : transparent;
+            background: ChannelStore.announcement ? Theme.accent-soft : transparent;
             accessible-role: checkbox;
             accessible-label: "Announcement";
             accessible-checkable: true;
@@ -140,7 +141,7 @@ export component AnnouncementBar inherits Rectangle {
             height: 30px;
             horizontal-stretch: 1;
             border-radius: 4px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             border-width: 1px;
             border-color: headline-input.has-focus ? Theme.accent : Theme.border;
             headline-input := TextInput {
@@ -164,8 +165,8 @@ export component AnnouncementBar inherits Rectangle {
                 y: 11px;
                 border-radius: 11px;
                 border-width: ChannelStore.theme == t ? 2px : 0px;
-                border-color: #ffffff;
-                background: t == "blue" ? #4f6bed : (t == "green" ? #3d9b53 : (t == "yellow" ? #d9a21b : (t == "red" ? Theme.presence-busy : #8a8a8a)));
+                border-color: Theme.fg-strong;
+                background: t == "blue" ? Fixed.banner-blue : (t == "green" ? Fixed.banner-green : (t == "yellow" ? Fixed.banner-yellow : (t == "red" ? Theme.presence-busy : Fixed.banner-gray)));
                 accessible-role: checkbox;
                 accessible-label: "Banner color " + t;
                 accessible-checkable: true;
@@ -216,7 +217,7 @@ component PostCard inherits TouchArea {
         if root.item.day != "": Divider { label: root.item.day; }
         card := Rectangle {
             border-radius: 8px;
-            background: Theme.card;
+            background: Theme.panel;
             border-width: 1px;
             // A post that mentions me is outlined in the accent colour.
             border-color: root.item.post.mentions-me ? Theme.accent : Theme.border;
@@ -231,6 +232,7 @@ component PostCard inherits TouchArea {
                     post-style: true;
                     react(k) => { root.react(root.item.post.id, k); }
                     reply => { ChannelStore.open-thread(root.item.post.id, true); }
+                    key-edit: true;
                     edit => { root.edit(root.item.post.id); }
                     more-reactions(x, y) => { root.more-reactions(root.item.post.id, x, y); }
                     menu(x, y) => { root.menu(root.item.post, x, y); }
@@ -323,7 +325,7 @@ component ThreadPanel inherits Rectangle {
     property <bool> follow-down: false;
     background: Theme.main;
     drop-shadow-blur: 18px;
-    drop-shadow-color: #00000059;
+    drop-shadow-color: Fixed.black-59;
 
     function send() {
         if ChannelStore.thread-text != "" {
@@ -375,6 +377,7 @@ component ThreadPanel inherits Rectangle {
                     card-style: true;
                     react(k) => { root.react(ChannelStore.thread-post.id, k); }
                     reply => { ChannelStore.thread-focus-tick += 1; }
+                    key-edit: true;
                     edit => { root.edit(ChannelStore.thread-post.id); }
                     more-reactions(x, y) => { root.more-reactions(ChannelStore.thread-post.id, x, y); }
                     menu(x, y) => { root.menu(ChannelStore.thread-post, x, y); }
@@ -398,6 +401,7 @@ component ThreadPanel inherits Rectangle {
                         card-style: true;
                         react(k) => { root.react(r.id, k); }
                         reply => { ChannelStore.thread-focus-tick += 1; }
+                        key-edit: true;
                         edit => { root.edit(r.id); }
                         more-reactions(x, y) => { root.more-reactions(r.id, x, y); }
                         menu(x, y) => { root.menu(r, x, y); }
@@ -417,7 +421,7 @@ component ThreadPanel inherits Rectangle {
             Rectangle {
                 height: max(40px, thread-input.preferred-height + 18px);
                 border-radius: 4px;
-                background: Theme.sidebar;
+                background: Theme.panel;
                 border-width: 1px;
                 border-color: thread-input.has-focus ? Theme.accent : Theme.border;
                 FocusScope {
@@ -513,7 +517,7 @@ export component ChannelPosts inherits Rectangle {
                     background: post-touch.has-hover ? Theme.accent : Theme.accent-strong;
                     accessible-role: button;
                     accessible-label: "Post in channel";
-                    post-label := Text { x: 16px; text: "Post in channel"; color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
+                    post-label := Text { x: 16px; text: "Post in channel"; color: Theme.on-accent; font-size: 13px * Theme.font-scale; font-weight: 600; vertical-alignment: center; }
                     post-touch := TouchArea { mouse-cursor: pointer; clicked => { ChannelStore.compose-open = !ChannelStore.compose-open; } }
                 }
                 Rectangle { horizontal-stretch: 1; }

@@ -4,6 +4,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Recipient } from "../tokens/types.slint";
 import { IconButton } from "../atoms/widgets.slint";
 import { Avatar } from "../atoms/avatar.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 export component ForwardDialog inherits Rectangle {
     // Search results and the recipients picked so far.
@@ -25,7 +26,7 @@ export component ForwardDialog inherits Rectangle {
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 16px;
-    drop-shadow-color: #000000a0;
+    drop-shadow-color: Fixed.black-a0;
 
     VerticalLayout {
         padding: 16px;
@@ -40,7 +41,7 @@ export component ForwardDialog inherits Rectangle {
         Rectangle {
             height: 32px;
             border-radius: 4px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             border-width: 1px;
             border-color: recipient-input.has-focus ? Theme.accent : Theme.border;
             recipient-input := TextInput {
@@ -71,7 +72,7 @@ export component ForwardDialog inherits Rectangle {
                 height: 24px;
                 width: min(chip-text.preferred-width, 160px) + 26px;
                 border-radius: 12px;
-                background: #34365c;
+                background: Theme.accent-subtle;
                 chip-text := Text { x: 10px; width: parent.width - 26px; text: p.title; color: Theme.fg; font-size: 12px * Theme.font-scale; vertical-alignment: center; overflow: elide; }
                 Text { x: parent.width - 16px; text: "×"; color: Theme.fg-muted; font-size: 14px * Theme.font-scale; vertical-alignment: center; }
                 TouchArea { mouse-cursor: pointer; clicked => { root.toggle(p.id); } }
@@ -105,7 +106,7 @@ export component ForwardDialog inherits Rectangle {
         Rectangle {
             height: 56px;
             border-radius: 4px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             HorizontalLayout {
                 padding: 8px;
                 spacing: 8px;
@@ -127,7 +128,7 @@ export component ForwardDialog inherits Rectangle {
         Rectangle {
             height: 32px;
             border-radius: 4px;
-            background: Theme.sidebar;
+            background: Theme.panel;
             border-width: 1px;
             border-color: note.has-focus ? Theme.accent : Theme.border;
             note := TextInput {
@@ -167,7 +168,7 @@ export component ForwardDialog inherits Rectangle {
                 background: Theme.accent-strong;
                 accessible-role: button;
                 accessible-label: "Forward message";
-                Text { text: "Forward"; color: #ffffff; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+                Text { text: "Forward"; color: Theme.on-accent; font-size: 13px * Theme.font-scale; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
                 send-touch := TouchArea {
                     enabled: root.picked.length > 0;
                     mouse-cursor: pointer;

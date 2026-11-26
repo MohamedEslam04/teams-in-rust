@@ -10,13 +10,13 @@
 //!
 //! The camera will reuse this path with `VideoRole::MainVideo` and a camera frame source.
 
+use calling::Links;
 use calling::media::{MediaOptions, MediaSession};
 use calling::signaling::content_sharing::{
     ADD_MODALITY_FAILURE, ADD_MODALITY_SUCCESS, SESSION_END, SESSION_UPDATE, SharingSession, new_id,
 };
 use calling::signaling::video::{
-    JOIN_REQUEST_ID, MediaDescription, meeting_descriptions, negotiation_tag,
-    parse_sender_controls, video_modalities,
+    JOIN_REQUEST_ID, MediaDescription, meeting_descriptions, negotiation_tag, parse_sender_controls,
 };
 use calling::signaling::{CallSession, NgcClient};
 use calling::video::control_overlay::ShareArea;
@@ -24,7 +24,6 @@ use calling::video::h264::{EncoderSettings, H264Encoder};
 use calling::video::remote_input::{InputInjector, request_control};
 use calling::video::screencast::{CaptureSettings, ScreenCapture, ShareKind, pick};
 use calling::video::{VideoRole, pump};
-use calling::{Links, SdpBlob};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -450,7 +449,8 @@ pub async fn tell_meeting(
     Ok(())
 }
 
-/// A 1:1 re-offer (`offer`, as the media session made it) for the share: the sharing line
+/// A 1:1 re-offer's lines (`offer`, as the media session made it; every 1:1 re-offer, hold and
+/// camera too, goes through the run loop's queue, `live::reoffers`): the sharing line
 /// `sendonly` while we send and `recvonly` otherwise (never `inactive`: the peer could not then
 /// present to us without a renegotiation it does not start), and the camera line, when there is
 /// one (`camera_on` is `Some`), as the camera is ([`super::camera::direct_direction`]): webrtc-rs leaves it `sendonly` from
@@ -469,36 +469,6 @@ pub fn direct_offer(offer: &str, sending: bool, camera_on: Option<bool>) -> Stri
         );
     }
     offer
-}
-
-/// Re-offers a 1:1 call's media with the sharing line `sendonly` (or `recvonly`) and the camera
-/// line as the camera is (`camera_on`). Returns the answer when it came inline; otherwise it
-/// arrives on `call/mediaAnswer/`.
-pub async fn reoffer_direct(
-    ngc: &NgcClient,
-    s: &CallSession,
-    links: &Links,
-    media: &MediaSession,
-    sending: bool,
-    camera_on: bool,
-) -> anyhow::Result<Option<SdpBlob>> {
-    let offer = media.create_offer().await?;
-    let camera = media
-        .video_sender(VideoRole::MainVideo)
-        .is_some()
-        .then_some(camera_on);
-    let offer = direct_offer(&offer, sending, camera);
-    let sending_roles: &[VideoRole] = if sending { &[ROLE] } else { &[] };
-    let answer = ngc
-        .renegotiate_video(
-            s,
-            links,
-            &video_modalities(sending_roles),
-            &SdpBlob::ngc(offer),
-            &negotiation_tag(s, ROLE, sending),
-        )
-        .await?;
-    Ok(answer)
 }
 
 #[cfg(test)]
