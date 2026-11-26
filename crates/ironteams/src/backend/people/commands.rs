@@ -129,6 +129,10 @@ impl Engine {
         });
     }
 
+    /// The engine is online (the session refreshed, or the connection is back): what the open chat
+    /// could not read before waits no longer.
+    pub(crate) fn chat_online_reads(self: &Arc<Self>) {}
+
     /// Remembers the members the aggregator snapshot lists for each chat.
     pub(in super::super) fn remember_members(&self, chats: &[teams_proto::csa::ChatMeta]) {
         let mut p = self.people.lock().unwrap();

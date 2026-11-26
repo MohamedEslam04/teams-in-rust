@@ -104,6 +104,12 @@ impl Engine {
         self.offline.load(Ordering::Relaxed)
     }
 
+    /// Tests: how many times the account's list was read.
+    #[cfg(test)]
+    pub(crate) fn test_scheduled_reads(&self) -> u32 {
+        self.scheduled_reads.load(Ordering::Relaxed)
+    }
+
     /// A chat was opened: its waiting messages show; the account's list is read once.
     pub(super) fn scheduled_chat_opened(self: &Arc<Self>) {
         self.ui.schedule_choice(None);
@@ -125,6 +131,8 @@ impl Engine {
     /// Reads the account's list. Messages scheduled here that it does not list yet (the service
     /// lists a new draft a moment after the POST) are kept.
     async fn reload_scheduled(self: &Arc<Self>) -> anyhow::Result<()> {
+        #[cfg(test)]
+        self.scheduled_reads.fetch_add(1, Ordering::Relaxed);
         let mut list = self.client.scheduled_messages().await?;
         let count = list.len();
         {

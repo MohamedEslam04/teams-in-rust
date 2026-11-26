@@ -41,6 +41,12 @@ pub enum Error {
     DeviceCodeExpired,
     #[error("not signed in")]
     NotSignedIn,
+    /// A request was built before the first token refresh answered, so its URL has no service
+    /// host yet (a cache-first start opens the saved chats while the session refreshes). Nothing
+    /// was sent. It passes once the refresh is done, so callers treat it as a missing connection,
+    /// not as a failure to show.
+    #[error("still signing in to Teams, try again in a moment")]
+    NotReady,
 }
 
 /// The error and the causes under it, as "error sending request: client error (Connect): tcp
@@ -120,7 +126,7 @@ impl Error {
     pub fn is_transient(&self) -> bool {
         match self {
             Error::Http(e) => e.is_connect() || e.is_timeout() || e.is_request(),
-            Error::Ws(_) => true,
+            Error::Ws(_) | Error::NotReady => true,
             Error::Status { status, .. } => matches!(status, 408 | 425 | 429 | 502 | 503 | 504),
             _ => false,
         }
@@ -142,6 +148,13 @@ mod tests {
         assert!(!Error::Protocol("x".into()).is_transient());
         assert!(!Error::Auth("x".into()).is_transient());
         assert!(!Error::NotSignedIn.is_transient());
+    }
+
+    #[test]
+    fn a_request_before_the_first_refresh_is_transient_and_says_so_plainly() {
+        assert!(Error::NotReady.is_transient());
+        let shown = Error::NotReady.to_string();
+        assert!(!shown.contains("url") && !shown.contains("protocol"), "{shown}");
     }
 
     // The answer for a meeting chat the user was invited to and has not joined (made-up ids).

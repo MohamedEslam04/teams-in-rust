@@ -436,6 +436,9 @@ pub struct Engine {
     /// Tests: the error the next newest-page read of an opened chat answers with.
     #[cfg(test)]
     history_error: Mutex<Option<teams_proto::Error>>,
+    /// Tests: how many times the account's scheduled-message list was read.
+    #[cfg(test)]
+    scheduled_reads: AtomicU32,
     /// The live connection is up; while it is not, the outbox waits.
     connected: AtomicBool,
     /// One outbox flush at a time keeps messages in order.
@@ -556,6 +559,8 @@ impl Engine {
             last_unread: AtomicU32::new(u32::MAX),
             #[cfg(test)]
             history_error: Mutex::new(None),
+            #[cfg(test)]
+            scheduled_reads: AtomicU32::new(0),
             connected: AtomicBool::new(true),
             flush_lock: tokio::sync::Mutex::new(()),
             retry_pending: AtomicBool::new(false),

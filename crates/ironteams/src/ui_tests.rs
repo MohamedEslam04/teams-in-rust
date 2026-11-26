@@ -1741,6 +1741,12 @@ impl Harness {
     }
 
     fn with_store(store: Store) -> Self {
+        Self::with_client(store, Client::offline("test").unwrap(), true)
+    }
+
+    /// `offline` is demo mode: no network, so errors are not shown. A test of what the user sees
+    /// when the service fails passes false, and a client of its own.
+    fn with_client(store: Store, client: Client, offline: bool) -> Self {
         let app = new_window();
         app.window().set_size(LogicalSize::new(1200., 800.));
         app.set_login_state("ready".into());
@@ -1755,7 +1761,7 @@ impl Harness {
                 .unwrap(),
         );
         let engine = Engine::new(
-            Client::offline("test").unwrap(),
+            client,
             store,
             session::Config::default(),
             UiHandle::new(app.as_weak()),
@@ -1765,7 +1771,7 @@ impl Harness {
         // No network, so errors are not shown.
         engine
             .offline
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(offline, std::sync::atomic::Ordering::Relaxed);
         let h = Harness { app, engine, rt };
         let run = h.runner();
         h.app.on_select_chat({

@@ -39,7 +39,9 @@ pub fn is_transient(e: &Error) -> bool {
         | Error::PolicyBlocked { .. }
         | Error::Protocol(_)
         | Error::DeviceCodeExpired
-        | Error::NotSignedIn => false,
+        | Error::NotSignedIn
+        // A request built before this refresh answered: the refresh itself never says it.
+        | Error::NotReady => false,
     }
 }
 

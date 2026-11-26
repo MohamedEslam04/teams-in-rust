@@ -99,3 +99,64 @@ fn a_refused_session_after_a_cache_first_start_shows_the_sign_in_screen() {
         "the chats are back once signed in"
     );
 }
+
+/// A cache-first start whose session refresh has not answered: the client has no service host
+/// yet (`Client::restore` makes none), so a request built on one is "not ready" and sends
+/// nothing, and the engine is not online (`start_cached`).
+fn before_the_refresh() -> Harness {
+    let store = Store::open_in_memory().unwrap();
+    demo::seed(&store, teams_proto::time::now_ms()).unwrap();
+    let client = Client::restore(teams_proto::Session {
+        tenant: String::new(),
+        refresh_token: String::new(),
+        epid: "test".into(),
+    })
+    .unwrap();
+    let h = Harness::with_client(store, client, false);
+    h.rt.block_on(async { h.engine.start_cached("") });
+    h
+}
+
+/// Lets the tasks a command spawned run (the harness runtime only runs while it is driven).
+fn let_spawned_tasks_run(h: &Harness) {
+    h.rt.block_on(async {
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    });
+}
+
+#[test]
+fn a_chat_opened_before_the_refresh_shows_no_banner_and_reads_the_scheduled_list_once_online() {
+    let h = before_the_refresh();
+
+    // The restored last chat opens while the refresh is still pending.
+    h.select(NOTES);
+    let_spawned_tasks_run(&h);
+    assert_eq!(
+        h.app.get_banner(),
+        "",
+        "no red banner for a service that has no address yet"
+    );
+    assert_eq!(
+        h.engine.test_scheduled_reads(),
+        0,
+        "the list is not read before the client is online"
+    );
+
+    // The refresh answered: the engine goes online and reads what the chat waited for.
+    h.engine.chat_online_reads();
+    let_spawned_tasks_run(&h);
+    assert_eq!(
+        h.engine.test_scheduled_reads(),
+        1,
+        "the list is read when the engine goes online"
+    );
+    // The test's client never gets its host, so this read itself answers "not ready": quiet too.
+    assert_eq!(h.app.get_banner(), "");
+
+    // Once per session: a second online transition (the live connection's) does not read again.
+    h.engine.chat_online_reads();
+    let_spawned_tasks_run(&h);
+    assert_eq!(h.engine.test_scheduled_reads(), 1);
+}
