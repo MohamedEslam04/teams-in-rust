@@ -37,13 +37,22 @@ export component SettingsPage inherits Rectangle {
     changed want-y => {
         if self.want-y >= 0 {
             sv.content-y = -clamp(self.want-y - sv.absolute-position.y - sv.content-y - 24px, 0px, max(0px, sv.content-height - sv.height));
+            root.scrolled-page = SettingsStore.page;
             SettingsStore.target-y = -1px;
         }
     }
     // A page opens at its top: the column would keep the scroll of the page before (Appearance
-    // scrolled to a row, then Devices opens with its Speaker rows above the window).
+    // scrolled to a row, then Devices opens with its Speaker rows above the window). Not when
+    // a Find result has just scrolled the new page to its row (both changes can be handled in
+    // one go, in either order).
+    property <string> scrolled-page;
     property <string> shown-page: SettingsStore.page;
-    changed shown-page => { sv.content-y = 0px; }
+    changed shown-page => {
+        if root.scrolled-page != SettingsStore.page {
+            sv.content-y = 0px;
+        }
+        root.scrolled-page = "";
+    }
     // Swallow clicks so the views underneath do not get them.
     TouchArea { }
     keys := FocusScope {
