@@ -51,7 +51,7 @@ fn press(app: &AppWindow, k: Key) {
 }
 
 /// Lets pending property changes reach the item tree (rows behind an `if` appear or go).
-fn settle(app: &AppWindow) {
+fn settle(_app: &AppWindow) {
     for _ in 0..3 {
         testing::mock_elapsed_time(std::time::Duration::from_millis(16));
     }
