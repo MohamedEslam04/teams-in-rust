@@ -12,7 +12,7 @@
 //! larger-text, a11y, notify, pause, test-notification, privacy, unblock, priority-remove,
 //! speaker, mic, camera, noise-suppression, echo-cancellation, all-devices, test-sound, mic-test,
 //! call-feedback, ringtone, ringtone-preview, ringtone-file, message-sound, message-sound-preview,
-//! message-sound-file, urgent-sound, urgent-sound-preview, teams-sounds, open-files, perm, switch-account, switch-org, add-account, remove-account,
+//! message-sound-file, urgent-sound, urgent-sound-preview, teams-sounds, open-files, perm, switch-account, switch-org, switch-confirm, switch-cancel, add-account, remove-account,
 //! refresh-license, restart, sign-out, view-account, report-problem, check-now,
 //! release-notes, status, work-location, status-note, notification-style, banner-photo, banner-actions, notify-sound,
 //! meeting-chat, check-spelling, quiet-on, quiet-day, quiet-start, quiet-end, focus,
@@ -61,6 +61,7 @@ mod updates;
 pub use updates::*;
 mod command;
 use command::*;
+mod switch;
 
 /// Polls a running microphone test; `None` when there is no new reading.
 pub type MicPoll = Box<dyn FnMut() -> Option<f32>>;
@@ -102,6 +103,8 @@ struct Ctl {
     /// What the menu showed before a status pick (presence, activity, its "Until" line), put back
     /// when the service refuses the change.
     status_before: Option<(String, String, String)>,
+    /// The account switch being decided (`switch`).
+    switching: Option<switch::Pending>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.

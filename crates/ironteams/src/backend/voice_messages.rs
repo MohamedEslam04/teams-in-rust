@@ -506,6 +506,12 @@ impl Engine {
         Ok(())
     }
 
+    /// A voice message is being recorded (starting, recording, paused or being encoded): an
+    /// account switch would discard it.
+    pub(super) fn voice_recording(&self) -> bool {
+        self.voice.lock().unwrap().rec_state != "idle"
+    }
+
     fn record_start(self: &Arc<Self>) -> anyhow::Result<()> {
         if self.voice.lock().unwrap().rec_state != "idle" {
             return Ok(());

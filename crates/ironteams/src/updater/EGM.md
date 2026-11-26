@@ -38,6 +38,7 @@ Files:
 - `[backup.rs:Outcome]` pub enum {Nothing, BackedUp(PathBuf), Restored(PathBuf)}
 - `[backup.rs:back_up]` pub fn(&session::Paths, version) -> io::Result<PathBuf> copies caches+config to backup-<version>, prunes to KEEP
 - `[backup.rs:on_start]` pub fn(&session::Paths, version) -> io::Result<Outcome>; run before store/config open
+- `[guard.rs:healthy_in]` also called by `relaunch::run_if_requested` before the new process is spawned, so an intentional relaunch (account switch, restart) never counts as an unclean run; a real crash still does
 - `[guard.rs:LIMIT/HEALTHY_AFTER]` pub consts: 3 unclean runs; 60 s
 - `[guard.rs:Guard]` pub struct {version, previous: Option<String>, starting, unclean} serde; methods launch(self,&str), healthy(self), crash_loop(&self)
 - `[guard.rs:Verdict]` pub struct {paused: bool, previous: Option<String>}; verdict() -> Verdict (default if start not run)

@@ -75,3 +75,23 @@ export component Badge inherits Rectangle {
         vertical-alignment: center;
     }
 }
+
+// A red pill with an unread count ("99+" above 99), as on the rail.
+export component CountBadge inherits Rectangle {
+    in property <int> count;
+    height: 16px;
+    width: max(16px, count-text.preferred-width + 8px);
+    border-radius: 8px;
+    background: Theme.unread-badge;
+    accessible-role: text;
+    accessible-label: @tr("{} unread", root.count);
+    count-text := Text {
+        text: root.count > 99 ? "99+" : root.count;
+        color: #ffffff;
+        font-size: 10px * Theme.font-scale;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}

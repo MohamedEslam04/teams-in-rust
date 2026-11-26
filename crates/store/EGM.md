@@ -6,12 +6,12 @@ Local SQLite cache for IronTeams (via `rusqlite`, bundled): conversations, messa
 ## Interface
 - `Store::open(&Path) -> Result<Store>` and `Store::open_in_memory()` [lib.rs:Store].
 - `Error {Sqlite, Io, UnknownKind, UnknownOutbox, SchemaTooNew{found, supported}}` and `Result<T>` [lib.rs:Error].
-- Re-exports [lib.rs]: `MARK_START` (`\u{2}`) and `MARK_END` (`\u{3}`) from `fts`; `ConvFilter, ConvKind, ConversationRow, Draft, HistoryGap, LocalFilters, LocalHit, MessageRow, OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow` from `model`. Modules `fts`, `migrations`, `model` are private.
+- Re-exports [lib.rs]: `MARK_START` (`\u{2}`) and `MARK_END` (`\u{3}`) from `fts`; `ConvFilter, ConvKind, ConversationRow, Draft, HistoryGap, LocalFilters, LocalHit, MessageRow, OutboxCount, OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow` from `model`. Modules `fts`, `migrations`, `model` are private.
 - Conversations: `upsert_conversation`, `upsert_conversations`, `delete_conversation`, `set_favorite`, `mark_read`, `mark_unread`, `unread_mark`, `conversations(filter, limit)`, `conversation`, `search_conversations`, `touch_conversation`, `channels(team_id)`, `set_channel_titles(&mut self, &[(id, name)])` (overwrites titles of `kind = 'channel'` rows, skips blank names), `refresh_preview(id, activity_ms, preview)` (rewrites `last_preview` only when `last_activity_ms == activity_ms`) [lib.rs].
 - Messages: `upsert_message(s)`, `delete_message_local`, `messages_before`, `messages_containing`, `search_messages_local(query, &LocalFilters, limit)`, `thread_replies`, `reply_count`, `latest_compose_ms`, `oldest_compose_ms(conversation_id) -> Option<i64>`, `mention_candidates(conversation_id, after_ms, not_from, window) -> Vec<String>` (`reactions_json` of the newest top-level messages with a non-empty `"m"` list), `message`, `message_before` [lib.rs].
 - History gaps: `add_history_gap`, `history_gaps`, `shrink_history_gap`, `remove_history_gap` [lib.rs].
 - Saved: `save_message`, `unsave_message`, `is_saved`, `saved_ids`, `saved_messages`. Users and teams: `upsert_user`, `clear_user_avatar`, `user`, `users_missing_profile`, `upsert_team`, `teams`. Drafts: `set_draft`, `draft`, `drafts` [lib.rs].
-- Outbox: `enqueue`, `outbox_due`, `outbox_for`, `mark_sending`, `requeue`, `mark_failed`, `retry`, `remove` [lib.rs].
+- Outbox: `enqueue`, `outbox_due`, `outbox_for`, `outbox_count`, `mark_sending`, `requeue`, `mark_failed`, `retry`, `remove` [lib.rs].
 - Maintenance and key-value: `clear_avatars`, `clear_cache(kv_keys)`, `maintain`, `get_kv`, `set_kv` [lib.rs].
 
 ## Invariants
@@ -22,7 +22,7 @@ Local SQLite cache for IronTeams (via `rusqlite`, bundled): conversations, messa
 - `search_messages_local` excludes `ThreadActivity/%`, `Event/%`, `Control/%` and deleted messages; order is `compose_ms DESC, bm25, id DESC` [lib.rs:search_messages_local].
 - Upsert rules: conversation upsert overwrites everything except `favorite`, and keeps the stored `title` when the incoming title is blank; message upsert updates only content, edit time, deleted flag and reactions; user upsert keeps the old avatar when the new one is null [lib.rs].
 - `touch_conversation` only moves activity forward and only raises `unread`; `mark_read` never lowers the read horizon, `mark_unread` sets it; per-conversation unread marks live in kv key `unread_mark:<id>` [lib.rs].
-- Outbox: `enqueue` always stores `queued`, attempts 0; `mark_sending` moves queued to sending; `requeue` returns sending to queued; `mark_failed` increments attempts; `retry` returns failed to queued [lib.rs].
+- Outbox: `enqueue` always stores `queued`, attempts 0; `mark_sending` moves queued to sending; `requeue` returns sending to queued; `mark_failed` increments attempts; `retry` returns failed to queued [lib.rs]. `outbox_count` is one grouped `SELECT` returning `OutboxCount {queued, sending, failed, with_attachments}`, where `with_attachments` counts the `sending` rows with a `payload_path` (an upload in progress) and `unsent()` is queued + sending + failed; the account switch reads it before relaunching [lib.rs:outbox_count].
 - On open, items left in `sending` are reset to `queued` (crash recovery) [lib.rs:init].
 - `maintain` runs at most weekly (kv `maintained_ms`); `clear_cache` drops messages, gaps, users and teams, rebuilds FTS, blanks every conversation's `last_preview` and deletes the caller-supplied `kv_keys` from `kv`, then runs `VACUUM` and a WAL checkpoint, keeping the conversation rows, drafts, outbox, saved messages and other kv entries [lib.rs:clear_cache].
 - The `kv` table is unencrypted; secrets must never be stored there [lib.rs docs].

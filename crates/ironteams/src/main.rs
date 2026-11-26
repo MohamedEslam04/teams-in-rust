@@ -31,6 +31,7 @@ mod mention;
 mod native_tray;
 mod offline_start;
 mod reactions;
+mod relaunch;
 mod renderer;
 mod send_options;
 mod shortcuts;
@@ -570,6 +571,13 @@ fn main() -> anyhow::Result<()> {
     // Before anything opens the store, the session or the preferences: the first run after the
     // rename from kelma moves the old directories.
     compat::migrate_legacy_dirs();
+    // After a relaunch the old process named the account to open: apply it to the config before
+    // anything reads the config to sign in. Demo mode never touches the real data.
+    if compat::var_os("IRONTEAMS_DEMO").is_none()
+        && let Ok(paths) = session::Paths::new()
+    {
+        relaunch::apply_args(&paths, &args);
+    }
     // Before anything talks to the desktop portal: it registers the app id only for an installed
     // desktop file, and nothing installs one for a cargo run or the AppImage.
     #[cfg(target_os = "linux")]
@@ -588,7 +596,9 @@ fn main() -> anyhow::Result<()> {
             }
             updater::guard::start(&paths.data_dir, version);
             // Before the engine: the cache older versions shared between accounts moves into
-            // the active account's folder (a rename; nothing is deleted if it fails).
+            // the active account's folder (a rename; nothing is deleted if it fails). After the
+            // instance lock, so two processes never move it at once, and after `apply_args`, so
+            // the account a relaunch named is the one it moves into.
             if let Ok(cfg) = paths.load_config() {
                 backend::migrate_shared_cache(&paths.cache_dir, &cfg.active_token_key());
             }
@@ -982,6 +992,7 @@ fn main() -> anyhow::Result<()> {
     let hidden = args.iter().any(|a| a == "--hidden");
     // A minute in the event loop: this start was clean (the crash-loop guard).
     let healthy_timer = slint::Timer::default();
+    let relaunch_dir = data_dir.clone();
     if let Some(dir) = data_dir {
         healthy_timer.start(
             slint::TimerMode::SingleShot,
@@ -1021,10 +1032,9 @@ fn main() -> anyhow::Result<()> {
         tracing::info!(call_ended = false, "quitting");
     }
     rt.shutdown_timeout(std::time::Duration::from_millis(500));
-    // Last: the next process may take the data now.
-    if let Some(held) = single {
-        held.release();
-    }
+    // Last: the next process may take the data now. When Settings asked for a relaunch (an
+    // account switch, a restart) this also starts it, with the guard marked healthy first.
+    relaunch::run_if_requested(relaunch_dir.as_deref(), single);
     Ok(())
 }
 

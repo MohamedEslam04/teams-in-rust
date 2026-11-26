@@ -6,6 +6,7 @@
 //! call, writes the draft and takes this device out of presence, and tells `main` when it is done.
 
 use super::Engine;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -41,10 +42,29 @@ impl Engine {
     /// leaves presence (last, so the call's own presence update cannot bring it back).
     pub(super) async fn quit(self: &Arc<Self>, done: QuitDone) {
         self.flush_draft();
+        self.save_last_unread();
         let ended = self.end_calls(CALLS_WITHIN).await;
         tracing::info!(call_ended = ended, "quitting");
         self.stop_my_presence().await;
         done.finish(ended);
+    }
+
+    /// Writes the unread total the badges showed last to `Account.last_unread` of the account
+    /// this engine runs, so the account menu can show it while another account runs. Nothing is
+    /// written before the first count, in demo mode, or without a home (tests that set none).
+    pub(super) fn save_last_unread(&self) {
+        let n = self.last_unread.load(Ordering::Relaxed);
+        if n == u32::MAX || (self.offline.load(Ordering::Relaxed) && !cfg!(test)) {
+            return;
+        }
+        let Some(paths) = self.cache_paths() else {
+            return;
+        };
+        let label = self.cfg.lock().unwrap().account.clone();
+        match paths.update_config(|c| c.set_last_unread(&label, n)) {
+            Ok(()) => tracing::info!(unread = n, "quitting: unread count saved"),
+            Err(e) => tracing::warn!(error = %e, "quitting: could not save the unread count"),
+        }
     }
 
     /// Ends the 1:1 call that rings out or is being answered, the call that runs and the one on

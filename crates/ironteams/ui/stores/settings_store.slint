@@ -9,7 +9,8 @@ export struct SToggle { key: string, label: string, hint: string, on: bool, enab
 // A notification type: `value` is banner | feed | off, or "" when Teams has no value yet.
 export struct SNotify { key: string, label: string, group: string, value: string }
 export struct SPerson { mri: string, name: string }
-export struct SAccount { label: string, name: string, upn: string, active: bool }
+// `unread`: the unread total the account had when it last ran (0 when unknown).
+export struct SAccount { label: string, name: string, upn: string, active: bool, unread: int, initials: string }
 export struct SOrg { tenant: string, name: string, home: bool, active: bool }
 export struct SDevice { id: string, name: string }
 export struct SAppPerm { app: string, name: string, perms: [SToggle] }
@@ -165,6 +166,11 @@ export global SettingsStore {
     in-out property <[SOrg]> orgs;
     in-out property <string> accounts-status;
     in-out property <bool> restart-needed: false;
+    // The account switch (ui/settings/switch.rs): the confirmation listing what it would cut
+    // short, and "Switching…" while it is decided or IronTeams is restarting.
+    in-out property <bool> switch-confirm-open: false;
+    in-out property <[string]> switch-confirm-lines;
+    in-out property <bool> switch-busy: false;
     // The account label waiting for "Yes, remove the account", "" when none.
     in-out property <string> confirm-remove: "";
 

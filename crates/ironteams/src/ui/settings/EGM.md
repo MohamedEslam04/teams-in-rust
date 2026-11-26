@@ -1,14 +1,15 @@
 # ui/settings
 
 ## Overview
-Settings UI controller parts: a single command dispatcher for every SettingsStore command (`command.rs`), injectable side-effect seams (`hooks.rs`), wiring into the AppWindow (`install.rs`), command-handler helpers (`misc.rs`), pushing prefs/theme/server data/accounts into Slint (`push.rs`) and the update check and self-update flow (`updates.rs`).
+Settings UI controller parts: a single command dispatcher for every SettingsStore command (`command.rs`), injectable side-effect seams (`hooks.rs`), wiring into the AppWindow (`install.rs`), command-handler helpers (`misc.rs`), pushing prefs/theme/server data/accounts into Slint (`push.rs`), the account switch by relaunch (`switch.rs`) and the update check and self-update flow (`updates.rs`).
 
 Files:
 - `command.rs`: Single `command(shared, window, name, arg)` dispatcher for every SettingsStore command (appearance, general, a11y, notifications/privacy dry runs, devices, sounds, accounts, updates, focus/quiet hours, profile status, sign-out, report), U+001F-separated args.
-- `hooks.rs`: Injectable side-effect seams: Autostart (desktop entry), Hooks (notification, open_url, restart, sign-out, report, device enumeration, sounds, mic, update check, quit), SettingsEnv with real `system()` wiring.
+- `hooks.rs`: Injectable side-effect seams: Autostart (desktop entry), Hooks (notification, open_url, restart, relaunch, sign-out, report, device enumeration, sounds, mic, update check, quit), SettingsEnv with real `system()` wiring.
 - `install.rs`: Wires Settings into the AppWindow: loads Local prefs, builds the shared Ctl, registers SettingsStore.on_command, banner/activity callbacks, update checks and portal watcher; also show_focus, focus_slug, bit helpers.
 - `misc.rs`: Helpers for command handlers: notice/saved, Teams write (write_or_plan/dry_run), request_load throttle, background device listing, mic test timer, sound file picker, account cache removal, license/report/sign-out completions.
 - `push.rs`: Pushes local prefs, portal theme, server (Teams) data, profile, accounts and devices into the Slint Theme/SettingsStore globals; portal read/watch; UiHandle settings_* notices.
+- `switch.rs`: The account/organisation switch: loss check through the engine (`Cmd::InFlight`), the confirmation, the config write and the relaunch hook.
 - `updates.rs`: Update-check (About page notice) and self-update flow: check, download thread, banners, restart-to-update, apply on quit.
 
 ## Interface
@@ -20,7 +21,7 @@ Files:
 - `[push.rs:portal_changed]` pub(super) fn(&AppWindow, PortalChange); applies change to ctl().portal then apply_look
 - `[hooks.rs:Autostart::desktop]` pub fn(config_home: Option<PathBuf>) -> Autostart; XDG autostart entry launching with --hidden, or under config_home (tests)
 - `[push.rs:apply_look]` pub(super) fn(&AppWindow, &Ctl); sets Theme global colors/flags and SettingsStore theme/accent/a11y 'shown' strings
-- `[hooks.rs:Hooks]` pub struct of seams: autostart, test_notification, open_url, restart, signed_out, report_problem, enumerate, test_sound, play_sound, pick_sound_file, mic_level, check_update, updates, quit
+- `[hooks.rs:Hooks]` pub struct of seams: autostart, test_notification, open_url, restart, relaunch (Box<dyn Fn(String)>, the account `label[@tenant]`), signed_out, report_problem, enumerate, test_sound, play_sound, pick_sound_file, mic_level, check_update, updates, quit
 - `[push.rs:apply_general]` pub(super) fn(&GeneralPrefs); sets date/time formats, language, tray keep_running, link previews
 - `[hooks.rs:SettingsEnv]` pub struct { paths, tokens, portal, background, apply_globals, crash_loop, hooks }
 - `[push.rs:toggles]` pub(super) fn(Vec<st::ToggleRow>) -> ModelRc<SToggle>
@@ -41,7 +42,10 @@ Files:
 - `[misc.rs:SoundFor]` pub(super) enum { Message, Ringtone }
 - `[push.rs:push_profile]` pub(super) fn(&AppWindow, &Ctl); name/email/status/presence/work location/initials
 - `[misc.rs:choose_sound_file]` pub(super) fn(&Shared,&AppWindow,SoundFor); picker, validates with sounds::check_file, saves Custom choice
-- `[push.rs:push_accounts]` pub(super) fn(&AppWindow, &Ctl); accounts and orgs lists, or error status if config unreadable
+- `[push.rs:push_accounts]` pub(super) fn(&AppWindow, &Ctl); accounts (SAccount with `unread` from `Account.last_unread` and `initials`; Unknown-kind accounts left out by `account_rows`) and orgs lists, or error status if config unreadable; also run by the "profile" command so the menu's Accounts section is fresh
+- `[switch.rs:start]` pub(super) fn(&Shared, &AppWindow, label: Option<&str>, tenant: Option<&str>); "switch-account" (label) and "switch-org" (tenant in the active account). Ignored while a switch is pending or when the choice is already active; an unlisted/Unknown-kind label sets accounts_status. Sets switch_busy, then sends `Cmd::InFlight` (no tx: goes on at once) and starts a 2 s single-shot timer (`ANSWER_WITHIN`) after which nothing counts as in flight
+- `[switch.rs:UiHandle::switch_in_flight]` pub fn(&self, InFlight); the engine's answer. First answer only: empty goes on, otherwise switch_confirm_lines (`InFlight::lines`) + switch_confirm_open and the profile menu closes
+- `[switch.rs:confirm|cancel]` "switch-confirm" goes on only while the confirmation is up; "switch-cancel" drops the pending switch and clears busy, the dialog and its lines (config untouched)
 - `[misc.rs:notice]` pub(super) fn(&AppWindow, impl Into<SharedString>); sets SettingsStore.notice
 - `[push.rs:UiHandle::settings_notice]` pub fn(&self, String); shows notice on UI thread
 - `[misc.rs:write_or_plan]` pub(super) fn(&AppWindow,&mut Ctl,PlannedRequest); sends SettingsCmd::Apply via tx, else dry_run
@@ -81,7 +85,8 @@ Files:
 - `[push.rs:portal_changed]` Runs on UI thread via upgrade_in_event_loop; ctl() may be None (early return); borrows Ctl RefCell mutably
 - `[command.rs:"open"|"page"]` Mic test is stopped on any page other than "devices"; "close" also stops it; changing the mic device stops a running test
 - `[push.rs:read_portal]` Portal read bounded by 400ms timeout so first frame is never blocked long; failure yields None (default theme)
-- `[command.rs:"switch-account"|"remove-account"|"add-account"]` Config changes go through paths.update_config (config lock) because the running engine saves its own prefs to the same file; they only set restart_needed, never switch live
+- `[command.rs:"remove-account"|"add-account"]` Config changes go through paths.update_config (config lock) because the running engine saves its own prefs to the same file; they only set restart_needed, never switch live
+- `[switch.rs:go]` The switch writes `switch_account` (when the label differs) and `switch_tenant` (when given) in one paths.update_config, then calls hooks.relaunch with `AccountArg{label, tenant}` (the tenant left out when it is `organizations`) and closes the menu; it never sets restart_needed. A config error shows in accounts_status and the notice, clears busy and quits nothing. The process never switches live: the relaunch isolates accounts
 - `[push.rs:push_server]` Status text: None server -> 'Reading your Teams settings…', offline -> offline message; shown only when notifications/privacy missing or errors present
 - `[command.rs:"remove-account"]` Tokens are forgotten first (session::forget_account_tokens), then config updated; message cache removed only on success
 - `[push.rs:push_local]` Enabling check_spelling triggers spell::ensure_loaded; time format also mirrored to Theme.h24
@@ -108,7 +113,7 @@ Files:
 - `[push.rs:read_portal]` Builds a tokio current-thread runtime and does an xdg desktop portal (D-Bus) read
 - `[hooks.rs:SettingsEnv::system test_notification]` Spawns a thread showing a desktop card (desktop_cards client) or notify_rust notification
 - `[push.rs:watch_portal]` Spawns thread 'ironteams-portal' with its own runtime subscribing to portal D-Bus change stream
-- `[hooks.rs:SettingsEnv::system restart]` Spawns a new process of current_exe and quits the Slint event loop; signed_out and quit also quit the event loop
+- `[hooks.rs:SettingsEnv::system restart|relaunch]` restart calls `relaunch::request(Relaunch::default())`, relaunch calls `relaunch::request(Relaunch { hidden: false, account: Some(label[@tenant]) })`; both quit the Slint event loop and spawn nothing themselves: `main` starts the new process after the full shutdown (`relaunch::run_if_requested`). signed_out and quit only quit the event loop
 - `[push.rs:apply_look]` Writes Theme (including code_bg) and SettingsStore Slint globals (UI state) and sets the process-global mention colour with crate::markdown::set_mention_color, which affects rows drawn afterwards
 - `[hooks.rs:SettingsEnv::system open_url]` Opens URLs via crate::external::open; [command.rs:"view-account"] opens myaccount.microsoft.com
 - `[push.rs:apply_general]` Sets global state: appearance::formats, language, tray keep_running, link previews

@@ -62,13 +62,13 @@ pub(super) fn sweep(paths: &session::Paths) -> (u64, u64) {
 impl Engine {
     /// The directories of this account's data, or `None` without a home.
     #[cfg(not(test))]
-    fn cache_paths(&self) -> Option<session::Paths> {
+    pub(super) fn cache_paths(&self) -> Option<session::Paths> {
         session::Paths::new().ok()
     }
 
     /// Tests work in the directories they set (`test_set_cache_paths`), never in the user's.
     #[cfg(test)]
-    fn cache_paths(&self) -> Option<session::Paths> {
+    pub(super) fn cache_paths(&self) -> Option<session::Paths> {
         self.upkeep.paths.lock().unwrap().clone()
     }
 

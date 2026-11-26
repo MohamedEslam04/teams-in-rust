@@ -89,6 +89,7 @@ pub fn install(
         open_chat_at,
         status_until: None,
         status_before: None,
+        switching: None,
     }));
     CTL.with(|c| *c.borrow_mut() = Some(shared.clone()));
     {

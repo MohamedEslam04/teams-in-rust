@@ -214,6 +214,24 @@ pub struct OutboxItem {
     pub last_error: Option<String>,
 }
 
+/// How many outbox rows are in each state, from [`crate::Store::outbox_count`]. Used before an
+/// account switch to say what is still unsent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutboxCount {
+    pub queued: u32,
+    pub sending: u32,
+    pub failed: u32,
+    /// The `sending` rows that upload a file (a `payload_path`): an upload in progress.
+    pub with_attachments: u32,
+}
+
+impl OutboxCount {
+    /// Every row not sent yet: queued, sending and failed.
+    pub fn unsent(&self) -> u32 {
+        self.queued + self.sending + self.failed
+    }
+}
+
 /// Narrows [`crate::Store::search_messages_local`]; the default searches everything.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LocalFilters<'a> {

@@ -71,6 +71,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
     };
     let l2 = log.clone();
     let l3 = log.clone();
+    let l4 = log.clone();
     SettingsEnv {
         paths: home.paths(),
         tokens,
@@ -84,6 +85,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
             test_notification: Box::new(rec(log, "test-notification")),
             open_url: Box::new(move |u| l2.borrow_mut().push(format!("open {u}"))),
             restart: Box::new(rec(log, "restart")),
+            relaunch: Box::new(move |a| l4.borrow_mut().push(format!("relaunch {a}"))),
             signed_out: Box::new(rec(log, "signed-out")),
             report_problem: Arc::new(|| Ok("/tmp/report.tar.gz".into())),
             enumerate: Arc::new(|| DeviceLists {
@@ -1438,7 +1440,7 @@ fn sign_out_removes_the_tokens_after_confirming() {
 }
 
 #[test]
-fn switching_account_or_org_saves_it_and_asks_for_a_restart() {
+fn switching_with_nothing_in_flight_writes_the_config_and_relaunches_on_the_account() {
     let home = Home::new("switch").with_accounts();
     let paths = home.paths();
     let ui = window(home);
@@ -1446,14 +1448,237 @@ fn switching_account_or_org_saves_it_and_asks_for_a_restart() {
     open_page(app, "accounts");
     assert!(checked(app, "Account: Test User"));
     assert!(checked(app, "Organization: Example Org"));
-    assert!(!store(app).get_restart_needed());
 
+    // Picking the active account does nothing.
+    press(app, "Account: Test User");
+    assert!(ui.log.borrow().is_empty());
+    assert!(!store(app).get_switch_busy());
+
+    // No engine (still signing in, say): nothing can be in flight, so it switches at once.
     press(app, "Account: second");
-    assert!(store(app).get_restart_needed());
     assert_eq!(paths.load_config().unwrap().account, "second");
-    assert!(checked(app, "Account: second"));
-    press(app, "Restart IronTeams");
-    assert_eq!(*ui.log.borrow(), ["restart"]);
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+    assert!(
+        !store(app).get_restart_needed(),
+        "no \"Restart needed\" for an account switch"
+    );
+    assert!(!store(app).get_switch_confirm_open());
+    assert!(
+        store(app).get_switch_busy(),
+        "Switching… until the process ends"
+    );
+}
+
+#[test]
+fn the_profile_menu_lists_the_accounts_with_their_saved_unread_counts() {
+    let home = Home::new("menu-accounts").with_accounts();
+    let paths = home.paths();
+    // The second account had 5 unread when it last ran; an account of a kind this version does
+    // not know is in the file too.
+    paths
+        .update_config(|c| {
+            c.set_last_unread("second", 5)?;
+            c.set_last_unread("default", 9)
+        })
+        .unwrap();
+    let file = paths.config_dir.join("config.json");
+    let mut raw: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut other = raw["accounts"][1].clone();
+    other["label"] = "home".into();
+    other["kind"] = "personal".into();
+    other["display_name"] = "Home Account".into();
+    raw["accounts"].as_array_mut().unwrap().push(other);
+    std::fs::write(&file, raw.to_string()).unwrap();
+
+    let ui = window(home);
+    let app = &ui.app;
+    press(app, "Profile menu");
+    assert!(checked(app, "Switch to Test User"));
+    assert!(!checked(app, "Switch to second"));
+    assert_eq!(value_of(app, "Switch to second"), "5 unread");
+    // The running account shows no saved count: its badges are live.
+    assert_eq!(value_of(app, "Switch to Test User"), "");
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Switch to Home Account")
+            .next()
+            .is_none(),
+        "an account of an unknown kind is not listed"
+    );
+    // One home organization: no organization rows.
+    assert!(
+        ElementHandle::find_by_accessible_label(app, "Switch to organisation Example Org")
+            .next()
+            .is_none()
+    );
+    // Add account and Manage accounts open Settings > Accounts.
+    press(app, "Add account");
+    assert!(!store(app).get_profile_open());
+    assert!(store(app).get_open());
+    assert_eq!(store(app).get_page(), "accounts");
+    store(app).invoke_close();
+    press(app, "Profile menu");
+    press(app, "Manage accounts");
+    assert_eq!(store(app).get_page(), "accounts");
+
+    // The menu switches too.
+    store(app).invoke_close();
+    press(app, "Profile menu");
+    press(app, "Switch to second");
+    assert_eq!(paths.load_config().unwrap().account, "second");
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+}
+
+#[test]
+fn a_call_in_progress_asks_first_and_cancel_keeps_everything() {
+    use crate::backend::InFlight;
+    use crate::backend::inflight::CallState;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let home = Home::new("switch-call").with_accounts();
+    let paths = home.paths();
+    let ui = window_with(home, Some(tx), false);
+    let app = &ui.app;
+    press(app, "Profile menu");
+    while rx.try_recv().is_ok() {}
+
+    press(app, "Switch to second");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::InFlight)));
+    assert_eq!(
+        paths.load_config().unwrap().account,
+        "default",
+        "nothing is written while the engine is asked"
+    );
+    assert!(store(app).get_switch_busy());
+    // A second pick while one is decided is ignored.
+    store(app).invoke_command("switch-account".into(), "second".into());
+    assert!(rx.try_recv().is_err());
+
+    UiHandle::new(app.as_weak()).switch_in_flight(InFlight {
+        call: CallState::Active {
+            with: "Ana Example".into(),
+        },
+        ..Default::default()
+    });
+    assert!(store(app).get_switch_confirm_open());
+    assert!(!store(app).get_profile_open(), "the question stands alone");
+    assert_eq!(
+        value_of(app, "Will happen"),
+        "End the call with Ana Example"
+    );
+
+    press(app, "Cancel");
+    assert!(!store(app).get_switch_confirm_open());
+    assert!(!store(app).get_switch_busy());
+    assert_eq!(paths.load_config().unwrap().account, "default");
+    assert!(ui.log.borrow().is_empty(), "no relaunch");
+    // A late answer after Cancel changes nothing.
+    UiHandle::new(app.as_weak()).switch_in_flight(InFlight::default());
+    assert!(ui.log.borrow().is_empty());
+}
+
+#[test]
+fn unsent_messages_are_counted_and_switch_goes_on() {
+    use crate::backend::InFlight;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let home = Home::new("switch-unsent").with_accounts();
+    let paths = home.paths();
+    let ui = window_with(home, Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "accounts");
+    while rx.try_recv().is_ok() {}
+    press(app, "Account: second");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::InFlight)));
+    UiHandle::new(app.as_weak()).switch_in_flight(InFlight {
+        unsent: 2,
+        ..Default::default()
+    });
+    assert_eq!(
+        value_of(app, "Will happen"),
+        "2 messages will be sent the next time you use this account"
+    );
+    press(app, "Switch");
+    assert!(!store(app).get_switch_confirm_open());
+    assert_eq!(paths.load_config().unwrap().account, "second");
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+}
+
+#[test]
+fn an_engine_with_nothing_in_flight_or_no_answer_does_not_ask() {
+    use crate::backend::InFlight;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let home = Home::new("switch-quiet").with_accounts();
+    let paths = home.paths();
+    let ui = window_with(home, Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "accounts");
+    while rx.try_recv().is_ok() {}
+    press(app, "Account: second");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::InFlight)));
+    UiHandle::new(app.as_weak()).switch_in_flight(InFlight::default());
+    assert!(!store(app).get_switch_confirm_open());
+    assert_eq!(paths.load_config().unwrap().account, "second");
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+
+    // An engine that does not answer (signing in): after 2 s the switch goes on.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let home = Home::new("switch-silent").with_accounts();
+    let paths = home.paths();
+    let ui = window_with(home, Some(tx), false);
+    let app = &ui.app;
+    open_page(app, "accounts");
+    while rx.try_recv().is_ok() {}
+    press(app, "Account: second");
+    assert!(matches!(rx.try_recv(), Ok(Cmd::InFlight)));
+    testing::mock_elapsed_time(std::time::Duration::from_millis(1000));
+    assert!(ui.log.borrow().is_empty(), "still waiting");
+    testing::mock_elapsed_time(std::time::Duration::from_millis(1100));
+    assert_eq!(paths.load_config().unwrap().account, "second");
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+}
+
+#[test]
+fn switching_back_relaunches_on_the_first_account_and_an_org_pick_names_the_tenant() {
+    let home = Home::new("switch-back").with_accounts();
+    let paths = home.paths();
+    // Account A has a guest organization besides its home one.
+    paths
+        .update_config(|c| {
+            let mut orgs = c.active_account().unwrap().orgs.clone();
+            orgs.push(session::OrgRef {
+                tenant_id: "guest-tenant".into(),
+                name: "Guest Org".into(),
+                is_home: false,
+            });
+            c.set_orgs(orgs);
+            Ok(())
+        })
+        .unwrap();
+    let ui = window(home);
+    press(&ui.app, "Profile menu");
+    press(&ui.app, "Switch to second");
+    assert_eq!(*ui.log.borrow(), ["relaunch second"]);
+    // The new process (a new window over the same data) runs B; A is picked again.
+    let Ui { home, .. } = ui;
+    let ui = window(home);
+    let app = &ui.app;
+    press(app, "Profile menu");
+    assert!(checked(app, "Switch to second"));
+    press(app, "Switch to Test User");
+    assert_eq!(paths.load_config().unwrap().account, "default");
+    assert_eq!(*ui.log.borrow(), ["relaunch default"]);
+    // And on A, its guest organization.
+    let Ui { home, .. } = ui;
+    let ui = window(home);
+    let app = &ui.app;
+    press(app, "Profile menu");
+    assert!(checked(app, "Switch to organisation Example Org"));
+    press(app, "Switch to organisation Guest Org");
+    let cfg = paths.load_config().unwrap();
+    assert_eq!(
+        (cfg.account.as_str(), cfg.tenant.as_str()),
+        ("default", "guest-tenant")
+    );
+    assert_eq!(*ui.log.borrow(), ["relaunch default@guest-tenant"]);
 }
 
 #[test]

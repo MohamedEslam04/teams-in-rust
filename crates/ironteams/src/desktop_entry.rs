@@ -49,7 +49,8 @@ pub fn ensure(app_id: &str) {
         data_dirs: data_dirs(std::env::var_os("XDG_DATA_DIRS")),
         flatpak: Path::new("/.flatpak-info").exists(),
     };
-    let exe = exec_path(std::env::var_os("APPIMAGE"), std::env::current_exe().ok());
+    let exe =
+        crate::relaunch::exec_path(std::env::var_os("APPIMAGE"), std::env::current_exe().ok());
     let Some(exe) = exe else {
         return;
     };
@@ -58,14 +59,6 @@ pub fn ensure(app_id: &str) {
         Ok(outcome) => tracing::info!(?outcome, "desktop entry for the portal"),
         Err(e) => tracing::info!(error = %e, "could not write the desktop entry"),
     }
-}
-
-/// `$APPIMAGE` (the mounted binary dies with the process, the file does not), else the executable.
-fn exec_path(appimage: Option<OsString>, current: Option<PathBuf>) -> Option<PathBuf> {
-    appimage
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or(current)
 }
 
 /// Directories whose files do not outlive a reboot or a cleanup.
@@ -317,17 +310,6 @@ mod tests {
         let text = render(Path::new("/home/me/My Apps/ironteams"), false);
         assert!(text.contains("\nExec=\"/home/me/My Apps/ironteams\"\n"));
         assert!(text.contains("\nExec=\"/home/me/My Apps/ironteams\" --report-problem\n"));
-    }
-
-    #[test]
-    fn the_appimage_path_wins_over_the_current_exe() {
-        let current = Some(PathBuf::from("/tmp/.mount_abc/usr/bin/ironteams"));
-        assert_eq!(
-            exec_path(Some("/home/me/IronTeams.AppImage".into()), current.clone()),
-            Some(PathBuf::from("/home/me/IronTeams.AppImage"))
-        );
-        assert_eq!(exec_path(Some("".into()), current.clone()), current);
-        assert_eq!(exec_path(None, current.clone()), current);
     }
 
     #[test]

@@ -414,6 +414,23 @@ impl Engine {
         }
     }
 
+    /// The other person of a 1:1 call that rings out (not connected yet) or is being answered,
+    /// for the account switch's question. Read-only: unlike [`Self::quit_direct`] it cancels
+    /// nothing.
+    pub(crate) fn direct_ringing(&self) -> Option<String> {
+        let c = self.direct();
+        c.outgoing
+            .as_ref()
+            .filter(|o| o.state.is_live())
+            .map(|o| o.name.clone())
+            .or_else(|| {
+                c.incoming
+                    .as_ref()
+                    .filter(|i| i.state == IncomingState::Accepting)
+                    .map(|i| i.name.clone())
+            })
+    }
+
     /// IronTeams is quitting: a call still ringing out or being answered is given up (the
     /// tasks that place and answer calls hang up on the service). Whether there was one, and
     /// those tasks, to wait for.

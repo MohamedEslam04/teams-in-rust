@@ -115,6 +115,8 @@ impl Engine {
         if paths.is_empty() || self.demo_note() {
             return Ok(());
         }
+        // An account switch asks before cutting it short.
+        let _upload = crate::backend::inflight::UploadGuard::start();
         let parent = self.drive_target();
         let (mut files, mut failed) = (0usize, Vec::new());
         for path in paths {

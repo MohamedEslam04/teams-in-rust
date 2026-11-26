@@ -14,6 +14,7 @@ import { AboutPage, AccessibilityPage, AccountsPage, AppearancePage, CallsSettin
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { CountBadge } from "../atoms/chip.slint";
 
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
 
@@ -351,6 +352,65 @@ component FlyPanel inherits Rectangle {
     }
 }
 
+// A row of the card's Accounts section: the photo or initials, the name and sign-in name, the
+// unread count the account had when it last ran, and a check mark on the active one. `indent`
+// makes it an organisation row under the active account (no photo, no sign-in name).
+component AccountMenuRow inherits Rectangle {
+    in property <string> name;
+    in property <string> detail;
+    in property <string> initials;
+    in property <image> img;
+    in property <bool> has-img: false;
+    in property <int> unread: 0;
+    in property <bool> active: false;
+    in property <bool> indent: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: root.indent ? 30px : 44px;
+    border-radius: 4px;
+    background: t.has-hover && root.enabled && !root.active ? Theme.surface-hover : transparent;
+    opacity: root.enabled ? 1 : 0.5;
+    accessible-role: button;
+    accessible-checkable: true;
+    accessible-checked: root.active;
+    accessible-enabled: root.enabled;
+    accessible-value: root.unread > 0 ? @tr("{} unread", root.unread) : "";
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " { root.clicked(); return accept; }
+            reject
+        }
+    }
+    t := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: root.indent ? 52px : 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        if !root.indent: Avatar {
+            initials: root.initials;
+            img: root.img;
+            has-img: root.has-img;
+            size: 28px;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text { text: root.name; color: Theme.fg; font-size: Theme.font-body; font-weight: root.active ? 700 : 400; overflow: elide; accessible-role: none; }
+            if root.detail != "": Text { text: root.detail; color: Theme.fg-muted; font-size: Theme.font-small; overflow: elide; accessible-role: none; }
+        }
+        if root.unread > 0: CountBadge { count: root.unread; y: (parent.height - self.height) / 2; accessible-role: none; }
+        if root.active: Icon { source: @image-url("../icons/check.svg"); tint: Theme.accent; width: 16px; height: 16px; y: (parent.height - self.height) / 2; }
+    }
+    Rectangle {
+        border-radius: 4px;
+        border-width: focus.has-focus ? 1px : 0px;
+        border-color: Theme.fg;
+    }
+}
+
 // The account card under the avatar, as Teams web has it: the organisation and Sign out, the
 // photo, name and email with "View account", and four flat rows (status, Pause notifications, Set
 // work location, Set status message). The status, pause, location and photo choices open in a
@@ -590,6 +650,59 @@ export component ProfileMenu inherits Rectangle {
                             Button { variant: ButtonVariant.settings; label: @tr("Clear message"); clicked => { SettingsStore.command("status-note", ""); } }
                         }
                     }
+                    // Accounts: one click switches (IronTeams starts again on the account, after
+                    // asking when a call or unsent messages would be cut short). The active
+                    // account's organisations sit under it; Add account and Manage accounts
+                    // open Settings > Accounts.
+                    FlySeparator { }
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        Text { text: @tr("Accounts"); color: Theme.fg-muted; font-size: Theme.font-small; font-weight: 700; horizontal-stretch: 1; accessible-role: none; }
+                        if SettingsStore.switch-busy: Text {
+                            text: @tr("Switching…");
+                            color: Theme.fg-muted;
+                            font-size: Theme.font-small;
+                            accessible-role: text;
+                            accessible-label: @tr("Account switch");
+                            accessible-value: self.text;
+                        }
+                    }
+                    for a in SettingsStore.accounts: VerticalLayout {
+                        spacing: 0px;
+                        AccountMenuRow {
+                            name: a.name != "" ? a.name : a.label;
+                            detail: a.upn;
+                            initials: a.initials;
+                            img: SettingsStore.me-photo;
+                            has-img: a.active && SettingsStore.me-has-photo;
+                            unread: a.active ? 0 : a.unread;
+                            active: a.active;
+                            enabled: !SettingsStore.switch-busy;
+                            accessible-label: @tr("Switch to {}", self.name);
+                            clicked => { SettingsStore.command("switch-account", a.label); }
+                        }
+                        if a.active && SettingsStore.orgs.length > 1: VerticalLayout {
+                            for o in SettingsStore.orgs: AccountMenuRow {
+                                indent: true;
+                                name: o.name;
+                                active: o.active;
+                                enabled: !SettingsStore.switch-busy;
+                                accessible-label: @tr("Switch to organisation {}", o.name);
+                                clicked => { SettingsStore.command("switch-org", o.tenant); }
+                            }
+                        }
+                    }
+                    StatusMenuRow {
+                        label: @tr("Add account");
+                        icon: @image-url("../icons/plus.svg");
+                        clicked => { SettingsStore.show("accounts"); }
+                    }
+                    StatusMenuRow {
+                        label: @tr("Manage accounts");
+                        icon: @image-url("../icons/people.svg");
+                        clicked => { SettingsStore.show("accounts"); }
+                    }
                     if SettingsStore.confirm-sign-out: VerticalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
@@ -711,4 +824,56 @@ export component ProfileMenu inherits Rectangle {
         }
     }
     init => { menu-keys.focus(); }
+}
+
+// The account switch's question: what switching now would cut short (a call, a recording,
+// unsent messages, uploads), over a scrim. Switch goes on; Cancel leaves everything as it was.
+export component SwitchConfirmLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape { SettingsStore.command("switch-cancel", ""); return accept; }
+            reject
+        }
+    }
+    Rectangle {
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+        width: min(400px, root.width - 32px);
+        height: box.preferred-height;
+        border-radius: 8px;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: Theme.scrim;
+        accessible-role: groupbox;
+        accessible-label: @tr("Switch account?");
+        // Keeps clicks on the dialog from reaching the scrim.
+        TouchArea { }
+        box := VerticalLayout {
+            padding: 16px;
+            spacing: 8px;
+            Text { text: @tr("Switch account?"); color: Theme.fg; font-size: Theme.font-heading; font-weight: 700; accessible-role: none; }
+            Text { text: @tr("IronTeams restarts on the other account. Your drafts are saved."); color: Theme.fg-muted; font-size: Theme.font-small; wrap: word-wrap; accessible-role: none; }
+            for line in SettingsStore.switch-confirm-lines: Text {
+                text: "• " + line;
+                color: Theme.fg;
+                font-size: Theme.font-body;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: @tr("Will happen");
+                accessible-value: line;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                padding-top: 4px;
+                Button { variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { SettingsStore.command("switch-cancel", ""); } }
+                Button { variant: ButtonVariant.settings; label: @tr("Switch"); primary: true; clicked => { SettingsStore.command("switch-confirm", ""); } }
+            }
+        }
+    }
+    init => { keys.focus(); }
 }

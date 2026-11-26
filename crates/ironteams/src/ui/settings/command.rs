@@ -32,6 +32,8 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
         "profile" => {
             let mut c = shared.borrow_mut();
             push_profile(w, &c);
+            // The menu's Accounts section, with the unread counts saved since.
+            push_accounts(w, &c);
             request_load(&mut c, false);
         }
         "query" => {
@@ -457,33 +459,11 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             saved(w, r);
         }
         // --- Accounts ---
-        "switch-account" | "switch-org" => {
-            let c = shared.borrow();
-            let Some(cfg) = config(&c) else { return };
-            let r = if name == "switch-account" {
-                if cfg.account == arg {
-                    return;
-                }
-                // Read, change and save under the config lock: the running engine saves its
-                // own preferences into the same file and must not overwrite the switch.
-                c.env.paths.update_config(|cfg| cfg.switch_account(arg))
-            } else {
-                let current =
-                    st::org_rows(&cfg, c.server.as_ref().and_then(|d| d.tenants.as_deref()));
-                if current.iter().any(|o| o.active && o.tenant == arg) {
-                    return;
-                }
-                c.env.paths.update_config(|cfg| cfg.switch_tenant(arg))
-            };
-            match r {
-                Ok(()) => {
-                    g.set_restart_needed(true);
-                    g.set_accounts_status(s("Saved. Restart IronTeams to switch."));
-                }
-                Err(e) => g.set_accounts_status(s(format!("Could not switch: {e}"))),
-            }
-            push_accounts(w, &c);
-        }
+        // Relaunches on the choice, after asking when something would be cut short (`switch`).
+        "switch-account" => switch::start(shared, w, Some(arg), None),
+        "switch-org" => switch::start(shared, w, None, Some(arg)),
+        "switch-confirm" => switch::confirm(shared, w),
+        "switch-cancel" => switch::cancel(shared, w),
         // --- Updates (always on; only the beta channel is a choice; local) ---
         "notification-style" => {
             let mut c = shared.borrow_mut();

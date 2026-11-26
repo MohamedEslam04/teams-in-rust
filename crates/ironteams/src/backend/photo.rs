@@ -90,6 +90,8 @@ impl Engine {
             return;
         }
         self.ui.settings_notice("Uploading your photo…".into());
+        // An account switch asks before cutting it short.
+        let _upload = super::inflight::UploadGuard::start();
         match self.client.set_my_photo(bytes.clone()).await {
             Ok(()) => {
                 self.keep_my_avatar(Some(bytes));
