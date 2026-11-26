@@ -484,8 +484,8 @@ export component Sidebar inherits Rectangle {
                         spacing: 1px;
                         alignment: start;
                         QuickViewsSection {
-                            c: root.c;
                             unreads: root.catch-chats;
+                            c: root.c;
                             mentions: root.catch-mentions;
                             drafts-on: root.filter == "drafts";
                             open(kind) => {

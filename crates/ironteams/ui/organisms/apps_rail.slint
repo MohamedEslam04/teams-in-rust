@@ -278,19 +278,20 @@ export component AppsOverlays inherits Rectangle {
             }
         }
         MenuColumn {
+            c: root.c;
             x: AppsStore.rail-width + 4px;
             y: max(8px, min(AppsStore.menu-fixed-y, parent.height - self.height - 8px));
             menu-width: 200px;
             for f in AppsStore.rail-fixed: VerticalLayout {
-                if f.key == AppsStore.menu-fixed && f.menu-up: MenuItem { variant: MenuItemVariant.kit;
+                if f.key == AppsStore.menu-fixed && f.menu-up: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: @tr("Move up");
                     clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-move", f.key + "\u{1f}up\u{1f}rail"); }
                 }
-                if f.key == AppsStore.menu-fixed && f.menu-down: MenuItem { variant: MenuItemVariant.kit;
+                if f.key == AppsStore.menu-fixed && f.menu-down: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: @tr("Move down");
                     clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-move", f.key + "\u{1f}down\u{1f}rail"); }
                 }
-                if f.key == AppsStore.menu-fixed && !f.locked: MenuItem { variant: MenuItemVariant.kit;
+                if f.key == AppsStore.menu-fixed && !f.locked: MenuItem { c: root.c; variant: MenuItemVariant.kit;
                     label: @tr("Hide");
                     clicked => { AppsStore.menu-fixed = ""; SettingsStore.command("rail-show", f.key + "\u{1f}0"); }
                 }

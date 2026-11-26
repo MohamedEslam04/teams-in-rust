@@ -86,7 +86,7 @@ component NotifyChoices inherits VerticalLayout {
 
 // "Sort by" of one section, shared by the fixed sections' menu and the sections' menu.
 component SortChoices inherits VerticalLayout {
-    in property <Tokens> c: Theme.content;
+    in property <Tokens> c: Theme.nav;
     in property <string> target;
     in property <string> sort;
     callback done();
@@ -124,15 +124,14 @@ export component SortHeader inherits Rectangle {
         y: parent.height;
         width: 170px;
         height: sort-items.preferred-height + 2px;
-        // The menu floats over the content area, so it has the content colours.
         Rectangle {
-            background: Theme.content.surface;
+            background: root.c.surface;
             border-radius: 6px;
             border-width: 1px;
-            border-color: Theme.content.border;
+            border-color: root.c.border;
             sort-items := VerticalLayout {
                 padding: 4px;
-                SortChoices { c: Theme.content; target: root.target; sort: root.sort; done => { sort-menu.close(); } }
+                SortChoices { c: root.c; target: root.target; sort: root.sort; done => { sort-menu.close(); } }
             }
         }
     }
