@@ -145,7 +145,7 @@ fn a_chat_opened_before_the_refresh_shows_no_banner_and_reads_the_scheduled_list
     );
 
     // The refresh answered: the engine goes online and reads what the chat waited for.
-    h.engine.chat_online_reads();
+    h.rt.block_on(async { h.engine.chat_online_reads() });
     let_spawned_tasks_run(&h);
     assert_eq!(
         h.engine.test_scheduled_reads(),
@@ -156,7 +156,7 @@ fn a_chat_opened_before_the_refresh_shows_no_banner_and_reads_the_scheduled_list
     assert_eq!(h.app.get_banner(), "");
 
     // Once per session: a second online transition (the live connection's) does not read again.
-    h.engine.chat_online_reads();
+    h.rt.block_on(async { h.engine.chat_online_reads() });
     let_spawned_tasks_run(&h);
     assert_eq!(h.engine.test_scheduled_reads(), 1);
 }
