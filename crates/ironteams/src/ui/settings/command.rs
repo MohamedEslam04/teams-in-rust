@@ -3,6 +3,9 @@ use appearance::themes::{self, Switch, ThemeChoice};
 
 /// One command from the page. Runs on the UI thread.
 pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
+    if super::themes::command(shared, w, name, arg) {
+        return;
+    }
     let g = w.global::<SettingsStore>();
     let parts: Vec<&str> = arg.split('\u{1f}').collect();
     match name {

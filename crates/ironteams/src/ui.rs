@@ -275,6 +275,21 @@ fn msg(m: MsgData) -> Msg {
     let (avatar, has_avatar) = img(&m.avatar);
     let readers = readers(&m.receipt_readers);
     let subject_rtl = render::text_direction(&m.subject) == Some(render::Dir::Rtl);
+    // A message that is only a theme share line gets a chip with a Preview button.
+    let (theme_name, theme_nav, theme_content, theme_accent, theme_line) =
+        match crate::markdown::theme_chip(&m.plain) {
+            Some(t) => {
+                let chip_colour = |c: appearance::Rgb| Color::from_rgb_u8(c.r, c.g, c.b);
+                (
+                    SharedString::from(t.name),
+                    chip_colour(t.nav),
+                    chip_colour(t.content),
+                    chip_colour(t.accent),
+                    SharedString::from(t.line),
+                )
+            }
+            None => Default::default(),
+        };
     Msg {
         id: m.id.into(),
         sender: m.sender.into(),
@@ -448,6 +463,11 @@ fn msg(m: MsgData) -> Msg {
                 .collect(),
         ),
         meeting: model(m.meeting.into_iter().map(meeting_card).collect()),
+        theme_name,
+        theme_nav,
+        theme_content,
+        theme_accent,
+        theme_line,
     }
 }
 
@@ -1070,7 +1090,29 @@ impl UiHandle {
 
 #[cfg(test)]
 mod tests {
-    use super::readers;
+    use super::{msg, readers};
+    use crate::ui::row_fingerprint::sample_row;
+
+    #[test]
+    fn a_theme_line_gets_a_chip_and_a_malformed_line_none() {
+        const LINE: &str = "ironteams-theme:1:Night shift:#1d2b45,#e6ecf5,#2f4a75,#ffffff,#1c2430,#2f6fd6,#1f57b8,#d93f3f";
+        let chip = msg(sample_row("1", LINE));
+        assert_eq!(chip.theme_name, "Night shift");
+        assert_eq!(chip.theme_line, LINE);
+        assert_eq!(chip.theme_nav, slint::Color::from_rgb_u8(0x1d, 0x2b, 0x45));
+        assert_eq!(
+            chip.theme_accent,
+            slint::Color::from_rgb_u8(0x2f, 0x6f, 0xd6)
+        );
+        let inside = format!("look: {LINE}");
+        for text in [
+            "plain words",
+            inside.as_str(),
+            "ironteams-theme:1:Night shift:#1d2b45",
+        ] {
+            assert_eq!(msg(sample_row("2", text)).theme_name, "", "{text}");
+        }
+    }
 
     #[test]
     fn every_reader_reaches_the_model_with_a_full_name() {

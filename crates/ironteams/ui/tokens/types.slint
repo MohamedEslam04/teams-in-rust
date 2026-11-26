@@ -167,6 +167,11 @@ export struct Msg {
     voices: [VoiceItem],   // voice messages, drawn as players
     videos: [VideoClipItem], // video clips, drawn as cards
     meeting: [MeetingCard], // a call, recording or transcript event drawn as a card (at most one)
+    theme-name: string,    // the message is a theme share line: its name ("" draws no chip)
+    theme-nav: color,      // ... and the colours its chip shows
+    theme-content: color,
+    theme-accent: color,
+    theme-line: string,    // the line itself, for the chip's Preview
 }
 
 // A person (or, for the @mention picker, a team, channel or "Everyone" entry) in a people list.

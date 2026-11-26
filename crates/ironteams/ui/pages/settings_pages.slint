@@ -17,6 +17,8 @@ import { AppsStore, RailItems } from "../stores/apps_store.slint";
 import { Button, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Fixed } from "../tokens/fixed.slint";
+import { IconButton } from "../atoms/widgets.slint";
+import { MenuColumn, MenuItem } from "../atoms/menu.slint";
 
 // The Teams changes that were only planned, so the user sees exactly what was not sent.
 component DryRuns inherits SettingsSection {
@@ -736,6 +738,49 @@ export component NotificationsPage inherits SettingsSections {
     if SettingsStore.dry-runs.length > 0: DryRuns { }
 }
 
+// The "..." on a custom theme's tile: Edit, Copy theme, Rename and Delete, which asks first.
+component ThemeTileMenu inherits Rectangle {
+    in property <bool> custom;
+    in property <string> id;
+    in property <string> name;
+    property <bool> confirming: false;
+    width: 28px;
+    height: 28px;
+    if root.custom: IconButton {
+        size: 28px;
+        icon: @image-url("../icons/more.svg");
+        tooltip: @tr("Theme options: {}", root.name);
+        clicked => { root.confirming = false; pop.show(); }
+    }
+    pop := PopupWindow {
+        x: Theme.rtl ? 0px : root.width - 200px;
+        y: root.height + 2px;
+        width: 200px;
+        height: 4 * 32px + 12px;
+        close-policy: close-on-click-outside;
+        MenuColumn {
+            menu-width: 200px;
+            if !root.confirming: MenuItem { label: @tr("Edit"); clicked => { pop.close(); SettingsStore.command("theme-edit", root.id); } }
+            if !root.confirming: MenuItem { label: @tr("Copy theme"); clicked => { pop.close(); SettingsStore.command("theme-copy", root.id); } }
+            if !root.confirming: MenuItem { label: @tr("Rename"); clicked => { pop.close(); SettingsStore.editor-error = ""; SettingsStore.rename-name = root.name; SettingsStore.rename-id = root.id; } }
+            if !root.confirming: MenuItem { label: @tr("Delete"); danger: true; clicked => { root.confirming = true; } }
+            if root.confirming: Text {
+                text: @tr("Delete \"{}\"?", root.name);
+                color: Theme.fg;
+                font-size: Theme.font-body;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+            if root.confirming: HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button { variant: ButtonVariant.settings; label: @tr("Cancel"); clicked => { root.confirming = false; pop.close(); } }
+                Button { variant: ButtonVariant.settings; label: @tr("Delete"); danger: true; clicked => { root.confirming = false; pop.close(); SettingsStore.command("theme-delete", root.id); } }
+            }
+        }
+    }
+}
+
 export component AppearancePage inherits SettingsSections {
     SettingsSection {
         title: @tr("Theme");
@@ -755,6 +800,28 @@ export component AppearancePage inherits SettingsSections {
                     checked: SettingsStore.theme-mode == "one" && SettingsStore.theme-id == t.id;
                     clicked => { SettingsStore.command("theme-pick", t.id); }
                 }
+                for t[i] in SettingsStore.themes: ThemeTileMenu {
+                    property <int> tile-col: Math.mod(i, gallery.cols);
+                    property <length> tile-x: Theme.rtl ? gallery.width - ThemeTileMetrics.width - self.tile-col * (ThemeTileMetrics.width + 12px) : self.tile-col * (ThemeTileMetrics.width + 12px);
+                    x: Theme.rtl ? self.tile-x + 6px : self.tile-x + ThemeTileMetrics.width - 6px - self.width;
+                    y: Math.floor(i / gallery.cols) * (ThemeTileMetrics.height + 12px) + 6px;
+                    custom: t.custom;
+                    id: t.id;
+                    name: t.name;
+                }
+            }
+        }
+        // New and imported themes. Both stop at 50 custom themes.
+        SettingsBlock {
+            VerticalLayout {
+                spacing: Space.s;
+                HorizontalLayout {
+                    spacing: Space.m;
+                    alignment: Theme.rtl ? LayoutAlignment.end : LayoutAlignment.start;
+                    Button { variant: ButtonVariant.settings; label: @tr("New custom theme"); enabled: !SettingsStore.themes-full; clicked => { SettingsStore.command("theme-new", ""); } }
+                    Button { variant: ButtonVariant.settings; label: @tr("Import"); enabled: !SettingsStore.themes-full; clicked => { SettingsStore.editor-error = ""; SettingsStore.import-open = true; } }
+                }
+                if SettingsStore.themes-full: SettingsNote { text: SettingsStore.share-error("limit"); }
             }
         }
         SettingsChoiceRow {

@@ -5,6 +5,7 @@ import { FileItem, Tokens } from "../tokens/types.slint";
 import { Motion } from "../tokens/motion.slint";
 import { Icon, IconButton } from "../atoms/widgets.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
 
 export component FileCard inherits Rectangle {
     in property <Tokens> c: Theme.content;
@@ -163,5 +164,45 @@ export component MeetLinkCard inherits Rectangle {
                 clicked => { root.join(root.url); }
             }
         }
+    }
+}
+
+// A theme someone sent as a share line: its name, the nav, content and accent colours it draws, and
+// Preview, which opens the import preview with the line (nothing is saved until Save there).
+export component ThemeChipCard inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <string> name;
+    in property <color> nav;
+    in property <color> content;
+    in property <color> accent;
+    callback preview();
+    height: 48px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.c.border;
+    background: root.c.panel;
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Rectangle {
+            width: 60px;
+            for sw[k] in [root.nav, root.content, root.accent]: Rectangle {
+                x: k * 20px;
+                y: (parent.height - self.height) / 2;
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: root.c.border;
+                background: sw;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text { text: root.name; color: root.c.fg; font-size: 13px * Theme.font-scale; font-weight: 600; overflow: elide; }
+            Text { text: @tr("IronTeams theme"); color: root.c.fg-muted; font-size: 11px * Theme.font-scale; overflow: elide; }
+        }
+        Button { c: root.c; variant: ButtonVariant.settings; label: @tr("Preview"); clicked => { root.preview(); } }
     }
 }

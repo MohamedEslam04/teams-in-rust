@@ -82,6 +82,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
     let l2 = log.clone();
     let l3 = log.clone();
     let l4 = log.clone();
+    let l5 = log.clone();
     SettingsEnv {
         paths: home.paths(),
         tokens,
@@ -95,6 +96,10 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
             autostart: Autostart::desktop(Some(home.0.join("xdg"))),
             test_notification: Box::new(rec(log, "test-notification")),
             open_url: Box::new(move |u| l2.borrow_mut().push(format!("open {u}"))),
+            copy_text: Box::new(move |t| {
+                l5.borrow_mut().push(format!("copy {t}"));
+                Ok(())
+            }),
             restart: Box::new(rec(log, "restart")),
             relaunch: Box::new(move |a| l4.borrow_mut().push(format!("relaunch {a}"))),
             signed_out: Box::new(rec(log, "signed-out")),
@@ -139,7 +144,7 @@ pub(super) fn env(home: &Home, log: &Log, tokens: Arc<session::MemoryStore>) -> 
 
 pub(super) struct Ui {
     pub(super) app: AppWindow,
-    log: Log,
+    pub(super) log: Log,
     tokens: Arc<session::MemoryStore>,
     pub(super) home: Home,
 }

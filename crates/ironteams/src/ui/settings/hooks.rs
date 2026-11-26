@@ -44,6 +44,8 @@ pub struct Hooks {
     pub autostart: Autostart,
     pub test_notification: Box<dyn Fn()>,
     pub open_url: Box<dyn Fn(&str)>,
+    /// Puts text on the clipboard (Copy theme).
+    pub copy_text: Box<dyn Fn(&str) -> Result<(), String>>,
     /// Quits this process; `main` then starts IronTeams again (`relaunch`).
     pub restart: Box<dyn Fn()>,
     /// The account switch: quits this process, and `main` starts IronTeams again on the
@@ -144,6 +146,11 @@ impl SettingsEnv {
                 }),
                 open_url: Box::new(|u| {
                     let _ = crate::external::open(u);
+                }),
+                copy_text: Box::new(|t| {
+                    arboard::Clipboard::new()
+                        .and_then(|mut c| c.set_text(t.to_string()))
+                        .map_err(|e| e.to_string())
                 }),
                 // `main` starts the new process after the full shutdown (`relaunch`).
                 restart: Box::new(|| {

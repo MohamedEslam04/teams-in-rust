@@ -1,0 +1,71 @@
+// One colour picked in OKLCH: a swatch and three sliders (lightness, chroma, hue), each 0 to 100.
+// The owner keeps the numbers: `edited` says where a slider was dragged to (the three values),
+// and the owner pushes back the colour it stored, so a value outside sRGB snaps to the clipped one.
+// The mapping to OKLCH (`L = v / 100`, `C = v * 0.004`, `h = v * 3.6` degrees) is the owner's.
+import { Tokens } from "../tokens/types.slint";
+import { Theme } from "../tokens/theme.slint";
+import { RangeSlider } from "range_slider.slint";
+
+component PickerSlider inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <string> caption;
+    in property <string> label;
+    in property <float> value;
+    callback edited(float);
+    height: 38px;
+    horizontal-stretch: 1;
+    VerticalLayout {
+        spacing: 2px;
+        Text { text: root.caption; color: root.c.fg-muted; font-size: 11px * Theme.font-scale; accessible-role: none; }
+        RangeSlider { c: root.c; label: root.label; value: root.value; edited(v) => { root.edited(v); } }
+    }
+}
+
+export component ColourPicker inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    // The colour's name: each slider is read out as "<label>: Lightness" and so on.
+    in property <string> label;
+    in property <float> l;
+    in property <float> chroma;
+    in property <float> hue;
+    in property <color> colour;
+    callback edited(float, float, float);
+    height: 38px;
+    horizontal-stretch: 1;
+    HorizontalLayout {
+        spacing: 12px;
+        Rectangle {
+            width: 24px;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: root.c.border;
+                background: root.colour;
+            }
+        }
+        PickerSlider {
+            c: root.c;
+            caption: @tr("Lightness");
+            label: root.label + ": " + @tr("Lightness");
+            value: root.l;
+            edited(v) => { root.edited(v, root.chroma, root.hue); }
+        }
+        PickerSlider {
+            c: root.c;
+            caption: @tr("Chroma");
+            label: root.label + ": " + @tr("Chroma");
+            value: root.chroma;
+            edited(v) => { root.edited(root.l, v, root.hue); }
+        }
+        PickerSlider {
+            c: root.c;
+            caption: @tr("Hue");
+            label: root.label + ": " + @tr("Hue");
+            value: root.hue;
+            edited(v) => { root.edited(root.l, root.chroma, v); }
+        }
+    }
+}

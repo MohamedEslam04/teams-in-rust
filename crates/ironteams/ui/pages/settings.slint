@@ -18,8 +18,9 @@ import { Switch, SwitchVariant } from "../atoms/check.slint";
 import { CountBadge } from "../atoms/chip.slint";
 import { EmojiPanel } from "../organisms/composer_popups.slint";
 import { Fixed } from "../tokens/fixed.slint";
+import { ImportThemeLayer, RenameThemeLayer, ThemeEditorLayer } from "../organisms/theme_editor.slint";
 
-export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind } from "../stores/settings_store.slint";
+export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind, SBaseRow, SPairRow, SAdjusted } from "../stores/settings_store.slint";
 
 export component SettingsPage inherits Rectangle {
     background: Theme.main;
@@ -216,6 +217,10 @@ export component SettingsPage inherits Rectangle {
             }
         }
     }
+    // The custom theme dialogs, above the page.
+    if SettingsStore.editor-open: ThemeEditorLayer { width: root.width; height: root.height; }
+    if SettingsStore.import-open: ImportThemeLayer { width: root.width; height: root.height; }
+    if SettingsStore.rename-id != "": RenameThemeLayer { width: root.width; height: root.height; }
     init => { keys.focus(); }
 }
 

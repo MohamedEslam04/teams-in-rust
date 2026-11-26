@@ -3,7 +3,7 @@ import { Msg } from "../tokens/types.slint";
 import { EditStore } from "../stores/edit_store.slint";
 import { Composer } from "composer.slint";
 import { AddReactionChip, Icon, IconButton, ReactionChip } from "../atoms/widgets.slint";
-import { FileCard, LoopCardView, MeetLinkCard } from "../molecules/cards.slint";
+import { FileCard, LoopCardView, MeetLinkCard, ThemeChipCard } from "../molecules/cards.slint";
 import { Avatar } from "../atoms/avatar.slint";
 import { CalStore } from "../stores/calendar_store.slint";
 import { SettingsStore } from "../stores/settings_store.slint";
@@ -629,6 +629,16 @@ export component MessageRow inherits TouchArea {
                         url: u;
                         min-width: min(320px, root.max-bubble - 28px);
                         join(link) => { CalStore.command("join", link); }
+                    }
+
+                    // A theme share line: a chip with its colours and a Preview button.
+                    if root.m.theme-name != "": ThemeChipCard {
+                        name: root.m.theme-name;
+                        nav: root.m.theme-nav;
+                        content: root.m.theme-content;
+                        accent: root.m.theme-accent;
+                        min-width: min(320px, root.max-bubble - 28px);
+                        preview => { MediaStore.command("theme-preview", root.m.theme-line); }
                     }
 
                     // Voice messages play in place (ui/molecules/voice_player.slint).

@@ -8,7 +8,9 @@
 //!
 //! Commands from `SettingsStore.command(name, argument)`:
 //! open, close, page, query, profile, theme, theme-pick, theme-mode, theme-slot, theme-time,
-//! reset-theme, accent, density, message-style, show-avatars, show-timestamps, show-reactions,
+//! reset-theme, theme-new, theme-edit, theme-import, theme-copy, theme-rename, theme-delete,
+//! editor-hex, editor-lch, editor-name, editor-keep, editor-save, editor-cancel (`themes.rs`),
+//! accent, density, message-style, show-avatars, show-timestamps, show-reactions,
 //! font-step, font-scale, skin-tone,
 //! language, date-format, time-format, time-zone, startup, renderer, high-contrast, reduced-motion,
 //! larger-text, a11y, rail-move, rail-show, rail-auto, notify, pause, test-notification, privacy, unblock, priority-remove,
@@ -36,8 +38,8 @@ use crate::backend::sounds::{self, Kind as SoundKind};
 use crate::update_check::{self, Release};
 use crate::updater::{self, Event, Phase};
 use crate::{
-    AppWindow, AppsStore, RailFixed, SAccount, SAppPerm, SDevice, SFind, SNotify, SOption, SOrg,
-    SPerson, STheme, SToggle, SettingsStore, Theme,
+    AppWindow, AppsStore, RailFixed, SAccount, SAdjusted, SAppPerm, SBaseRow, SDevice, SFind,
+    SNotify, SOption, SOrg, SPairRow, SPerson, STheme, SToggle, SettingsStore, Theme,
 };
 use app_store::DevicePermission;
 use appearance::{Density, MessageStyle, PortalChange, PortalSettings, Rgb};
@@ -68,6 +70,8 @@ pub use updates::*;
 mod command;
 use command::*;
 mod switch;
+mod themes;
+pub use themes::route_theme_preview;
 
 /// Polls a running microphone test; `None` when there is no new reading.
 pub type MicPoll = Box<dyn FnMut() -> Option<f32>>;
@@ -120,6 +124,8 @@ struct Ctl {
     logged_fallbacks: HashSet<appearance::Fallback>,
     /// Runs `look_changed` once a minute while a schedule picks the theme.
     schedule_timer: Option<slint::Timer>,
+    /// The custom theme being edited or previewed (`themes.rs`).
+    editor: Option<themes::Editor>,
 }
 
 /// What the button of the banner does, for the banners Settings shows.

@@ -6,7 +6,7 @@ use super::settings::{CLOCK, Home, Ui, checked, control, env, open_page, store, 
 use super::*;
 use crate::backend::settings::Local;
 use crate::ui::settings::{install, logged_fallback_count, portal_changed};
-use crate::{PaletteStore, Theme};
+use crate::{MediaStore, PaletteStore, Theme};
 use appearance::{CallChoice, PortalChange, PortalScheme, ThemeChoice};
 use std::time::Duration;
 
@@ -256,4 +256,416 @@ fn a_stale_id_falls_back_and_is_logged_once() {
     portal_changed(app, PortalChange::ColorScheme(PortalScheme::Dark));
     portal_changed(app, PortalChange::ColorScheme(PortalScheme::NoPreference));
     assert_eq!(logged_fallback_count(), 1, "logged once");
+}
+// --- PR 4: the custom theme editor, sharing and the chat chip ---
+
+const LINE: &str =
+    "ironteams-theme:1:Night shift:#1d2b45,#e6ecf5,#2f4a75,#ffffff,#1c2430,#2f6fd6,#1f57b8,#d93f3f";
+const US: char = '\u{1f}';
+
+fn command(app: &AppWindow, name: &str, arg: &str) {
+    store(app).invoke_command(name.into(), arg.into());
+}
+
+fn settle() {
+    for _ in 0..3 {
+        testing::mock_elapsed_time(Duration::from_millis(16));
+    }
+}
+
+fn saved_themes(ui: &Ui) -> appearance::ThemesFile {
+    Local::load(&ui.home.paths().config_dir).themes
+}
+
+/// A home that already holds custom themes with these names (all with the base of a built-in).
+fn home_with_custom(tag: &str, names: &[String]) -> (Home, Vec<String>) {
+    let home = Home::new(tag);
+    let dir = home.paths().config_dir;
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut l = Local::load(&dir);
+    let ids = names
+        .iter()
+        .map(|n| {
+            l.themes
+                .add(n, appearance::themes::builtins()[3].base, false)
+                .unwrap()
+        })
+        .collect();
+    l.save_themes().unwrap();
+    (home, ids)
+}
+
+/// The value of the first element with this label (a text of the page).
+fn text_of(app: &AppWindow, label: &str) -> String {
+    settle();
+    ElementHandle::find_by_accessible_label(app, label)
+        .next()
+        .and_then(|e| e.accessible_value())
+        .map(|v| v.to_string())
+        .unwrap_or_default()
+}
+
+#[test]
+fn new_custom_theme_saves_and_applies() {
+    let ui = window(Home::new("theme-editor-new"));
+    let app = &ui.app;
+    appearance_page(app);
+    press(app, "New custom theme");
+    let st = store(app);
+    assert!(st.get_editor_open());
+    assert_eq!(st.get_editor_mode(), "new");
+    assert_eq!(st.get_editor_name(), "My theme");
+    assert_eq!(st.get_editor_rows().row_count(), 8);
+    command(app, "editor-name", "Sky");
+    command(app, "editor-hex", &format!("3{US}#fff5e6"));
+    assert!(st.get_editor_can_save());
+    press(app, "Save");
+    assert!(!st.get_editor_open(), "Save closes the editor");
+    let saved = saved_themes(&ui);
+    assert_eq!(saved.custom.len(), 1);
+    assert_eq!(saved.custom[0].name, "Sky");
+    let id = saved.custom[0].id.clone();
+    assert_eq!(saved.choice, Some(ThemeChoice::Fixed(id.clone())));
+    assert_eq!(app.global::<Theme>().get_content().bg, rgb(0xfff5e6));
+    assert_eq!(st.get_theme_active().as_str(), id);
+    assert!(checked(app, "Theme: Sky"), "the new tile is the picked one");
+}
+
+#[test]
+fn the_preview_follows_each_colour() {
+    let ui = window(Home::new("theme-editor-preview"));
+    let app = &ui.app;
+    command(app, "theme-new", "");
+    let st = store(app);
+    for (i, hex, v) in [
+        (0, "#102030", 0x102030),
+        (2, "#334455", 0x334455),
+        (3, "#fafafa", 0xfafafa),
+        (5, "#2266cc", 0x2266cc),
+        (6, "#aa5500", 0xaa5500),
+        (7, "#cc0000", 0xcc0000),
+    ] {
+        command(app, "editor-hex", &format!("{i}{US}{hex}"));
+        let row = st.get_editor_rows().row_data(i).unwrap();
+        assert_eq!(row.hex, hex);
+        assert_eq!(row.colour, rgb(v));
+    }
+    assert_eq!(st.get_editor_nav().bg, rgb(0x102030));
+    assert_eq!(st.get_editor_nav().selected, rgb(0x334455));
+    assert_eq!(st.get_editor_nav().unread_badge, rgb(0xcc0000));
+    assert_eq!(st.get_editor_content().bg, rgb(0xfafafa));
+    assert_eq!(st.get_editor_content().accent, rgb(0x2266cc));
+    assert_eq!(st.get_editor_content().mention, rgb(0xaa5500));
+    // A hex that is not a colour changes nothing.
+    command(app, "editor-hex", &format!("0{US}zzz"));
+    assert_eq!(st.get_editor_nav().bg, rgb(0x102030));
+    assert_eq!(st.get_editor_rows().row_data(0).unwrap().hex, "#102030");
+    // Nothing is saved until Save.
+    assert!(saved_themes(&ui).custom.is_empty());
+}
+
+#[test]
+fn a_picker_drag_out_of_gamut_snaps_back() {
+    let ui = window(Home::new("theme-editor-gamut"));
+    let app = &ui.app;
+    command(app, "theme-new", "");
+    let st = store(app);
+    // Lightness 50, chroma 10 (0.04), hue 30 (108 degrees) is a colour sRGB has: the sliders stay.
+    command(app, "editor-lch", &format!("5{US}50{US}10{US}30"));
+    let row = st.get_editor_rows().row_data(5).unwrap();
+    assert_eq!((row.l, row.c, row.h), (50.0, 10.0, 30.0));
+    // Chroma 100 (0.4) at that hue is far outside it: the slider goes back to what was stored.
+    command(app, "editor-lch", &format!("5{US}50{US}100{US}30"));
+    let row = st.get_editor_rows().row_data(5).unwrap();
+    assert!(
+        row.c < 60.0,
+        "snapped back to the clipped chroma: {}",
+        row.c
+    );
+    assert!(row.c > 0.0);
+    assert_eq!(row.l, 50.0);
+}
+
+#[test]
+fn an_adjusted_colour_shows_picked_and_drawn() {
+    let ui = window(Home::new("theme-editor-adjusted"));
+    let app = &ui.app;
+    command(app, "theme-new", "");
+    let st = store(app);
+    command(app, "editor-hex", &format!("3{US}#ffffff"));
+    command(app, "editor-hex", &format!("4{US}#dddddd"));
+    let adjusted: Vec<_> = st.get_editor_adjusted().iter().collect();
+    let fg = adjusted
+        .iter()
+        .find(|a| a.token == "fg")
+        .unwrap_or_else(|| panic!("fg was moved: {} entries", adjusted.len()));
+    assert_eq!(fg.picked, rgb(0xdddddd), "what the user picked");
+    assert_ne!(fg.drawn, fg.picked, "what is drawn instead");
+    assert_ne!(
+        st.get_editor_content().fg,
+        rgb(0xdddddd),
+        "the preview draws the moved colour"
+    );
+}
+
+#[test]
+fn keep_my_colours_marks_low_contrast() {
+    let ui = window(Home::new("theme-editor-keep"));
+    let app = &ui.app;
+    appearance_page(app);
+    press(app, "New custom theme");
+    let st = store(app);
+    command(app, "editor-name", "Faint");
+    command(app, "editor-hex", &format!("3{US}#ffffff"));
+    command(app, "editor-hex", &format!("4{US}#dddddd"));
+    command(app, "editor-keep", "1");
+    assert_eq!(st.get_editor_adjusted().row_count(), 0, "nothing moves");
+    assert!(st.get_editor_low_contrast());
+    assert!(st.get_editor_failing().row_count() > 0);
+    assert_eq!(st.get_editor_content().fg, rgb(0xdddddd));
+    press(app, "Save");
+    let tile = st
+        .get_themes()
+        .iter()
+        .find(|t| t.name == "Faint")
+        .expect("the tile");
+    assert!(tile.low_contrast, "the tile shows the tag");
+    assert!(saved_themes(&ui).custom[0].keep_original);
+}
+
+#[test]
+fn copy_theme_puts_the_share_line_on_the_clipboard() {
+    let (home, ids) = home_with_custom("theme-copy", &["Mine".to_string()]);
+    let ui = window(home);
+    let app = &ui.app;
+    command(app, "theme-copy", &ids[0]);
+    let want = appearance::share::export("Mine", &appearance::themes::builtins()[3].base);
+    assert!(
+        ui.log.borrow().contains(&format!("copy {want}")),
+        "{:?}",
+        ui.log.borrow()
+    );
+    assert_eq!(store(app).get_notice(), "Theme copied.");
+    // The line is one the import accepts.
+    command(app, "theme-import", &want);
+    assert_eq!(store(app).get_editor_error(), "");
+    assert_eq!(store(app).get_editor_name(), "Mine");
+}
+
+#[test]
+fn import_shows_each_refusal_sentence() {
+    let ui = window(Home::new("theme-import-refusals"));
+    let app = &ui.app;
+    let colours = "#1d2b45,#e6ecf5,#2f4a75,#ffffff,#1c2430,#2f6fd6,#1f57b8,#d93f3f";
+    let long_name = "n".repeat(41);
+    let cases = [
+        (
+            "a".repeat(201),
+            "too-long",
+            "The line is longer than 200 characters.",
+        ),
+        (
+            "hello".to_string(),
+            "not-a-theme",
+            "This is not an IronTeams theme line.",
+        ),
+        (
+            format!("ironteams-theme:2:Night:{colours}"),
+            "version",
+            "This theme line comes from a newer IronTeams.",
+        ),
+        (
+            format!("ironteams-theme:1::{colours}"),
+            "name-empty",
+            "The theme has no name.",
+        ),
+        (
+            format!("ironteams-theme:1:{long_name}:{colours}"),
+            "name-too-long",
+            "The name is longer than 40 characters.",
+        ),
+        (
+            format!("ironteams-theme:1:a:b:{colours}"),
+            "name-colon",
+            "The name may not contain a colon.",
+        ),
+        (
+            format!("ironteams-theme:1:a\u{202e}b:{colours}"),
+            "name-hidden",
+            "The name contains hidden or control characters.",
+        ),
+        (
+            "ironteams-theme:1:Night:#1d2b45".to_string(),
+            "colours",
+            "The line must hold exactly 8 colours written as #rrggbb.",
+        ),
+    ];
+    for (line, code, sentence) in cases {
+        command(app, "theme-import", &line);
+        let st = store(app);
+        assert!(st.get_editor_open(), "{code}: the editor shows the refusal");
+        assert_eq!(st.get_editor_mode(), "import");
+        assert_eq!(st.get_editor_error(), code);
+        assert!(!st.get_editor_can_save(), "{code}: Save is off");
+        assert_eq!(st.invoke_share_error(code.into()), sentence);
+        assert_eq!(text_of(app, "Problem"), sentence, "{code}: shown");
+        command(app, "editor-save", "");
+        command(app, "editor-cancel", "");
+        assert!(!st.get_editor_open());
+    }
+    assert!(saved_themes(&ui).custom.is_empty(), "nothing was saved");
+}
+
+#[test]
+fn import_saves_under_a_free_name() {
+    let ui = window(Home::new("theme-import-save"));
+    let app = &ui.app;
+    appearance_page(app);
+    let line = appearance::share::export("Dusk", &appearance::themes::builtins()[3].base);
+    press(app, "Import");
+    assert!(store(app).get_import_open());
+    command(app, "theme-import", &line);
+    let st = store(app);
+    assert!(!st.get_import_open(), "the dialog closes for the preview");
+    assert_eq!(st.get_editor_mode(), "import");
+    assert_eq!(st.get_editor_name(), "Dusk");
+    assert!(st.get_editor_can_save());
+    assert!(saved_themes(&ui).custom.is_empty(), "nothing before Save");
+    press(app, "Save");
+    let saved = saved_themes(&ui);
+    assert_eq!(saved.custom.len(), 1);
+    assert_eq!(saved.custom[0].name, "Dusk (2)", "Dusk is a built-in name");
+    assert_eq!(
+        saved.choice,
+        Some(ThemeChoice::Fixed(saved.custom[0].id.clone()))
+    );
+}
+
+#[test]
+fn rename_and_delete() {
+    let (home, ids) = home_with_custom("theme-rename", &["Old".to_string(), "Other".to_string()]);
+    let ui = window(home);
+    let app = &ui.app;
+    let st = store(app);
+    st.set_rename_id(ids[0].as_str().into());
+    command(app, "theme-rename", &format!("{}{US}a:b", ids[0]));
+    assert_eq!(st.get_editor_error(), "name-colon");
+    assert_eq!(st.get_rename_id().as_str(), ids[0], "the dialog stays");
+    command(app, "theme-rename", &format!("{}{US}Fresh", ids[0]));
+    assert_eq!(st.get_rename_id(), "", "the dialog closes");
+    assert_eq!(saved_themes(&ui).custom[0].name, "Fresh");
+    assert!(
+        st.get_themes().iter().any(|t| t.name == "Fresh"),
+        "the tile has the new name"
+    );
+    // The theme in use is deleted: the app goes back to a built-in look.
+    command(app, "theme-pick", &ids[0]);
+    command(app, "theme-delete", &ids[0]);
+    let saved = saved_themes(&ui);
+    assert_eq!(saved.custom.len(), 1);
+    assert_eq!(saved.custom[0].name, "Other");
+    assert!(st.get_themes().iter().all(|t| t.name != "Fresh"));
+}
+
+#[test]
+fn the_limit_disables_new_and_import() {
+    let names: Vec<String> = (1..=50).map(|i| format!("T{i}")).collect();
+    let (home, _) = home_with_custom("theme-limit", &names);
+    let ui = window(home);
+    let app = &ui.app;
+    appearance_page(app);
+    let st = store(app);
+    assert!(st.get_themes_full());
+    assert_eq!(
+        control(app, "New custom theme").accessible_enabled(),
+        Some(false)
+    );
+    assert_eq!(control(app, "Import").accessible_enabled(), Some(false));
+    assert_eq!(
+        st.invoke_share_error("limit".into()),
+        "You have 50 custom themes, the most IronTeams keeps. Delete one first."
+    );
+    // The command refuses too, whatever the buttons say.
+    command(app, "theme-new", "");
+    assert_eq!(st.get_editor_error(), "limit");
+    assert!(!st.get_editor_can_save());
+    command(app, "editor-save", "");
+    assert_eq!(saved_themes(&ui).custom.len(), 50);
+    command(app, "theme-import", LINE);
+    assert_eq!(st.get_editor_error(), "limit");
+}
+
+#[test]
+fn the_name_field_drops_colons_and_hidden_characters() {
+    let ui = window(Home::new("theme-editor-name"));
+    let app = &ui.app;
+    command(app, "theme-new", "");
+    let st = store(app);
+    command(app, "editor-name", "A:B\u{202e}C\n");
+    assert_eq!(st.get_editor_name(), "ABC");
+    command(app, "editor-name", &"x".repeat(60));
+    assert_eq!(st.get_editor_name().chars().count(), 40);
+    command(app, "editor-name", "");
+    assert!(!st.get_editor_can_save(), "a theme needs a name");
+}
+
+#[test]
+fn a_chip_preview_opens_the_import() {
+    let ui = window(Home::new("theme-chip"));
+    let app = &ui.app;
+    app.set_current_id("48:notes".into());
+    app.set_current_title("Notes".into());
+    let chip = Msg {
+        theme_name: "Night shift".into(),
+        theme_nav: rgb(0x1d2b45),
+        theme_content: rgb(0xffffff),
+        theme_accent: rgb(0x2f6fd6),
+        theme_line: LINE.into(),
+        ..msg("m1", LINE, false)
+    };
+    app.set_messages(ModelRc::new(VecModel::from(vec![chip])));
+    settle();
+    let log = Log::default();
+    let l = log.clone();
+    let weak = app.as_weak();
+    app.global::<MediaStore>().on_command(move |name, arg| {
+        l.borrow_mut().push(format!("{name} {arg}"));
+        if let Some(w) = weak.upgrade() {
+            crate::ui::settings::route_theme_preview(&w, &name, &arg);
+        }
+    });
+    press(app, "Preview");
+    assert_eq!(log.borrow().as_slice(), [format!("theme-preview {LINE}")]);
+    let st = store(app);
+    assert!(st.get_open(), "Settings is shown");
+    assert_eq!(st.get_page(), "appearance");
+    assert!(st.get_editor_open());
+    assert_eq!(st.get_editor_mode(), "import");
+    assert_eq!(st.get_editor_name(), "Night shift");
+    assert_eq!(st.get_editor_error(), "");
+    assert!(saved_themes(&ui).custom.is_empty(), "nothing is saved yet");
+    assert_eq!(
+        app.global::<Theme>().get_content().bg,
+        rgb(0x141414),
+        "nothing is applied yet"
+    );
+    assert!(
+        !crate::ui::settings::route_theme_preview(app, "photo", "x"),
+        "other commands pass through"
+    );
+}
+
+#[test]
+fn a_malformed_line_shows_no_chip() {
+    let ui = window(Home::new("theme-no-chip"));
+    let app = &ui.app;
+    app.set_current_id("48:notes".into());
+    app.set_current_title("Notes".into());
+    let text = "ironteams-theme:1:Night shift:#1d2b45";
+    app.set_messages(ModelRc::new(VecModel::from(vec![msg("m1", text, false)])));
+    settle();
+    assert!(
+        find_label(app, "Preview").is_empty(),
+        "no chip, and no error either"
+    );
 }
