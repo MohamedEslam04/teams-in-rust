@@ -7,9 +7,12 @@
 import { Theme } from "../tokens/theme.slint";
 import { Icon } from "../atoms/widgets.slint";
 import { CallStore } from "../stores/call_store.slint";
+import { Tokens } from "../tokens/types.slint";
+import { Fixed } from "../tokens/fixed.slint";
 
 // A big rating choice: an emoji over its label.
 component RatingChoice inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> emoji;
     in property <string> label;
     in property <bool> picked;
@@ -17,8 +20,8 @@ component RatingChoice inherits Rectangle {
     height: 84px;
     border-radius: 8px;
     border-width: root.picked ? 2px : 1px;
-    border-color: root.picked ? Theme.accent : Theme.border;
-    background: root.picked ? Theme.selected : touch.has-hover ? Theme.surface-hover : Theme.surface;
+    border-color: root.picked ? root.c.accent : root.c.border;
+    background: root.picked ? root.c.selected : touch.has-hover ? root.c.surface-hover : root.c.surface;
     accessible-role: button;
     accessible-label: root.label;
     accessible-checkable: true;
@@ -34,7 +37,7 @@ component RatingChoice inherits Rectangle {
         }
         Text {
             text: root.label;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 14px * Theme.font-scale;
             font-weight: 600;
             horizontal-alignment: center;
@@ -48,12 +51,13 @@ component RatingChoice inherits Rectangle {
 
 // One of Audio, Video and Screenshare.
 component CategoryTab inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> label;
     in property <bool> picked;
     callback clicked();
     height: 32px;
     width: txt.preferred-width + 24px;
-    background: touch.has-hover && !root.picked ? Theme.surface-hover : transparent;
+    background: touch.has-hover && !root.picked ? root.c.surface-hover : transparent;
     accessible-role: button;
     accessible-label: root.label;
     accessible-checkable: true;
@@ -61,14 +65,14 @@ component CategoryTab inherits Rectangle {
     accessible-action-default => { root.clicked(); }
     txt := Text {
         text: root.label;
-        color: root.picked ? Theme.fg : Theme.fg-muted;
+        color: root.picked ? root.c.fg : root.c.fg-muted;
         font-size: 13px * Theme.font-scale;
         font-weight: root.picked ? 600 : 400;
     }
     Rectangle {
         y: parent.height - self.height;
         height: 2px;
-        background: root.picked ? Theme.accent : transparent;
+        background: root.picked ? root.c.accent : transparent;
     }
     touch := TouchArea {
         mouse-cursor: pointer;
@@ -78,12 +82,13 @@ component CategoryTab inherits Rectangle {
 
 // An issue with a tick box.
 component IssueRow inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> text;
     in property <bool> on;
     callback toggled();
     height: 32px;
     border-radius: 4px;
-    background: touch.has-hover ? Theme.surface-hover : transparent;
+    background: touch.has-hover ? root.c.surface-hover : transparent;
     accessible-role: checkbox;
     accessible-label: root.text;
     accessible-checkable: true;
@@ -99,18 +104,19 @@ component IssueRow inherits Rectangle {
             y: (parent.height - self.height) / 2;
             border-radius: 3px;
             border-width: 1px;
-            border-color: root.on ? Theme.accent-strong : Theme.fg-subtle;
-            background: root.on ? Theme.accent-strong : transparent;
+            border-color: root.on ? root.c.accent-strong : root.c.fg-subtle;
+            background: root.on ? root.c.accent-strong : transparent;
             if root.on: Icon {
+                c: root.c;
                 source: @image-url("../icons/check.svg");
-                tint: #ffffff;
+                tint: root.on ? root.c.on-accent : root.c.fg-strong;
                 width: 14px;
                 height: 14px;
             }
         }
         Text {
             text: root.text;
-            color: Theme.fg;
+            color: root.c.fg;
             font-size: 13px * Theme.font-scale;
             vertical-alignment: center;
             overflow: elide;
@@ -124,6 +130,7 @@ component IssueRow inherits Rectangle {
 
 // Dismiss and Send feedback. A disabled one is drawn faded and does nothing.
 component FeedbackButton inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     in property <string> label;
     in property <bool> primary;
     in property <bool> enabled: true;
@@ -132,16 +139,16 @@ component FeedbackButton inherits Rectangle {
     width: max(88px, txt.preferred-width + 28px);
     border-radius: 4px;
     border-width: root.primary ? 0px : 1px;
-    border-color: Theme.border;
-    background: root.primary ? (touch.has-hover && root.enabled ? Theme.accent : Theme.accent-strong)
-        : touch.has-hover ? Theme.surface-hover : Theme.surface;
+    border-color: root.c.border;
+    background: root.primary ? (touch.has-hover && root.enabled ? root.c.accent : root.c.accent-strong)
+        : touch.has-hover ? root.c.surface-hover : root.c.surface;
     accessible-role: button;
     accessible-label: root.label;
     accessible-enabled: root.enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     txt := Text {
         text: root.label;
-        color: root.primary ? #ffffff : Theme.fg;
+        color: root.primary ? root.c.on-accent : root.c.fg;
         font-size: 13px * Theme.font-scale;
         font-weight: 600;
         opacity: root.enabled ? 1 : 0.45;
@@ -153,6 +160,7 @@ component FeedbackButton inherits Rectangle {
 }
 
 export component CallFeedback inherits Rectangle {
+    in property <Tokens> c: Theme.call;
     // Send feedback, with the answer (see the top of the file).
     callback sent(string);
     callback dismissed();
@@ -199,7 +207,7 @@ export component CallFeedback inherits Rectangle {
         (root.sel[14] ? "\n" + root.all[14].category + "=" + root.all[14].text : "") +
         (root.sel[15] ? "\n" + root.all[15].category + "=" + root.all[15].text : "");
 
-    background: #000000a0;
+    background: Fixed.black-a0;
     // Nothing behind the card takes clicks.
     TouchArea { }
     card := Rectangle {
@@ -209,16 +217,16 @@ export component CallFeedback inherits Rectangle {
         y: max(8px, (parent.height - self.height) / 2);
         border-radius: 8px;
         border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.main;
+        border-color: root.c.border;
+        background: root.c.bg;
         drop-shadow-blur: 16px;
-        drop-shadow-color: #00000080;
+        drop-shadow-color: Fixed.black-80;
         content := VerticalLayout {
             padding: 20px;
             spacing: 14px;
             Text {
                 text: "How was the call quality?";
-                color: Theme.fg;
+                color: root.c.fg;
                 font-size: 18px * Theme.font-scale;
                 font-weight: 600;
                 horizontal-alignment: center;
@@ -226,12 +234,14 @@ export component CallFeedback inherits Rectangle {
             HorizontalLayout {
                 spacing: 12px;
                 RatingChoice {
+                    c: root.c;
                     emoji: "👎";
                     label: "Had issues";
                     picked: root.rating == "issues";
                     clicked => { root.rating = "issues"; }
                 }
                 RatingChoice {
+                    c: root.c;
                     emoji: "👍";
                     label: "Good";
                     picked: root.rating == "good";
@@ -243,16 +253,19 @@ export component CallFeedback inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     CategoryTab {
+                        c: root.c;
                         label: "Audio";
                         picked: root.category == "audio";
                         clicked => { root.category = "audio"; }
                     }
                     CategoryTab {
+                        c: root.c;
                         label: "Video";
                         picked: root.category == "video";
                         clicked => { root.category = "video"; }
                     }
                     CategoryTab {
+                        c: root.c;
                         label: "Screenshare";
                         picked: root.category == "screenshare";
                         clicked => { root.category = "screenshare"; }
@@ -265,6 +278,7 @@ export component CallFeedback inherits Rectangle {
                     alignment: start;
                     for issue[i] in root.all: VerticalLayout {
                         if issue.category == root.category: IssueRow {
+                            c: root.c;
                             text: issue.text;
                             on: root.sel[i];
                             toggled => { root.sel[i] = !root.sel[i]; }
@@ -274,7 +288,7 @@ export component CallFeedback inherits Rectangle {
             }
             Text {
                 text: "Your answer is kept on this device only. IronTeams doesn't send it to Microsoft.";
-                color: Theme.fg-subtle;
+                color: root.c.fg-subtle;
                 font-size: 11px * Theme.font-scale;
                 wrap: word-wrap;
             }
@@ -282,10 +296,12 @@ export component CallFeedback inherits Rectangle {
                 alignment: end;
                 spacing: 8px;
                 FeedbackButton {
+                    c: root.c;
                     label: "Dismiss";
                     clicked => { root.dismissed(); }
                 }
                 FeedbackButton {
+                    c: root.c;
                     label: "Send feedback";
                     primary: true;
                     enabled: root.rating != "";
