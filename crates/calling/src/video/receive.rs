@@ -379,7 +379,7 @@ impl ReceiveStats {
 }
 
 #[cfg(feature = "camera")]
-pub use decoder::{H264Decoder, spawn_decoder};
+pub use decoder::{H264Decoder, spawn_decoder, spawn_decoder_sized};
 
 #[cfg(feature = "camera")]
 mod decoder {
@@ -391,6 +391,7 @@ mod decoder {
     use openh264::decoder::{Decoder, DecoderConfig};
     use openh264::formats::YUVSource;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
     use tokio::sync::mpsc;
 
@@ -502,9 +503,20 @@ mod decoder {
     /// persist until the next scheduled keyframe). Receive stats are logged per line every few
     /// seconds and when the decoded size changes.
     pub fn spawn_decoder(
-        mut packets: mpsc::Receiver<VideoPacket>,
+        packets: mpsc::Receiver<VideoPacket>,
         mid: Option<Arc<str>>,
         max_width: usize,
+    ) -> mpsc::Receiver<RgbFrame> {
+        spawn_decoder_sized(packets, mid, Arc::new(AtomicUsize::new(max_width)))
+    }
+
+    /// [`spawn_decoder`] whose widest picture the caller may change while it runs: `max_width` is
+    /// read for every picture, so a line whose tile grows or shrinks (the caller's subscription
+    /// asked for another size) is drawn at the new width from its next picture on.
+    pub fn spawn_decoder_sized(
+        mut packets: mpsc::Receiver<VideoPacket>,
+        mid: Option<Arc<str>>,
+        max_width: Arc<AtomicUsize>,
     ) -> mpsc::Receiver<RgbFrame> {
         let (tx, rx) = mpsc::channel(2);
         let spawned = std::thread::Builder::new()
@@ -565,6 +577,7 @@ mod decoder {
                             continue;
                         }
                     };
+                    let max_width = max_width.load(Ordering::Relaxed);
                     let step = step_for(frame.width, max_width);
                     let scaled = box_downscale(&frame, max_width);
                     let rgb = i420_to_rgb(&scaled, 1, false);

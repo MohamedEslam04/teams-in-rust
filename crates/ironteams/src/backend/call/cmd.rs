@@ -81,6 +81,9 @@ pub enum CallCmd {
     VideoApply,
     /// The audio devices open again (a change of noise suppression applies).
     AudioRefresh,
+    /// Who the window shows now, and how large (see [`view_plan::visible_roles`]): a meeting's
+    /// camera subscriptions follow it. Sent by `ui/call.rs`, not by a click.
+    VideoView(Vec<(String, view_plan::TileRole)>),
 }
 
 impl CallCmd {
@@ -115,6 +118,7 @@ impl CallCmd {
             "video-preview" => CallCmd::VideoPreview(arg == "on"),
             "video-apply" => CallCmd::VideoApply,
             "audio-refresh" => CallCmd::AudioRefresh,
+            "video-view" => CallCmd::VideoView(view_plan::decode(arg)?),
             "leave" => CallCmd::Leave,
             "close" => CallCmd::Close,
             "feedback" => CallCmd::Feedback(Feedback::parse(arg)?),

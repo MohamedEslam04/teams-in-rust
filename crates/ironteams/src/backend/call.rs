@@ -42,6 +42,7 @@ pub(crate) mod share;
 #[cfg(feature = "calls")]
 pub(crate) mod teams_backgrounds;
 pub(crate) mod video_fx;
+pub(crate) mod view_plan;
 
 mod roster;
 pub use roster::*;

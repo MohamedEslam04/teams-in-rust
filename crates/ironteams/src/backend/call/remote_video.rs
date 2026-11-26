@@ -10,17 +10,27 @@
 //!
 //! The gallery slots are offered unless `IRONTEAMS_CAMERA=0` (as the camera line), the sharing
 //! line unless `IRONTEAMS_SCREEN_SHARE=0`. Everything here is UNVERIFIED live.
+//!
+//! Who the slots show follows the window ([`RemoteVideo::set_view`], from
+//! [`super::view_plan::visible_roles`]): a person on the stage is asked for at 1280x720, a gallery
+//! tile at 640x360, a strip tile at 320x180, and nobody off screen; each slot's decoder draws at
+//! its tile's width. Until the window says (and with `IRONTEAMS_VIDEO_SUBSCRIBE=static`) the
+//! latest speakers get the slots at the gallery size, as before.
 
+use super::view_plan::TileRole;
 use super::{EventSink, VideoSlot};
 use calling::media::sdp::{live_mid_of_role, mid_of_role, source_stream_ids, video_mids};
 use calling::media::{MediaSession, VideoLayout};
 use calling::signaling::roster::Roster;
-use calling::signaling::video::{SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive};
+use calling::signaling::video::{
+    ReceiveLimits, SCREEN_LIMITS, SourceRequest, TILE_LIMITS, plan_receive,
+};
 use calling::signaling::{CallSession, NgcClient};
-use calling::video::receive::{VideoPacket, spawn_decoder};
+use calling::video::receive::{VideoPacket, spawn_decoder_sized};
 use calling::video::{RgbFrame, VideoRole};
 use calling::{Links, Modality};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -117,6 +127,29 @@ fn layout_by(v: Option<&std::ffi::OsStr>) -> VideoLayout {
     }
 }
 
+/// Whether the slots follow the window: unless `IRONTEAMS_VIDEO_SUBSCRIBE=static`, which keeps
+/// the latest speakers at the gallery size whatever is on screen (the kill switch, should a live
+/// service refuse the larger or smaller sizes).
+fn follows_view() -> bool {
+    view_switch(compat::var_os("IRONTEAMS_VIDEO_SUBSCRIBE").as_deref())
+}
+
+fn view_switch(v: Option<&std::ffi::OsStr>) -> bool {
+    v.is_none_or(|v| v != "static")
+}
+
+/// What a slot asks the media server for when its tile has `role`.
+fn limits_of(role: TileRole) -> ReceiveLimits {
+    let s = role.size();
+    ReceiveLimits::for_size(s.width, s.height, s.fps)
+}
+
+/// How wide a slot's decoder draws for a tile with `role`: the width it subscribed to, so a
+/// stage tile is not shrunk to the gallery's.
+fn width_of(role: TileRole) -> usize {
+    usize::try_from(role.size().width).unwrap_or(TILE_WIDTH)
+}
+
 /// A meeting join's `callModalities`: `Audio`, plus `ScreenViewer` (which also makes the join
 /// declare its send-capable video lines, `mediaDescriptions`, UNVERIFIED) when `video` is set and
 /// `IRONTEAMS_MEETING_VIDEO_DESCRIBE` is not `0`. The join declaring every video line was ended
@@ -194,6 +227,13 @@ pub struct RemoteVideo {
     share_line: Option<(String, u32)>,
     /// Who each slot is subscribed to: (MRI, camera MSI).
     held: Vec<Option<(String, u32)>>,
+    /// The tile role each slot's subscription asked for (its size).
+    held_roles: Vec<Option<TileRole>>,
+    /// Who the window shows and how large, in priority order ([`Self::set_view`]); `None` until
+    /// it says: the latest speakers then.
+    view: Option<Vec<(String, TileRole)>>,
+    /// How wide each gallery line's decoder draws (by mid): its subscription's tile width.
+    widths: Arc<Mutex<HashMap<String, Arc<AtomicUsize>>>>,
     /// The share subscribed to: (MRI, share MSI).
     share_held: Option<(String, u32)>,
     /// The `sequenceNumber` of the last subscription.
@@ -216,6 +256,7 @@ impl RemoteVideo {
             r.abort();
         }
         let routes = Arc::clone(&self.routes);
+        let widths = Arc::clone(&self.widths);
         let sink = sink.clone();
         self.router = Some(tokio::spawn(async move {
             let mut lines: HashMap<Option<Arc<str>>, mpsc::Sender<VideoPacket>> = HashMap::new();
@@ -225,7 +266,13 @@ impl RemoteVideo {
                     // Which line carries what (a meeting's unasked stream comes as `Remote`).
                     tracing::info!(mid = ?p.mid, ?slot, "remote video line started");
                     let (tx, rx) = mpsc::channel(LINE_QUEUE);
-                    let frames = spawn_decoder(rx, p.mid.clone(), width_for(slot));
+                    // A gallery line draws at the width its subscription asked for, which may
+                    // change while it runs; the other lines at their fixed width.
+                    let width = match (slot, p.mid.as_deref()) {
+                        (VideoSlot::Gallery(_), Some(mid)) => line_width(&widths, mid),
+                        _ => Arc::new(AtomicUsize::new(width_for(slot))),
+                    };
+                    let frames = spawn_decoder_sized(rx, p.mid.clone(), width);
                     tokio::spawn(forward_frames(
                         frames,
                         p.mid.clone(),
@@ -295,6 +342,7 @@ impl RemoteVideo {
             slots: self.table.iter().map(|(mid, _)| mid.clone()).collect(),
         };
         self.held = vec![None; self.table.len()];
+        self.held_roles = vec![None; self.table.len()];
         self.share_held = None;
         // `slots`: the gallery lines that can be subscribed (placed, with a stream id);
         // `slot_lines`: the gallery lines the negotiation placed at all.
@@ -329,9 +377,49 @@ impl RemoteVideo {
             .position(|h| h.as_ref().is_some_and(|(m, _)| m == mri))
     }
 
-    /// The subscriptions the roster now calls for: the others' cameras into the slots (the
-    /// latest speakers first, by `spoke`), and the share someone else presents onto the sharing
-    /// line. Slots whose person changed are cleared through `cleared`.
+    /// Who the window shows and how large ([`super::view_plan::visible_roles`]); true when the
+    /// slots should follow (it changed, and `IRONTEAMS_VIDEO_SUBSCRIBE` is not `static`).
+    pub fn set_view(&mut self, view: Vec<(String, TileRole)>) -> bool {
+        if !follows_view() || self.view.as_ref() == Some(&view) {
+            return false;
+        }
+        self.view = Some(view);
+        true
+    }
+
+    /// Who the slots should show, in priority order, and at which size: the window's view (the
+    /// people on screen with a camera that sends), else the latest speakers (by `spoke`) at the
+    /// gallery size.
+    fn wanted(
+        &self,
+        roster: &Roster,
+        me: &str,
+        spoke: impl Fn(&str) -> u64,
+    ) -> Vec<((String, u32), TileRole)> {
+        let mut candidates = roster.video_candidates(me);
+        match &self.view {
+            Some(view) => view
+                .iter()
+                .filter_map(|(mri, role)| {
+                    let c = candidates.iter().find(|(m, _)| m == mri)?;
+                    Some((c.clone(), *role))
+                })
+                .collect(),
+            None => {
+                // Stable: people who never spoke keep the roster's order.
+                candidates.sort_by_key(|(mri, _)| std::cmp::Reverse(spoke(mri)));
+                candidates
+                    .into_iter()
+                    .map(|c| (c, TileRole::Gallery))
+                    .collect()
+            }
+        }
+    }
+
+    /// The subscriptions the roster and the window now call for: the others' cameras into the
+    /// slots ([`Self::wanted`]: who is on screen, each at their tile's size; nobody off screen),
+    /// and the share someone else presents onto the sharing line. A slot is asked again when its
+    /// person or its size changed; slots whose person changed are cleared through `cleared`.
     fn plan(
         &mut self,
         roster: &Roster,
@@ -339,10 +427,15 @@ impl RemoteVideo {
         spoke: impl Fn(&str) -> u64,
         mut cleared: impl FnMut(usize),
     ) -> Vec<SourceRequest> {
-        let mut wanted = roster.video_candidates(me);
-        // Stable: people who never spoke keep the roster's order.
-        wanted.sort_by_key(|(mri, _)| std::cmp::Reverse(spoke(mri)));
-        let next = plan_receive(&self.held, &wanted);
+        let wanted = self.wanted(roster, me, spoke);
+        let who: Vec<(String, u32)> = wanted.iter().map(|(c, _)| c.clone()).collect();
+        let next = plan_receive(&self.held, &who);
+        let role_of = |held: &Option<(String, u32)>| {
+            let held = held.as_ref()?;
+            wanted.iter().find(|(c, _)| c == held).map(|(_, r)| *r)
+        };
+        let roles: Vec<Option<TileRole>> = next.iter().map(role_of).collect();
+        self.held_roles.resize(self.table.len(), None);
         let mut out = Vec::new();
         for (i, ((mid, msid), (before, after))) in self
             .table
@@ -350,19 +443,35 @@ impl RemoteVideo {
             .zip(self.held.iter().zip(&next))
             .enumerate()
         {
-            if before == after {
+            let role = roles[i];
+            if before == after && self.held_roles[i] == role {
                 continue;
             }
             if before.as_ref().map(|b| &b.0) != after.as_ref().map(|a| &a.0) {
                 cleared(i);
             }
+            if let Some(role) = role {
+                set_line_width(&self.widths, mid, width_of(role));
+            }
+            let size = role.map(TileRole::size);
+            tracing::info!(
+                slot = i,
+                mid = %mid,
+                mri = after.as_ref().map_or("", |(m, _)| m.as_str()),
+                role = role.map_or("off screen", TileRole::name),
+                width = size.map_or(0, |s| s.width),
+                height = size.map_or(0, |s| s.height),
+                fps = size.map_or(0, |s| s.fps),
+                "video subscription changed"
+            );
             out.push(SourceRequest {
                 mid: mid.clone(),
                 stream_msid: *msid,
                 source: after.as_ref().map(|(_, source)| *source),
-                limits: TILE_LIMITS,
+                limits: role.map_or(TILE_LIMITS, limits_of),
             });
         }
+        self.held_roles = roles;
         self.held = next;
         if let Some((mid, msid)) = &self.share_line {
             let sharer = if self.own_share {
@@ -556,6 +665,22 @@ fn video_feedback_summary(sdp: &str) -> Vec<String> {
     out
 }
 
+/// The width a gallery line's decoder draws at (by mid), shared with [`RemoteVideo::plan`]: the
+/// gallery size until a subscription says otherwise.
+fn line_width(widths: &Mutex<HashMap<String, Arc<AtomicUsize>>>, mid: &str) -> Arc<AtomicUsize> {
+    let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
+    Arc::clone(
+        w.entry(mid.to_owned())
+            .or_insert_with(|| Arc::new(AtomicUsize::new(TILE_WIDTH))),
+    )
+}
+
+/// The gallery line `mid` draws `width` wide from its next picture on (and from its first, when
+/// the subscription comes before it sends).
+fn set_line_width(widths: &Mutex<HashMap<String, Arc<AtomicUsize>>>, mid: &str, width: usize) {
+    line_width(widths, mid).store(width, Ordering::Relaxed);
+}
+
 fn lock(routes: &Mutex<Routes>) -> std::sync::MutexGuard<'_, Routes> {
     routes.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -691,6 +816,124 @@ mod tests {
             "nothing changed"
         );
         assert_eq!(cleared, [0, 1]);
+    }
+
+    /// The `controlInfo` a request posts.
+    fn control_info(r: &SourceRequest) -> serde_json::Value {
+        let body = r.body(1);
+        let inner: serde_json::Value = serde_json::from_str(
+            body["applyChannelParameters"]["multiChannelParameter"]["mediaParameter"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        inner["controlVideoStreaming"]["controlInfo"].clone()
+    }
+
+    fn three_cameras() -> Roster {
+        roster(json!({
+            "8:me": person("Me", Some(10), None),
+            "8:a": person("Ada", Some(11), None),
+            "8:b": person("Bo", Some(12), None),
+            "8:c": person("Cy", Some(13), None),
+        }))
+    }
+
+    fn width(v: &RemoteVideo, mid: &str) -> usize {
+        line_width(&v.widths, mid).load(Ordering::Relaxed)
+    }
+
+    #[test]
+    fn a_stage_tile_asks_for_720p_and_a_person_off_screen_for_nothing() {
+        let mut v = with_lines(2, false);
+        let r = three_cameras();
+        // Before the window says, the latest speakers at the gallery size.
+        let first = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(first.len(), 2);
+        assert!(first.iter().all(|q| q.limits == TILE_LIMITS));
+        assert_eq!((v.slot_of("8:a"), v.slot_of("8:b")), (Some(0), Some(1)));
+
+        // Bo is pinned: on the stage, alone on screen.
+        assert!(v.set_view(vec![("8:b".into(), TileRole::Stage)]));
+        assert!(
+            !v.set_view(vec![("8:b".into(), TileRole::Stage)]),
+            "unchanged"
+        );
+        let mut cleared = Vec::new();
+        let asked = v.plan(&r, "8:me", |_| 0, |i| cleared.push(i));
+        assert_eq!(asked.len(), 2);
+        // Ada is off screen: her slot stops.
+        assert_eq!(asked[0].mid, "3");
+        assert_eq!(control_info(&asked[0])["sourceId"], -1);
+        assert_eq!(cleared, [0]);
+        // Bo keeps his slot, asked again at 720p, and his line draws 1280 wide.
+        assert_eq!((asked[1].mid.as_str(), asked[1].source), ("4", Some(12)));
+        let c = control_info(&asked[1]);
+        assert_eq!(c["fmtParams"][0]["max-fs"], 3600);
+        assert_eq!(c["fmtParams"][0]["max-fps"], 3000);
+        assert_eq!(width(&v, "4"), 1280);
+        assert!(v.plan(&r, "8:me", |_| 0, |_| {}).is_empty(), "settled");
+    }
+
+    #[test]
+    fn strip_tiles_ask_for_180p_and_a_size_change_alone_asks_again() {
+        let mut v = with_lines(2, false);
+        let r = three_cameras();
+        v.set_view(vec![
+            ("8:c".into(), TileRole::Gallery),
+            ("8:a".into(), TileRole::Gallery),
+        ]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        let who: Vec<_> = asked.iter().map(|q| (q.mid.as_str(), q.source)).collect();
+        assert_eq!(who, [("3", Some(13)), ("4", Some(11))]);
+        assert!(asked.iter().all(|q| q.limits == TILE_LIMITS));
+        assert_eq!(width(&v, "3"), 640);
+        // A share took the stage: the same people, now in the filmstrip.
+        v.set_view(vec![
+            ("8:c".into(), TileRole::Strip),
+            ("8:a".into(), TileRole::Strip),
+        ]);
+        let mut cleared = Vec::new();
+        let asked = v.plan(&r, "8:me", |_| 0, |i| cleared.push(i));
+        assert_eq!(asked.len(), 2, "both slots asked again");
+        assert!(cleared.is_empty(), "nobody changed slot");
+        for q in &asked {
+            let c = control_info(q);
+            assert_eq!(c["fmtParams"][0]["max-fs"], 240);
+            assert_eq!(c["fmtParams"][0]["max-fps"], 1500);
+        }
+        assert_eq!(width(&v, "3"), 320);
+        assert_eq!((v.slot_of("8:c"), v.slot_of("8:a")), (Some(0), Some(1)));
+    }
+
+    #[test]
+    fn people_on_screen_without_a_camera_take_no_slot() {
+        let mut v = with_lines(2, false);
+        let r = roster(json!({
+            "8:a": person("Ada", None, None),
+            "8:b": person("Bo", Some(12), None),
+        }));
+        v.set_view(vec![
+            ("8:a".into(), TileRole::Stage),
+            ("8:b".into(), TileRole::Strip),
+        ]);
+        let asked = v.plan(&r, "8:me", |_| 0, |_| {});
+        assert_eq!(asked.len(), 1);
+        assert_eq!((asked[0].source, asked[0].limits.max_fs), (Some(12), 240));
+    }
+
+    #[test]
+    fn the_slots_follow_the_window_unless_switched_to_static() {
+        assert!(view_switch(None));
+        assert!(view_switch(Some("".as_ref())));
+        assert!(!view_switch(Some("static".as_ref())));
+        assert_eq!(limits_of(TileRole::Gallery), TILE_LIMITS);
+        assert_eq!(limits_of(TileRole::Stage).max_fs, 3600);
+        assert_eq!(limits_of(TileRole::Strip).max_fs, 240);
+        assert_eq!(
+            [TileRole::Stage, TileRole::Gallery, TileRole::Strip].map(width_of),
+            [1280, 640, 320]
+        );
     }
 
     #[test]

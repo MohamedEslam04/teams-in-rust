@@ -111,6 +111,9 @@ pub enum Control {
     Camera(bool),
     /// Remote control of a shared screen (`IRONTEAMS_REMOTE_CONTROL=1`).
     Remote(ControlAction),
+    /// Who the window shows and how large ([`CallCmd::VideoView`]): the meeting's camera
+    /// subscriptions follow it.
+    VideoView(Vec<(String, view_plan::TileRole)>),
     Leave,
 }
 

@@ -419,6 +419,15 @@ impl CallManager {
                 }
                 CallCmd::VideoApply => m.apply_video(),
                 CallCmd::AudioRefresh => m.refresh_audio(),
+                // Nothing the window shows changes: no push.
+                CallCmd::VideoView(view) => {
+                    let active = m.phase.active();
+                    drop(m);
+                    if active {
+                        self.shared.control(Control::VideoView(view));
+                    }
+                    return;
+                }
                 CallCmd::Fx(c) => {
                     drop(m);
                     #[cfg(feature = "calls")]
