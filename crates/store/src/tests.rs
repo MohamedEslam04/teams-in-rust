@@ -786,6 +786,44 @@ fn outbox_sending_and_failure_leave_due() {
 }
 
 #[test]
+fn outbox_count_groups_states_and_counts_sending_uploads() {
+    let s = Store::open_in_memory().unwrap();
+    assert_eq!(s.outbox_count().unwrap(), OutboxCount::default());
+    let mut file = item("file", "c", 1);
+    file.kind = OutboxKind::File;
+    file.payload_path = Some("/tmp/a.pdf".into());
+    let mut queued_file = item("queued-file", "c", 2);
+    queued_file.kind = OutboxKind::Image;
+    queued_file.payload_path = Some("/tmp/b.png".into());
+    for i in [
+        file,
+        queued_file,
+        item("text", "c", 3),
+        item("q", "c2", 4),
+        item("bad", "c", 5),
+    ] {
+        s.enqueue(&i).unwrap();
+    }
+    s.mark_sending("file").unwrap();
+    s.mark_sending("text").unwrap();
+    s.mark_sending("bad").unwrap();
+    s.mark_failed("bad", "boom").unwrap();
+    let n = s.outbox_count().unwrap();
+    assert_eq!(
+        n,
+        OutboxCount {
+            queued: 2,
+            sending: 2,
+            failed: 1,
+            with_attachments: 1,
+        }
+    );
+    assert_eq!(n.unsent(), 5);
+    s.remove("file").unwrap();
+    assert_eq!(s.outbox_count().unwrap().with_attachments, 0);
+}
+
+#[test]
 fn outbox_retry_requeues_failed_and_keeps_attempts() {
     let s = Store::open_in_memory().unwrap();
     s.enqueue(&item("a", "c", 1)).unwrap();

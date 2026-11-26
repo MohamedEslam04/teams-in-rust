@@ -15,7 +15,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 pub use fts::{MARK_END, MARK_START};
 pub use model::{
     ConvFilter, ConvKind, ConversationRow, Draft, HistoryGap, LocalFilters, LocalHit, MessageRow,
-    OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
+    OutboxCount, OutboxItem, OutboxKind, OutboxState, SavedMessage, TeamRow, UserRow,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -1002,6 +1002,31 @@ impl Store {
             ),
             [],
         )
+    }
+
+    /// How many rows are queued, sending and failed, and how many of the sending ones upload a
+    /// file. One grouped `SELECT`.
+    pub fn outbox_count(&self) -> Result<OutboxCount> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT state, COUNT(*), SUM(payload_path IS NOT NULL) FROM outbox GROUP BY state",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut out = OutboxCount::default();
+        while let Some(r) = rows.next()? {
+            let state: String = r.get(0)?;
+            let n = u32::try_from(r.get::<_, i64>(1)?).unwrap_or(u32::MAX);
+            let files = u32::try_from(r.get::<_, Option<i64>>(2)?.unwrap_or(0)).unwrap_or(0);
+            match OutboxState::from_db(&state) {
+                Some(OutboxState::Queued) => out.queued = n,
+                Some(OutboxState::Sending) => {
+                    out.sending = n;
+                    out.with_attachments = files;
+                }
+                Some(OutboxState::Failed) => out.failed = n,
+                None => {}
+            }
+        }
+        Ok(out)
     }
 
     /// Every queued, sending and failed item of a conversation, oldest
