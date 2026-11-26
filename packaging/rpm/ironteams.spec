@@ -2,7 +2,7 @@
 %global debug_package %{nil}
 
 Name:           ironteams
-Version:        0.1.11
+Version:        0.1.12
 Release:        1%{?dist}
 Summary:        An unofficial native Microsoft Teams client written in Rust
 
@@ -120,6 +120,9 @@ install -Dm644 packaging/io.github.mohamedeslam04.ironteams.metainfo.xml %{build
 %{_metainfodir}/io.github.mohamedeslam04.ironteams.metainfo.xml
 
 %changelog
+* Thu Nov 26 2026 IronTeams contributors - 0.1.12-1
+- 0.1.12: next unread chat shortcut, Later inbox, split view, message styles, shortcut and app bar customisation, theme gallery with light and dark schedule, fixes
+
 * Thu Nov 26 2026 IronTeams contributors - 0.1.11-1
 - 0.1.11
 
