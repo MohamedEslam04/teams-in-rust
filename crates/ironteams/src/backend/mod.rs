@@ -9,7 +9,7 @@ use crate::ui_api::UiHandle;
 use byte_lru::{AVATAR_BUDGET, ByteLru, IMAGE_BUDGET};
 use drafts::reply_preview;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use store::{MessageRow, Store};
@@ -48,6 +48,7 @@ pub(crate) mod expiry;
 mod find;
 mod gifs;
 mod in_order;
+pub(crate) mod inflight;
 mod lists;
 mod live;
 mod loop_paragraph;
@@ -113,6 +114,7 @@ pub use drive::DriveCmd;
 pub use engage::EngageCmd;
 pub use find::FindCmd;
 pub use gifs::{GifCmd, GifRow};
+pub use inflight::InFlight;
 pub use lists::ListsCmd;
 #[cfg(test)]
 pub use lists::MANAGE_APPS_NOTE;
@@ -231,6 +233,9 @@ pub enum Cmd {
     /// IronTeams is quitting: write what is pending, end every live call (a connected one, one
     /// ringing out or being answered) and leave presence, then say so through the token.
     Quit(QuitDone),
+    /// Before an account switch: what it would cut short (a call, a recording, unsent messages,
+    /// uploads). Answered on the UI thread with `UiHandle::switch_in_flight`.
+    InFlight,
     /// An emoji was inserted from the panel or the `:name` popup.
     EmojiUsed(String),
     SetSkinTone(u8),
@@ -425,6 +430,9 @@ pub struct Engine {
     pub focused: Arc<AtomicBool>,
     /// Demo mode: no network, so network errors are not shown.
     pub offline: AtomicBool,
+    /// The unread total the badges showed last (activity plus unread chats), saved to
+    /// `Account.last_unread` when quitting. `u32::MAX` until the first count.
+    last_unread: AtomicU32,
     /// Tests: the error the next newest-page read of an opened chat answers with.
     #[cfg(test)]
     history_error: Mutex<Option<teams_proto::Error>>,
@@ -545,6 +553,7 @@ impl Engine {
             name_requests: Mutex::new(HashSet::new()),
             focused: Arc::new(AtomicBool::new(true)),
             offline: AtomicBool::new(false),
+            last_unread: AtomicU32::new(u32::MAX),
             #[cfg(test)]
             history_error: Mutex::new(None),
             connected: AtomicBool::new(true),
@@ -744,6 +753,8 @@ impl Engine {
     pub fn dispatch(self: &Arc<Self>, cmd: Cmd) {
         match cmd {
             Cmd::DraftEdited(text) => self.draft_edited(text),
+            // Only reads, and the switch waits for it: answered at once.
+            Cmd::InFlight => self.answer_in_flight(),
             // Its own task: it waits on the calls' hang-ups.
             Cmd::Quit(done) => {
                 let e = self.clone();
@@ -1022,6 +1033,7 @@ impl Engine {
             Cmd::RemoveAttachment(i) => self.remove_attachment(i),
             Cmd::DraftEdited(text) => self.draft_edited(text),
             Cmd::Quit(done) => self.quit(done).await,
+            Cmd::InFlight => self.answer_in_flight(),
             Cmd::SetEnterSends(on) => {
                 self.cfg.lock().unwrap().enter_sends = on;
                 self.save_cfg();

@@ -485,6 +485,13 @@ impl CallManager {
         handles
     }
 
+    /// The title of the call that runs (the meeting, or the other person of a 1:1 call), `None`
+    /// when no call runs. An account switch asks before ending it.
+    pub fn running_call(&self) -> Option<String> {
+        let m = self.shared.model.lock().unwrap();
+        m.phase.active().then(|| m.kind.title().to_owned())
+    }
+
     /// A people search starts; pass its number to [`Self::found`].
     pub fn find_started(&self) -> u64 {
         self.shared.model.lock().unwrap().find_started()

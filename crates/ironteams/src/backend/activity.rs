@@ -537,6 +537,11 @@ impl Engine {
             .iter()
             .filter(|c| c.kind != ConvKind::Channel && current.as_deref() != Some(&c.id))
             .count();
+        // Kept for `Account.last_unread`, written when quitting (`quit`).
+        self.last_unread.store(
+            u32::try_from(unread + chats).unwrap_or(u32::MAX - 1),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         self.ui.badges(unread as i32, chats as i32);
     }
 

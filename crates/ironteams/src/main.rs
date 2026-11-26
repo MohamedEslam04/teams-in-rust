@@ -596,7 +596,9 @@ fn main() -> anyhow::Result<()> {
             }
             updater::guard::start(&paths.data_dir, version);
             // Before the engine: the cache older versions shared between accounts moves into
-            // the active account's folder (a rename; nothing is deleted if it fails).
+            // the active account's folder (a rename; nothing is deleted if it fails). After the
+            // instance lock, so two processes never move it at once, and after `apply_args`, so
+            // the account a relaunch named is the one it moves into.
             if let Ok(cfg) = paths.load_config() {
                 backend::migrate_shared_cache(&paths.cache_dir, &cfg.active_token_key());
             }

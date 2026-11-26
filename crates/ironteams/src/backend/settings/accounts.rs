@@ -9,8 +9,13 @@ pub struct AccountRow {
     pub name: String,
     pub upn: String,
     pub active: bool,
+    /// The unread total the account had when it last quit (`Account.last_unread`); 0 when
+    /// unknown.
+    pub unread: u32,
 }
 
+/// The usable accounts (an account of a kind this version does not know is left out), each with
+/// the unread count it had when it last ran.
 pub fn account_rows(cfg: &session::Config) -> Vec<AccountRow> {
     let mut cfg = cfg.clone();
     cfg.sync_active();
@@ -20,6 +25,7 @@ pub fn account_rows(cfg: &session::Config) -> Vec<AccountRow> {
             name: a.display_name.clone().unwrap_or_default(),
             upn: a.upn.clone().unwrap_or_default(),
             active: a.label == cfg.account,
+            unread: a.last_unread.unwrap_or(0),
         })
         .collect()
 }

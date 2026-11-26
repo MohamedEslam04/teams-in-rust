@@ -46,6 +46,9 @@ pub struct Hooks {
     pub open_url: Box<dyn Fn(&str)>,
     /// Quits this process; `main` then starts IronTeams again (`relaunch`).
     pub restart: Box<dyn Fn()>,
+    /// The account switch: quits this process, and `main` starts IronTeams again on the
+    /// account `label[@tenant]` (already written to the config).
+    pub relaunch: Box<dyn Fn(String)>,
     /// Runs after the tokens were removed: the app closes.
     pub signed_out: Box<dyn Fn()>,
     pub report_problem: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
@@ -128,6 +131,13 @@ impl SettingsEnv {
                 // `main` starts the new process after the full shutdown (`relaunch`).
                 restart: Box::new(|| {
                     crate::relaunch::request(crate::relaunch::Relaunch::default());
+                    let _ = slint::quit_event_loop();
+                }),
+                relaunch: Box::new(|account| {
+                    crate::relaunch::request(crate::relaunch::Relaunch {
+                        hidden: false,
+                        account: Some(account),
+                    });
                     let _ = slint::quit_event_loop();
                 }),
                 signed_out: Box::new(|| {

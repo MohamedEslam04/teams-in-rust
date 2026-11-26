@@ -52,7 +52,7 @@ import { AppsStore, TasksStore } from "stores/apps_store.slint";
 import { RailApps, AppsOverlays } from "organisms/apps_rail.slint";
 import { AppsHost } from "pages/apps_host.slint";
 import { RecapsChatPane } from "pages/apps_recaps.slint";
-import { SettingsPage, ProfileMenu, SettingsStore } from "pages/settings.slint";
+import { SettingsPage, ProfileMenu, SettingsStore, SwitchConfirmLayer } from "pages/settings.slint";
 import { EngageView, EngageStore } from "pages/engage.slint";
 import { CallWindow, CallStore } from "pages/call_window.slint";
 import { CallMini } from "organisms/call_mini.slint";
@@ -1312,6 +1312,12 @@ export component AppWindow inherits Window {
         height: root.height - 48px;
         enter-sends: root.enter-sends;
         set-enter-sends(on) => { root.enter-sends = on; root.set-enter-sends(on); }
+    }
+    // The account switch's question, above Settings and the profile menu it can come from.
+    if root.login-state == "ready" && SettingsStore.switch-confirm-open: SwitchConfirmLayer {
+        z: 75;
+        width: root.width;
+        height: root.height;
     }
     if root.login-state == "ready" && SettingsStore.profile-open: ProfileMenu {
         z: 70;

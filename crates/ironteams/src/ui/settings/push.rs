@@ -436,10 +436,13 @@ pub(super) fn push_accounts(w: &AppWindow, c: &Ctl) {
         st::account_rows(&cfg)
             .into_iter()
             .map(|a| SAccount {
+                initials: crate::data::initials(if a.name.is_empty() { &a.label } else { &a.name })
+                    .into(),
                 label: a.label.into(),
                 name: a.name.into(),
                 upn: a.upn.into(),
                 active: a.active,
+                unread: i32::try_from(a.unread).unwrap_or(i32::MAX),
             })
             .collect(),
     ));
