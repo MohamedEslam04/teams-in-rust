@@ -102,7 +102,9 @@ impl Call {
                 self.bots.ask(&c);
                 self.step_bots(sink).await;
             }
-            Control::Hold(on) => self.hold(on, audio, sink).await,
+            // Our side goes silent at once; the re-offer goes from the run loop, one at a time
+            // ([`Call::sync_reoffer`]), once the media is not moving to a new session.
+            Control::Hold(on) => audio.held.store(on, Ordering::Relaxed),
             Control::Sound(off) => calling::audio::set_output_off(off),
             Control::AddPerson { mri, name } => {
                 if let Err(e) = self
@@ -160,89 +162,36 @@ impl Call {
         self.bots.step(&self.ngc, s, links, controller, sink).await;
     }
 
-    /// Hold (`on`) or resume: silence our side at once, then re-offer the media on the same
-    /// peer connection, every line `inactive` to hold (see [`calling::signaling::call_ops`]).
-    /// A refused re-offer puts the hold back as it was.
-    pub(super) async fn hold(&mut self, on: bool, audio: &mut Audio, sink: &EventSink) {
-        // A re-offer now would go on the session about to be replaced (rusty-teams also waits).
-        if self.next.is_some() {
-            tracing::info!(
-                hold = on,
-                "hold not sent: the media is moving to a new session"
-            );
-            sink.send(Event::Held(!on));
-            sink.send(Event::Error(
-                "The call is reconnecting its media. Try again in a moment.".into(),
-            ));
-            return;
-        }
-        audio.held.store(on, Ordering::Relaxed);
-        let sent = async {
-            let ours = self.media.create_offer().await?;
-            let signaled = if on { hold_offer(&ours) } else { ours.clone() };
-            let offered = calling::media::sdp::directions(&signaled);
-            let transport = calling::media::sdp::transport_summary(&signaled);
-            let inline = self
-                .ngc
-                .renegotiate(&self.s, &self.links, &MODALITIES, &SdpBlob::ngc(signaled))
-                .await?;
-            tracing::info!(
-                hold = on,
-                inline = inline.is_some(),
-                %offered,
-                %transport,
-                "1:1 hold re-offer sent"
-            );
-            anyhow::Ok((ours, inline))
-        }
-        .await;
-        match sent {
-            Ok((ours, Some(answer))) => {
-                self.apply_reoffer_answer(&answer, &ours, &Links::default(), sink)
-                    .await
-            }
-            Ok((ours, None)) => {
-                self.pending_offer = Some(ours);
-                self.reoffer = Some(Reoffer::Hold(on));
-            }
-            Err(e) => {
-                tracing::warn!("hold {on} failed: {e:#}");
-                self.refused(Reoffer::Hold(on), audio, sink).await;
-            }
-        }
-    }
-
-    /// Puts back what our refused re-offer changed (`call/rejection`, or its request failed):
-    /// webrtc-rs's pending offer is rolled back, so the session can answer the other side's
-    /// next offer, and the hold, camera or share is undone. The call goes on.
-    pub(super) async fn refused(&mut self, reoffer: Reoffer, audio: &Audio, sink: &EventSink) {
+    /// Puts back what our refused re-offer `sent` changed (`call/rejection`, or its request
+    /// failed): webrtc-rs's pending offer is rolled back, so the session can answer the other
+    /// side's next offer, and each hold, camera or share change it carried is undone. The call
+    /// goes on. What the other side is taken to know is set by [`Reoffers::rejected`] or
+    /// [`Reoffers::returned`].
+    pub(super) async fn refused(&mut self, sent: &Sent, audio: &Audio, sink: &EventSink) {
         if let Err(e) = self.media.rollback_offer().await {
             tracing::warn!(%e, "refused re-offer not rolled back");
         }
-        self.pending_offer = None;
-        self.answered = true;
-        self.camera.settled();
-        match reoffer {
-            Reoffer::Hold(on) => audio.held.store(!on, Ordering::Relaxed),
-            // Refused either way: not offered again (the camera stays off, or stopped).
-            Reoffer::Camera(false) => self.camera.told(false),
-            Reoffer::Camera(true) => {
-                self.camera.told(false);
-                self.camera.stop(sink).await;
+        for change in sent.changes() {
+            match change {
+                Reoffer::Hold(on) => audio.held.store(!on, Ordering::Relaxed),
+                // Refused either way: not offered again (the camera stays off, or stopped).
+                Reoffer::Camera(true) => {
+                    self.camera.stop(sink).await;
+                }
+                Reoffer::Share(true) => {
+                    self.share.stop().await;
+                    share::leave_session(&self.ngc, &self.s, &mut self.share).await;
+                }
+                Reoffer::Camera(false) | Reoffer::Share(false) => {}
             }
-            Reoffer::Share(true) => {
-                self.share.stop().await;
-                share::leave_session(&self.ngc, &self.s, &mut self.share).await;
+            for ev in change.refused() {
+                sink.send(ev);
             }
-            Reoffer::Share(false) => {}
-        }
-        for ev in reoffer.refused() {
-            sink.send(ev);
         }
     }
 
-    /// Applies the answer to our hold or resume re-offer `ours`, with our directions mirrored
-    /// back so the media keeps running locally, and acknowledges it.
+    /// Applies the answer to our hold or resume re-offer `ours` (or one said while held), with our
+    /// directions mirrored back so the media keeps running locally, and acknowledges it.
     pub(super) async fn apply_reoffer_answer(
         &mut self,
         answer: &SdpBlob,

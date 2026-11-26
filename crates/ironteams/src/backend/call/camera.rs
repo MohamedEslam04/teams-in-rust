@@ -14,16 +14,14 @@
 
 use super::share;
 use super::{Device, EventSink, VideoSlot};
+use calling::Links;
 use calling::media::MediaSession;
-use calling::signaling::video::{negotiation_tag, parse_sender_controls, video_modalities};
-use calling::signaling::{CallSession, NgcClient};
+use calling::signaling::video::parse_sender_controls;
 use calling::video::camera::{CameraCapture, CameraChoice, CameraSettings, open_choice};
 use calling::video::effects;
 use calling::video::h264::{EncoderSettings, H264Encoder};
 use calling::video::{I420Frame, RgbFrame, VideoRole, i420_to_rgb, pump, step_for, tap};
-use calling::{Links, SdpBlob};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -262,20 +260,6 @@ pub enum CameraMsg {
     Ended,
 }
 
-/// How long the answer to a 1:1 camera re-offer is waited for before the next one goes out anyway
-/// (the official client answered in 7 to 9 seconds, live 2026-11-26).
-pub const ANSWER_WAIT: Duration = Duration::from_secs(30);
-
-/// The 1:1 camera re-offer to send now: `Some(on)` when what the camera does (`on`) differs from
-/// what the service was last told (`told`) and no re-offer of ours waits for its answer
-/// (`waiting`; one waiting [`ANSWER_WAIT`] or longer, `waited`, no longer holds the next back).
-/// One re-offer at a time: one sent before the previous one was answered got that answer applied
-/// to it (live 2026-11-26: `v_1` sent while `v_2`'s answer was due).
-pub fn reoffer_due(waiting: bool, waited: Option<Duration>, told: bool, on: bool) -> Option<bool> {
-    let waiting = waiting && waited.is_none_or(|w| w < ANSWER_WAIT);
-    (!waiting && told != on).then_some(on)
-}
-
 /// One call's camera state.
 #[derive(Default)]
 pub struct Camera {
@@ -285,10 +269,6 @@ pub struct Camera {
     keyframes: Option<mpsc::UnboundedSender<()>>,
     /// What the UI was last told: (available, on).
     shown: Option<(bool, bool)>,
-    /// What a 1:1 call's service was last told (our re-offer, or our answer to theirs).
-    told: bool,
-    /// When our 1:1 camera re-offer went out, while its answer is due.
-    asked: Option<Instant>,
 }
 
 impl Camera {
@@ -412,29 +392,6 @@ impl Camera {
         let now = (available, self.wanted());
         (self.shown.replace(now) != Some(now)).then_some(now)
     }
-
-    /// The service was told the camera is `on`, or is taken to know it is off (`false` after a
-    /// re-offer failed or was refused, or the media moved to a new session).
-    pub fn told(&mut self, on: bool) {
-        self.told = on;
-    }
-
-    /// Our camera re-offer went out and its answer comes on `call/mediaAnswer/`.
-    pub fn asked(&mut self, at: Instant) {
-        self.asked = Some(at);
-    }
-
-    /// Our re-offer was answered, refused or superseded: the next one may go.
-    pub fn settled(&mut self) {
-        self.asked = None;
-    }
-
-    /// The 1:1 camera re-offer to send now ([`reoffer_due`]); `waiting`: a re-offer of ours
-    /// (hold, share, camera) waits for its answer, or the media is moving to a new session.
-    pub fn reoffer_due(&self, waiting: bool, now: Instant) -> Option<bool> {
-        let waited = self.asked.map(|t| now.saturating_duration_since(t));
-        reoffer_due(waiting, waited, self.told, self.on())
-    }
 }
 
 /// Whether `media` has a main-video line and the call has the link to switch it with (in a
@@ -448,45 +405,6 @@ pub async fn available(media: &MediaSession, links: &Links, meeting: Option<&[St
 /// `recvonly` while it is off (the other side's camera still comes in; UNVERIFIED).
 pub fn direct_direction(on: bool) -> &'static str {
     if on { "sendrecv" } else { "recvonly" }
-}
-
-/// Re-offers a 1:1 call's media with the camera on or off, keeping the sharing line as it is
-/// (`sharing`). Returns the answer when it came inline; otherwise it arrives on
-/// `call/mediaAnswer/`.
-pub async fn reoffer_direct(
-    ngc: &NgcClient,
-    s: &CallSession,
-    links: &Links,
-    media: &MediaSession,
-    on: bool,
-    sharing: bool,
-) -> anyhow::Result<Option<SdpBlob>> {
-    let offer = media.create_offer().await?;
-    let mut offer = calling::media::sdp::with_role_direction(&offer, ROLE, direct_direction(on));
-    if media.video_sender(VideoRole::ApplicationSharing).is_some() {
-        offer = calling::media::sdp::with_role_direction(
-            &offer,
-            VideoRole::ApplicationSharing,
-            if sharing { "sendonly" } else { "recvonly" },
-        );
-    }
-    let mut sending = Vec::new();
-    if on {
-        sending.push(ROLE);
-    }
-    if sharing {
-        sending.push(VideoRole::ApplicationSharing);
-    }
-    let answer = ngc
-        .renegotiate_video(
-            s,
-            links,
-            &video_modalities(&sending),
-            &SdpBlob::ngc(offer),
-            &negotiation_tag(s, ROLE, on),
-        )
-        .await?;
-    Ok(answer)
 }
 
 #[cfg(test)]
@@ -614,39 +532,6 @@ mod tests {
             "the capture that still arrives is not started"
         );
         assert_eq!(c.changed(true), Some((true, false)));
-    }
-
-    // Live 2026-11-26: `v_1` (off) went out while `v_2`'s (on) answer was due; that answer was
-    // applied to `v_1` and `v_1`'s own answer ignored.
-    #[test]
-    fn one_camera_re_offer_at_a_time_and_the_latest_state_once_answered() {
-        let s = Duration::from_secs;
-        // Off, and the service knows: nothing to say.
-        assert_eq!(reoffer_due(false, None, false, false), None);
-        // Turned on: re-offer now.
-        assert_eq!(reoffer_due(false, None, false, true), Some(true));
-        // `v_2` is out; the camera goes off before its answer: wait.
-        assert_eq!(reoffer_due(true, Some(s(1)), true, false), None);
-        // Answered: the camera's state now goes out.
-        assert_eq!(reoffer_due(false, None, true, false), Some(false));
-        // Back on before the answer came: nothing changed, nothing sent.
-        assert_eq!(reoffer_due(false, None, true, true), None);
-        // An answer that never comes holds the next re-offer back only so long.
-        assert_eq!(
-            reoffer_due(true, Some(ANSWER_WAIT), true, false),
-            Some(false)
-        );
-        // A hold or share re-offer waiting (no camera one out) holds it back too.
-        assert_eq!(reoffer_due(true, None, false, true), None);
-
-        let mut c = Camera::default();
-        let t0 = Instant::now();
-        c.told(true);
-        c.asked(t0);
-        assert_eq!(c.reoffer_due(true, t0 + s(5)), None, "v_2's answer is due");
-        assert_eq!(c.reoffer_due(true, t0 + ANSWER_WAIT), Some(false));
-        c.settled();
-        assert_eq!(c.reoffer_due(false, t0 + s(5)), Some(false));
     }
 
     #[test]

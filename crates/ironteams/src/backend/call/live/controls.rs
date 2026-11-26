@@ -300,45 +300,20 @@ impl Call {
     }
 
     /// Tells the service our sharing line sends (or stopped): `UpdateMediaDescriptions` in a
-    /// meeting, a re-offer in a 1:1 call.
+    /// meeting. A 1:1 call is told by the run loop's re-offer ([`Call::sync_reoffer`]), one at a
+    /// time.
     pub(super) async fn tell_share(&mut self, sending: bool, sink: &EventSink) {
-        let r = if self.meeting {
-            let lines = Sending {
-                camera: self.camera.on(),
-                share: sending,
-            };
-            self.tell_meeting(share::ROLE, lines, sending).await
-        } else {
-            // The answer comes inline or on `call/mediaAnswer/`, which `apply_answer` takes.
-            self.answered = false;
-            let camera_on = self.camera.on();
-            match share::reoffer_direct(
-                &self.ngc,
-                &self.s,
-                &self.links,
-                &self.media,
-                sending,
-                camera_on,
-            )
-            .await
-            {
-                Ok(Some(a)) => {
-                    self.apply_answer(&a).await;
-                    Ok(())
-                }
-                Ok(None) => {
-                    self.reoffer = Some(Reoffer::Share(sending));
-                    Ok(())
-                }
-                Err(e) => {
-                    self.answered = true;
-                    if let Err(e) = self.media.rollback_offer().await {
-                        tracing::warn!(%e, "unsent re-offer not rolled back");
-                    }
-                    Err(e)
-                }
+        if !self.meeting {
+            if !sending {
+                share::leave_session(&self.ngc, &self.s, &mut self.share).await;
             }
+            return;
+        }
+        let lines = Sending {
+            camera: self.camera.on(),
+            share: sending,
         };
+        let r = self.tell_meeting(share::ROLE, lines, sending).await;
         if !sending {
             share::leave_session(&self.ngc, &self.s, &mut self.share).await;
         }
