@@ -1,20 +1,23 @@
 // A file's kind as a small coloured tag (W, X, P, PDF…) or a folder, as OneDrive draws it.
+import { Theme } from "../tokens/theme.slint";
+import { Fixed } from "../tokens/fixed.slint";
+import { Tokens } from "../tokens/types.slint";
 import { Icon } from "widgets.slint";
 
 export global DriveLook {
     pure public function color(kind: string) -> color {
-        kind == "word" ? #2b579a
-        : kind == "excel" ? #217346
-        : kind == "powerpoint" ? #c43e1c
-        : kind == "pdf" ? #b30b00
-        : kind == "image" ? #8764b8
-        : kind == "video" ? #038387
-        : kind == "audio" ? #038387
-        : kind == "markdown" ? #4a5568
-        : kind == "text" ? #4a5568
-        : kind == "code" ? #4a5568
-        : kind == "archive" ? #8a6d3b
-        : #5a5a5a
+        kind == "word" ? Fixed.file-word
+        : kind == "excel" ? Fixed.file-excel
+        : kind == "powerpoint" ? Fixed.file-powerpoint
+        : kind == "pdf" ? Fixed.file-pdf
+        : kind == "image" ? Fixed.file-image
+        : kind == "video" ? Fixed.file-media
+        : kind == "audio" ? Fixed.file-media
+        : kind == "markdown" ? Fixed.file-text
+        : kind == "text" ? Fixed.file-text
+        : kind == "code" ? Fixed.file-text
+        : kind == "archive" ? Fixed.file-archive
+        : Fixed.file-other
     }
     pure public function tag(kind: string) -> string {
         kind == "word" ? "W"
@@ -38,13 +41,15 @@ export global DriveLook {
 }
 
 export component KindBadge inherits Rectangle {
+    in property <Tokens> c: Theme.content;
     in property <string> kind;
     in property <length> size: 24px;
     width: root.size;
     height: root.size;
     if root.kind == "folder": Icon {
+        c: root.c;
         source: @image-url("../icons/folder.svg");
-        tint: #f2c94c;
+        tint: Fixed.folder;
         width: root.size;
         height: root.size;
     }
@@ -57,7 +62,7 @@ export component KindBadge inherits Rectangle {
         background: DriveLook.color(root.kind);
         Text {
             text: DriveLook.tag(root.kind);
-            color: #ffffff;
+            color: Fixed.white;
             font-size: root.size * 0.34;
             font-weight: 700;
             horizontal-alignment: center;

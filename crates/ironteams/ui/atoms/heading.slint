@@ -1,4 +1,5 @@
 // A heading over a group of controls: one text style per variant.
+import { Tokens } from "../tokens/types.slint";
 import { Theme } from "../tokens/theme.slint";
 
 export enum HeadingVariant {
@@ -13,8 +14,9 @@ export enum HeadingVariant {
 }
 
 export component Heading inherits Text {
+    in property <Tokens> c: Theme.content;
     in property <HeadingVariant> variant: HeadingVariant.title;
-    color: root.variant == HeadingVariant.title || root.variant == HeadingVariant.section ? Theme.fg : Theme.fg-muted;
+    color: root.variant == HeadingVariant.title || root.variant == HeadingVariant.section ? root.c.fg : root.c.fg-muted;
     font-size: (root.variant == HeadingVariant.section ? 16px
         : root.variant == HeadingVariant.title ? 14px
         : root.variant == HeadingVariant.caption ? 12px

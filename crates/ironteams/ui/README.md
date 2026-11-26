@@ -23,7 +23,7 @@ layer, from the smallest pieces up:
    `tokens`, `stores` ← `atoms` ← `molecules` ← `organisms` ← `pages` ← `app.slint`.
    When an organism needs something from a page, the shared piece moves down (a struct or global
    to `stores/`, a widget to an organism or lower).
-2. **Colours live in `tokens/` and `atoms/`.** Elsewhere use a `Theme` token or an atom variant.
+2. **Colours live in `tokens/`.** Elsewhere use a `Theme` token, a `Fixed` colour or an atom variant.
    The colours screens still draw themselves are listed in `scripts/ui-hex-allowlist.txt`
    (the composer's colour palette, drop shadows, brand colours, the always-dark call surfaces,
    and the rest of what the screens drew before this layout); the list may only shrink. When you
@@ -64,8 +64,9 @@ screen is the content set.
 - **Region colours rule** (rule 3 of the script): the files of an area named in `rule3_areas`
   may not read the flat colour aliases or `Theme.dark`; they read their `c` input. The names
   are read from `tokens/theme.slint`. Areas: `atoms` (with `tokens/motion.slint`), `molecules`,
-  `nav`, `call`. The rule is switched on area by area as the components take `c`; today no area
-  is on.
+  `nav`, `call`. The rule is switched on area by area as the components take `c`; today the
+  `atoms` area is on. Every atom, and `tokens/motion.slint`, takes `c` (an `in property <Tokens>`,
+  default `Theme.content`) and reads its colours from `root.c`.
 
 ## Atom catalog
 
