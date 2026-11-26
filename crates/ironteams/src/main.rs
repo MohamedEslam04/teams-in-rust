@@ -17,6 +17,7 @@ mod desktop_entry;
 mod external;
 mod file_hover;
 mod find_data;
+mod instance;
 mod key_layout;
 mod language;
 mod lists_data;
@@ -539,6 +540,19 @@ fn main() -> anyhow::Result<()> {
         unsafe { std::env::set_var("IRONTEAMS_DEMO", "1") };
         unsafe { std::env::set_var("IRONTEAMS_CALL_DEMO", "1") };
     }
+    // One IronTeams per data folder: a second launch asks the running one to raise its window
+    // and exits, or waits while the old process of an account switch lets go. Before anything
+    // reads the config, the store or the keyring. The log is not up yet; `lock_error` is
+    // reported once it is.
+    let (mut single, lock_error) = match single_instance() {
+        Ok(Some(instance::Acquired::Activated)) => return Ok(()),
+        Ok(Some(instance::Acquired::Primary(held))) => (Some(held), None),
+        Ok(None) => (None, None),
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+            return Err(anyhow::anyhow!("IronTeams is already running: {e}"));
+        }
+        Err(e) => (None, Some(e)),
+    };
     configure_fonts();
     // Demo mode keeps its hands off the real data folder, so it logs to stdout as before.
     let logs_dir = session::Paths::new()
@@ -546,6 +560,13 @@ fn main() -> anyhow::Result<()> {
         .filter(|_| compat::var_os("IRONTEAMS_DEMO").is_none())
         .map(|paths| paths.data_dir.join("logs"));
     logging::init(logs_dir.as_deref());
+    match (&single, lock_error) {
+        (Some(_), _) => tracing::info!("instance: this is the only IronTeams on this data folder"),
+        // The data folder cannot be locked (a read-only folder, a file system without locks):
+        // start anyway, as before the lock existed.
+        (None, Some(e)) => tracing::warn!(error = %e, "instance: no lock, starting without it"),
+        (None, None) => {}
+    }
     // Before anything opens the store, the session or the preferences: the first run after the
     // rename from kelma moves the old directories.
     compat::migrate_legacy_dirs();
@@ -591,6 +612,16 @@ fn main() -> anyhow::Result<()> {
     calling::video::portal::set_host_app_id(APP_ID);
 
     let window = AppWindow::new()?;
+    // A second launch raises this window. The listener runs on its own thread, so the request
+    // is handed to the UI thread.
+    if let Some(held) = single.as_mut() {
+        let weak = window.as_weak();
+        if let Err(e) = held.listen(move || {
+            let _ = weak.upgrade_in_event_loop(|w| tray_wiring::show_and_raise(&w));
+        }) {
+            tracing::warn!(error = %e, "instance: not listening, a second launch cannot raise this window");
+        }
+    }
     composer::wire(&window);
     if let Ok(view) = compat::var("IRONTEAMS_VIEW") {
         window.set_view(view.into());
@@ -990,7 +1021,21 @@ fn main() -> anyhow::Result<()> {
         tracing::info!(call_ended = false, "quitting");
     }
     rt.shutdown_timeout(std::time::Duration::from_millis(500));
+    // Last: the next process may take the data now.
+    if let Some(held) = single {
+        held.release();
+    }
     Ok(())
+}
+
+/// Takes the lock of the data folder (see `instance`). `None` in demo mode, which runs next to
+/// the real app and never touches its data.
+fn single_instance() -> std::io::Result<Option<instance::Acquired>> {
+    if compat::var_os("IRONTEAMS_DEMO").is_some() {
+        return Ok(None);
+    }
+    let paths = session::Paths::new().map_err(|e| std::io::Error::other(e.to_string()))?;
+    instance::acquire(&paths.data_dir, instance::WAIT).map(Some)
 }
 
 #[cfg(test)]
