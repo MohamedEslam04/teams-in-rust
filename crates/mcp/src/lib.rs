@@ -25,7 +25,9 @@ pub mod server;
 mod testing;
 
 pub use access_log::{AUDIT_FILE, hash_id, last_reads};
-pub use connect::setup_text;
+pub use connect::{
+    CommandChoice, command_for_install, command_for_this_install, setup_text, setup_text_for,
+};
 pub use policy::{
     Decision, FORMAT_VERSION, Gate, KeyError, Level, Master, Need, Policy, REFUSAL,
     REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE, REFUSAL_MASTER_PAUSED, REFUSAL_SELF_STATUS,

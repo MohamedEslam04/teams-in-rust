@@ -93,6 +93,22 @@ This prints what follows and edits nothing. (`ironteams-cli accounts` lists the 
 - The `mcpServers` entry for Claude Desktop's `claude_desktop_config.json`.
 - Deny rules for an AI app that can also run commands (see the next section).
 
+### Which command is printed
+
+The command must still work after an update, so it depends on how IronTeams was installed. The
+connect dialog in the app prints a note above the command when it matters:
+
+- **Installed with the Windows or macOS installer, or from the tar.gz:** the path of the binary
+  that is running. A path with a version folder (`app-1.2.3`) changes with every update, so the note
+  says to use the `current` folder or to run the setup again after an update.
+- **AppImage** (the `APPIMAGE` variable is set): the path of the `.AppImage` file, not the temporary
+  mount inside it. It stops working if you move or rename the file, or an update replaces it under
+  another name; run the setup again after such a change.
+- **Flatpak** (the `FLATPAK_ID` variable is set): `flatpak run --command=ironteams <app id>
+  --mcp-serve --account <label>`. **This is not confirmed.** The Flatpak sandboxes the binary and
+  has its own configuration and data folders, so an AI app outside the sandbox may not be able to
+  start it. Test the command before relying on it.
+
 ## What this protects, and what it does not
 
 The settings limit what an AI can reach **through the MCP tools**. They protect against a model that
