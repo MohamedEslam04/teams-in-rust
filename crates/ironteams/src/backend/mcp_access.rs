@@ -459,6 +459,8 @@ fn view_data(
         rows,
         connect_text: String::new(),
         account_label: String::new(),
+        meeting_id: String::new(),
+        meeting_level: String::new(),
     }
 }
 
