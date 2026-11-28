@@ -243,6 +243,7 @@ fn a_channel_key_is_read_only_even_named_as_a_chat() {
     // Whatever kind of resource a caller builds, a channel's key never allows drafting.
     for key in [CHANNEL, "19:c@thread.skype"] {
         let p = policy(|s| {
+            s.calendar_people = true;
             s.conversations.insert(key.into(), Level::ReadDraft);
         });
         assert_eq!(
