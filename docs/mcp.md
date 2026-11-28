@@ -21,9 +21,10 @@ cargo build --release -p ironteams --features mcp
 
 Without the feature, `ironteams --mcp-serve` only says that the build has no MCP server.
 
-**The controls are not in the desktop app yet.** The per-conversation settings below are read from
-a file that the desktop app will write in a later release. Until then nothing can switch a
-conversation on, so the server starts and refuses every conversation. Nothing is enabled for you.
+**The controls are in the desktop app.** Open a chat (or a channel, or a meeting) and use the "AI"
+chip in its header, or "AI access…" in the chat list's row menu; "Review all AI access…" lists
+everything that is shared. They are shown only in a build that has the `mcp` feature. Until you
+change something, nothing is enabled and the server refuses every conversation.
 
 ## Before you start: where your data goes
 
@@ -136,6 +137,22 @@ This prints what follows and edits nothing. (`ironteams-cli accounts` lists the 
 
 - The `mcpServers` entry for Claude Desktop's `claude_desktop_config.json`.
 - Deny rules for an AI app that can also run commands (see the next section).
+
+### Which command is printed
+
+The command must still work after an update, so it depends on how IronTeams was installed. The
+connect dialog in the app prints a note above the command when it matters:
+
+- **Installed with the Windows or macOS installer, or from the tar.gz:** the path of the binary
+  that is running. A path with a version folder (`app-1.2.3`) changes with every update, so the note
+  says to use the `current` folder or to run the setup again after an update.
+- **AppImage** (the `APPIMAGE` variable is set): the path of the `.AppImage` file, not the temporary
+  mount inside it. It stops working if you move or rename the file, or an update replaces it under
+  another name; run the setup again after such a change.
+- **Flatpak** (the `FLATPAK_ID` variable is set): `flatpak run --command=ironteams <app id>
+  --mcp-serve --account <label>`. **This is not confirmed.** The Flatpak sandboxes the binary and
+  has its own configuration and data folders, so an AI app outside the sandbox may not be able to
+  start it. Test the command before relying on it.
 
 ## What this protects, and what it does not
 
@@ -253,3 +270,7 @@ What you see if you had allowed an account in the old `mcp.json`:
 - Scheduled messages.
 - Calls.
 - Controlling the running desktop app.
+
+---
+
+Docs synced to commit a1bcfb21 ("Merge channels into the release branch", 2026-11-28), for the MCP access control only (the `mcp` crate, the desktop controls, meetings, channels and the release switch). The rest of the repository's docs keep their own markers.

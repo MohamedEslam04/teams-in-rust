@@ -708,12 +708,14 @@ fn meeting_view(
     (key.unwrap_or_default(), level.into())
 }
 
-/// The text of the copy-only connect dialog, for this running binary.
+/// The text of the copy-only connect dialog, for this running binary: its command is the one that
+/// survives updates for how it was installed (the AppImage file, `flatpak run`, the binary).
 fn connect_text(label: &str, paths: &session::Paths) -> String {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "ironteams".into());
-    mcp::setup_text(&exe, label, &paths.data_dir.to_string_lossy())
+    mcp::setup_text_for(
+        &mcp::command_for_this_install(),
+        label,
+        &paths.data_dir.to_string_lossy(),
+    )
 }
 
 /// Removing or signing out of an account deletes its AI access settings, so a later account of

@@ -223,7 +223,30 @@ jobs:
           shared-key: release-windows
           # cache-warm.yml saves it on dev.
           save-if: false
-      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+      # With the repository variable IRONTEAMS_MCP set to 1 this builds the MCP server in
+      # (`--features mcp`), when the tag's commit has that feature (an older tag does not);
+      # unset, it is the same build as before. The same logic as scripts/ci/release-build.sh,
+      # inline because this job builds the tag's own commit, which may predate that file.
+      - name: Build
+        run: |
+          features=()
+          if [[ "$IRONTEAMS_MCP" == 1 && "$BIN" == ironteams ]] && grep -q '^mcp = ' "crates/$BIN/Cargo.toml"; then
+            features=(--features mcp)
+            echo "IRONTEAMS_MCP=1: building $BIN with the MCP server (--features mcp)"
+          fi
+          cargo build --release --locked -p "$BIN" --bin "$BIN" ${features[@]+"${features[@]}"}
+        env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
+      - name: Binary size and dependencies (summary)
+        # Informational only: the numbers a pull request that sets IRONTEAMS_MCP cites. Skipped
+        # for a tag that predates scripts/ci/release-summary.sh.
+        continue-on-error: true
+        run: |
+          if [[ -f scripts/ci/release-summary.sh ]]; then
+            bash scripts/ci/release-summary.sh "target/release/$BIN.exe" "Windows (release-add.yml)"
+          fi
+        env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
       - uses: actions/download-artifact@v8
         with:
           name: add-shared-assets
@@ -302,9 +325,31 @@ jobs:
           # Not warmed on dev any more (macOS is not part of a tag release, and its caches would
           # push the Linux ones out of the 10 GB): restores one if a manual run left it.
           save-if: false
-      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+      # With the repository variable IRONTEAMS_MCP set to 1 this builds the MCP server in
+      # (`--features mcp`), when the tag's commit has that feature (an older tag does not);
+      # unset, it is the same build as before. The same logic as scripts/ci/release-build.sh,
+      # inline because this job builds the tag's own commit, which may predate that file.
+      - name: Build
+        run: |
+          features=()
+          if [[ "$IRONTEAMS_MCP" == 1 && "$BIN" == ironteams ]] && grep -q '^mcp = ' "crates/$BIN/Cargo.toml"; then
+            features=(--features mcp)
+            echo "IRONTEAMS_MCP=1: building $BIN with the MCP server (--features mcp)"
+          fi
+          cargo build --release --locked -p "$BIN" --bin "$BIN" ${features[@]+"${features[@]}"}
         env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
           MACOSX_DEPLOYMENT_TARGET: '11.0'
+      - name: Binary size and dependencies (summary)
+        # Informational only: the numbers a pull request that sets IRONTEAMS_MCP cites. Skipped
+        # for a tag that predates scripts/ci/release-summary.sh.
+        continue-on-error: true
+        run: |
+          if [[ -f scripts/ci/release-summary.sh ]]; then
+            bash scripts/ci/release-summary.sh "target/release/$BIN" "macOS ${{ matrix.arch }} (release-add.yml)"
+          fi
+        env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
       - uses: actions/download-artifact@v8
         with:
           name: add-shared-assets

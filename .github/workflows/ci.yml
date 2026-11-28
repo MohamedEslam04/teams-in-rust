@@ -198,3 +198,41 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - run: cargo test --workspace --no-fail-fast
+      # The MCP server (docs/designs/mcp-access-control.md): its tests, which the workspace run
+      # above does not build (the `server` feature is off there), and the app with the feature on.
+      # Clippy for it runs once, on Linux.
+      - run: cargo test -p mcp --features server --no-fail-fast
+      - run: cargo build -p ironteams --features mcp
+      - name: MCP flag mode runs with piped stdio
+        # The Windows release binary is a GUI-subsystem program, which this debug build is not:
+        # the `mcp-stdio-windows` job below tests that one.
+        if: runner.os != 'Windows'
+        run: bash scripts/mcp-initialize-check.sh target/debug/ironteams
+
+  # The MCP server as a flag mode of the Windows release binary, which is built for the GUI
+  # subsystem: an MCP client starts it with pipes for stdin and stdout, and it must run without a
+  # window and report errors on stderr (docs/designs/mcp-access-control.md, "Windows stdio"). CI has
+  # no signed-in account, so the check is the error for a missing one; the real `initialize` round
+  # trip is the live test (scripts/mcp-initialize-check.ps1). Runs where `platforms` does, and
+  # honors skip-windows. The release profile and cache key are release-add.yml's, so it restores
+  # the cache cache-warm.yml saves for the Windows release build.
+  mcp-stdio-windows:
+    if: >-
+      (github.event_name == 'workflow_dispatch' || inputs.all-platforms)
+      && inputs.skip-windows != true
+    name: MCP stdio (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 16
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-windows
+          save-if: false
+      - run: cargo build --release --locked -p ironteams --bin ironteams --features mcp
+      - name: Starts without a window, with piped stdio
+        run: ./scripts/mcp-initialize-check.ps1 -Exe target\release\ironteams.exe
