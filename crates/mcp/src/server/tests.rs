@@ -860,7 +860,7 @@ async fn search_prints_no_totals_and_no_blocked_hit() {
     let out = call(&none.server(), "search_messages", ALLOWED)
         .await
         .unwrap();
-    assert!(out.starts_with("No matching chat messages."));
+    assert!(out.starts_with("No matching messages."));
     assert!(none.fake.calls().iter().all(|c| !c.starts_with("search")));
 }
 

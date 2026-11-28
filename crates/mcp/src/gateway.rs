@@ -6,9 +6,11 @@
 //! What it guarantees (docs/designs/mcp-access-control.md):
 //! - The check runs before any network call, and again right after it, before the content is
 //!   handed back: a change made during the call applies. A send is checked once, before it goes.
-//! - A blocked, unknown, malformed or channel-thread id all get the same refusal.
-//! - Lists hold only allowed conversations, and end with one account-wide count (never a total
-//!   from Teams, never dependent on a query).
+//! - A blocked, unknown or malformed id, and a thread suffix that is not exactly
+//!   `;messageid=<digits>` on a channel, all get the same refusal. A channel thread is decided
+//!   and logged as its channel.
+//! - Lists hold only allowed chats and channels, and end with one account-wide count (never a
+//!   total from Teams, never dependent on a query).
 //! - A service error becomes one of a few fixed texts; raw error text never reaches the model.
 //! - Every call is logged, denied ones too; when the log cannot be written the call is refused.
 
@@ -44,6 +46,8 @@ const SEARCH_PAGES: u32 = 3;
 const SEARCH_PAGE_SIZE: u32 = 50;
 /// With this many allowed conversations or fewer, search each one by itself instead.
 const PER_THREAD_MAX: usize = 10;
+/// The longest thread root id a caller may name. Roots are send times in milliseconds (13 digits).
+const MAX_ROOT_LEN: usize = 20;
 
 /// Returned instead of running a call whose access-log line could not be written.
 pub const REFUSAL_LOG: &str = "The access log could not be written, so this call was not run. Ask the user to check the IronTeams data folder.";
@@ -254,6 +258,9 @@ pub struct Permit {
     tool: &'static str,
     resource: Resource,
     need: Need,
+    /// The root message id of the channel thread the caller named, checked to be digits only.
+    /// The decision and the access log use the channel; only the fetch uses the thread.
+    thread: Option<String>,
 }
 
 impl Permit {
@@ -265,12 +272,30 @@ impl Permit {
         self.need
     }
 
-    /// The key of the chat this permit is for.
+    /// The key of the chat this permit is for (never a channel: the write tools use it).
     pub fn chat_id(&self) -> Option<&str> {
         match &self.resource {
             Resource::Chat(key) => Some(key),
             _ => None,
         }
+    }
+
+    /// The key of the chat or channel this permit is for.
+    pub fn conversation_id(&self) -> Option<&str> {
+        match &self.resource {
+            Resource::Chat(key) | Resource::Channel(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    /// What a fetch of messages asks Teams for: the conversation, or the channel thread the
+    /// caller named (`<channel>;messageid=<root>`).
+    fn fetch_id(&self) -> Option<String> {
+        let key = self.conversation_id()?;
+        Some(match &self.thread {
+            Some(root) => format!("{key};messageid={root}"),
+            None => key.to_string(),
+        })
     }
 
     /// The key of the meeting chat this permit is for.
@@ -300,9 +325,10 @@ pub struct SearchRequest<'a> {
     pub limit: usize,
 }
 
-/// The account's chats as last listed, for the footer: keys only, nothing about their content.
+/// The account's chats and channels as last listed, for the footer: keys only, nothing about
+/// their content.
 #[derive(Default)]
-struct ChatIndex {
+struct ConversationIndex {
     keys: BTreeSet<String>,
     capped: bool,
     fetched_ms: Option<i64>,
@@ -315,17 +341,46 @@ pub struct Gateway {
     audit: Audit,
     self_mri: String,
     display_name: String,
-    index: tokio::sync::Mutex<ChatIndex>,
+    index: tokio::sync::Mutex<ConversationIndex>,
     /// The account had an entry in the old allow list (see [`Gateway::nothing_enabled_note`]).
     legacy_notice: bool,
 }
 
-/// The chat a conversation id names, if it names one (not a channel, not an unknown kind).
-fn chat_of(id: &str) -> Option<Resource> {
-    match Resource::from_conversation_id(id) {
-        Ok(r @ Resource::Chat(_)) => Some(r),
-        _ => None,
+/// The chat or channel a conversation id names (a channel thread names its channel), if it names
+/// one: not an unknown kind, not a malformed id.
+fn conversation_of(id: &str) -> Option<Resource> {
+    Resource::from_conversation_id(id).ok()
+}
+
+/// What a conversation id a caller named resolves to: its chat or channel, and for a channel
+/// thread (`<channel>;messageid=<root>`) the root message id. `None` for every id the tools
+/// refuse with [`REFUSAL`]: an unknown kind, a malformed id, a thread suffix on a chat (chats
+/// have no threads), and a suffix that is not exactly one `;messageid=` and 1 to 20 digits.
+fn resolve(raw_id: &str) -> Option<(Resource, Option<String>)> {
+    let id = raw_id.trim();
+    let (root, thread) = match id.split_once(";messageid=") {
+        Some((root, n)) => (root, Some(n)),
+        None => (id, None),
+    };
+    let resource = Resource::from_conversation_id(root).ok()?;
+    match thread {
+        None => Some((resource, None)),
+        Some(n)
+            if matches!(resource, Resource::Channel(_))
+                && (1..=MAX_ROOT_LEN).contains(&n.len())
+                && n.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            Some((resource, Some(n.to_string())))
+        }
+        Some(_) => None,
     }
+}
+
+/// Whether a tool whose gate names `gate` may take a resource of kind `kind`: the same kind, or
+/// a channel for a chat tool (the conversation tools serve both). Whether the channel allows the
+/// need is `decide`'s to say, and it never allows a draft.
+fn fits(gate: ResourceKind, kind: ResourceKind) -> bool {
+    gate == kind || (gate == ResourceKind::Chat && kind == ResourceKind::Channel)
 }
 
 /// The meeting a calendar event names: its meeting chat (from the join link, with the series
@@ -359,7 +414,7 @@ impl Gateway {
             audit,
             self_mri,
             display_name,
-            index: tokio::sync::Mutex::new(ChatIndex::default()),
+            index: tokio::sync::Mutex::new(ConversationIndex::default()),
             legacy_notice: false,
         }
     }
@@ -467,10 +522,11 @@ impl Gateway {
 
     /// The permit for a tool that works on one resource. Decides, logs the decision, and refuses
     /// with the fixed text when it is not allowed. `tool` must be in `TOOL_GATES` and `resource`
-    /// of the kind it names (or, for `send_draft`, the kind the draft froze).
+    /// of the kind it names (a chat tool also takes a channel, see [`fits`]; for `send_draft`,
+    /// the kind the draft froze, never a channel).
     pub fn permit(&self, tool: &'static str, resource: Resource) -> Result<Permit, String> {
         let need = match gate_of(tool) {
-            Some(Gate::Resource { kind, need }) if kind == resource.kind() => need,
+            Some(Gate::Resource { kind, need }) if fits(kind, resource.kind()) => need,
             Some(Gate::FromDraft)
                 if matches!(
                     resource.kind(),
@@ -510,22 +566,21 @@ impl Gateway {
                 tool,
                 resource,
                 need,
+                thread: None,
             }),
         }
     }
 
-    /// The permit for a tool that works on the conversation a caller named. A blocked, unknown,
-    /// malformed or channel-thread id all give the same refusal.
+    /// The permit for a tool that works on the conversation a caller named: a chat, a channel,
+    /// or a thread of a channel (decided and logged as the channel; the permit remembers the
+    /// thread for the fetch). A blocked, unknown or malformed id and a bad thread suffix all give
+    /// the same refusal.
     pub fn conversation(&self, tool: &'static str, raw_id: &str) -> Result<Permit, String> {
-        // A `;messageid=` suffix names a channel thread; until channels are served (slice 6) any
-        // id with a `;` is refused like a blocked one.
-        let resource = if raw_id.contains(';') {
-            None
-        } else {
-            Resource::from_conversation_id(raw_id).ok()
-        };
-        match resource {
-            Some(r) => self.permit(tool, r),
+        match resolve(raw_id) {
+            Some((r, thread)) => {
+                let permit = self.permit(tool, r)?;
+                Ok(Permit { thread, ..permit })
+            }
             None => {
                 let policy = self.reader.snapshot();
                 let session = decide_session(&policy, &self.scope);
@@ -544,14 +599,16 @@ impl Gateway {
     /// call's snapshot. A refusal is logged as the call's one line; it names nothing about the
     /// conversation and is the same text as for an unknown id.
     pub fn call_conversation(&self, call: &Call, raw_id: &str) -> Result<Permit, String> {
-        let resource = if raw_id.contains(';') {
-            None
-        } else {
-            Resource::from_conversation_id(raw_id).ok()
-        };
+        let resolved = resolve(raw_id);
         let shown: String = raw_id.trim().chars().take(512).collect();
-        let ids = resource.as_ref().map_or_else(|| vec![shown], ids_of);
-        match resource.and_then(|r| self.call_permit(call, r)) {
+        let ids = resolved
+            .as_ref()
+            .map_or_else(|| vec![shown], |(r, _)| ids_of(r));
+        let permit = resolved.and_then(|(r, thread)| {
+            self.call_permit(call, r)
+                .map(|permit| Permit { thread, ..permit })
+        });
+        match permit {
             Some(p) => Ok(p),
             None => {
                 self.log(call.tool, Decision::Blocked, call.policy.generation, &ids)?;
@@ -582,7 +639,7 @@ impl Gateway {
     /// is not allowed. Not logged by itself: the call's line names what was returned.
     pub fn call_permit(&self, call: &Call, resource: Resource) -> Option<Permit> {
         let need = match gate_of(call.tool) {
-            Some(Gate::Resource { kind, need }) if kind == resource.kind() => need,
+            Some(Gate::Resource { kind, need }) if fits(kind, resource.kind()) => need,
             _ => return None,
         };
         decide(&call.policy, &self.scope, &resource, need)
@@ -591,6 +648,7 @@ impl Gateway {
                 tool: call.tool,
                 resource,
                 need,
+                thread: None,
             })
     }
 
@@ -636,14 +694,15 @@ impl Gateway {
 
     // ---- one conversation ----
 
+    /// The messages of the permit's chat or channel, or of the channel thread it names.
     pub async fn messages(
         &self,
         p: &Permit,
         before_ms: Option<i64>,
         n: u32,
     ) -> Result<HistoryPage, String> {
-        let id = p.chat_id().ok_or_else(|| REFUSAL.to_string())?;
-        self.read(p, self.backend.messages(id, before_ms, n)).await
+        let id = p.fetch_id().ok_or_else(|| REFUSAL.to_string())?;
+        self.read(p, self.backend.messages(&id, before_ms, n)).await
     }
 
     pub async fn thread_members(
@@ -671,8 +730,8 @@ impl Gateway {
 
     // ---- many conversations ----
 
-    /// The chats of the account that the policy allows, newest list from Teams. With `since_ms`
-    /// of 0 the full list also refreshes the footer count.
+    /// The chats and channels of the account that the policy allows, newest list from Teams.
+    /// With `since_ms` of 0 the full list also refreshes the footer count.
     pub async fn chats(&self, call: &Call, since_ms: i64) -> Result<Vec<Conversation>, String> {
         let all = self
             .backend
@@ -685,13 +744,13 @@ impl Gateway {
         let fresh = self.reader.snapshot();
         Ok(all
             .into_iter()
-            .filter(|c| self.allowed_for(call, &fresh, chat_of(&c.id).as_ref(), Need::Read))
+            .filter(|c| self.allowed_for(call, &fresh, conversation_of(&c.id).as_ref(), Need::Read))
             .collect())
     }
 
-    /// The mentions of the user in allowed chats only. A mention in a thread maps to its
-    /// conversation first; one from a blocked chat, a channel or an unknown id is dropped whole,
-    /// topic and preview with it.
+    /// The mentions of the user in allowed chats and channels only. A mention in a thread maps to
+    /// its conversation first (a channel thread to its channel); one from a blocked chat or
+    /// channel or an unknown id is dropped whole, topic and preview with it.
     pub async fn mentions(&self, call: &Call, n: u32) -> Result<Vec<ActivityItem>, String> {
         let all = self
             .backend
@@ -705,14 +764,15 @@ impl Gateway {
                 self.allowed_for(
                     call,
                     &fresh,
-                    chat_of(&m.source_thread_id).as_ref(),
+                    conversation_of(&m.source_thread_id).as_ref(),
                     Need::Read,
                 )
             })
             .collect())
     }
 
-    /// Searches the allowed chats. No totals: only the hits themselves come back.
+    /// Searches the allowed chats and channels (posts and thread replies). No totals: only the
+    /// hits themselves come back. A search in one channel thread searches its channel.
     pub async fn search(
         &self,
         call: &Call,
@@ -722,7 +782,7 @@ impl Gateway {
         let size = u32::try_from(limit).unwrap_or(SEARCH_PAGE_SIZE);
         let mut hits: Vec<MessageHit> = Vec::new();
         if let Some(p) = req.in_chat {
-            let id = p.chat_id().ok_or_else(|| REFUSAL.to_string())?;
+            let id = p.conversation_id().ok_or_else(|| REFUSAL.to_string())?;
             let filters = self.filters(Some(id), req.from_mri);
             let page = self
                 .read(
@@ -733,16 +793,16 @@ impl Gateway {
                 .await?;
             hits = page.hits;
         } else {
-            let allowed = self.allowed_keys(&call.policy);
+            let allowed = self.allowed_conversations(&call.policy);
             if allowed.is_empty() {
                 return Ok(vec![]);
             }
             if allowed.len() <= PER_THREAD_MAX {
-                for key in &allowed {
-                    let Some(p) = self.call_permit(call, Resource::Chat(key.clone())) else {
+                for resource in allowed {
+                    let Some(p) = self.call_permit(call, resource) else {
                         continue;
                     };
-                    let filters = self.filters(Some(key), req.from_mri);
+                    let filters = self.filters(p.conversation_id(), req.from_mri);
                     let page = self
                         .read(
                             &p,
@@ -777,7 +837,7 @@ impl Gateway {
                         self.allowed_for(
                             call,
                             &fresh,
-                            chat_of(&h.conversation_id).as_ref(),
+                            conversation_of(&h.conversation_id).as_ref(),
                             Need::Read,
                         )
                     }));
@@ -787,19 +847,17 @@ impl Gateway {
                 }
             }
         }
-        // Whatever path found them, keep only message hits of allowed chats, as the policy
-        // stands now.
+        // Whatever path found them, keep only hits of allowed chats and channels, as the policy
+        // stands now. A channel post or reply belongs to its channel (`conversation_id` never
+        // holds the thread suffix, and a stray one is cut by the canonical key).
         let fresh = self.reader.snapshot();
         hits.retain(|h| {
-            h.root_id.is_empty()
-                && h.thread_type != "space"
-                && h.thread_type != "topic"
-                && self.allowed_for(
-                    call,
-                    &fresh,
-                    chat_of(&h.conversation_id).as_ref(),
-                    Need::Read,
-                )
+            self.allowed_for(
+                call,
+                &fresh,
+                conversation_of(&h.conversation_id).as_ref(),
+                Need::Read,
+            )
         });
         hits.sort_by(|a, b| {
             b.time_ms
@@ -821,18 +879,16 @@ impl Gateway {
         }
     }
 
-    /// The keys of the chats the call's snapshot allows reading.
-    fn allowed_keys(&self, policy: &Policy) -> Vec<String> {
+    /// The chats and channels the call's snapshot allows reading.
+    fn allowed_conversations(&self, policy: &Policy) -> Vec<Resource> {
         let Some(scope) = policy.scope(&self.scope) else {
             return vec![];
         };
         scope
             .conversations
             .keys()
-            .filter(|k| {
-                chat_of(k).is_some_and(|r| decide(policy, &self.scope, &r, Need::Read).is_allowed())
-            })
-            .cloned()
+            .filter_map(|k| conversation_of(k.as_str()))
+            .filter(|r| decide(policy, &self.scope, r, Need::Read).is_allowed())
             .collect()
     }
 
@@ -856,8 +912,8 @@ impl Gateway {
         let mut idx = self.index.lock().await;
         idx.keys = all
             .iter()
-            .filter_map(|c| match chat_of(&c.id) {
-                Some(Resource::Chat(k)) => Some(k),
+            .filter_map(|c| match conversation_of(&c.id) {
+                Some(Resource::Chat(k) | Resource::Channel(k)) => Some(k),
                 _ => None,
             })
             .collect();
@@ -893,8 +949,9 @@ impl Gateway {
         }
     }
 
-    /// The sentence every list ends with: how many chats of the account are not shared with AI.
-    /// The same number for every tool and every query.
+    /// The sentence every list ends with: how many chats and channels of the account are not
+    /// shared with AI (the ones the user could allow). The same number for every tool and every
+    /// query.
     pub async fn footer(&self, _call: &Call) -> Result<String, String> {
         self.refresh_index(false).await?;
         let idx = self.index.lock().await;
@@ -903,13 +960,8 @@ impl Gateway {
             .keys
             .iter()
             .filter(|k| {
-                !decide(
-                    &fresh,
-                    &self.scope,
-                    &Resource::Chat((*k).clone()),
-                    Need::Read,
-                )
-                .is_allowed()
+                !conversation_of(k)
+                    .is_some_and(|r| decide(&fresh, &self.scope, &r, Need::Read).is_allowed())
             })
             .count();
         Ok(footer(hidden, idx.capped))

@@ -2,7 +2,7 @@
 //! shows the user a preview; only `send_draft` with the draft's id does it, once, within
 //! [`LIFETIME_MS`]. The action is never rebuilt from what the send call says.
 
-use crate::policy::{KeyError, Resource, canonical_key};
+use crate::policy::{KeyError, Resource};
 use calendar::Rsvp;
 use std::collections::HashMap;
 use teams_proto::model::Message;
@@ -80,12 +80,12 @@ impl Action {
 
     /// What it touches, for the access check at send time: the chat (by canonical key), the
     /// meeting (by its chat's key) for a meeting answer, the user's own status for presence and
-    /// status message.
+    /// status message. A channel id gives the channel, which `send_draft` never accepts.
     pub fn resource(&self) -> Result<Resource, KeyError> {
         match self {
             Action::Message { chat_id, .. }
             | Action::Reaction { chat_id, .. }
-            | Action::MarkRead { chat_id, .. } => Ok(Resource::Chat(canonical_key(chat_id)?)),
+            | Action::MarkRead { chat_id, .. } => Resource::from_conversation_id(chat_id),
             Action::MeetingResponse { meeting_chat, .. } => Resource::meeting(meeting_chat),
             Action::Presence { .. } | Action::StatusNote { .. } => Ok(Resource::SelfStatus),
         }
