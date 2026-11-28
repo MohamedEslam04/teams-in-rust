@@ -583,12 +583,11 @@ async fn list_chats_differs_between_accounts_only_in_the_footer_number() {
         .await
         .unwrap();
     assert_ne!(a, b);
-    let digits = |s: &str| {
-        s.chars()
-            .filter(|c| !c.is_ascii_digit())
-            .collect::<String>()
-    };
-    assert_eq!(digits(&a), digits(&b));
+    // Everything before the footer is the same; the footers differ only in the count (and the
+    // singular wording of a count of one).
+    let (fa, fb) = (footer(2, false), footer(1, false));
+    assert_eq!(a.strip_suffix(&fa), b.strip_suffix(&fb));
+    assert!(a.strip_suffix(&fa).is_some());
     assert!(a.ends_with(&footer(2, false)) && b.ends_with(&footer(1, false)));
 }
 
