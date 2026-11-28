@@ -21,9 +21,10 @@ cargo build --release -p ironteams --features mcp
 
 Without the feature, `ironteams --mcp-serve` only says that the build has no MCP server.
 
-**The controls are not in the desktop app yet.** The per-conversation settings below are read from
-a file that the desktop app will write in a later release. Until then nothing can switch a
-conversation on, so the server starts and refuses every conversation. Nothing is enabled for you.
+**The controls are in the desktop app.** Open a chat (or a channel, or a meeting) and use the "AI"
+chip in its header, or "AI access…" in the chat list's row menu; "Review all AI access…" lists
+everything that is shared. They are shown only in a build that has the `mcp` feature. Until you
+change something, nothing is enabled and the server refuses every conversation.
 
 ## Before you start: where your data goes
 
@@ -269,3 +270,7 @@ What you see if you had allowed an account in the old `mcp.json`:
 - Scheduled messages.
 - Calls.
 - Controlling the running desktop app.
+
+---
+
+Docs synced to commit a1bcfb21 ("Merge channels into the release branch", 2026-11-28), for the MCP access control only (the `mcp` crate, the desktop controls, meetings, channels and the release switch). The rest of the repository's docs keep their own markers.
