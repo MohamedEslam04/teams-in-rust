@@ -183,6 +183,7 @@ pub(super) fn peek_row(p: PeekData) -> CalPeek {
         notes_url: p.notes_url.into(),
         recap_url: p.recap_url.into(),
         options_url: p.options_url.into(),
+        meeting_chat: p.meeting_chat.into(),
     }
 }
 

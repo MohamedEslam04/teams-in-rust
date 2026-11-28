@@ -31,6 +31,8 @@ impl UiHandle {
             s.set_calendar_people(d.calendar_people);
             s.set_target_id(d.target_id.into());
             s.set_target_level(d.target_level.into());
+            s.set_meeting_id(d.meeting_id.into());
+            s.set_meeting_level(d.meeting_level.into());
             s.set_rows(model(d.rows.into_iter().map(row).collect()));
             s.set_connect_text(d.connect_text.into());
             s.set_account_label(d.account_label.into());
@@ -101,6 +103,8 @@ mod tests {
             calendar_people: true,
             target_id: "19:x".into(),
             target_level: "read".into(),
+            meeting_id: "19:meeting_x@thread.v2".into(),
+            meeting_level: "read_draft".into(),
             rows: vec![AiAccessRow {
                 id: "19:x".into(),
                 title: "Zoe".into(),
@@ -114,6 +118,8 @@ mod tests {
         assert!(s.get_master_paused() && s.get_account_paused() && s.get_calendar_people());
         assert_eq!(s.get_target_id().as_str(), "19:x");
         assert_eq!(s.get_target_level().as_str(), "read");
+        assert_eq!(s.get_meeting_id().as_str(), "19:meeting_x@thread.v2");
+        assert_eq!(s.get_meeting_level().as_str(), "read_draft");
         assert_eq!(s.get_rows().row_count(), 1);
         assert_eq!(s.get_rows().row_data(0).unwrap().title.as_str(), "Zoe");
         assert_eq!(s.get_connect_text().as_str(), "claude mcp add");

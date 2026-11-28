@@ -75,6 +75,9 @@ export struct CalPeek {
     notes-url: string,
     recap-url: string,
     options-url: string,
+    // The Teams chat of the meeting (from its join link), what its AI access setting belongs to.
+    // Empty when the event has no chat.
+    meeting-chat: string,
 }
 export struct CalAttendeeRow { name: string, email: string, response: string, kind: string }
 export struct CalAttachmentRow { name: string, size: string }

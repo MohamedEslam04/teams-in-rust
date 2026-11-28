@@ -8,6 +8,7 @@ import { FlexButton, ButtonVariant } from "../atoms/button.slint";
 import { Field, FieldVariant } from "../atoms/field.slint";
 import { Check, CheckVariant } from "../atoms/check.slint";
 import { MenuItem, MenuItemVariant, MenuFrame, MenuFrameVariant } from "../atoms/menu.slint";
+import { AiAccessStore, AiMeetingAccess } from "ai_access.slint";
 
 // Colors of the answers in the attendee list and the response buttons.
 
@@ -149,6 +150,7 @@ export component EventFull inherits MenuFrame { variant: MenuFrameVariant.card;
                 width: parent.width - 14px;
                 EventSummary { }
                 EventActions { full: true; }
+                if AiAccessStore.available && CalStore.peek.has-join: AiMeetingAccess { chat: CalStore.peek.meeting-chat; }
                 if CalStore.detail.loading: Text { text: "Loading details…"; color: Theme.fg-muted; font-size: 13px * Theme.font-scale; }
                 if CalStore.detail.error != "": Text { text: CalStore.detail.error; color: Theme.warning; font-size: 13px * Theme.font-scale; wrap: word-wrap; }
                 if CalStore.detail.dial-in != "": VerticalLayout {
