@@ -14,8 +14,8 @@
 
 use crate::audit::Audit;
 use crate::policy::{
-    Decision, Gate, Need, Policy, REFUSAL, Resource, ResourceKind, ScopeId, decide, decide_session,
-    footer, gate_of,
+    Decision, Gate, Need, Policy, REFUSAL, REFUSAL_MEETING, Resource, ResourceKind, ScopeId,
+    decide, decide_session, footer, gate_of,
 };
 use crate::server::drafts::Action;
 use crate::state::{PolicyReader, file_path, legacy_allowed_accounts};
@@ -240,6 +240,7 @@ impl Backend for Live {
                 event_id,
                 rsvp,
                 comment,
+                ..
             } => calendar::respond(c, event_id, *rsvp, comment, true, None).await,
         };
         svc(done)
@@ -268,6 +269,14 @@ impl Permit {
     pub fn chat_id(&self) -> Option<&str> {
         match &self.resource {
             Resource::Chat(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    /// The key of the meeting chat this permit is for.
+    pub fn meeting_chat(&self) -> Option<&str> {
+        match &self.resource {
+            Resource::Meeting(key) => Some(key),
             _ => None,
         }
     }
@@ -319,9 +328,17 @@ fn chat_of(id: &str) -> Option<Resource> {
     }
 }
 
+/// The meeting a calendar event names: its meeting chat (from the join link, with the series
+/// master's link for an occurrence). `None` for an event with no Teams chat: an appointment, a
+/// meeting joined by a `/meet/<code>` link, or a link of another service.
+fn meeting_of(e: &Event) -> Option<Resource> {
+    let thread = calendar::meeting_chat_thread_id(e.join_url.as_deref()?)?;
+    Resource::meeting(&thread).ok()
+}
+
 fn ids_of(r: &Resource) -> Vec<String> {
     match r {
-        Resource::Chat(k) | Resource::Channel(k) => vec![k.clone()],
+        Resource::Chat(k) | Resource::Channel(k) | Resource::Meeting(k) => vec![k.clone()],
         _ => vec![],
     }
 }
@@ -452,23 +469,39 @@ impl Gateway {
     /// with the fixed text when it is not allowed. `tool` must be in `TOOL_GATES` and `resource`
     /// of the kind it names (or, for `send_draft`, the kind the draft froze).
     pub fn permit(&self, tool: &'static str, resource: Resource) -> Result<Permit, String> {
-        let policy = self.reader.snapshot();
         let need = match gate_of(tool) {
             Some(Gate::Resource { kind, need }) if kind == resource.kind() => need,
             Some(Gate::FromDraft)
                 if matches!(
                     resource.kind(),
-                    ResourceKind::Chat | ResourceKind::Calendar | ResourceKind::SelfStatus
+                    ResourceKind::Chat | ResourceKind::Meeting | ResourceKind::SelfStatus
                 ) =>
             {
                 Need::Draft
             }
             // A tool missing from the table, or asking for the wrong kind: a bug, never a grant.
             _ => {
-                self.log(tool, Decision::Blocked, policy.generation, &[])?;
+                self.log(
+                    tool,
+                    Decision::Blocked,
+                    self.reader.snapshot().generation,
+                    &[],
+                )?;
                 return Err(REFUSAL.to_string());
             }
         };
+        self.decide_and_log(tool, resource, need)
+    }
+
+    /// Decides `need` on `resource` from the policy as it is now, logs the decision and refuses
+    /// with the fixed text when it is not allowed.
+    fn decide_and_log(
+        &self,
+        tool: &'static str,
+        resource: Resource,
+        need: Need,
+    ) -> Result<Permit, String> {
+        let policy = self.reader.snapshot();
         let decision = decide(&policy, &self.scope, &resource, need);
         self.log(tool, decision, policy.generation, &ids_of(&resource))?;
         match decision.refusal(resource.kind()) {
@@ -906,9 +939,39 @@ impl Gateway {
             .await
     }
 
-    pub async fn event_detail(&self, p: &Permit, id: &str) -> Result<EventDetail, String> {
-        Self::need_resource(p, ResourceKind::Calendar)?;
-        self.read(p, self.backend.event_detail(id)).await
+    /// The event of a calendar meeting with the permit for it, for the tools that look at one
+    /// meeting (`meeting_detail`, `draft_meeting_response`). The setting of a meeting is the
+    /// setting of its meeting chat, and it also needs the calendar switch, so:
+    ///
+    /// 1. the calendar switch (and both pauses) are decided and logged first, before anything is
+    ///    fetched;
+    /// 2. the event is fetched, because its join link is the only way to learn its chat. This is
+    ///    the one place a blocked meeting's body and attendees are fetched, and they stay in
+    ///    here: they are dropped unread unless step 4 allows them;
+    /// 3. an event with no meeting chat (an appointment, a `/meet/<code>` link) is refused with
+    ///    [`REFUSAL_MEETING`], the same text as a blocked meeting, and logged as blocked;
+    /// 4. the meeting itself is decided and logged by [`Gateway::permit`], on the policy as it
+    ///    is after the fetch, and only an allowed one gets the event back.
+    pub async fn meeting(
+        &self,
+        tool: &'static str,
+        event_id: &str,
+    ) -> Result<(Permit, EventDetail), String> {
+        let switch = self.decide_and_log(tool, Resource::Calendar, Need::Read)?;
+        let detail = self
+            .read(&switch, self.backend.event_detail(event_id))
+            .await?;
+        let Some(resource) = meeting_of(&detail.event) else {
+            self.log(
+                tool,
+                Decision::Blocked,
+                self.reader.snapshot().generation,
+                &[],
+            )?;
+            return Err(REFUSAL_MEETING.to_string());
+        };
+        let permit = self.permit(tool, resource)?;
+        Ok((permit, detail))
     }
 
     pub async fn find_times(&self, p: &Permit, q: &FindTimes) -> Result<FoundTimes, String> {

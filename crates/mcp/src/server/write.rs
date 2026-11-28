@@ -6,7 +6,7 @@ use super::drafts::{Action, DraftError, LIFETIME_MS};
 use super::read::chat_kind_name;
 use super::text::{clip, iso_minute, plain};
 use crate::gateway::Permit;
-use crate::policy::Resource;
+use crate::policy::{REFUSAL_MEETING, Resource};
 use calendar::Rsvp;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
@@ -345,18 +345,23 @@ impl Server {
     }
 
     #[tool(
-        description = "Draft an answer (accept, tentative or decline) to a meeting invitation, if the user allowed calendar and people; the organizer gets it. Nothing is sent until send_draft.",
+        description = "Draft an answer (accept, tentative or decline) to a Teams meeting invitation, if the user allowed calendar and people and allowed drafting in the meeting's chat; the organizer gets it. Nothing is sent until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn draft_meeting_response(
         &self,
         Parameters(p): Parameters<DraftMeetingResponse>,
     ) -> Result<String, String> {
-        let permit = self
+        // The calendar switch, then the meeting chat's setting (it must allow drafting).
+        let (permit, d) = self
             .gw
-            .permit("draft_meeting_response", Resource::Calendar)?;
+            .meeting("draft_meeting_response", &p.event_id)
+            .await?;
         let rsvp = parse_rsvp(&p.response)?;
-        let d = self.gw.event_detail(&permit, &p.event_id).await?;
+        let meeting_chat = permit
+            .meeting_chat()
+            .ok_or_else(|| REFUSAL_MEETING.to_string())?
+            .to_string();
         if d.is_organizer {
             return Err("you organize this meeting; there is nothing to answer".into());
         }
@@ -375,6 +380,7 @@ impl Server {
         }
         let action = Action::MeetingResponse {
             event_id: p.event_id,
+            meeting_chat,
             rsvp,
             comment,
         };

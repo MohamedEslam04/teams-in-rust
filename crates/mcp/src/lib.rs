@@ -28,9 +28,9 @@ pub use access_log::{AUDIT_FILE, hash_id, last_reads};
 pub use connect::setup_text;
 pub use policy::{
     Decision, FORMAT_VERSION, Gate, KeyError, Level, Master, Need, Policy, REFUSAL,
-    REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE, REFUSAL_MASTER_PAUSED, REFUSAL_SELF_STATUS,
-    REFUSAL_UNREADABLE, Resource, ResourceKind, Scope, ScopeId, TOOL_GATES, ToolGate,
-    canonical_key, decide, decide_session, footer, gate_of,
+    REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE, REFUSAL_MASTER_PAUSED, REFUSAL_MEETING,
+    REFUSAL_SELF_STATUS, REFUSAL_UNREADABLE, Resource, ResourceKind, Scope, ScopeId, TOOL_GATES,
+    ToolGate, canonical_key, decide, decide_session, footer, gate_of,
 };
 pub use state::{
     FILE, PolicyReader, PolicyWriter, file_path, legacy_allowed_accounts, migrate_legacy_allowlist,

@@ -437,15 +437,16 @@ impl Server {
     }
 
     #[tool(
-        description = "The details of one calendar event, if the user allowed calendar and people: time, organizer, attendees and their responses, and the invitation text.",
+        description = "The details of one Teams meeting, if the user allowed calendar and people and shared the meeting's chat: time, organizer, attendees and their responses, and the invitation text. A meeting with no Teams chat, or whose chat is not shared, is refused (its title and time still show in calendar_agenda).",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn meeting_detail(
         &self,
         Parameters(p): Parameters<MeetingDetail>,
     ) -> Result<String, String> {
-        let permit = self.gw.permit("meeting_detail", Resource::Calendar)?;
-        let d = self.gw.event_detail(&permit, &p.event_id).await?;
+        // The gateway checks the calendar switch, then the meeting chat's setting, and hands the
+        // event back only for an allowed meeting.
+        let (_, d) = self.gw.meeting("meeting_detail", &p.event_id).await?;
         let e = &d.event;
         let mut out = vec![
             format!("Subject: {}", e.subject),
