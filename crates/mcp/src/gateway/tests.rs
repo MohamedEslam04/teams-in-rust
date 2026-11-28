@@ -163,7 +163,10 @@ async fn a_permit_that_no_longer_holds_fetches_nothing() {
             .set_conversation(ALLOWED, None)
             .unwrap()
     });
-    assert_eq!(h.gw.messages(&permit, None, 30).await.unwrap_err(), REFUSAL);
+    assert_eq!(
+        h.gw.messages(&permit, None, 30).await.err().unwrap(),
+        REFUSAL
+    );
     assert!(!h.fake.fetched("messages"));
     assert_eq!(
         decisions(&h).last().unwrap(),
@@ -206,10 +209,13 @@ async fn a_permit_for_one_chat_cannot_fetch_another() {
     // A calendar permit cannot read a chat, and a chat permit cannot read the directory.
     h.set(|p| p.scope_entry(&scope()).calendar_people = true);
     let cal = h.gw.permit("calendar_agenda", Resource::Calendar).unwrap();
-    assert_eq!(h.gw.messages(&cal, None, 5).await.unwrap_err(), REFUSAL);
-    assert_eq!(h.gw.search_people(&permit, "x").await.unwrap_err(), REFUSAL);
+    assert_eq!(h.gw.messages(&cal, None, 5).await.err().unwrap(), REFUSAL);
     assert_eq!(
-        h.gw.calendar_view(&permit, 0, 1).await.unwrap_err(),
+        h.gw.search_people(&permit, "x").await.err().unwrap(),
+        REFUSAL
+    );
+    assert_eq!(
+        h.gw.calendar_view(&permit, 0, 1).await.err().unwrap(),
         REFUSAL
     );
 }
@@ -362,7 +368,7 @@ async fn a_failed_list_read_is_an_error_when_there_is_no_cached_list() {
     );
     let call = gw.begin("list_chats").unwrap();
     assert_eq!(
-        gw.footer(&call).await.unwrap_err(),
+        gw.footer(&call).await.err().unwrap(),
         ServiceError::Unavailable.text()
     );
 }
