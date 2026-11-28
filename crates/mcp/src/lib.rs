@@ -29,4 +29,6 @@ pub use policy::{
     REFUSAL_UNREADABLE, Resource, ResourceKind, Scope, ScopeId, TOOL_GATES, ToolGate,
     canonical_key, decide, decide_session, footer, gate_of,
 };
-pub use state::{FILE, PolicyReader, PolicyWriter, file_path};
+pub use state::{
+    FILE, PolicyReader, PolicyWriter, file_path, legacy_allowed_accounts, migrate_legacy_allowlist,
+};

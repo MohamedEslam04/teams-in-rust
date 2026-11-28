@@ -11,6 +11,7 @@
 
 use crate::policy::{FORMAT_VERSION, Policy};
 use anyhow::{Context, Result, bail};
+use serde::Serialize;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,13 @@ pub const FILE: &str = "mcp-access.json";
 /// length, so a stat alone could miss the second one. Inside this window the reader parses on
 /// every call.
 const SETTLE: Duration = Duration::from_secs(2);
+
+/// The old allow-list file of `ironteams-cli mcp`, next to `config.json`.
+const LEGACY_FILE: &str = "mcp.json";
+/// The key the old file kept its allowed account labels under.
+const ALLOWED_KEY: &str = "allowed_accounts";
+/// Where the migration keeps those labels, so the app can tell the user what changed.
+const LEGACY_KEY: &str = "legacy_allowed_accounts";
 
 /// The state file in a config directory.
 pub fn file_path(config_dir: &Path) -> PathBuf {
@@ -228,8 +236,65 @@ impl PolicyWriter {
     }
 }
 
+/// The strings of a JSON array; anything else gives none.
+fn labels_of(v: Option<&serde_json::Value>) -> Vec<String> {
+    v.and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|l| l.as_str().map(str::to_string))
+        .collect()
+}
+
+/// Moves the allowed accounts of the old `<config dir>/mcp.json` out of the way, once. The labels
+/// go to `legacy_allowed_accounts` in the same file (merged with any already there, sorted),
+/// `allowed_accounts` becomes empty, and `migrated_legacy_allowlist` is set in the state file.
+/// Nothing is enabled: the user chooses conversations again. An older `ironteams-cli mcp serve`
+/// that still reads the file finds no allowed account and refuses to start.
+///
+/// Returns the labels that moved, or `None` (and writes nothing) when the file is missing, its
+/// list is empty, or it was migrated before. A file that is not a JSON object is an error and
+/// stays as it is. The state file is written first, so a failure after it is repaired by running
+/// again.
+pub fn migrate_legacy_allowlist(config_dir: &Path) -> Result<Option<Vec<String>>> {
+    let path = config_dir.join(LEGACY_FILE);
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes)
+        .with_context(|| format!("{} is not valid JSON", path.display()))?;
+    let obj = value
+        .as_object_mut()
+        .with_context(|| format!("{} is not a JSON object", path.display()))?;
+    let mut moved = labels_of(obj.get(ALLOWED_KEY));
+    if moved.is_empty() {
+        return Ok(None);
+    }
+    moved.sort();
+    moved.dedup();
+    let mut kept = labels_of(obj.get(LEGACY_KEY));
+    kept.extend(moved.iter().cloned());
+    kept.sort();
+    kept.dedup();
+    obj.insert(LEGACY_KEY.into(), kept.into());
+    obj.insert(ALLOWED_KEY.into(), Vec::<String>::new().into());
+    PolicyWriter::new(file_path(config_dir)).update(|p| p.migrated_legacy_allowlist = true)?;
+    write_atomic(&path, &value)?;
+    Ok(Some(moved))
+}
+
+/// The account labels the migration moved out of `mcp.json`: empty when the file is missing,
+/// unreadable or never migrated. Read-only.
+pub fn legacy_allowed_accounts(config_dir: &Path) -> Vec<String> {
+    std::fs::read(config_dir.join(LEGACY_FILE))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .map_or_else(Vec::new, |v| labels_of(v.get(LEGACY_KEY)))
+}
+
 /// Temporary file in the same directory, fsync, rename over the target.
-fn write_atomic(path: &Path, policy: &Policy) -> Result<()> {
+fn write_atomic(path: &Path, value: &impl Serialize) -> Result<()> {
     let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
@@ -238,7 +303,7 @@ fn write_atomic(path: &Path, policy: &Policy) -> Result<()> {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".tmp-{}", std::process::id()));
     let tmp = dir.join(name);
-    let json = serde_json::to_string_pretty(policy)? + "\n";
+    let json = serde_json::to_string_pretty(value)? + "\n";
     let written = write_tmp(&tmp, json.as_bytes()).and_then(|()| std::fs::rename(&tmp, path));
     if let Err(e) = written {
         let _ = std::fs::remove_file(&tmp);
