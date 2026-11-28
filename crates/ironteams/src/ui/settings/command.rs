@@ -782,6 +782,9 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             match r {
                 Ok(()) => {
                     remove_account_cache(&c.env.paths, &acct);
+                    // Its AI access settings go with it: a later account of the same name starts
+                    // Blocked.
+                    crate::backend::purge_ai_access(&c.env.paths, arg);
                     // Its theme goes with it.
                     if c.local.themes.remove_account(arg)
                         && let Err(e) = c.local.save_themes()
@@ -999,14 +1002,22 @@ pub(super) fn command(shared: &Shared, w: &AppWindow, name: &str, arg: &str) {
             };
             g.set_profile_open(false);
             let tokens = c.env.tokens.clone();
+            let paths = c.env.paths.clone();
             if c.env.background {
                 let weak = w.as_weak();
                 std::thread::spawn(move || {
                     let r = session::forget_account_tokens(&*tokens, &acct);
+                    // Signed out: the account's AI access settings go with its token.
+                    if r.is_ok() {
+                        crate::backend::purge_ai_access(&paths, &acct.label);
+                    }
                     let _ = weak.upgrade_in_event_loop(move |w| signed_out(&w, r));
                 });
             } else {
                 let r = session::forget_account_tokens(&*tokens, &acct);
+                if r.is_ok() {
+                    crate::backend::purge_ai_access(&paths, &acct.label);
+                }
                 drop(c);
                 signed_out(w, r);
             }
