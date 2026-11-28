@@ -12,6 +12,7 @@ import { Motion } from "../tokens/motion.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
 import { Tokens } from "../tokens/types.slint";
 import { Fixed } from "../tokens/fixed.slint";
+import { AiAccessLevels, AiAccessStore } from "ai_access.slint";
 
 // A section of the list: sections made in Teams (read from the account) and local ones.
 export struct SectionRow {
@@ -199,6 +200,15 @@ export component ItemMenu inherits Rectangle {
             // A chat's apps (no read of them is known, so the engine says so) and its Workflows.
             if !root.data.channel: MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Manage apps"); clicked => { ListStore.command("manage-apps", root.data.id); root.done(); } }
             if !root.data.channel: MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Set workflows"); clicked => { FlowsStore.command("flows-enter", ""); root.done(); } }
+            // AI access for this chat: "open" makes the row the store's target, then the view shows its level.
+            if !root.data.channel && AiAccessStore.available: MenuItem { c: root.c; variant: MenuItemVariant.list;
+                label: @tr("AI access…");
+                chevron: true;
+                clicked => {
+                    AiAccessStore.command("open", root.data.id);
+                    root.view = "ai";
+                }
+            }
             if root.data.channel: MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Manage notifications"); chevron: true; clicked => { root.view = "notify"; } }
             MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Copy link"); clicked => { ListStore.command(root.data.channel ? "channel-link" : "copy-link", root.data.id); root.done(); } }
             if !root.data.channel: MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("Remove chat history"); danger: true; clicked => { root.remove-history(); root.done(); } }
@@ -245,6 +255,19 @@ export component ItemMenu inherits Rectangle {
         if root.view == "notify": VerticalLayout {
             MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("‹ Manage notifications"); dim: true; clicked => { root.view = "main"; } }
             NotifyChoices { c: root.c; channel: root.data.id; done => { root.done(); } }
+        }
+        if root.view == "ai": VerticalLayout {
+            MenuItem { c: root.c; variant: MenuItemVariant.list; label: @tr("‹ AI access"); dim: true; clicked => { root.view = "main"; } }
+            // The level is set for this row by its id, whatever chat is open.
+            AiAccessLevels {
+                c: root.c;
+                compact: true;
+                level: AiAccessStore.target-level;
+                picked(l) => {
+                    AiAccessStore.command("set-level", root.data.id + "\u{9}" + l);
+                    root.done();
+                }
+            }
         }
     }
 }

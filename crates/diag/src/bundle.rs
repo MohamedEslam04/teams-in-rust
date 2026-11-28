@@ -41,6 +41,17 @@ pub fn report_from_args(
     app_version: &str,
     args: &[String],
 ) -> Result<PathBuf, Error> {
+    report_from_args_with(paths, app_version, args, &[])
+}
+
+/// [`report_from_args`] with extra text entries: each `(name, text)` of `sections` becomes the
+/// archive entry `name` (see [`write_bundle_with`]).
+pub fn report_from_args_with(
+    paths: &Paths,
+    app_version: &str,
+    args: &[String],
+    sections: &[(&str, String)],
+) -> Result<PathBuf, Error> {
     let mut logs = Vec::new();
     let mut out: Option<PathBuf> = None;
     let mut it = args.iter();
@@ -65,7 +76,7 @@ pub fn report_from_args(
         Some(dir) => dir.join(default_file_name()),
         None => default_output_dir().join(default_file_name()),
     };
-    write_bundle(paths, app_version, &logs, &out)
+    write_bundle_with(paths, app_version, &logs, sections, &out)
 }
 
 /// Writes the report bundle to `out` (a `.tar.gz`, readable only by the owner) and returns it.
@@ -79,6 +90,20 @@ pub fn write_bundle(
     extra_logs: &[PathBuf],
     out: &Path,
 ) -> Result<PathBuf, Error> {
+    write_bundle_with(paths, app_version, extra_logs, &[], out)
+}
+
+/// [`write_bundle`] with extra text entries from the caller (the MCP section of the desktop app,
+/// for one): each `(name, text)` of `sections` becomes the archive entry `name`, after the config
+/// and before the logs. The text goes through [`redact`] like every other text entry. This crate
+/// knows nothing about what a section holds.
+pub fn write_bundle_with(
+    paths: &Paths,
+    app_version: &str,
+    extra_logs: &[PathBuf],
+    sections: &[(&str, String)],
+    out: &Path,
+) -> Result<PathBuf, Error> {
     let mut files: Vec<(String, Vec<u8>)> = vec![
         ("README.txt".into(), README.as_bytes().to_vec()),
         (
@@ -90,6 +115,10 @@ pub fn write_bundle(
         Ok(raw) => files.push(("config.json".into(), redact_config(&raw)?.into_bytes())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
+    }
+
+    for (name, text) in sections {
+        files.push(((*name).to_string(), redact(text).into_bytes()));
     }
 
     let mut log_files = extra_logs.to_vec();
@@ -146,6 +175,8 @@ anywhere. Read it before you attach it to a bug report.\n\
 Contents:\n\
   system.txt   IronTeams version, OS, desktop session and IRONTEAMS_* settings\n\
   config.json  the non-secret config (your id, name and endpoint id are removed)\n\
+  mcp.txt      AI access, from the desktop app: switch states, counts, hashes only\n\
+               (no conversation names or ids)\n\
   logs/        log files, if any (see below)\n\
 \n\
 Left out on purpose: the refresh token (it lives in the system keyring), the message cache,\n\
@@ -426,6 +457,106 @@ mod tests {
 
         assert!(report_from_args(&paths, "1", &["--bogus".into()]).is_err());
         assert!(report_from_args(&paths, "1", &["--log".into()]).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn paths_in(dir: &Path) -> Paths {
+        Paths {
+            config_dir: dir.join("config"),
+            data_dir: dir.join("data"),
+            cache_dir: dir.join("cache"),
+        }
+    }
+
+    #[test]
+    fn a_section_is_an_archive_entry_and_is_redacted_like_the_rest() {
+        let dir = scratch("section");
+        let paths = paths_in(&dir);
+        let out = dir.join("out.tar.gz");
+        let mcp = format!("master: active\nuser jane@contoso.com {GUID}\nhash: aaaaaaaaaaaa\n");
+        let sections = [
+            ("mcp.txt", mcp),
+            ("other.txt", "second section\n".to_string()),
+        ];
+        write_bundle_with(&paths, "9.9.9", &[], &sections, &out).unwrap();
+        let entries = read_bundle(&out);
+        let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"ironteams-report/mcp.txt"), "{names:?}");
+        assert!(names.contains(&"ironteams-report/other.txt"), "{names:?}");
+        let body = &entries
+            .iter()
+            .find(|(n, _)| n.ends_with("/mcp.txt"))
+            .unwrap()
+            .1;
+        assert!(body.contains("master: active"), "{body}");
+        assert!(body.contains("hash: aaaaaaaaaaaa"), "{body}");
+        assert!(
+            body.contains("<email>") && body.contains("<guid>"),
+            "{body}"
+        );
+        assert!(
+            !body.contains("jane@contoso.com") && !body.contains(GUID),
+            "{body}"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_readme_lists_the_mcp_entry() {
+        assert!(README.contains("mcp.txt"));
+        assert!(README.contains("hashes only"));
+    }
+
+    #[test]
+    fn write_bundle_is_write_bundle_with_no_sections() {
+        let dir = scratch("same");
+        let paths = paths_in(&dir);
+        fs::create_dir_all(&paths.config_dir).unwrap();
+        fs::create_dir_all(paths.data_dir.join("logs")).unwrap();
+        fs::write(
+            paths.config_dir.join("config.json"),
+            r#"{"enter_sends":true}"#,
+        )
+        .unwrap();
+        fs::write(paths.data_dir.join("logs/app.log"), "INFO ok\n").unwrap();
+        let (a, b) = (dir.join("a.tar.gz"), dir.join("b.tar.gz"));
+        write_bundle(&paths, "1.2.3", &[], &a).unwrap();
+        write_bundle_with(&paths, "1.2.3", &[], &[], &b).unwrap();
+        let (ea, eb) = (read_bundle(&a), read_bundle(&b));
+        let names: Vec<&str> = ea.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "ironteams-report/README.txt",
+                "ironteams-report/system.txt",
+                "ironteams-report/config.json",
+                "ironteams-report/logs/0-app.log",
+            ]
+        );
+        // The same entries with the same text (system.txt reads the environment, not the time).
+        assert_eq!(ea, eb);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn report_from_args_with_adds_the_sections() {
+        let dir = scratch("args-with");
+        let paths = paths_in(&dir);
+        let out = dir.join("r.tar.gz");
+        let args: Vec<String> = ["--out", out.to_str().unwrap()].map(String::from).into();
+        let sections = [("mcp.txt", "master: active\n".to_string())];
+        let written = report_from_args_with(&paths, "1", &args, &sections).unwrap();
+        assert_eq!(written, out);
+        let names: Vec<String> = read_bundle(&out).into_iter().map(|(n, _)| n).collect();
+        assert!(
+            names.contains(&"ironteams-report/mcp.txt".to_string()),
+            "{names:?}"
+        );
+        // The old function adds none.
+        let plain = report_from_args(&paths, "1", &args).unwrap();
+        let names: Vec<String> = read_bundle(&plain).into_iter().map(|(n, _)| n).collect();
+        assert!(!names.iter().any(|n| n.ends_with("mcp.txt")), "{names:?}");
+        assert!(report_from_args_with(&paths, "1", &["--bogus".into()], &sections).is_err());
         fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -98,6 +98,7 @@ export { PeopleStore } from "molecules/people.slint";
 export { ListStore, SectionRow, SectionChoice } from "organisms/lists.slint";
 export { RemindStore, ReminderRow, SnoozedRow, LaterRow } from "organisms/remind.slint";
 export { ChatNoteStore } from "organisms/chat_note.slint";
+export { AiAccessRow, AiAccessStore } from "organisms/ai_access.slint";
 export { ChannelStore, PostItem, Replier } from "organisms/channel_posts.slint";
 export { FindStore, HitRow, PickRow, SharedRow } from "stores/find_store.slint";
 export { MediaStore } from "organisms/media.slint";
@@ -125,7 +126,8 @@ import { MessagePane } from "organisms/message_pane.slint";
 import { ProfileCardLayer, ParticipantsLayer, ForwardLayer, ReactionPickerLayer, SeenByLayer, MessageMenuLayer } from "organisms/chat_overlays.slint";
 import { AppKeys } from "organisms/app_keys.slint";
 import { NoticeBanner } from "organisms/notice_banner.slint";
-import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer } from "organisms/app_dialogs.slint";
+import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer, AiOverviewLayer, AiExplainerLayer, AiConnectLayer } from "organisms/app_dialogs.slint";
+import { AiAccessStore } from "organisms/ai_access.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
 export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, RailFixed, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
 export { SettingsStore, SOption, SToggle, SNotify, SPerson, SAccount, STheme, SOrg, SDevice, SAppPerm, SFind, SBaseRow, SPairRow, SAdjusted } from "pages/settings.slint";
@@ -562,6 +564,10 @@ export component AppWindow inherits Window {
         if cmd == "previous-unread-wrap" { root.leave-settings(); root.catch-up(-2); root.palette-done(); }
         if cmd == "settings" { SettingsStore.show(arg); }
         if cmd == "toggle-theme" { SettingsStore.command("theme", SettingsStore.theme-shown == "dark" ? "light" : "dark"); root.palette-done(); }
+        // AI access (the entries are hidden while the build has none).
+        if cmd == "ai-review" { AiAccessStore.command("overview", ""); root.palette-done(); }
+        if cmd == "ai-pause" { AiAccessStore.command("master", AiAccessStore.master-paused ? "active" : "paused"); root.palette-done(); }
+        if cmd == "ai-connect" { AiAccessStore.command("connect", ""); root.palette-done(); }
         if cmd == "reset-theme" { SettingsStore.command("reset-theme", ""); root.palette-done(); }
         if cmd == "shortcuts" { root.shortcuts-open = true; root.palette-done(); }
         if cmd == "report-problem" { SettingsStore.command("report-problem", ""); root.palette-done(); }
@@ -1255,6 +1261,22 @@ export component AppWindow inherits Window {
     }
 
     if root.login-state == "ready" && ChatHeaderStore.remove-history != "": RemoveHistoryLayer {
+        width: root.width;
+        height: root.height;
+    }
+
+    // AI access: the explainer is last, so it covers the others.
+    if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.overview-open: AiOverviewLayer {
+        width: root.width;
+        height: root.height;
+    }
+
+    if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.connect-open: AiConnectLayer {
+        width: root.width;
+        height: root.height;
+    }
+
+    if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.explainer-open: AiExplainerLayer {
         width: root.width;
         height: root.height;
     }

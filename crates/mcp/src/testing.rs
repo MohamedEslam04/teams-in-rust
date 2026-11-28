@@ -1,7 +1,8 @@
 //! Test support for the gateway and the server: a fake Teams backend that records every fetch,
 //! and a harness that wires it to a real state file and access log in a temp directory.
 
-use crate::audit::{Audit, FILE as AUDIT_FILE};
+use crate::access_log::AUDIT_FILE;
+use crate::audit::Audit;
 use crate::gateway::{BResult, Backend, Gateway, ServiceError};
 use crate::policy::{Level, Policy, ScopeId};
 use crate::server::Server;
@@ -302,18 +303,31 @@ pub fn scope() -> ScopeId {
 }
 
 pub fn harness() -> Harness {
+    build(false)
+}
+
+/// A harness for an account that had an entry in the old allow list: its lists say when no
+/// conversation is enabled.
+pub fn harness_with_legacy_notice() -> Harness {
+    build(true)
+}
+
+fn build(legacy_notice: bool) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config");
     let data = dir.path().join("data");
     let fake = Arc::new(Fake::default());
-    let gw = Arc::new(Gateway::new(
-        fake.clone(),
-        PolicyReader::new(file_path(&config)),
-        scope(),
-        Audit::new(&data, "work", "9.9.9"),
-        ME.into(),
-        "Me".into(),
-    ));
+    let gw = Arc::new(
+        Gateway::new(
+            fake.clone(),
+            PolicyReader::new(file_path(&config)),
+            scope(),
+            Audit::new(&data, "work", "9.9.9"),
+            ME.into(),
+            "Me".into(),
+        )
+        .with_legacy_notice(legacy_notice),
+    );
     Harness {
         writer: Arc::new(PolicyWriter::new(file_path(&config))),
         dir,

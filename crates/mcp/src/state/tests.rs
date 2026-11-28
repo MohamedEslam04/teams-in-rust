@@ -456,3 +456,151 @@ fn the_state_file_sits_in_the_config_directory() {
         PathBuf::from("/cfg").join("mcp-access.json")
     );
 }
+
+// --- the legacy allow list ---
+
+/// A config directory holding an old `mcp.json` with this content.
+fn legacy(content: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("mcp.json");
+    std::fs::write(&path, content).unwrap();
+    (dir, path)
+}
+
+fn json_of(path: &Path) -> serde_json::Value {
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn the_legacy_allow_list_moves_once_and_the_old_list_is_emptied() {
+    let (dir, path) = legacy(r#"{"allowed_accounts": ["work", "personal"]}"#);
+    let moved = migrate_legacy_allowlist(dir.path()).unwrap();
+    assert_eq!(
+        moved,
+        Some(vec!["personal".to_string(), "work".to_string()])
+    );
+    let v = json_of(&path);
+    assert_eq!(v["allowed_accounts"], serde_json::json!([]));
+    assert_eq!(
+        v["legacy_allowed_accounts"],
+        serde_json::json!(["personal", "work"])
+    );
+    assert_eq!(
+        legacy_allowed_accounts(dir.path()),
+        vec!["personal".to_string(), "work".to_string()]
+    );
+}
+
+#[test]
+fn the_migration_enables_nothing_and_sets_the_flag() {
+    let (dir, _path) = legacy(r#"{"allowed_accounts": ["work"]}"#);
+    migrate_legacy_allowlist(dir.path()).unwrap();
+    let p = PolicyReader::new(file_path(dir.path())).snapshot();
+    assert_eq!(p.unreadable_reason(), None);
+    assert!(p.migrated_legacy_allowlist);
+    assert!(p.scopes.is_empty(), "no scope, so no conversation enabled");
+    assert_eq!(chat_decision(&p), Decision::Blocked);
+    assert_eq!(p.generation, 1);
+}
+
+#[test]
+fn the_migration_keeps_the_other_keys_of_the_file() {
+    let (dir, path) = legacy(r#"{"allowed_accounts": ["work"], "note": {"a": [1, 2]}, "n": 7}"#);
+    migrate_legacy_allowlist(dir.path()).unwrap();
+    let v = json_of(&path);
+    assert_eq!(v["note"], serde_json::json!({"a": [1, 2]}));
+    assert_eq!(v["n"], 7);
+}
+
+#[test]
+fn a_second_run_finds_nothing_and_writes_nothing() {
+    let (dir, path) = legacy(r#"{"allowed_accounts": ["work"]}"#);
+    assert!(migrate_legacy_allowlist(dir.path()).unwrap().is_some());
+    let file_before = std::fs::read(&path).unwrap();
+    let state_before = std::fs::read(file_path(dir.path())).unwrap();
+    assert_eq!(migrate_legacy_allowlist(dir.path()).unwrap(), None);
+    assert_eq!(std::fs::read(&path).unwrap(), file_before);
+    assert_eq!(std::fs::read(file_path(dir.path())).unwrap(), state_before);
+}
+
+#[test]
+fn labels_already_moved_are_merged_sorted_and_deduplicated() {
+    let (dir, path) =
+        legacy(r#"{"allowed_accounts": ["work", "b"], "legacy_allowed_accounts": ["work", "a"]}"#);
+    let moved = migrate_legacy_allowlist(dir.path()).unwrap();
+    assert_eq!(moved, Some(vec!["b".to_string(), "work".to_string()]));
+    assert_eq!(
+        json_of(&path)["legacy_allowed_accounts"],
+        serde_json::json!(["a", "b", "work"])
+    );
+}
+
+#[test]
+fn a_missing_empty_or_absent_list_migrates_nothing_and_writes_nothing() {
+    let empty = tempfile::tempdir().unwrap();
+    assert_eq!(migrate_legacy_allowlist(empty.path()).unwrap(), None);
+    assert!(!file_path(empty.path()).exists());
+    assert!(legacy_allowed_accounts(empty.path()).is_empty());
+    for content in [
+        r#"{"allowed_accounts": []}"#,
+        r#"{}"#,
+        r#"{"allowed_accounts": "work"}"#,
+    ] {
+        let (dir, path) = legacy(content);
+        assert_eq!(
+            migrate_legacy_allowlist(dir.path()).unwrap(),
+            None,
+            "{content}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        assert!(!file_path(dir.path()).exists(), "{content}");
+    }
+}
+
+#[test]
+fn a_corrupt_legacy_file_is_an_error_and_stays_as_it_was() {
+    for content in ["{not json", "", "[\"work\"]"] {
+        let (dir, path) = legacy(content);
+        assert!(migrate_legacy_allowlist(dir.path()).is_err(), "{content:?}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        assert!(!file_path(dir.path()).exists());
+        assert!(legacy_allowed_accounts(dir.path()).is_empty());
+    }
+}
+
+#[test]
+fn a_state_file_from_a_newer_app_stops_the_migration_before_the_legacy_file_changes() {
+    let (dir, path) = legacy(r#"{"allowed_accounts": ["work"]}"#);
+    std::fs::write(
+        file_path(dir.path()),
+        r#"{"format_version":999,"generation":1}"#,
+    )
+    .unwrap();
+    assert!(migrate_legacy_allowlist(dir.path()).is_err());
+    assert_eq!(
+        json_of(&path),
+        serde_json::json!({"allowed_accounts": ["work"]})
+    );
+}
+
+#[test]
+fn an_old_reader_sees_no_allowed_account_after_the_migration() {
+    let (dir, path) = legacy(r#"{"allowed_accounts": ["work"]}"#);
+    migrate_legacy_allowlist(dir.path()).unwrap();
+    // What `ironteams-cli mcp serve` of the old version read: the list under this key.
+    let old: Vec<String> =
+        serde_json::from_value(json_of(&path)["allowed_accounts"].clone()).unwrap();
+    assert!(old.is_empty());
+}
+
+#[test]
+fn no_temporary_file_stays_next_to_the_legacy_file() {
+    let (dir, _path) = legacy(r#"{"allowed_accounts": ["work"]}"#);
+    migrate_legacy_allowlist(dir.path()).unwrap();
+    let mut names: Vec<String> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["mcp-access.json", "mcp.json"]);
+}

@@ -63,6 +63,7 @@ pub(super) fn store_lane(cmd: &Cmd) -> Option<&'static str> {
         Cmd::Engage(_) => "engage",
         Cmd::Gif(_) => "gif",
         Cmd::Lists(_) => "lists",
+        Cmd::McpAccess(_) => "mcp-access",
         Cmd::Channels(_) => "channels",
         Cmd::Media(_) => "media",
         Cmd::Apps(_) => "apps",
@@ -457,6 +458,10 @@ mod tests {
         assert_eq!(
             super::store_lane(&Cmd::Remind(crate::backend::RemindCmd::Refresh)),
             Some("remind")
+        );
+        assert_eq!(
+            super::store_lane(&Cmd::McpAccess(crate::backend::McpAccessCmd::BlockAll)),
+            Some("mcp-access")
         );
         assert_eq!(super::store_lane(&Cmd::SelectChat("19:x".into())), None);
         assert_eq!(super::store_lane(&Cmd::Call(CallCmd::Leave)), None);

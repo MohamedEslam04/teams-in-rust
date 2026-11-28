@@ -6,5 +6,8 @@
 mod bundle;
 mod redact;
 
-pub use bundle::{Error, default_output_dir, report_from_args, write_bundle};
+pub use bundle::{
+    Error, default_output_dir, report_from_args, report_from_args_with, write_bundle,
+    write_bundle_with,
+};
 pub use redact::redact;

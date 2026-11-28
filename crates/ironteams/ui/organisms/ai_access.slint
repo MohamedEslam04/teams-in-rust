@@ -1,0 +1,446 @@
+// AI access (docs/designs/mcp-access-control.md): the per-conversation setting, the master switch
+// and their dialogs. `AiAccessStore` below is the contract between the Rust backend
+// (`backend::mcp_access`, `ui::mcp_access`) and the UI. Everything here is hidden while
+// `AiAccessStore.available` is false (a build without the `mcp` feature): the places that show
+// these components (the chat header, the chat list menu, the palette, `app.slint`'s layers) test
+// it, so the components themselves never have to.
+//
+// The chip says the level in words and opens a popover with three radio rows, the switches and
+// the link to the overview. The pop-out window has stores of its own, so its chip is the same
+// `AiAccessControl` fed by `ChatWindow` properties. Colours: the flat `Theme` ones, except the
+// chat list menu, which passes its own tokens (`c`).
+import { Theme } from "../tokens/theme.slint";
+import { Tokens } from "../tokens/types.slint";
+import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { Button, ButtonVariant } from "../atoms/button.slint";
+import { Switch, SwitchVariant } from "../atoms/check.slint";
+import { ListView } from "std-widgets.slint";
+import { Fixed } from "../tokens/fixed.slint";
+
+export struct AiAccessRow {
+    id: string,
+    title: string,
+    // "read" or "read_draft"
+    level: string,
+    // "last read by AI: <time>", empty when never read
+    last-read: string,
+}
+
+export global AiAccessStore {
+    // True when this build can serve AI access (the `mcp` cargo feature). Everything hides when
+    // false, which is the default and what a release build without the feature shows.
+    in property <bool> available: false;
+    in property <bool> master-paused;
+    in property <bool> account-paused;
+    in property <bool> calendar-people;
+    // The conversation the chip and popover talk about (the open chat, or the row whose menu
+    // was opened) and its level: "blocked", "read" or "read_draft".
+    in property <string> target-id;
+    in property <string> target-level: "blocked";
+    // Conversations above Blocked, for the overview.
+    in property <[AiAccessRow]> rows;
+    // The text of the copy-only connect dialog, and the label of the account it connects.
+    in property <string> connect-text;
+    in property <string> account-label;
+    // Dialogs: Rust opens the explainer (the first time something is set above Blocked); the UI
+    // opens the overview and the connect dialog through `command`, and closes all three itself.
+    in-out property <bool> overview-open;
+    in-out property <bool> explainer-open;
+    in-out property <bool> connect-open;
+    // Commands to the backend, (name, arg):
+    //   "open"             arg = conversation id: make it the target (the list-row menu)
+    //   "set-level"        arg = "<id>\t<level>", level = blocked | read | read_draft
+    //   "master"           arg = "active" | "paused"
+    //   "account-pause"    arg = "on" | "off"
+    //   "calendar-people"  arg = "on" | "off"
+    //   "block"            arg = conversation id (the overview's one-click Block)
+    //   "block-all"        arg = ""
+    //   "overview"         arg = "": refresh and open the overview
+    //   "connect"          arg = "": refresh and open the connect dialog
+    //   "explainer-confirm" / "explainer-cancel"  arg = "": answer the first-time explainer
+    callback command(string, string);
+}
+
+// The words for a level and for a pause, in one place. The bare word "Off" is left out on purpose
+// (it already means a notification level), and so are "+" and abbreviations.
+global AiAccessWords {
+    // `l` is "blocked", "read" or "read_draft".
+    public pure function level(l: string) -> string {
+        return l == "read_draft" ? @tr("Can read and draft") : l == "read" ? @tr("Can read") : @tr("Blocked");
+    }
+    // What each level means for the chat, in one line.
+    public pure function note(l: string) -> string {
+        return l == "read_draft" ? @tr("The AI can read this chat and draft replies. You approve every send.") : l == "read" ? @tr("The AI can read this chat.") : @tr("The AI cannot see this chat.");
+    }
+    // Why the saved level does not apply right now, or "".
+    public pure function paused(master: bool, account: bool) -> string {
+        return master ? @tr("Paused by master switch") : account ? @tr("Paused for this account") : "";
+    }
+}
+
+// The badge: "AI: Blocked", "AI: Can read" or "AI: Can read and draft". While paused it is greyed,
+// still shows the saved level and says why on a second line. Its accessible label is the same
+// words, so a screen reader announces a change of level or pause as the label changes.
+export component AiAccessChip inherits Rectangle {
+    // "blocked", "read" or "read_draft".
+    in property <string> level: "blocked";
+    // "Paused by master switch", "Paused for this account" or "".
+    in property <string> paused-text;
+    callback clicked();
+    property <string> words: @tr("AI: {}", AiAccessWords.level(root.level));
+    property <bool> paused: root.paused-text != "";
+    width: chip-lay.preferred-width;
+    height: 36px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: chip-touch.has-hover ? Theme.surface-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.paused ? root.words + ". " + root.paused-text : root.words;
+    accessible-action-default => { root.clicked(); }
+    chip-lay := VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        Text {
+            text: root.words;
+            color: root.paused ? Theme.fg-subtle : root.level == "blocked" ? Theme.fg-muted : Theme.accent;
+            font-size: 13px * Theme.font-scale;
+            font-weight: 600;
+            accessible-role: none;
+        }
+        if root.paused: Text {
+            text: root.paused-text;
+            color: Theme.fg-subtle;
+            font-size: 10px * Theme.font-scale;
+            accessible-role: none;
+        }
+    }
+    chip-touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The three radio-like rows (Blocked, Can read, Can read and draft), the checked one is `level`.
+// `compact` is the chat list menu's: no second line, as the menu is narrow.
+export component AiAccessLevels inherits Rectangle {
+    in property <Tokens> c: Theme.content;
+    in property <string> level: "blocked";
+    in property <bool> compact: false;
+    // "blocked", "read" or "read_draft".
+    callback picked(string);
+    height: lev-lay.preferred-height;
+    lev-lay := VerticalLayout {
+        for l in ["blocked", "read", "read_draft"]: MenuItem {
+            c: root.c;
+            variant: root.compact ? MenuItemVariant.list : MenuItemVariant.parity;
+            label: AiAccessWords.level(l);
+            note: root.compact ? "" : AiAccessWords.note(l);
+            checked: root.level == l;
+            clicked => { root.picked(l); }
+        }
+    }
+}
+
+// The popover's content. `full` adds this account's pause switch, the master switch and the
+// link to the overview (the main window); the pop-out window has the three levels only.
+export component AiAccessMenu inherits Rectangle {
+    in property <string> level: "blocked";
+    in property <bool> full: false;
+    callback picked(string);
+    callback done();
+    out property <length> menu-height: menu-lay.preferred-height + 2px;
+    background: Theme.surface;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.border;
+    accessible-role: groupbox;
+    accessible-label: @tr("AI access");
+    menu-lay := VerticalLayout {
+        padding: 4px;
+        AiAccessLevels {
+            level: root.level;
+            picked(l) => {
+                root.picked(l);
+                root.done();
+            }
+        }
+        if root.full: VerticalLayout {
+            Rectangle { height: 1px; background: Theme.border; }
+            // The two switches show the state they are in; a click flips it. The popover stays
+            // open, so the new state shows.
+            MenuItem { variant: MenuItemVariant.parity;
+                label: AiAccessStore.account-paused ? @tr("This account: Paused") : @tr("This account: Active");
+                note: @tr("Pauses AI access for this account. Saved levels stay.");
+                clicked => { AiAccessStore.command("account-pause", AiAccessStore.account-paused ? "off" : "on"); }
+            }
+            MenuItem { variant: MenuItemVariant.parity;
+                label: AiAccessStore.master-paused ? @tr("AI access: Paused") : @tr("AI access: Active");
+                note: @tr("Pauses AI access for every account. Saved levels stay.");
+                clicked => { AiAccessStore.command("master", AiAccessStore.master-paused ? "active" : "paused"); }
+            }
+            MenuItem { variant: MenuItemVariant.parity;
+                label: @tr("Review all AI access…");
+                clicked => {
+                    AiAccessStore.command("overview", "");
+                    root.done();
+                }
+            }
+        }
+    }
+}
+
+// The chip and its popover, fed by properties so a window with stores of its own can use it.
+export component AiAccessControl inherits Rectangle {
+    in property <string> level: "blocked";
+    in property <string> paused-text;
+    // The switches and the overview link in the popover (the main window).
+    in property <bool> full: false;
+    callback picked(string);
+    property <length> popup-width: 420px;
+    width: chip.width;
+    height: chip.height;
+    chip := AiAccessChip {
+        level: root.level;
+        paused-text: root.paused-text;
+        clicked => { ai-popup.show(); }
+    }
+    ai-popup := PopupWindow {
+        // Right edge on the chip's, kept inside the window.
+        x: max(8px - root.absolute-position.x, root.width - root.popup-width);
+        y: root.height + 4px;
+        width: root.popup-width;
+        height: menu.menu-height;
+        close-policy: close-on-click-outside;
+        menu := AiAccessMenu {
+            level: root.level;
+            full: root.full;
+            picked(l) => { root.picked(l); }
+            done => { ai-popup.close(); }
+        }
+    }
+}
+
+// The chip of the open chat's header in the main window: the store's target and pauses; a pick
+// sets the open chat's level.
+export component AiAccessHeaderChip inherits Rectangle {
+    width: ctl.width;
+    height: ctl.height;
+    horizontal-stretch: 0;
+    ctl := AiAccessControl {
+        level: AiAccessStore.target-level;
+        paused-text: AiAccessWords.paused(AiAccessStore.master-paused, AiAccessStore.account-paused);
+        full: true;
+        picked(l) => { AiAccessStore.command("set-level", AiAccessStore.target-id + "\u{9}" + l); }
+    }
+}
+
+// The overview: every conversation above Blocked with a one-click Block, how many there are, this
+// account's pause switch and the Calendar and people switch.
+export component AiOverviewCard inherits Rectangle {
+    width: 520px;
+    height: 480px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Fixed.black-a0;
+    accessible-role: groupbox;
+    accessible-label: @tr("AI access");
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Text { text: @tr("AI access"); color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; accessible-role: text; }
+        Text {
+            text: AiAccessStore.rows.length == 1 ? @tr("1 conversation visible to AI") : @tr("{} conversations visible to AI", "" + AiAccessStore.rows.length);
+            color: Theme.fg-muted;
+            font-size: 13px * Theme.font-scale;
+            accessible-role: text;
+        }
+        Switch {
+            variant: SwitchVariant.row;
+            label: @tr("Pause AI access for this account");
+            checked: AiAccessStore.account-paused;
+            toggled(on) => { AiAccessStore.command("account-pause", on ? "on" : "off"); }
+        }
+        Switch {
+            variant: SwitchVariant.row;
+            label: AiAccessStore.calendar-people ? @tr("Calendar and people: Allowed") : @tr("Calendar and people: Blocked");
+            checked: AiAccessStore.calendar-people;
+            toggled(on) => { AiAccessStore.command("calendar-people", on ? "on" : "off"); }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 4px;
+            background: Theme.panel;
+            clip: true;
+            ListView {
+                for r in AiAccessStore.rows: Rectangle {
+                    height: 52px;
+                    accessible-role: list-item;
+                    accessible-label: r.last-read != "" ? r.title + ", " + AiAccessWords.level(r.level) + ", " + r.last-read : r.title + ", " + AiAccessWords.level(r.level);
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text { text: r.title; color: Theme.fg; font-size: 13px * Theme.font-scale; overflow: elide; accessible-role: none; }
+                            Text {
+                                text: r.last-read != "" ? AiAccessWords.level(r.level) + ", " + r.last-read : AiAccessWords.level(r.level);
+                                color: Theme.fg-subtle;
+                                font-size: 11px * Theme.font-scale;
+                                overflow: elide;
+                                accessible-role: none;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 64px;
+                                height: 28px;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                background: block-touch.has-hover ? Theme.surface-hover : transparent;
+                                accessible-role: button;
+                                accessible-label: @tr("Block {}", r.title);
+                                accessible-action-default => { AiAccessStore.command("block", r.id); }
+                                Text { text: @tr("Block"); color: Theme.fg; font-size: 12px * Theme.font-scale; horizontal-alignment: center; vertical-alignment: center; accessible-role: none; }
+                                block-touch := TouchArea { mouse-cursor: pointer; clicked => { AiAccessStore.command("block", r.id); } }
+                            }
+                        }
+                    }
+                }
+            }
+            if AiAccessStore.rows.length == 0: Text {
+                text: @tr("No conversation is visible to the AI.");
+                color: Theme.fg-subtle;
+                font-size: 13px * Theme.font-scale;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: text;
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            Button { variant: ButtonVariant.dialog; label: @tr("Block all"); enabled: AiAccessStore.rows.length > 0; clicked => { AiAccessStore.command("block-all", ""); } }
+            Button { variant: ButtonVariant.dialog; label: @tr("Connect an AI app…"); clicked => { AiAccessStore.command("connect", ""); } }
+            Rectangle { horizontal-stretch: 1; }
+            Button { variant: ButtonVariant.dialog; label: @tr("Close"); primary: true; clicked => { AiAccessStore.overview-open = false; } }
+        }
+    }
+}
+
+// The first time something is set above Blocked: where the text goes. Both buttons close it; the
+// backend learns which one was pressed.
+export component AiExplainerCard inherits Rectangle {
+    width: 440px;
+    height: 330px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Fixed.black-a0;
+    accessible-role: groupbox;
+    accessible-label: @tr("Let an AI app read this chat?");
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Text { text: @tr("Let an AI app read this chat?"); color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; wrap: word-wrap; accessible-role: text; }
+        Text { text: @tr("What the AI app reads goes to its AI provider (Anthropic for Claude)."); color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; }
+        Text { text: @tr("A work account's policy may forbid this."); color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; }
+        Text { text: @tr("Content that is sent cannot be recalled."); color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; accessible-role: text; }
+        Text { text: @tr("Turning access off stops new reads. It does not remove what the AI app already read."); color: Theme.fg; font-size: 13px * Theme.font-scale; wrap: word-wrap; vertical-stretch: 1; accessible-role: text; }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: end;
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Cancel");
+                clicked => {
+                    AiAccessStore.explainer-open = false;
+                    AiAccessStore.command("explainer-cancel", "");
+                }
+            }
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Continue");
+                primary: true;
+                clicked => {
+                    AiAccessStore.explainer-open = false;
+                    AiAccessStore.command("explainer-confirm", "");
+                }
+            }
+        }
+    }
+}
+
+// The connect dialog: the commands and rules to copy into the AI app. It changes no file.
+export component AiConnectCard inherits Rectangle {
+    width: 600px;
+    height: 400px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Fixed.black-a0;
+    accessible-role: groupbox;
+    accessible-label: @tr("Connect an AI app");
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Text { text: @tr("Connect an AI app"); color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; accessible-role: text; }
+        Text {
+            text: AiAccessStore.account-label != "" ? @tr("For the account {}. IronTeams does not change any file: copy these into your AI app yourself.", AiAccessStore.account-label) : @tr("IronTeams does not change any file: copy these into your AI app yourself.");
+            color: Theme.fg-muted;
+            font-size: 13px * Theme.font-scale;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 4px;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.border;
+            clip: true;
+            Flickable {
+                content-height: connect-input.preferred-height + 16px;
+                connect-input := TextInput {
+                    x: 8px;
+                    y: 8px;
+                    width: parent.width - 16px;
+                    text: AiAccessStore.connect-text;
+                    read-only: true;
+                    wrap: word-wrap;
+                    color: Theme.fg;
+                    font-size: 12px * Theme.font-scale;
+                    font-family: Theme.font-code;
+                    accessible-role: text-input;
+                    accessible-label: @tr("Connect commands");
+                    accessible-value: self.text;
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: end;
+            // Select all and copy, as an input's own Ctrl+A and Ctrl+C would.
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Copy");
+                clicked => {
+                    connect-input.select-all();
+                    connect-input.copy();
+                }
+            }
+            Button { variant: ButtonVariant.dialog; label: @tr("Close"); primary: true; clicked => { AiAccessStore.connect-open = false; } }
+        }
+    }
+}

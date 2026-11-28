@@ -18,6 +18,7 @@ Files:
 - `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state. Also the Unreads view's keyboard helpers (`unreads_step`, `unreads_index`, wired as pure FindStore callbacks).
 - `gifs.rs`: Fills GifStore items and status from GifRow results.
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
+- `mcp_access.rs`: `UiHandle::ai_access` fills `AiAccessStore` (switches, target, overview rows, connect text) from `AiAccessData`; `ai_access_explainer` opens the first-time dialog; `install` wires the store's `command` to `Cmd::McpAccess` and sets `available` only with the `mcp` cargo feature (without it every AI access control stays hidden).
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
 - `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
 - `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs`, `split.rs` and the chat lists in `ui.rs`.
@@ -98,6 +99,8 @@ Files:
 - `[people.rs:UiHandle::receipts_on]` pub fn(&self,bool)
 - `[call.rs:UiHandle::video_fx]` pub fn video_fx(&self, FxView) [feature calls] effects panel choices/prefs
 - `[find.rs:UiHandle::search_results]` pub fn(&self, rows:Vec<HitData>, searching, searched, more:bool)
+- `[ui/organisms/ai_access.slint:AiAccessStore]` the contract of AI access (docs/designs/mcp-access-control.md): `available` (false by default: every AI access control, dialog and palette entry is hidden), `master-paused`, `account-paused`, `calendar-people`, `target-id`/`target-level` (the open chat, or the list row whose menu opened after command "open"), `rows`, `connect-text`, `account-label`, in-out `overview-open`/`explainer-open`/`connect-open`, and `command(name, arg)` with open, set-level (`<id>\t<level>`), master, account-pause, calendar-people, block, block-all, overview, connect, explainer-confirm, explainer-cancel. Rust fills it (`mcp_access.rs`) only in a build with the `mcp` feature
+- `[popout.rs:ChatWindow ai-*]` the pop-out has stores of its own, so Rust copies the main window's AI access into the window: `ai-available` (= AiAccessStore.available and the chat is not a channel), `ai-level` (the pop-out chat's level), `ai-paused-text` (empty, "Paused by master switch" or "Paused for this account"); `ai-set-level(level)` is forwarded as AiAccessStore command "set-level" with `<conv id>\t<level>`
 - `[popout.rs:UiHandle::popout_open]` pub fn(&self,conv:String,title:String); creates/reuses the pop-out window; applies the last look (thread-local LOOK) through settings::apply_look and copies SettingsStore.wheel_speed from the main window
 - `[split.rs:UiHandle::split_open]` pub fn(&self,conv:String,title:String); `[split.rs:UiHandle::split_messages]` pub fn(&self,msgs:Vec<MsgData>); `[split.rs:UiHandle::split_close]` pub fn(&self)
 
@@ -143,6 +146,8 @@ Files:
 - `[call.rs:shared]` someone else's share = !sharing && (presenter set || has_content); view switches to content on start, back to gallery on end only if mode was content
 - `[find.rs:chat_find]` closing find also clears chat_find_query; index is 1-based, 0 for none
 - `[topbar.rs:Ctl/pending]` commands arriving during a borrowed command are dropped (try_borrow_mut); FindStore command deferred via pending until borrow released
+
+- `[ui/organisms/ai_access.slint]` AiAccessChip, AiAccessMenu and the overview, explainer and connect dialogs show only behind `AiAccessStore.available` (header, chat list menu "AI access…", the three palette entries, the layers in app.slint); a channel has no chip until slice 6; the chat list menu sets a row's level by its own id, not by `target-id`
 
 ## Side Effects
 - `[activity.rs:UiHandle::badges]` calls tray_wiring::unread_changed with unread_total (tray update)

@@ -168,6 +168,12 @@ message text, titles or previews. If a line cannot be written the call is refuse
 also adds a line with the kind of write, the target, the draft id and the outcome (`sent`, `failed`,
 `expired`, `unknown_draft`, `refused`).
 
+The desktop app reads this file to show when the AI last read a conversation (only calls that
+returned its content count; refused calls do not). The diagnostic bundle has an `mcp.txt` entry:
+the state of the switches, the generation of the settings, how many conversations are enabled at
+each level, and the last lines of this log. It holds no conversation id, title or user id, and the
+log lines in it hold only the short hashes.
+
 ## The sign-in
 
 The server never writes the sign-in token back to the keyring. It reads it at start and keeps any
@@ -179,6 +185,20 @@ tools also refuse when the account's settings no longer belong to the signed-in 
 `ironteams-cli mcp` (with `allow`, `deny`, `status` and `setup`) no longer exists; it fails like any
 unknown command. Update your AI app's setup with `ironteams --mcp-setup --account <label>`. An
 account you allowed before is not carried over: every conversation is Blocked until you choose.
+
+What you see if you had allowed an account in the old `mcp.json`:
+
+- On first start the app moves the account names from `allowed_accounts` to
+  `legacy_allowed_accounts` in the same file and empties `allowed_accounts`. This happens once and
+  enables nothing. An old `ironteams-cli` that still reads the file finds no allowed account and
+  refuses to start, so going back to it fails closed. Going back to an older app also loses the
+  new settings.
+- The server's start-up message on stderr (in your AI app's server log) says how many
+  conversations are enabled, which is 0 at first.
+- Until you enable a conversation for that account, `list_chats`, `catch_up` and `search_messages`
+  say "AI access is active, but no conversation is enabled." above their closing line, so neither
+  you nor the AI mistakes an empty list for a fault. The text goes away when one conversation is
+  enabled.
 
 ## Not in this version
 

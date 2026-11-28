@@ -18,7 +18,7 @@ use crate::policy::{
     footer, gate_of,
 };
 use crate::server::drafts::Action;
-use crate::state::{PolicyReader, file_path};
+use crate::state::{PolicyReader, file_path, legacy_allowed_accounts};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use calendar::{Event, EventDetail, FindTimes, FoundTimes};
@@ -47,6 +47,10 @@ const PER_THREAD_MAX: usize = 10;
 
 /// Returned instead of running a call whose access-log line could not be written.
 pub const REFUSAL_LOG: &str = "The access log could not be written, so this call was not run. Ask the user to check the IronTeams data folder.";
+
+/// Said by the list tools, before their footer, when the account had an entry in the old allow
+/// list and has no enabled conversation yet: the user's upgrade enabled nothing.
+pub const NOTHING_ENABLED: &str = "AI access is active, but no conversation is enabled.";
 
 /// What went wrong at Teams, as little as the model may know. Raw error text (which can name a
 /// conversation or carry a response body) never leaves the process.
@@ -303,6 +307,8 @@ pub struct Gateway {
     self_mri: String,
     display_name: String,
     index: tokio::sync::Mutex<ChatIndex>,
+    /// The account had an entry in the old allow list (see [`Gateway::nothing_enabled_note`]).
+    legacy_notice: bool,
 }
 
 /// The chat a conversation id names, if it names one (not a channel, not an unknown kind).
@@ -337,7 +343,14 @@ impl Gateway {
             self_mri,
             display_name,
             index: tokio::sync::Mutex::new(ChatIndex::default()),
+            legacy_notice: false,
         }
+    }
+
+    /// Turns on [`Gateway::nothing_enabled_note`]: for an account that the old allow list named.
+    pub fn with_legacy_notice(mut self, on: bool) -> Gateway {
+        self.legacy_notice = on;
+        self
     }
 
     /// Signs in with the saved session of `label` and builds the gateway. The app's own config is
@@ -359,6 +372,9 @@ impl Gateway {
         };
         let scope = ScopeId::from_identity(label, &cfg.tenant, &self_mri)
             .with_context(|| format!("account {label:?} has no organization user id"))?;
+        let had_legacy_entry = legacy_allowed_accounts(&paths.config_dir)
+            .iter()
+            .any(|l| l == label);
         let gw = Gateway::new(
             Arc::new(Live { client }),
             PolicyReader::new(file_path(&paths.config_dir)),
@@ -366,7 +382,8 @@ impl Gateway {
             Audit::new(&paths.data_dir, label, server_version),
             self_mri,
             cfg.display_name.clone().unwrap_or_default(),
-        );
+        )
+        .with_legacy_notice(had_legacy_entry);
         // Read the account's conversation list once at start. A failure is not fatal: the
         // footer count is read again on first use.
         let _ = gw.refresh_index(true).await;
@@ -393,6 +410,20 @@ impl Gateway {
             return None;
         }
         Some(p.scope(&self.scope).map_or(0, |s| s.conversations.len()))
+    }
+
+    /// The sentence the list tools put before their footer: `Some` only for an account that had
+    /// an entry in the old allow list, while the settings can be read and the account has no
+    /// enabled conversation (no scope, or an empty one).
+    pub fn nothing_enabled_note(&self) -> Option<&'static str> {
+        if !self.legacy_notice {
+            return None;
+        }
+        let p = self.reader.snapshot();
+        (p.unreadable_reason().is_none()
+            && p.scope(&self.scope)
+                .is_none_or(|s| s.conversations.is_empty()))
+        .then_some(NOTHING_ENABLED)
     }
 
     // ---- logging ----

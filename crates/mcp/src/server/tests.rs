@@ -10,6 +10,7 @@ use super::write::{
     DraftId, DraftMarkRead, DraftMeetingResponse, DraftMessage, DraftPresence, DraftReaction,
     DraftStatusNote,
 };
+use crate::gateway::NOTHING_ENABLED;
 use crate::policy::{
     Gate, Level, Master, Need, REFUSAL, REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE,
     REFUSAL_MASTER_PAUSED, REFUSAL_SELF_STATUS, REFUSAL_UNREADABLE, ResourceKind, TOOL_GATES,
@@ -600,6 +601,39 @@ async fn the_footer_is_the_same_for_every_list_tool() {
         let out = call(&s, tool, ALLOWED).await.unwrap();
         assert!(out.ends_with(&footer(2, false)), "{tool}:\n{out}");
     }
+}
+
+#[tokio::test]
+async fn the_list_tools_say_nothing_is_enabled_before_the_footer_for_a_legacy_account() {
+    let h = harness_with_legacy_notice();
+    let s = h.server();
+    for tool in ["list_chats", "catch_up", "search_messages"] {
+        let out = call(&s, tool, ALLOWED).await.unwrap();
+        let tail = format!("{NOTHING_ENABLED}\n\n{}", footer(3, false));
+        assert!(out.ends_with(&tail), "{tool}:\n{out}");
+        assert_eq!(out.matches(NOTHING_ENABLED).count(), 1, "{tool}");
+        assert_no_blocked_content(&out, tool);
+    }
+}
+
+#[tokio::test]
+async fn the_note_goes_away_once_a_conversation_is_enabled_or_without_a_legacy_entry() {
+    let h = harness_with_legacy_notice();
+    h.allow(ALLOWED, Level::Read);
+    let plain = harness();
+    for (name, h) in [("enabled", &h), ("no legacy entry", &plain)] {
+        let s = h.server();
+        for tool in ["list_chats", "catch_up", "search_messages"] {
+            let out = call(&s, tool, ALLOWED).await.unwrap();
+            assert!(!out.contains(NOTHING_ENABLED), "{name} {tool}:\n{out}");
+        }
+    }
+    let out = call(&h.server(), "read_chat", BLOCKED).await;
+    assert_eq!(
+        out,
+        Err(REFUSAL.to_string()),
+        "a refusal stays the one text"
+    );
 }
 
 #[tokio::test]

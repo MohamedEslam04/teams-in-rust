@@ -171,9 +171,16 @@ impl SettingsEnv {
                     let _ = slint::quit_event_loop();
                 }),
                 report_problem: Arc::new(move || {
-                    diag::report_from_args(&report_paths, env!("CARGO_PKG_VERSION"), &[])
-                        .map(|p| p.display().to_string())
-                        .map_err(|e| e.to_string())
+                    let mcp_section =
+                        mcp::bundle_text(&report_paths.config_dir, &report_paths.data_dir, 50);
+                    diag::report_from_args_with(
+                        &report_paths,
+                        env!("CARGO_PKG_VERSION"),
+                        &[],
+                        &[("mcp.txt", mcp_section)],
+                    )
+                    .map(|p| p.display().to_string())
+                    .map_err(|e| e.to_string())
                 }),
                 enumerate: Arc::new(|| {
                     let mut l = DeviceLists::default();
