@@ -216,7 +216,20 @@ write it) and callbacks:
 - `organisms/chat_overlays.slint`: the message menu, Seen by, reaction picker, Forward,
   participants and person-card layers.
 - `organisms/app_dialogs.slint`: the small dialogs over a scrim (leave, remove history, add a
-  tab, leave a channel, reminders, section name, the OneDrive picker).
+  tab, leave a channel, reminders, section name, the OneDrive picker, and AI access: the
+  overview, the first-time explainer and the connect dialog).
+- `organisms/ai_access.slint`: AI access (docs/designs/mcp-access-control.md): `AiAccessStore`
+  (the contract with the backend), `AiAccessChip` (the header badge "AI: Blocked / Can read / Can
+  read and draft", greyed with its reason when paused), `AiAccessLevels` (the three radio rows),
+  `AiAccessMenu` (the popover), `AiAccessControl` (chip and popover, fed by properties so the
+  pop-out window can use it), `AiAccessHeaderChip` (the main window's, fed by the store) and the
+  `AiOverviewCard`, `AiExplainerCard` and `AiConnectCard`. **Everything is hidden when
+  `AiAccessStore.available` is false** (the default, and what a build without the `mcp` feature
+  shows): the chip in `ChatPaneHeader`, "AI access…" in the chat list's `ItemMenu`, the three
+  palette entries (`hidden: !AiAccessStore.available`) and the three layers in `app.slint` each
+  test it; a new place that shows AI access must too. The pop-out window (`ChatWindow`) has
+  stores of its own: it takes `ai-available`, `ai-level` and `ai-paused-text` and reports
+  `ai-set-level(string)`, which Rust forwards.
 
 `Composer` keeps the text box, its keys and the popups' state; `ComposerToolbar`,
 `ComposerAttachments`, `ImportanceTag` and `organisms/composer_popups.slint` (emoji suggestions,

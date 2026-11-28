@@ -6,6 +6,7 @@ import { Theme } from "../tokens/theme.slint";
 import { Msg } from "../tokens/types.slint";
 import { MessageRow } from "message_row.slint";
 import { IconButton } from "../atoms/widgets.slint";
+import { AiAccessControl } from "ai_access.slint";
 import { WheelGlide } from "../tokens/motion.slint";
 
 export component ChatColumn inherits Rectangle {
@@ -22,11 +23,18 @@ export component ChatColumn inherits Rectangle {
     in property <bool> active: false;
     // The box takes the keyboard focus when the column shows.
     in property <bool> take-focus: true;
+    // The AI access chip: the pop-out window has no store of its own to read, so the owner says
+    // whether the build has it, the level ("blocked", "read" or "read_draft") and why it is paused.
+    in property <bool> ai-available: false;
+    in property <string> ai-level: "blocked";
+    in property <string> ai-paused-text;
     out property <bool> at-newest: pop-list.content-y <= pop-list.visible-height - pop-list.content-height + 4px;
     callback send(string);
     callback react(string, string);
     callback open-url(string);
     callback close();
+    // A level was picked in the chip's popover.
+    callback ai-set-level(string);
     // Its header or box was clicked (the box took the focus).
     callback activated();
 
@@ -64,6 +72,12 @@ export component ChatColumn inherits Rectangle {
                     vertical-alignment: center;
                     overflow: elide;
                     accessible-role: text;
+                }
+                if root.ai-available: AiAccessControl {
+                    y: (parent.height - self.height) / 2;
+                    level: root.ai-level;
+                    paused-text: root.ai-paused-text;
+                    picked(l) => { root.ai-set-level(l); }
                 }
                 if root.closable: IconButton {
                     y: 14px;
