@@ -7,6 +7,7 @@ fn id() -> ScopeId {
 const CHAT: &str = "19:abc@thread.v2";
 const OTHER_CHAT: &str = "19:def@thread.v2";
 const MEETING: &str = "19:meeting_abc@thread.v2";
+const CHANNEL: &str = "19:c@thread.tacv2";
 
 /// A policy where the scope `id()` exists and `f` has set it up.
 fn policy(f: impl FnOnce(&mut Scope)) -> Policy {
@@ -27,7 +28,7 @@ fn meeting(key: &str) -> Resource {
 fn nothing_is_allowed_without_an_entry() {
     let resources = [
         chat(CHAT),
-        Resource::Channel("19:c@thread.tacv2".into()),
+        Resource::Channel(CHANNEL.into()),
         meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,
@@ -135,6 +136,7 @@ fn the_master_switch_pauses_every_resource_and_keeps_the_settings() {
     p.master = Master::Paused;
     for r in [
         chat(CHAT),
+        Resource::Channel(CHANNEL.into()),
         meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,
@@ -205,15 +207,81 @@ fn a_scope_of_another_user_grants_nothing() {
 }
 
 #[test]
-fn channels_stay_blocked_until_the_switch_is_flipped() {
-    // A file entry for a channel key does not open it (slices 1 to 5).
-    let key = "19:c@thread.tacv2";
-    let p = policy(|s| {
-        s.conversations.insert(key.into(), Level::ReadDraft);
+fn a_channel_is_read_only_whatever_level_the_file_holds() {
+    // The channel truth table: (the channel's entry, the need) -> allowed. Channels can be read
+    // and never drafted in, so a `read_draft` entry (only a hand-edited file has one) reads only.
+    use Need::{Draft, Read};
+    let table = [
+        (None, Read, false),
+        (None, Draft, false),
+        (Some(Level::Read), Read, true),
+        (Some(Level::Read), Draft, false),
+        (Some(Level::ReadDraft), Read, true),
+        (Some(Level::ReadDraft), Draft, false),
+    ];
+    for (level, need, allowed) in table {
+        let p = policy(|s| {
+            if let Some(l) = level {
+                s.conversations.insert(CHANNEL.into(), l);
+            }
+        });
+        let want = if allowed {
+            Decision::Allowed
+        } else {
+            Decision::Blocked
+        };
+        assert_eq!(
+            decide(&p, &id(), &Resource::Channel(CHANNEL.into()), need),
+            want,
+            "level {level:?}, need {need:?}"
+        );
+    }
+}
+
+#[test]
+fn a_channel_key_is_read_only_even_named_as_a_chat() {
+    // Whatever kind of resource a caller builds, a channel's key never allows drafting.
+    for key in [CHANNEL, "19:c@thread.skype"] {
+        let p = policy(|s| {
+            s.calendar_people = true;
+            s.conversations.insert(key.into(), Level::ReadDraft);
+        });
+        assert_eq!(
+            decide(&p, &id(), &chat(key), Need::Read),
+            Decision::Allowed,
+            "{key}"
+        );
+        assert_eq!(
+            decide(&p, &id(), &chat(key), Need::Draft),
+            Decision::Blocked,
+            "{key}"
+        );
+        assert_eq!(
+            decide(&p, &id(), &meeting(key), Need::Draft),
+            Decision::Blocked,
+            "{key}"
+        );
+    }
+}
+
+#[test]
+fn a_channel_grant_covers_that_channel_only_and_the_switches_come_first() {
+    let mut p = policy(|s| {
+        s.conversations.insert(CHANNEL.into(), Level::Read);
     });
+    let other = Resource::Channel("19:other@thread.tacv2".into());
+    assert_eq!(decide(&p, &id(), &other, Need::Read), Decision::Blocked);
+    let chan = Resource::Channel(CHANNEL.into());
+    p.scope_entry(&id()).paused = true;
     assert_eq!(
-        decide(&p, &id(), &Resource::Channel(key.into()), Need::Read),
-        Decision::Blocked
+        decide(&p, &id(), &chan, Need::Read),
+        Decision::AccountPaused
+    );
+    p.master = Master::Paused;
+    assert_eq!(decide(&p, &id(), &chan, Need::Read), Decision::MasterPaused);
+    assert_eq!(
+        decide(&Policy::deny_all("x"), &id(), &chan, Need::Read),
+        Decision::SettingsUnreadable
     );
 }
 
@@ -338,6 +406,7 @@ fn an_unreadable_policy_blocks_everything_and_says_so() {
     assert_eq!(p.unreadable_reason(), Some("corrupt"));
     for r in [
         chat(CHAT),
+        Resource::Channel(CHANNEL.into()),
         meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,

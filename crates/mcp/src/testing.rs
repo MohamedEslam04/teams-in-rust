@@ -22,7 +22,30 @@ use teams_proto::search::{MessageHit, MessagePage, SearchFilters};
 pub const ALLOWED: &str = "19:allowed@thread.v2";
 pub const BLOCKED: &str = "19:blocked@thread.v2";
 pub const NOTES: &str = "48:notes";
+/// A channel the tests may allow, and one they always leave blocked.
 pub const CHANNEL: &str = "19:chan@thread.tacv2";
+pub const CHANNEL_BLOCKED: &str = "19:hidden@thread.tacv2";
+/// The root message of a thread in each channel.
+pub const ROOT: &str = "1700000000000";
+pub const BLOCKED_ROOT: &str = "1700000000001";
+pub const CHANNEL_NAME: &str = "General";
+pub const BLOCKED_CHANNEL_NAME: &str = "SECRET mergers";
+pub const BLOCKED_CHANNEL_TEXT: &str = "acquisition of Contoso closes Friday";
+pub const BLOCKED_CHANNEL_SENDER: &str = "Eve Insider";
+/// Everything the blocked channel holds, its id included.
+pub const CHANNEL_SECRETS: [&str; 6] = [
+    CHANNEL_BLOCKED,
+    "hidden@thread",
+    BLOCKED_CHANNEL_NAME,
+    BLOCKED_CHANNEL_TEXT,
+    BLOCKED_CHANNEL_SENDER,
+    "Contoso",
+];
+
+/// `<channel>;messageid=<root>`: the id of a thread in a channel.
+pub fn thread_of(channel: &str, root: &str) -> String {
+    format!("{channel};messageid={root}")
+}
 
 /// Meeting chats, and the calendar events whose join link names them.
 pub const MEETING_ALLOWED: &str = "19:meeting_allowed@thread.v2";
@@ -212,24 +235,30 @@ fn fake_event(id: &str) -> Option<Value> {
     })
 }
 
-fn hit(conv: &str, text: &str, at: i64) -> MessageHit {
+/// A search hit in `conv`; `root` is the thread root of a channel reply (empty otherwise).
+fn hit(conv: &str, root: &str, text: &str, at: i64) -> MessageHit {
+    let (sender, topic) = match conv {
+        BLOCKED => (BLOCKED_SENDER, BLOCKED_TITLE),
+        CHANNEL_BLOCKED => (BLOCKED_CHANNEL_SENDER, BLOCKED_CHANNEL_NAME),
+        CHANNEL => ("Sam Example", CHANNEL_NAME),
+        _ => ("Sam Example", ALLOWED_TITLE),
+    };
+    let channel = conv == CHANNEL || conv == CHANNEL_BLOCKED;
     MessageHit {
         conversation_id: conv.into(),
         message_id: format!("{at}"),
-        sender_name: if conv == BLOCKED {
-            BLOCKED_SENDER.into()
-        } else {
-            "Sam Example".into()
-        },
+        root_id: root.into(),
+        sender_name: sender.into(),
         sender_mri: OTHER.into(),
         time_ms: at,
         snippet: text.into(),
-        topic: if conv == BLOCKED {
-            BLOCKED_TITLE.into()
+        topic: topic.into(),
+        team_name: if channel {
+            "Team".into()
         } else {
-            ALLOWED_TITLE.into()
+            String::new()
         },
-        thread_type: "chat".into(),
+        thread_type: if channel { "topic" } else { "chat" }.into(),
         ..Default::default()
     }
 }
@@ -256,9 +285,16 @@ impl Backend for Fake {
             conv(
                 CHANNEL,
                 ConversationKind::Channel,
-                "General",
+                CHANNEL_NAME,
                 "channel news",
                 1_000,
+            ),
+            conv(
+                CHANNEL_BLOCKED,
+                ConversationKind::Channel,
+                BLOCKED_CHANNEL_NAME,
+                BLOCKED_CHANNEL_TEXT,
+                1_500,
             ),
         ];
         if !self
@@ -308,10 +344,17 @@ impl Backend for Fake {
                 now,
             ),
             mention(
-                "19:chan@thread.tacv2;messageid=9",
+                &thread_of(CHANNEL, ROOT),
                 "Team > General",
                 "channel mention text",
                 "Chan Nel",
+                now,
+            ),
+            mention(
+                &thread_of(CHANNEL_BLOCKED, BLOCKED_ROOT),
+                BLOCKED_CHANNEL_NAME,
+                BLOCKED_CHANNEL_TEXT,
+                BLOCKED_CHANNEL_SENDER,
                 now,
             ),
             mention("48:calllogs", "calls", "call log text", "Cal Ler", now),
@@ -334,9 +377,12 @@ impl Backend for Fake {
             total: TOTAL,
             more: self.search_more.load(std::sync::atomic::Ordering::SeqCst),
             hits: vec![
-                hit(BLOCKED, BLOCKED_TEXT, 9_000),
-                hit(ALLOWED, "lunch at noon", 8_000),
-                hit(CHANNEL, "channel text", 7_000),
+                hit(BLOCKED, "", BLOCKED_TEXT, 9_000),
+                hit(ALLOWED, "", "lunch at noon", 8_000),
+                hit(CHANNEL, "", "channel post text", 7_000),
+                hit(CHANNEL, ROOT, "channel reply text", 6_500),
+                hit(CHANNEL_BLOCKED, "", BLOCKED_CHANNEL_TEXT, 6_000),
+                hit(CHANNEL_BLOCKED, BLOCKED_ROOT, BLOCKED_CHANNEL_TEXT, 5_500),
             ],
         })
     }

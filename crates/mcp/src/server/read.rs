@@ -18,17 +18,18 @@ const DAY_MS: i64 = 24 * HOUR_MS;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListChats {
-    /// Only chats with messages you have not read.
+    /// Only chats and channels with messages you have not read.
     #[serde(default)]
     pub unread_only: bool,
-    /// How many chats, newest activity first (default 30, at most 100).
+    /// How many, newest activity first (default 30, at most 100).
     #[serde(default)]
     pub limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadChat {
-    /// The chat id, from list_chats or catch_up.
+    /// The chat or channel id, from list_chats, catch_up or search_messages. A channel thread,
+    /// `<channel id>;messageid=<root message id>`, reads that thread.
     pub chat_id: String,
     /// How many messages (default 30, at most 200).
     #[serde(default)]
@@ -41,7 +42,8 @@ pub struct ReadChat {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CatchUp {
-    /// How far back to look for unread chats and mentions, in hours (default 24, at most 336).
+    /// How far back to look for unread chats and channels and for mentions, in hours (default 24,
+    /// at most 336).
     #[serde(default)]
     pub since_hours: Option<u32>,
 }
@@ -50,7 +52,7 @@ pub struct CatchUp {
 pub struct SearchMessages {
     /// What to look for (words, as in the Teams search box).
     pub query: String,
-    /// Only in this chat.
+    /// Only in this chat or channel (a channel thread id searches its channel).
     #[serde(default)]
     pub chat_id: Option<String>,
     /// Only messages sent by this person (their id, `8:orgid:…`, from find_people or read_chat).
@@ -132,7 +134,7 @@ fn key_of(id: &str) -> String {
 #[tool_router(router = read_router, vis = "pub(super)")]
 impl Server {
     #[tool(
-        description = "List the Teams chats the user has shared with AI (1:1, group and meeting chats and the user's notes), newest activity first. One line per chat: id | kind | title | read state | last activity (UTC) | last message. Ends with how many other conversations are not shared.",
+        description = "List the Teams chats and channels the user has shared with AI (1:1, group and meeting chats, the user's notes, and team channels, which are read-only), newest activity first. One line per conversation: id | kind | title | read state | last activity (UTC) | last message. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn list_chats(
@@ -165,7 +167,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Read the messages of one chat the user has shared with AI, oldest first. Each line: [time UTC] sender (message id, sender id): text. Use before_ms to page back.",
+        description = "Read the messages of one chat or channel the user has shared with AI, or of one thread of such a channel (`<channel id>;messageid=<root message id>`), oldest first. Each line: [time UTC] sender (message id, sender id): text. Use before_ms to page back.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn read_chat(
@@ -192,7 +194,7 @@ impl Server {
     }
 
     #[tool(
-        description = "What the user missed in the chats shared with AI: unread chats with their unread messages, and the messages that mention the user. Use it for 'what did I miss' or a morning summary. Ends with how many other conversations are not shared.",
+        description = "What the user missed in the chats and channels shared with AI: unread ones with their unread messages, and the messages that mention the user. Use it for 'what did I miss' or a morning summary. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn catch_up(
@@ -209,12 +211,15 @@ impl Server {
         let mut ids: Vec<String> = Vec::new();
         for c in convs.iter().take(10) {
             let key = key_of(&c.id);
-            let Some(permit) = self.gw.call_permit(&call, Resource::Chat(key.clone())) else {
+            let Ok(resource) = Resource::from_conversation_id(&c.id) else {
+                continue;
+            };
+            let Some(permit) = self.gw.call_permit(&call, resource.clone()) else {
                 continue;
             };
             let fetched = self.gw.messages(&permit, None, 30).await;
-            // Checked again right before the chat's content goes into the output.
-            if !self.gw.allows_now(&Resource::Chat(key.clone()), Need::Read) {
+            // Checked again right before the conversation's content goes into the output.
+            if !self.gw.allows_now(&resource, Need::Read) {
                 continue;
             }
             out.push(String::new());
@@ -235,7 +240,7 @@ impl Server {
             }
         }
         if convs.len() > 10 {
-            out.push("\n(more unread chats exist: list_chats with unread_only)".into());
+            out.push("\n(more unread conversations exist: list_chats with unread_only)".into());
         }
         let mentions = self.gw.mentions(&call, 30).await?;
         let mentions: Vec<_> = mentions
@@ -243,15 +248,15 @@ impl Server {
             .filter(|m| m.timestamp_ms >= since)
             .collect();
         out.push(String::new());
-        out.push(format!("Mentions in chats: {}", mentions.len()));
+        out.push(format!("Mentions: {}", mentions.len()));
         for m in mentions {
             ids.push(key_of(&m.source_thread_id));
             out.push(format!(
-                "[{}] {} in {} ({}, chat {}, message {}): {}",
+                "[{}] {} in {} ({}, conversation {}, message {}): {}",
                 iso_minute(m.timestamp_ms),
                 m.actor_name,
                 if m.thread_topic.is_empty() {
-                    "a chat"
+                    "a conversation"
                 } else {
                     m.thread_topic.as_str()
                 },
@@ -274,7 +279,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Search the chats the user has shared with AI (channels are left out). One line per hit: [time UTC] sender (chat id, message id): matching text. Ends with how many other conversations are not shared.",
+        description = "Search the chats and channels the user has shared with AI, channel posts and thread replies included. One line per hit: [time UTC] sender in title (conversation id, message id): matching text. A channel reply names its thread (`<channel id>;messageid=<root message id>`), which read_chat reads. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn search_messages(
@@ -286,7 +291,7 @@ impl Server {
             self.gw.finish(call, &[])?;
             return Err("empty query".into());
         }
-        // A chat filter is checked before any network call, like read_chat.
+        // A chat or channel filter is checked before any network call, like read_chat.
         let in_chat = match &p.chat_id {
             Some(c) => Some(self.gw.call_conversation(&call, c)?),
             None => None,
@@ -307,16 +312,22 @@ impl Server {
         let lines: Vec<String> = hits
             .iter()
             .map(|h| {
+                // A channel reply names its thread, so read_chat can read the whole thread.
+                let at = if h.root_id.is_empty() {
+                    h.conversation_id.clone()
+                } else {
+                    format!("{};messageid={}", h.conversation_id, h.root_id)
+                };
                 format!(
-                    "[{}] {} in {} (chat {}, message {}): {}",
+                    "[{}] {} in {} (conversation {}, message {}): {}",
                     iso_minute(h.time_ms),
                     h.sender_name,
                     if h.topic.is_empty() {
-                        "a chat"
+                        "a conversation"
                     } else {
                         h.topic.as_str()
                     },
-                    h.conversation_id,
+                    at,
                     h.message_id,
                     clip(&h.snippet.replace('\n', " "), 400)
                 )
@@ -330,7 +341,7 @@ impl Server {
             &self.gw.footer(&call).await?,
         );
         self.gw.finish(call, &ids)?;
-        Ok(with_footer(&lines, "No matching chat messages.", &footer))
+        Ok(with_footer(&lines, "No matching messages.", &footer))
     }
 
     #[tool(

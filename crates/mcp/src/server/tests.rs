@@ -10,6 +10,7 @@ use super::write::{
     DraftId, DraftMarkRead, DraftMeetingResponse, DraftMessage, DraftPresence, DraftReaction,
     DraftStatusNote,
 };
+use crate::access_log::hash_id;
 use crate::gateway::NOTHING_ENABLED;
 use crate::policy::{
     Gate, Level, Master, Need, REFUSAL, REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE,
@@ -159,7 +160,8 @@ async fn call(s: &Server, tool: &str, chat: &str) -> Result<String, String> {
     }
 }
 
-/// Nothing a blocked conversation holds may appear in any output.
+/// Nothing a blocked conversation (the blocked chat, the blocked channel) holds may appear in any
+/// output.
 fn assert_no_blocked_content(out: &str, what: &str) {
     for secret in [
         BLOCKED,
@@ -177,6 +179,31 @@ fn assert_no_blocked_content(out: &str, what: &str) {
             "{what}: leaked {secret:?} in:\n{out}"
         );
     }
+    for secret in CHANNEL_SECRETS {
+        assert!(
+            !out.contains(secret),
+            "{what}: leaked {secret:?} in:\n{out}"
+        );
+    }
+}
+
+/// The ids a conversation tool may be given for the blocked channel.
+fn blocked_channel_ids() -> [String; 2] {
+    [
+        CHANNEL_BLOCKED.to_string(),
+        thread_of(CHANNEL_BLOCKED, BLOCKED_ROOT),
+    ]
+}
+
+/// Whether `tool` names one conversation (and so must refuse a blocked one with `REFUSAL`).
+fn names_one_conversation(tool: &str) -> bool {
+    matches!(
+        gate_of(tool),
+        Some(Gate::Resource {
+            kind: ResourceKind::Chat,
+            ..
+        })
+    ) && !matches!(tool, "list_chats" | "catch_up" | "search_messages")
 }
 
 // --- the table covers every tool ---
@@ -209,6 +236,7 @@ async fn a_paused_or_unreadable_session_refuses_every_tool_and_fetches_nothing()
     ] {
         let h = harness();
         h.allow(ALLOWED, Level::ReadDraft);
+        h.allow(CHANNEL, Level::Read);
         let scope = h.scope.clone();
         h.set(|p| p.scope_entry(&scope).calendar_people = true);
         match name {
@@ -217,8 +245,17 @@ async fn a_paused_or_unreadable_session_refuses_every_tool_and_fetches_nothing()
             _ => std::fs::write(h.state_path(), b"{broken").unwrap(),
         }
         let s = h.server();
+        let ids = [
+            ALLOWED.to_string(),
+            BLOCKED.to_string(),
+            CHANNEL.to_string(),
+            thread_of(CHANNEL, ROOT),
+            CHANNEL_BLOCKED.to_string(),
+            thread_of(CHANNEL_BLOCKED, BLOCKED_ROOT),
+            format!("{CHANNEL};messageid=abc"),
+        ];
         for tool in ALL_TOOLS {
-            for chat in [ALLOWED, BLOCKED] {
+            for chat in &ids {
                 assert_eq!(
                     call(&s, tool, chat).await,
                     Err(text.to_string()),
@@ -245,16 +282,7 @@ async fn a_blocked_chat_is_never_fetched_by_any_tool_at_any_level() {
             let out = call(&s, tool, BLOCKED).await;
             let text = out.clone().unwrap_or_else(|e| e);
             assert_no_blocked_content(&text, &format!("{tool} at {level:?}"));
-            if matches!(
-                gate_of(tool),
-                Some(Gate::Resource {
-                    kind: ResourceKind::Chat,
-                    ..
-                })
-            ) && tool != "list_chats"
-                && tool != "catch_up"
-                && tool != "search_messages"
-            {
+            if names_one_conversation(tool) {
                 assert_eq!(
                     out,
                     Err(REFUSAL.to_string()),
@@ -268,12 +296,191 @@ async fn a_blocked_chat_is_never_fetched_by_any_tool_at_any_level() {
 }
 
 #[tokio::test]
+async fn a_blocked_channel_is_never_fetched_by_any_tool_at_any_level() {
+    // The chat gets `level` (ReadDraft only ever on a chat), the allowed channel `Read` whenever
+    // something is allowed; the blocked channel never gets an entry.
+    for level in [None, Some(Level::Read), Some(Level::ReadDraft)] {
+        let h = harness();
+        if let Some(l) = level {
+            h.allow(ALLOWED, l);
+            h.allow(CHANNEL, Level::Read);
+        }
+        let scope = h.scope.clone();
+        h.set(|p| p.scope_entry(&scope).calendar_people = true);
+        let s = h.server();
+        for tool in ALL_TOOLS {
+            for id in blocked_channel_ids() {
+                let out = call(&s, tool, &id).await;
+                let text = out.clone().unwrap_or_else(|e| e);
+                assert_no_blocked_content(&text, &format!("{tool} on {id} at {level:?}"));
+                if names_one_conversation(tool) {
+                    assert_eq!(out, Err(REFUSAL.to_string()), "{tool} named {id}");
+                }
+            }
+        }
+        assert!(
+            !h.fake.fetched(CHANNEL_BLOCKED) && !h.fake.fetched("hidden@thread"),
+            "{level:?}: {:?}",
+            h.fake.calls()
+        );
+        assert!(!h.fake.fetched("execute"), "{level:?}: nothing was sent");
+    }
+}
+
+#[tokio::test]
+async fn an_allowed_channel_is_read_listed_searched_and_caught_up_on() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    let s = h.server();
+    let read = call(&s, "read_chat", CHANNEL).await.unwrap();
+    assert!(read.contains(&format!("body of {CHANNEL}")), "{read}");
+    let thread = thread_of(CHANNEL, ROOT);
+    let read = call(&s, "read_chat", &thread).await.unwrap();
+    assert!(
+        read.contains(&format!("body of {thread}")),
+        "the thread: {read}"
+    );
+    let list = call(&s, "list_chats", CHANNEL).await.unwrap();
+    assert!(
+        list.contains(&format!("{CHANNEL} | channel | {CHANNEL_NAME} | ")),
+        "{list}"
+    );
+    let search = call(&s, "search_messages", CHANNEL).await.unwrap();
+    assert!(search.contains("channel post text"), "{search}");
+    assert!(search.contains("channel reply text"), "{search}");
+    assert!(
+        search.contains(&thread),
+        "a reply names its thread, which read_chat reads: {search}"
+    );
+    let caught = call(&s, "catch_up", CHANNEL).await.unwrap();
+    assert!(caught.contains("Chan Nel"), "{caught}");
+    assert!(caught.contains("channel mention text"), "{caught}");
+    assert!(caught.contains(&format!("{CHANNEL} | channel | {CHANNEL_NAME} | ")));
+    for (tool, out) in [
+        ("read_chat", &read),
+        ("list_chats", &list),
+        ("search_messages", &search),
+        ("catch_up", &caught),
+    ] {
+        assert_no_blocked_content(out, tool);
+        assert!(
+            !out.contains(ALLOWED_TITLE),
+            "{tool}: the chat is not shared"
+        );
+    }
+    assert!(!h.fake.fetched(CHANNEL_BLOCKED), "{:?}", h.fake.calls());
+    // Every access line names the channel by its hash; the thread read too.
+    let text = h.log_text();
+    assert!(!text.contains("chan@thread"), "hashes only");
+    let reads: Vec<_> = h
+        .log()
+        .into_iter()
+        .filter(|l| l["tool"] == "read_chat")
+        .collect();
+    assert_eq!(reads.len(), 2);
+    for l in reads {
+        assert_eq!(l["decision"], "allowed");
+        assert_eq!(l["hashes"][0], hash_id(CHANNEL));
+    }
+}
+
+#[tokio::test]
+async fn no_draft_tool_works_on_a_channel_even_with_a_read_draft_entry() {
+    let h = harness();
+    // Only a hand-edited file can say `read_draft` for a channel: it reads, and drafts nothing.
+    h.allow(CHANNEL, Level::ReadDraft);
+    let s = h.server();
+    for tool in ["draft_message", "draft_reaction", "draft_mark_read"] {
+        for id in [CHANNEL.to_string(), thread_of(CHANNEL, ROOT)] {
+            assert_eq!(
+                call(&s, tool, &id).await,
+                Err(REFUSAL.to_string()),
+                "{tool} {id}"
+            );
+        }
+    }
+    assert!(h.fake.calls().is_empty(), "{:?}", h.fake.calls());
+    assert!(call(&s, "read_chat", CHANNEL).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_bad_thread_suffix_gets_the_one_refusal_and_fetches_nothing() {
+    let h = harness();
+    h.allow(ALLOWED, Level::ReadDraft);
+    h.allow(CHANNEL, Level::Read);
+    let s = h.server();
+    for id in [
+        format!("{CHANNEL};messageid=abc"),
+        format!("{CHANNEL};messageid="),
+        format!("{CHANNEL};messageid={ROOT};messageid={ROOT}"),
+        format!("{ALLOWED};messageid={ROOT}"),
+    ] {
+        for tool in [
+            "read_chat",
+            "draft_message",
+            "draft_reaction",
+            "draft_mark_read",
+        ] {
+            assert_eq!(
+                call(&s, tool, &id).await,
+                Err(REFUSAL.to_string()),
+                "{tool} {id:?}"
+            );
+        }
+        let out = s
+            .search_messages(Parameters(SearchMessages {
+                query: "x".into(),
+                chat_id: Some(id.clone()),
+                from_person: None,
+                limit: None,
+            }))
+            .await;
+        assert_eq!(out, Err(REFUSAL.to_string()), "search in {id:?}");
+    }
+    assert!(h.fake.calls().is_empty(), "{:?}", h.fake.calls());
+}
+
+#[tokio::test]
+async fn search_refuses_a_blocked_channel_filter_before_any_network_call() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    for id in blocked_channel_ids() {
+        let out = h
+            .server()
+            .search_messages(Parameters(SearchMessages {
+                query: "x".into(),
+                chat_id: Some(id.clone()),
+                from_person: None,
+                limit: None,
+            }))
+            .await;
+        assert_eq!(out, Err(REFUSAL.to_string()), "{id}");
+    }
+    assert!(h.fake.calls().is_empty());
+}
+
+#[tokio::test]
 async fn read_level_opens_read_tools_and_read_draft_level_opens_draft_tools() {
     let draft_tools = ["draft_message", "draft_reaction", "draft_mark_read"];
     for (level, drafts_ok) in [(Level::Read, false), (Level::ReadDraft, true)] {
         let h = harness();
         h.allow(ALLOWED, level);
+        h.allow(CHANNEL, level);
         let s = h.server();
+        // A channel reads at either level and never drafts.
+        for id in [CHANNEL.to_string(), thread_of(CHANNEL, ROOT)] {
+            assert!(
+                call(&s, "read_chat", &id).await.is_ok(),
+                "{id} at {level:?}"
+            );
+            for tool in draft_tools {
+                assert_eq!(
+                    call(&s, tool, &id).await,
+                    Err(REFUSAL.to_string()),
+                    "{tool} on {id} at {level:?}"
+                );
+            }
+        }
         for tool in [
             "read_chat",
             "draft_message",
@@ -355,6 +562,8 @@ async fn every_kind_of_unusable_id_gets_the_same_refusal_text() {
         "",
         CHANNEL,
         "19:chan@thread.tacv2;messageid=17",
+        CHANNEL_BLOCKED,
+        "19:chan@thread.tacv2;messageid=x",
         "48:calllogs",
     ] {
         for tool in [
@@ -413,7 +622,7 @@ async fn cuj1_share_one_chat_and_keep_the_rest_private() {
     assert!(read.contains(&format!("body of {ALLOWED}")));
     let list = call(&s, "list_chats", ALLOWED).await.unwrap();
     assert!(list.contains(ALLOWED) && list.contains(ALLOWED_TITLE));
-    assert!(list.ends_with(&footer(2, false)), "{list}");
+    assert!(list.ends_with(&footer(4, false)), "{list}");
     assert_no_blocked_content(&list, "list_chats");
     assert_eq!(
         call(&s, "read_chat", BLOCKED).await,
@@ -584,12 +793,12 @@ async fn list_chats_differs_between_accounts_only_in_the_footer_number() {
         .await
         .unwrap();
     assert_ne!(a, b);
-    // Everything before the footer is the same; the footers differ only in the count (and the
-    // singular wording of a count of one).
-    let (fa, fb) = (footer(2, false), footer(1, false));
+    // Everything before the footer is the same; the footers differ only in the count (the
+    // account's chats and channels that are not shared).
+    let (fa, fb) = (footer(4, false), footer(3, false));
     assert_eq!(a.strip_suffix(&fa), b.strip_suffix(&fb));
     assert!(a.strip_suffix(&fa).is_some());
-    assert!(a.ends_with(&footer(2, false)) && b.ends_with(&footer(1, false)));
+    assert!(a.ends_with(&footer(4, false)) && b.ends_with(&footer(3, false)));
 }
 
 #[tokio::test]
@@ -599,7 +808,7 @@ async fn the_footer_is_the_same_for_every_list_tool() {
     let s = h.server();
     for tool in ["list_chats", "catch_up", "search_messages"] {
         let out = call(&s, tool, ALLOWED).await.unwrap();
-        assert!(out.ends_with(&footer(2, false)), "{tool}:\n{out}");
+        assert!(out.ends_with(&footer(4, false)), "{tool}:\n{out}");
     }
 }
 
@@ -609,7 +818,7 @@ async fn the_list_tools_say_nothing_is_enabled_before_the_footer_for_a_legacy_ac
     let s = h.server();
     for tool in ["list_chats", "catch_up", "search_messages"] {
         let out = call(&s, tool, ALLOWED).await.unwrap();
-        let tail = format!("{NOTHING_ENABLED}\n\n{}", footer(3, false));
+        let tail = format!("{NOTHING_ENABLED}\n\n{}", footer(5, false));
         assert!(out.ends_with(&tail), "{tool}:\n{out}");
         assert_eq!(out.matches(NOTHING_ENABLED).count(), 1, "{tool}");
         assert_no_blocked_content(&out, tool);
@@ -651,7 +860,7 @@ async fn search_prints_no_totals_and_no_blocked_hit() {
     let out = call(&none.server(), "search_messages", ALLOWED)
         .await
         .unwrap();
-    assert!(out.starts_with("No matching chat messages."));
+    assert!(out.starts_with("No matching messages."));
     assert!(none.fake.calls().iter().all(|c| !c.starts_with("search")));
 }
 
@@ -691,7 +900,7 @@ async fn catch_up_leaves_out_every_mention_of_a_blocked_chat() {
         assert!(!out.contains(gone), "{gone:?}");
     }
     assert!(!out.contains("Unread chats:"), "no unread count:\n{out}");
-    assert!(out.contains("Mentions in chats: 1"));
+    assert!(out.contains("Mentions: 1"), "{out}");
 }
 
 // --- meetings: the setting of a meeting is its chat's, and the calendar switch comes first ---

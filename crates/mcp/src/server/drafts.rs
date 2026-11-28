@@ -2,7 +2,7 @@
 //! shows the user a preview; only `send_draft` with the draft's id does it, once, within
 //! [`LIFETIME_MS`]. The action is never rebuilt from what the send call says.
 
-use crate::policy::{KeyError, Resource, canonical_key};
+use crate::policy::{KeyError, Resource};
 use calendar::Rsvp;
 use std::collections::HashMap;
 use teams_proto::model::Message;
@@ -80,12 +80,12 @@ impl Action {
 
     /// What it touches, for the access check at send time: the chat (by canonical key), the
     /// meeting (by its chat's key) for a meeting answer, the user's own status for presence and
-    /// status message.
+    /// status message. A channel id gives the channel, which `send_draft` never accepts.
     pub fn resource(&self) -> Result<Resource, KeyError> {
         match self {
             Action::Message { chat_id, .. }
             | Action::Reaction { chat_id, .. }
-            | Action::MarkRead { chat_id, .. } => Ok(Resource::Chat(canonical_key(chat_id)?)),
+            | Action::MarkRead { chat_id, .. } => Resource::from_conversation_id(chat_id),
             Action::MeetingResponse { meeting_chat, .. } => Resource::meeting(meeting_chat),
             Action::Presence { .. } | Action::StatusNote { .. } => Ok(Resource::SelfStatus),
         }
@@ -256,6 +256,23 @@ mod tests {
             msg.resource(),
             Ok(Resource::Chat("19:abc@thread.v2".into()))
         );
+        // A channel (or one of its threads) is a channel, which send_draft never accepts.
+        let in_channel = Action::Message {
+            chat_id: "19:c@thread.tacv2;messageid=17".into(),
+            html: String::new(),
+            quote: None,
+            client_message_id: "1".into(),
+        };
+        assert_eq!(
+            in_channel.resource(),
+            Ok(Resource::Channel("19:c@thread.tacv2".into()))
+        );
+        let unknown = Action::Reaction {
+            chat_id: "48:calllogs".into(),
+            message_id: "1".into(),
+            key: "like".into(),
+        };
+        assert_eq!(unknown.resource(), Err(KeyError::Unknown));
         let bad = Action::Reaction {
             chat_id: "a b".into(),
             message_id: "1".into(),

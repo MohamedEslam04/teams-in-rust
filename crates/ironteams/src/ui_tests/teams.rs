@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::backend::TeamsCmd;
-use crate::{TCommunity, TDeleted, TPerson, TPost, TSetting, TTag, TeamsStore};
+use crate::{AiAccessStore, TCommunity, TDeleted, TPerson, TPost, TSetting, TTag, TeamsStore};
 use teams_proto::teams::{Access, ChannelEntry, ChannelKind, Role, TeamEntry};
 
 fn ts(app: &AppWindow) -> TeamsStore<'_> {
@@ -866,4 +866,51 @@ fn errors_and_notices_show_on_the_page() {
     ts(&h.app).set_notice("Channel created".into());
     assert!(has(&h.app, "Error: Not allowed"));
     assert!(has(&h.app, "Channel created"));
+}
+
+// ---- AI access (docs/designs/mcp-access-control.md, slice 6) ----------------------------------
+
+/// Every `AiAccessStore` command as `"<name> <argument>"`.
+fn ai_commands(app: &AppWindow) -> Log {
+    let log = Log::default();
+    let l = log.clone();
+    app.global::<AiAccessStore>()
+        .on_command(move |n, a| l.borrow_mut().push(format!("{n} {a}")));
+    log
+}
+
+#[test]
+fn the_team_menu_lets_the_ai_read_all_channels_only_when_available() {
+    let (h, _log) = engine_page();
+    let ai = ai_commands(&h.app);
+    tap(&h.app, "More options for Zebra");
+    assert!(has(&h.app, "Go to team"));
+    assert!(
+        !has(&h.app, "Let AI read all channels…"),
+        "hidden without the feature"
+    );
+    h.app.global::<AiAccessStore>().set_available(true);
+    tap(&h.app, "Let AI read all channels…");
+    assert_eq!(*ai.borrow(), ["team-channels t1"]);
+    assert!(!has(&h.app, "Go to team"), "the menu closed");
+}
+
+#[test]
+fn the_ai_bulk_confirmation_and_the_explainer_show_over_the_teams_page() {
+    let (h, _log) = engine_page();
+    let ai = ai_commands(&h.app);
+    let s = h.app.global::<AiAccessStore>();
+    s.set_available(true);
+    s.set_bulk_team("Zebra".into());
+    s.set_bulk_count(1);
+    s.set_bulk_open(true);
+    // A click reaches the dialog, not the page under it.
+    tap(&h.app, "Let AI read");
+    s.set_explainer_open(true);
+    tap(&h.app, "Continue");
+    assert_eq!(
+        *ai.borrow(),
+        ["team-channels-confirm ", "explainer-confirm "]
+    );
+    assert!(ts(&h.app).get_open(), "the Teams page stays open");
 }

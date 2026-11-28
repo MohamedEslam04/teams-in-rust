@@ -4,7 +4,7 @@
 MCP client such as Claude Code, Claude Desktop or OpenCode starts it and can then use one signed-in
 IronTeams account:
 
-- read the chats you chose to share with AI;
+- read the chats and team channels you chose to share with AI;
 - read your calendar and people, if you allowed that;
 - draft messages and reactions in chats you allowed it to draft in. Nothing happens until you
   approve the draft.
@@ -52,8 +52,27 @@ Two more switches sit above them:
   it on.
 
 A change takes effect on the next tool call, and in the middle of a call that reads several
-conversations. Channels are not covered yet and stay Blocked. The AI may not change your own status
-or status message in this version.
+conversations. The AI may not change your own status or status message in this version.
+
+### Channels
+
+A team channel has its own setting too, shown in the channel's header. Channels are **read-only**
+in this version, so a channel is either Blocked or Can read:
+
+- **Can read** lets the AI read the channel's posts and their replies (`read_chat`), list it
+  (`list_chats`, kind `channel`, titled with the channel's name), find its posts and replies in a
+  search, and see it and its mentions in `catch_up`. No `draft_*` tool works in a channel, whatever
+  the settings file says.
+- A thread of a channel has the id `<channel id>;messageid=<root message id>`. It follows its
+  channel's setting: `read_chat` with a thread id reads that thread of an allowed channel, and the
+  access log names the channel. A thread id whose suffix is anything but digits, or a thread suffix
+  on a chat id, gets the same refusal as a blocked conversation.
+- **Let AI read all channels…** in a team's menu sets every channel the team has **now** to Can
+  read, after a confirmation that shows how many channels and their names. Channels that already
+  had a setting keep it. The overview then offers **Undo last change**, which puts back exactly the
+  channels that change opened. Only the last bulk change can be undone.
+- A channel created later starts Blocked, like every new conversation, also in a team where you
+  used the bulk action.
 
 ### Meetings
 
@@ -81,10 +100,11 @@ invitation need both keys:
 ### What the AI sees about conversations it may not use
 
 One sentence at the end of every list: *"N other conversations are not shared with AI; the user can
-allow them in IronTeams."* `N` counts the chats of the account that are not shared. It is the same
-number for every tool and every query, so it says that blocked chats exist and roughly how many,
-and nothing about what any of them holds: no id, name, preview, sender, time or search hit count.
-A blocked chat, an unknown id and a channel id all get the same refusal text.
+allow them in IronTeams."* `N` counts the chats and channels of the account that are not shared,
+that is the ones you could allow. It is the same number for every tool and every query, so it says
+that blocked conversations exist and roughly how many, and nothing about what any of them holds: no
+id, name, preview, sender, time or search hit count. A blocked chat or channel, an unknown id and a
+malformed thread id all get the same refusal text.
 
 ## How the settings are stored
 
@@ -166,18 +186,18 @@ Times are UTC. A tool that needs something you have not allowed returns a short 
 
 | Tool | Needs | What it does |
 |---|---|---|
-| `list_chats` | Chats you allowed | The allowed chats with id, kind, title, read state and last message, optionally unread only |
-| `read_chat` | Can read | The messages of one chat, with message and sender ids; pages back with `before_ms` |
-| `catch_up` | Chats you allowed | Unread allowed chats with their unread messages, plus the messages in them that mention you |
-| `search_messages` | Chats you allowed | Message search over the allowed chats, optionally in one chat or from one person. No totals. |
+| `list_chats` | Chats and channels you allowed | The allowed chats and channels with id, kind, title, read state and last message, optionally unread only |
+| `read_chat` | Can read | The messages of one chat or channel, or of one channel thread, with message and sender ids; pages back with `before_ms` |
+| `catch_up` | Chats and channels you allowed | Unread allowed chats and channels with their unread messages, plus the messages in them that mention you |
+| `search_messages` | Chats and channels you allowed | Message search over the allowed chats and channels (channel posts and replies too), optionally in one of them or from one person. A reply names its thread id. No totals. |
 | `find_people` | Calendar and people | People by name or email, with presence and status message |
 | `get_presence` | Calendar and people | Presence of people by id |
 | `calendar_agenda` | Calendar and people | Your events for a range of days |
 | `meeting_detail` | Calendar and people, and Can read on the meeting's chat | One Teams meeting: attendees, responses, invitation text |
 | `find_free_time` | Calendar and people | Free slots for you and the given attendees |
-| `draft_message` | Can read and draft | Drafts a message or a quoted reply |
-| `draft_reaction` | Can read and draft | Drafts a reaction (like, heart, laugh, surprised, sad, angry) |
-| `draft_mark_read` | Can read and draft | Drafts marking a chat read |
+| `draft_message` | Can read and draft (chats only) | Drafts a message or a quoted reply |
+| `draft_reaction` | Can read and draft (chats only) | Drafts a reaction (like, heart, laugh, surprised, sad, angry) |
+| `draft_mark_read` | Can read and draft (chats only) | Drafts marking a chat read |
 | `draft_presence` | not allowed yet | Drafts your status. Refused in this version. |
 | `draft_status_note` | not allowed yet | Drafts your status message. Refused in this version. |
 | `draft_meeting_response` | Calendar and people, and Can read and draft on the meeting's chat | Drafts accept, tentative or decline; the organizer gets it |
@@ -242,7 +262,8 @@ What you see if you had allowed an account in the old `mcp.json`:
 
 ## Not in this version
 
-- Channels as their own setting.
+- Writing to channels: no drafts, replies or reactions in a channel. Channels can be shared for
+  reading only.
 - Files and images.
 - Editing or deleting messages.
 - Scheduled messages.
