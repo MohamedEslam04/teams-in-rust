@@ -12,6 +12,12 @@
 # For every tag to include them, set the repository variable RELEASE_ADD_PLATFORMS to "windows",
 # "macos" or "windows macos": the add-ons then run right after the Linux release is published.
 #
+# The MCP server (`ironteams --mcp-serve`, docs/mcp.md) is built into the shipped binary only when
+# the repository variable IRONTEAMS_MCP is "1" (scripts/ci/release-build.sh; release-add.yml and
+# cache-warm.yml do the same). Unset, nothing changes. Every build step also writes the stripped
+# binary size and the dependency count with and without the feature to the job summary. The RPM,
+# Flatpak and AUR packages are built by their own recipes and do not take the variable.
+#
 # Nothing is published unless the CI gate (fmt, clippy and every test on Linux) passes, every
 # package builds, and the packaged AppImage passes `--self-check --packaged`. A tag with a
 # pre-release suffix (v1.2.0-beta.1) is published as a GitHub pre-release: only copies with
@@ -132,7 +138,18 @@ jobs:
           shared-key: release-linux
           # A tag cannot pass its cache to the next tag; cache-warm.yml saves these on dev.
           save-if: false
-      - run: cargo build --release --locked -p "$BIN" --bin "$BIN"
+      # With the repository variable IRONTEAMS_MCP set to 1 this builds the MCP server in
+      # (`--features mcp`); unset, it is the same build as before (scripts/ci/release-build.sh).
+      - name: Build
+        run: bash scripts/ci/release-build.sh
+        env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
+      - name: Binary size and dependencies (summary)
+        # Informational only: the numbers a pull request that sets IRONTEAMS_MCP cites.
+        continue-on-error: true
+        run: bash scripts/ci/release-summary.sh "target/release/$BIN" "Linux (release.yml)"
+        env:
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
       - uses: actions/download-artifact@v8
         with:
           name: shared-assets

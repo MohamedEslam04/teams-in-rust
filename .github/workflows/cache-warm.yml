@@ -113,7 +113,13 @@ jobs:
           # The dependencies are what the release needs; a failure in the ironteams crate itself
           # (for example the runner running out of memory) must not leave the tag without them.
           cache-on-failure: true
-      - run: cargo build --release --locked -p ironteams --bin ironteams
+      # The build the release does, with the MCP server too when IRONTEAMS_MCP is 1, so the
+      # cached dependencies match (scripts/ci/release-build.sh).
+      - name: Build
+        run: bash scripts/ci/release-build.sh
+        env:
+          BIN: ironteams
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
 
   windows:
     needs: changes
@@ -131,7 +137,13 @@ jobs:
         with:
           shared-key: release-windows
           cache-on-failure: true
-      - run: cargo build --release --locked -p ironteams --bin ironteams
+      # The build the release does, with the MCP server too when IRONTEAMS_MCP is 1, so the
+      # cached dependencies match (scripts/ci/release-build.sh).
+      - name: Build
+        run: bash scripts/ci/release-build.sh
+        env:
+          BIN: ironteams
+          IRONTEAMS_MCP: ${{ vars.IRONTEAMS_MCP }}
 
   # GitHub keeps 10 GB of caches per repository and drops the least recently used beyond that, which
   # would send a release back to a cold build. Two kinds of cache are deleted:
