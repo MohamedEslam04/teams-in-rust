@@ -21,12 +21,12 @@ mod instance;
 mod key_layout;
 mod language;
 mod lists_data;
-mod mcp_access_data;
 mod lists_sort;
 mod logging;
 mod loop_compose;
 mod malloc_arenas;
 mod markdown;
+mod mcp_access_data;
 mod media_data;
 mod mention;
 #[cfg(not(target_os = "linux"))]
