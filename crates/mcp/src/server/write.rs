@@ -164,7 +164,7 @@ impl Server {
 #[tool_router(router = write_router, vis = "pub(super)")]
 impl Server {
     #[tool(
-        description = "Draft a message (or a quoted reply) in a chat the user has shared with AI for reading and drafting. Nothing is sent: returns a draft id and a preview for the user to approve; then send_draft sends it.",
+        description = "Draft a message (or a quoted reply) in a chat the user has shared with AI for reading and drafting. Channels are read-only and refused. Nothing is sent: returns a draft id and a preview for the user to approve; then send_draft sends it.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn draft_message(
@@ -217,7 +217,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Draft a reaction to a message in a chat the user has shared with AI for reading and drafting. Nothing is sent until send_draft.",
+        description = "Draft a reaction to a message in a chat the user has shared with AI for reading and drafting (not in a channel: channels are read-only). Nothing is sent until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn draft_reaction(
@@ -249,7 +249,7 @@ impl Server {
     }
 
     #[tool(
-        description = "Draft marking a chat (shared with AI for reading and drafting) as read, up to its newest message. Nothing changes until send_draft.",
+        description = "Draft marking a chat (shared with AI for reading and drafting; not a channel) as read, up to its newest message. Nothing changes until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
     pub(super) async fn draft_mark_read(

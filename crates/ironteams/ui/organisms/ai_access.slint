@@ -6,7 +6,8 @@
 // it, so the components themselves never have to.
 //
 // The chip says the level in words and opens a popover with three radio rows, the switches and
-// the link to the overview. The pop-out window has stores of its own, so its chip is the same
+// the link to the overview. A channel is read-only: its chip offers two rows, Blocked and Can
+// read (`read-only`). The pop-out window has stores of its own, so its chip is the same
 // `AiAccessControl` fed by `ChatWindow` properties. Colours: the flat `Theme` ones, except the
 // chat list menu, which passes its own tokens (`c`).
 import { Theme } from "../tokens/theme.slint";
@@ -33,8 +34,9 @@ export global AiAccessStore {
     in property <bool> master-paused;
     in property <bool> account-paused;
     in property <bool> calendar-people;
-    // The conversation the chip and popover talk about (the open chat, or the row whose menu
-    // was opened) and its level: "blocked", "read" or "read_draft".
+    // The conversation the chip and popover talk about (the open chat or channel, or the row
+    // whose menu was opened) and its level: "blocked", "read" or "read_draft" (never for a
+    // channel).
     in property <string> target-id;
     in property <string> target-level: "blocked";
     // The meeting chat the calendar event view's control talks about (`open-meeting`) and its
@@ -46,23 +48,38 @@ export global AiAccessStore {
     // The text of the copy-only connect dialog, and the label of the account it connects.
     in property <string> connect-text;
     in property <string> account-label;
-    // Dialogs: Rust opens the explainer (the first time something is set above Blocked); the UI
-    // opens the overview and the connect dialog through `command`, and closes all three itself.
+    // The Team menu's "Let AI read all channels…" (`team-channels`) waiting for its answer: the
+    // team's name and the names and number of its channels that are Blocked now, which the
+    // confirmation sets to "Can read". Empty and 0 when nothing waits.
+    in property <string> bulk-team;
+    in property <[string]> bulk-names;
+    in property <int> bulk-count;
+    // The last bulk change can be undone (`team-channels-undo`, offered in the overview).
+    in property <bool> can-undo-bulk;
+    // Dialogs: Rust opens the explainer (the first time something is set above Blocked) and the
+    // bulk confirmation; the UI opens the overview and the connect dialog itself (and sends
+    // `overview` / `connect` so their data is fresh), and closes all four itself.
     in-out property <bool> overview-open;
     in-out property <bool> explainer-open;
     in-out property <bool> connect-open;
+    in-out property <bool> bulk-open;
     // Commands to the backend, (name, arg):
     //   "open"             arg = conversation id: make it the target (the list-row menu)
     //   "open-meeting"     arg = meeting chat id: make it the calendar event view's target
-    //   "set-level"        arg = "<id>\t<level>", level = blocked | read | read_draft
+    //   "set-level"        arg = "<id>\t<level>", level = blocked | read | read_draft (a
+    //                      channel takes blocked | read; read_draft gets a banner)
     //   "master"           arg = "active" | "paused"
     //   "account-pause"    arg = "on" | "off"
     //   "calendar-people"  arg = "on" | "off"
     //   "block"            arg = conversation id (the overview's one-click Block)
     //   "block-all"        arg = ""
-    //   "overview"         arg = "": refresh and open the overview
-    //   "connect"          arg = "": refresh and open the connect dialog
+    //   "overview"         arg = "": refresh the overview's data
+    //   "connect"          arg = "": refresh the connect dialog's data
     //   "explainer-confirm" / "explainer-cancel"  arg = "": answer the first-time explainer
+    //   "team-channels"    arg = team id: ask to let the AI read the team's channels that are
+    //                      Blocked now (Rust fills `bulk-*` and opens `bulk-open`)
+    //   "team-channels-confirm" / "team-channels-cancel"  arg = "": answer that confirmation
+    //   "team-channels-undo"  arg = "": put back the channels the last bulk change set
     callback command(string, string);
 }
 
@@ -76,6 +93,10 @@ global AiAccessWords {
     // What each level means for the chat, in one line.
     public pure function note(l: string) -> string {
         return l == "read_draft" ? @tr("The AI can read this chat and draft replies. You approve every send.") : l == "read" ? @tr("The AI can read this chat.") : @tr("The AI cannot see this chat.");
+    }
+    // The same for a channel, which has no draft level.
+    public pure function channel-note(l: string) -> string {
+        return l == "read" ? @tr("The AI can read this channel. It cannot draft in channels.") : @tr("The AI cannot see this channel.");
     }
     // Why the saved level does not apply right now, or "".
     public pure function paused(master: bool, account: bool) -> string {
@@ -125,20 +146,22 @@ export component AiAccessChip inherits Rectangle {
 }
 
 // The three radio-like rows (Blocked, Can read, Can read and draft), the checked one is `level`.
-// `compact` is the chat list menu's: no second line, as the menu is narrow.
+// `compact` is the chat list menu's: no second line, as the menu is narrow. `read-only` is a
+// channel's: Blocked and Can read only.
 export component AiAccessLevels inherits Rectangle {
     in property <Tokens> c: Theme.content;
     in property <string> level: "blocked";
     in property <bool> compact: false;
+    in property <bool> read-only: false;
     // "blocked", "read" or "read_draft".
     callback picked(string);
     height: lev-lay.preferred-height;
     lev-lay := VerticalLayout {
-        for l in ["blocked", "read", "read_draft"]: MenuItem {
+        for l in (root.read-only ? ["blocked", "read"] : ["blocked", "read", "read_draft"]): MenuItem {
             c: root.c;
             variant: root.compact ? MenuItemVariant.list : MenuItemVariant.parity;
             label: AiAccessWords.level(l);
-            note: root.compact ? "" : AiAccessWords.note(l);
+            note: root.compact ? "" : root.read-only ? AiAccessWords.channel-note(l) : AiAccessWords.note(l);
             checked: root.level == l;
             clicked => { root.picked(l); }
         }
@@ -147,9 +170,11 @@ export component AiAccessLevels inherits Rectangle {
 
 // The popover's content. `full` adds this account's pause switch, the master switch and the
 // link to the overview (the main window); the pop-out window has the three levels only.
+// `read-only` (a channel) offers Blocked and Can read only.
 export component AiAccessMenu inherits Rectangle {
     in property <string> level: "blocked";
     in property <bool> full: false;
+    in property <bool> read-only: false;
     callback picked(string);
     callback done();
     out property <length> menu-height: menu-lay.preferred-height + 2px;
@@ -163,6 +188,7 @@ export component AiAccessMenu inherits Rectangle {
         padding: 4px;
         AiAccessLevels {
             level: root.level;
+            read-only: root.read-only;
             picked(l) => {
                 root.picked(l);
                 root.done();
@@ -185,6 +211,7 @@ export component AiAccessMenu inherits Rectangle {
             MenuItem { variant: MenuItemVariant.parity;
                 label: @tr("Review all AI access…");
                 clicked => {
+                    AiAccessStore.overview-open = true;
                     AiAccessStore.command("overview", "");
                     root.done();
                 }
@@ -199,6 +226,8 @@ export component AiAccessControl inherits Rectangle {
     in property <string> paused-text;
     // The switches and the overview link in the popover (the main window).
     in property <bool> full: false;
+    // A channel: Blocked and Can read only.
+    in property <bool> read-only: false;
     callback picked(string);
     property <length> popup-width: 420px;
     width: chip.width;
@@ -218,15 +247,17 @@ export component AiAccessControl inherits Rectangle {
         menu := AiAccessMenu {
             level: root.level;
             full: root.full;
+            read-only: root.read-only;
             picked(l) => { root.picked(l); }
             done => { ai-popup.close(); }
         }
     }
 }
 
-// The chip of the open chat's header in the main window: the store's target and pauses; a pick
-// sets the open chat's level.
+// The chip of the open chat's or channel's header in the main window: the store's target and
+// pauses; a pick sets the open conversation's level. `read-only` for a channel.
 export component AiAccessHeaderChip inherits Rectangle {
+    in property <bool> read-only: false;
     width: ctl.width;
     height: ctl.height;
     horizontal-stretch: 0;
@@ -234,6 +265,7 @@ export component AiAccessHeaderChip inherits Rectangle {
         level: AiAccessStore.target-level;
         paused-text: AiAccessWords.paused(AiAccessStore.master-paused, AiAccessStore.account-paused);
         full: true;
+        read-only: root.read-only;
         picked(l) => { AiAccessStore.command("set-level", AiAccessStore.target-id + "\u{9}" + l); }
     }
 }
@@ -316,6 +348,21 @@ export component AiOverviewCard inherits Rectangle {
             checked: AiAccessStore.calendar-people;
             toggled(on) => { AiAccessStore.command("calendar-people", on ? "on" : "off"); }
         }
+        // After the Team menu's "Let AI read all channels…": one undo of it.
+        if AiAccessStore.can-undo-bulk: HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            Text {
+                text: @tr("The last change to a team's channels can be undone.");
+                color: Theme.fg-muted;
+                font-size: 13px * Theme.font-scale;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+                accessible-role: text;
+            }
+            Button { variant: ButtonVariant.dialog; label: @tr("Undo last change"); clicked => { AiAccessStore.command("team-channels-undo", ""); } }
+        }
         Rectangle {
             vertical-stretch: 1;
             border-radius: 4px;
@@ -374,7 +421,14 @@ export component AiOverviewCard inherits Rectangle {
             height: 32px;
             spacing: 8px;
             Button { variant: ButtonVariant.dialog; label: @tr("Block all"); enabled: AiAccessStore.rows.length > 0; clicked => { AiAccessStore.command("block-all", ""); } }
-            Button { variant: ButtonVariant.dialog; label: @tr("Connect an AI app…"); clicked => { AiAccessStore.command("connect", ""); } }
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Connect an AI app…");
+                clicked => {
+                    AiAccessStore.connect-open = true;
+                    AiAccessStore.command("connect", "");
+                }
+            }
             Rectangle { horizontal-stretch: 1; }
             Button { variant: ButtonVariant.dialog; label: @tr("Close"); primary: true; clicked => { AiAccessStore.overview-open = false; } }
         }
@@ -421,6 +475,75 @@ export component AiExplainerCard inherits Rectangle {
                 clicked => {
                     AiAccessStore.explainer-open = false;
                     AiAccessStore.command("explainer-confirm", "");
+                }
+            }
+        }
+    }
+}
+
+// The Team menu's "Let AI read all channels…": how many channels of which team, and their names.
+// Only those change, to "Can read"; channels made later stay Blocked. Both buttons close it; the
+// backend learns which one was pressed.
+export component AiBulkCard inherits Rectangle {
+    property <string> question: AiAccessStore.bulk-count == 1 ? @tr("Let AI read 1 channel of {}?", AiAccessStore.bulk-team) : @tr("Let AI read {} channels of {}?", "" + AiAccessStore.bulk-count, AiAccessStore.bulk-team);
+    width: 440px;
+    height: 420px;
+    border-radius: 8px;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Fixed.black-a0;
+    accessible-role: groupbox;
+    accessible-label: root.question;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Text { text: root.question; color: Theme.fg; font-size: 17px * Theme.font-scale; font-weight: 700; wrap: word-wrap; accessible-role: text; }
+        Text {
+            text: @tr("The AI will be able to read these channels. It cannot draft in channels. Channels added later stay Blocked.");
+            color: Theme.fg-muted;
+            font-size: 13px * Theme.font-scale;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: 4px;
+            background: Theme.panel;
+            clip: true;
+            ListView {
+                for name in AiAccessStore.bulk-names: Rectangle {
+                    height: 32px;
+                    accessible-role: list-item;
+                    accessible-label: name;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        Text { text: name; color: Theme.fg; font-size: 13px * Theme.font-scale; vertical-alignment: center; overflow: elide; accessible-role: none; }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 32px;
+            spacing: 8px;
+            alignment: end;
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Cancel");
+                clicked => {
+                    AiAccessStore.bulk-open = false;
+                    AiAccessStore.command("team-channels-cancel", "");
+                }
+            }
+            Button {
+                variant: ButtonVariant.dialog;
+                label: @tr("Let AI read");
+                primary: true;
+                clicked => {
+                    AiAccessStore.bulk-open = false;
+                    AiAccessStore.command("team-channels-confirm", "");
                 }
             }
         }

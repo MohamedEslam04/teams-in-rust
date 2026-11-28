@@ -217,21 +217,29 @@ write it) and callbacks:
   participants and person-card layers.
 - `organisms/app_dialogs.slint`: the small dialogs over a scrim (leave, remove history, add a
   tab, leave a channel, reminders, section name, the OneDrive picker, and AI access: the
-  overview, the first-time explainer and the connect dialog).
+  overview, the first-time explainer, the connect dialog and the Team menu's bulk confirmation;
+  the last two AI access layers sit at z 50 and 51, over the Teams page that the Team menu also
+  opens from).
 - `organisms/ai_access.slint`: AI access (docs/designs/mcp-access-control.md): `AiAccessStore`
   (the contract with the backend), `AiAccessChip` (the header badge "AI: Blocked / Can read / Can
   read and draft", greyed with its reason when paused), `AiAccessLevels` (the three radio rows),
   `AiAccessMenu` (the popover), `AiAccessControl` (chip and popover, fed by properties so the
-  pop-out window can use it), `AiAccessHeaderChip` (the main window's, fed by the store),
+  pop-out window can use it), `AiAccessHeaderChip` (the main window's, fed by the store; in a
+  channel's header it is `read-only`: channels are Blocked or Can read, so the levels, menu and
+  control take `read-only` and offer two rows),
   `AiMeetingAccess` (the full event view's control: the setting of a meeting is its Teams chat's, so
   it is the same chip set on `CalStore.peek.meeting-chat`, or the reason when the event has no chat;
   it asks for the chat's level with the `open-meeting` command and reads `meeting-id` and
   `meeting-level`, apart from `target-*` so it never moves the open chat's chip) and the
-  `AiOverviewCard`, `AiExplainerCard` and `AiConnectCard`. **Everything is hidden when
+  `AiOverviewCard` (with "Undo last change" for the last bulk change while `can-undo-bulk`),
+  `AiExplainerCard`, `AiConnectCard` and `AiBulkCard` (the Team menu's "Let AI read all
+  channels…": "Let AI read N channels of <team>?" with the names from `bulk-names`; its buttons
+  send `team-channels-confirm` or `team-channels-cancel` and close it). **Everything is hidden when
   `AiAccessStore.available` is false** (the default, and what a build without the `mcp` feature
   shows): the chip in `ChatPaneHeader`, "AI access…" in the chat list's `ItemMenu`, the three
-  palette entries (`hidden: !AiAccessStore.available`) and the three layers in `app.slint` each
-  test it; a new place that shows AI access must too. The pop-out window (`ChatWindow`) has
+  palette entries (`hidden: !AiAccessStore.available`), "Let AI read all channels…" in
+  `team_menu.slint` and the four layers in `app.slint` each test it; a new place that shows AI
+  access must too. The pop-out window (`ChatWindow`) has
   stores of its own: it takes `ai-available`, `ai-level` and `ai-paused-text` and reports
   `ai-set-level(string)`, which Rust forwards.
 

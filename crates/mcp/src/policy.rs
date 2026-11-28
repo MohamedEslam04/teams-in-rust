@@ -9,7 +9,7 @@
 //! - `Level::Read` satisfies only `Need::Read`; `Level::ReadDraft` satisfies both.
 //! - Calendar, people and the user's own status hang off one on/off switch of the scope.
 //! - A meeting needs both that switch and its meeting chat's level ([`meeting_allows`]).
-//! - Channels decide Blocked until a later slice flips [`CHANNELS_ALLOWED`].
+//! - A channel is read-only: any level reads it, nothing drafts in it ([`conversation_allows`]).
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -18,10 +18,6 @@ use teams_proto::model::{ConversationKind, conversation_kind, split_thread};
 /// The `format_version` this build reads and writes. A file with a bigger number was written by a
 /// newer app and is read as "everything Blocked".
 pub const FORMAT_VERSION: u32 = 1;
-
-/// Channels are not covered by the gate tests yet, so every channel resource decides Blocked
-/// whatever the file holds. Slice 6 of the design flips this once the matrix tests cover them.
-const CHANNELS_ALLOWED: bool = false;
 
 /// Open question in the design: may the AI draft status changes when the calendar and people
 /// switch is on? Until that is decided, no.
@@ -69,7 +65,8 @@ pub enum Master {
 pub enum Resource {
     /// A 1:1, group or meeting chat or the user's notes, by canonical key.
     Chat(String),
-    /// A team channel, by canonical key. Decides Blocked until slice 6.
+    /// A team channel, by canonical key (a thread resolves to its channel). Read-only: no level
+    /// lets the AI draft in it.
     Channel(String),
     /// A calendar meeting, by the canonical key of its meeting chat (`19:meeting_…@thread.v2`):
     /// its setting is the setting of that chat, and it also needs the calendar switch.
@@ -82,7 +79,9 @@ pub enum Resource {
     SelfStatus,
 }
 
-/// The kind of a [`Resource`], without its key: what `TOOL_GATES` and the refusal texts use.
+/// The kind of a [`Resource`], without its key: what `TOOL_GATES` and the refusal texts use. A
+/// `Chat` gate also serves a `Channel` (the conversation tools take both); `decide` keeps a
+/// channel read-only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResourceKind {
     Chat,
@@ -380,11 +379,8 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
         return Decision::AccountPaused;
     }
     let allowed = match resource {
-        Resource::Chat(key) => s.conversations.get(key).is_some_and(|l| l.allows(need)),
-        Resource::Channel(key) if CHANNELS_ALLOWED => {
-            s.conversations.get(key).is_some_and(|l| l.allows(need))
-        }
-        Resource::Channel(_) => false,
+        Resource::Chat(key) => conversation_allows(s, key, need, false),
+        Resource::Channel(key) => conversation_allows(s, key, need, true),
         Resource::Meeting(key) => meeting_allows(s, key, need),
         Resource::Calendar | Resource::Directory => s.calendar_people,
         Resource::SelfStatus => SELF_STATUS_ALLOWED && s.calendar_people,
@@ -394,6 +390,30 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
     } else {
         Decision::Blocked
     }
+}
+
+/// How a conversation's entry decides. A channel is read-only in this version: `Read` (or a
+/// `read_draft` entry, which only a hand-edited file can hold for a channel) reads it, and nothing
+/// lets the AI draft in it.
+///
+/// | conversation | its entry   | `Need::Read` | `Need::Draft` |
+/// |--------------|-------------|--------------|---------------|
+/// | chat         | none        | Blocked      | Blocked       |
+/// | chat         | `Read`      | Allowed      | Blocked       |
+/// | chat         | `ReadDraft` | Allowed      | Allowed       |
+/// | channel      | none        | Blocked      | Blocked       |
+/// | channel      | `Read`      | Allowed      | Blocked       |
+/// | channel      | `ReadDraft` | Allowed      | Blocked       |
+///
+/// A key of the channel kind is read-only whatever resource names it (`channel` is false only for
+/// a [`Resource::Chat`]), so a channel key put into a chat or meeting resource cannot draft
+/// either.
+fn conversation_allows(s: &Scope, key: &str, need: Need, channel: bool) -> bool {
+    let read_only = channel || conversation_kind(key, None) == ConversationKind::Channel;
+    if read_only && need == Need::Draft {
+        return false;
+    }
+    s.conversations.get(key).is_some_and(|l| l.allows(need))
 }
 
 /// How a meeting's access is composed. A meeting is allowed only when BOTH hold:
@@ -409,7 +429,7 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
 /// is the setting of its chat, so the AI cannot learn the invitation text of a meeting whose chat
 /// it may not read. The pause switches and an unreadable file are decided before this.
 fn meeting_allows(s: &Scope, key: &str, need: Need) -> bool {
-    s.calendar_people && s.conversations.get(key).is_some_and(|l| l.allows(need))
+    s.calendar_people && conversation_allows(s, key, need, false)
 }
 
 /// The decision for a call that touches no resource of its own (a tool that only needs a live
@@ -488,7 +508,8 @@ pub fn gate_of(tool: &str) -> Option<Gate> {
 // The refusal and footer texts are part of the security surface: tests pin every word. A text
 // about a conversation never holds its id, title or anything else about it.
 
-/// A blocked, unknown, malformed or channel-thread conversation id: one text for all of them.
+/// A blocked, unknown or malformed conversation id (a bad thread suffix too): one text for all
+/// of them, chats and channels alike.
 pub const REFUSAL: &str = "Conversation not available: it does not exist, or the user has not allowed AI to use it in IronTeams.";
 /// A meeting that is blocked, or that has no Teams chat to take its setting from: one text for
 /// both, so it says nothing about the meeting.

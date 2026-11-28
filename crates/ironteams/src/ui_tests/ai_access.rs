@@ -155,14 +155,161 @@ fn a_pause_greys_the_chip_and_says_why_but_keeps_the_level() {
     assert_eq!(chip_label(&h.app), "AI: Can read and draft");
 }
 
+// ---- channels (slice 6): read-only ----------------------------------------------------------
+
+const GENERAL: &str = "19:team1@thread.tacv2";
+
+fn open_channel(level: &str) -> Harness {
+    let h = Harness::new();
+    h.runner()(Cmd::SelectChannel(GENERAL.into(), "General".into()));
+    enable(&h.app, GENERAL, level);
+    h
+}
+
 #[test]
-fn a_channel_has_no_chip_yet() {
-    let h = open_chat("read");
-    h.runner()(Cmd::SelectChannel(
-        "19:team1@thread.tacv2".into(),
-        "General".into(),
-    ));
+fn a_channel_has_a_chip_only_while_ai_access_is_available() {
+    let h = Harness::new();
+    h.runner()(Cmd::SelectChannel(GENERAL.into(), "General".into()));
     assert!(chips(&h.app).is_empty());
+    h.app.global::<AiAccessStore>().set_available(true);
+    assert_eq!(chip_label(&h.app), "AI: Blocked");
+}
+
+#[test]
+fn a_channels_popover_offers_blocked_and_can_read_but_no_drafting() {
+    let h = open_channel("read");
+    let log = wire(&h.app);
+    assert_eq!(chip_label(&h.app), "AI: Can read");
+    click(&chips(&h.app)[0]);
+    assert_eq!(
+        menu_labels(&h.app),
+        [
+            "Blocked",
+            "Can read",
+            "This account: Active",
+            "AI access: Active",
+            "Review all AI access…"
+        ]
+    );
+    for (name, note, on) in [
+        ("Blocked", "The AI cannot see this channel.", false),
+        (
+            "Can read",
+            "The AI can read this channel. It cannot draft in channels.",
+            true,
+        ),
+    ] {
+        let item = menu_item(&h.app, name);
+        assert_eq!(item.accessible_description().as_deref(), Some(note));
+        assert_eq!(item.accessible_checked(), Some(on), "{name}");
+    }
+    click(&menu_item(&h.app, "Blocked"));
+    assert_eq!(*log.borrow(), [format!("set-level {GENERAL} | blocked")]);
+    assert!(menu_items(&h.app).is_empty(), "the popover closed");
+}
+
+#[test]
+fn going_back_from_a_channel_to_a_chat_brings_the_three_levels_back() {
+    let h = open_channel("blocked");
+    h.select(BACKEND);
+    enable(&h.app, BACKEND, "blocked");
+    click(&chips(&h.app)[0]);
+    assert!(menu_labels(&h.app).contains(&"Can read and draft".to_string()));
+}
+
+// ---- the Team menu's bulk change: confirmation and undo ---------------------------------------
+
+fn bulk_cards(app: &AppWindow) -> usize {
+    ElementHandle::find_by_element_type_name(app, "AiBulkCard").count()
+}
+
+/// The backend asked about `names` of the team Contoso Ltd.: the confirmation is open.
+fn ask_bulk(app: &AppWindow, names: &[&str]) {
+    let s = app.global::<AiAccessStore>();
+    s.set_bulk_team("Contoso Ltd.".into());
+    let names: Vec<SharedString> = names.iter().map(|n| SharedString::from(*n)).collect();
+    s.set_bulk_count(names.len() as i32);
+    s.set_bulk_names(ModelRc::new(VecModel::from(names)));
+    s.set_bulk_open(true);
+}
+
+#[test]
+fn the_bulk_confirmation_stays_hidden_while_ai_access_is_unavailable() {
+    let h = Harness::new();
+    h.select(BACKEND);
+    ask_bulk(&h.app, &["Roadmap"]);
+    assert_eq!(bulk_cards(&h.app), 0);
+    h.app.global::<AiAccessStore>().set_available(true);
+    assert_eq!(bulk_cards(&h.app), 1);
+}
+
+#[test]
+fn the_bulk_confirmation_names_the_channels_and_both_buttons_answer_and_close_it() {
+    for (button, command) in [
+        ("Let AI read", "team-channels-confirm "),
+        ("Cancel", "team-channels-cancel "),
+    ] {
+        let h = open_chat("blocked");
+        let log = wire(&h.app);
+        ask_bulk(&h.app, &["Roadmap", "Launch plans"]);
+        assert_eq!(bulk_cards(&h.app), 1);
+        assert!(has_text(&h.app, "Let AI read 2 channels of Contoso Ltd.?"));
+        assert!(has_text(&h.app, "Roadmap") && has_text(&h.app, "Launch plans"));
+        click(&control(&h.app, button));
+        assert_eq!(*log.borrow(), [command]);
+        assert!(!h.app.global::<AiAccessStore>().get_bulk_open());
+        assert_eq!(bulk_cards(&h.app), 0, "{button} closes it");
+    }
+}
+
+#[test]
+fn the_bulk_question_counts_one_channel() {
+    let h = open_chat("blocked");
+    ask_bulk(&h.app, &["Roadmap"]);
+    assert!(has_text(&h.app, "Let AI read 1 channel of Contoso Ltd.?"));
+}
+
+#[test]
+fn the_overview_offers_undo_last_change_only_after_a_bulk_change() {
+    let h = open_chat("blocked");
+    let log = wire(&h.app);
+    let s = h.app.global::<AiAccessStore>();
+    s.set_overview_open(true);
+    let undo = |app: &AppWindow| {
+        ElementHandle::find_by_accessible_label(app, "Undo last change")
+            .filter(|e| e.accessible_role() == Some(AccessibleRole::Button))
+            .count()
+    };
+    assert_eq!(undo(&h.app), 0);
+    s.set_can_undo_bulk(true);
+    click(&control(&h.app, "Undo last change"));
+    assert_eq!(*log.borrow(), ["team-channels-undo "]);
+    // The backend answers that it is used up.
+    s.set_can_undo_bulk(false);
+    assert_eq!(undo(&h.app), 0);
+}
+
+// ---- opening the overview and the connect dialog ----------------------------------------------
+
+#[test]
+fn the_review_link_and_the_connect_button_open_their_dialogs() {
+    let h = open_chat("read");
+    let log = wire(&h.app);
+    let s = h.app.global::<AiAccessStore>();
+    click(&chips(&h.app)[0]);
+    click(&menu_item(&h.app, "Review all AI access…"));
+    assert!(s.get_overview_open());
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&h.app, "AiOverviewCard").count(),
+        1
+    );
+    click(&control(&h.app, "Connect an AI app…"));
+    assert!(s.get_connect_open());
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&h.app, "AiConnectCard").count(),
+        1
+    );
+    assert_eq!(*log.borrow(), ["overview ", "connect "]);
 }
 
 // ---- the popover -------------------------------------------------------------------------
@@ -507,6 +654,23 @@ fn palette_actions_review_pause_resume_and_connect() {
         enter(&app);
         assert_eq!(*log.borrow(), [command], "{query}");
         assert!(!app.global::<PaletteStore>().get_open(), "{query} closes");
+    }
+}
+
+#[test]
+fn the_palette_review_and_connect_open_their_dialogs() {
+    for query in ["ai access: review", "ai access: connect"] {
+        let app = palette_with(query);
+        wire(&app);
+        let s = app.global::<AiAccessStore>();
+        s.set_available(true);
+        enter(&app);
+        let open = if query.ends_with("review") {
+            s.get_overview_open()
+        } else {
+            s.get_connect_open()
+        };
+        assert!(open, "{query}");
     }
 }
 

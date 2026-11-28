@@ -37,10 +37,11 @@ fn an_allowed_chat_gets_a_permit_and_one_log_line() {
 }
 
 #[test]
-fn a_blocked_unknown_malformed_or_channel_id_gets_the_one_refusal() {
+fn a_blocked_unknown_or_malformed_id_gets_the_one_refusal() {
     let h = harness();
     h.allow(ALLOWED, Level::ReadDraft);
-    h.allow(CHANNEL, Level::ReadDraft); // even a file entry does not open a channel
+    h.allow(CHANNEL, Level::Read);
+    let blocked_thread = thread_of(CHANNEL_BLOCKED, BLOCKED_ROOT);
     for id in [
         BLOCKED,
         "19:nobody@thread.v2",
@@ -48,9 +49,8 @@ fn a_blocked_unknown_malformed_or_channel_id_gets_the_one_refusal() {
         "",
         "   ",
         "48:calllogs",
-        CHANNEL,
-        "19:chan@thread.tacv2;messageid=1731234567890",
-        "19:allowed@thread.v2;messageid=1731234567890",
+        CHANNEL_BLOCKED,
+        blocked_thread.as_str(),
         "../etc/passwd",
     ] {
         let err = h.gw.conversation("read_chat", id).unwrap_err();
@@ -58,6 +58,126 @@ fn a_blocked_unknown_malformed_or_channel_id_gets_the_one_refusal() {
     }
     assert!(decisions(&h).iter().all(|d| d == "blocked"));
     assert!(!h.fake.fetched("messages"), "nothing was fetched");
+}
+
+/// Ids with a thread suffix that is not exactly `;messageid=<digits>` on a channel.
+fn bad_thread_ids() -> Vec<String> {
+    vec![
+        format!("{CHANNEL};messageid=abc"),
+        format!("{CHANNEL};messageid="),
+        format!("{CHANNEL};messageid=1;messageid=2"),
+        format!("{CHANNEL};messageid={ROOT};messageid={ROOT}"),
+        format!("{CHANNEL};messageid=12a"),
+        format!("{CHANNEL};messageid=-1"),
+        format!("{CHANNEL};messageid=1 2"),
+        format!("{CHANNEL};messageid=+1"),
+        format!("{CHANNEL};messageid={}", "1".repeat(25)),
+        format!("{CHANNEL};MESSAGEID={ROOT}"),
+        format!("{CHANNEL};foo={ROOT}"),
+        format!("{CHANNEL};"),
+        // A thread suffix on a chat id: chats have no threads.
+        format!("{ALLOWED};messageid={ROOT}"),
+        format!("{NOTES};messageid={ROOT}"),
+    ]
+}
+
+#[test]
+fn a_thread_suffix_is_validated_strictly_and_a_bad_one_gets_the_one_refusal() {
+    let h = harness();
+    h.allow(ALLOWED, Level::ReadDraft);
+    h.allow(NOTES, Level::ReadDraft);
+    h.allow(CHANNEL, Level::Read);
+    for id in bad_thread_ids() {
+        assert_eq!(
+            h.gw.conversation("read_chat", &id).unwrap_err(),
+            REFUSAL,
+            "{id:?}"
+        );
+        let call = h.gw.begin("search_messages").unwrap();
+        assert_eq!(
+            h.gw.call_conversation(&call, &id).unwrap_err(),
+            REFUSAL,
+            "search filter {id:?}"
+        );
+    }
+    assert!(decisions(&h).iter().all(|d| d == "blocked"));
+    assert!(h.fake.calls().is_empty(), "{:?}", h.fake.calls());
+}
+
+#[tokio::test]
+async fn an_allowed_channel_and_its_threads_are_read_on_the_channels_permit() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    let p = h.gw.conversation("read_chat", CHANNEL).unwrap();
+    assert_eq!(p.resource(), &Resource::Channel(CHANNEL.into()));
+    assert_eq!(p.conversation_id(), Some(CHANNEL));
+    assert_eq!(
+        p.chat_id(),
+        None,
+        "a channel is no chat for the write tools"
+    );
+    h.gw.messages(&p, None, 5).await.unwrap();
+    assert!(h.fake.fetched(&format!("messages {CHANNEL} n=5")));
+    // A thread: decided on the channel's key, fetched as the thread.
+    let thread = thread_of(CHANNEL, ROOT);
+    let t =
+        h.gw.conversation("read_chat", &format!(" {thread} "))
+            .unwrap();
+    assert_eq!(t.resource(), &Resource::Channel(CHANNEL.into()));
+    h.gw.messages(&t, None, 7).await.unwrap();
+    assert!(h.fake.fetched(&format!("messages {thread} n=7")));
+    // Both access lines name the channel by its hash, never the thread and never in clear.
+    let log = h.log();
+    assert_eq!(decisions(&h), ["allowed", "allowed"]);
+    for line in &log {
+        assert_eq!(line["count"], 1);
+        assert_eq!(line["hashes"][0], hash_id(CHANNEL));
+    }
+    assert!(!h.log_text().contains("chan@thread"));
+    assert!(!h.fake.fetched(CHANNEL_BLOCKED));
+}
+
+#[tokio::test]
+async fn a_thread_permit_stops_when_its_channel_is_blocked_again() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    let t =
+        h.gw.conversation("read_chat", &thread_of(CHANNEL, ROOT))
+            .unwrap();
+    let scope = h.scope.clone();
+    h.set(|p| {
+        p.scope_entry(&scope)
+            .set_conversation(CHANNEL, None)
+            .unwrap()
+    });
+    assert_eq!(h.gw.messages(&t, None, 5).await.err().unwrap(), REFUSAL);
+    assert!(!h.fake.fetched("messages"));
+}
+
+#[test]
+fn a_channel_never_gets_a_draft_permit_whatever_the_file_holds() {
+    let h = harness();
+    // Only a hand-edited file can hold `read_draft` for a channel; it still reads only.
+    h.allow(CHANNEL, Level::ReadDraft);
+    for tool in ["draft_message", "draft_reaction", "draft_mark_read"] {
+        for id in [CHANNEL.to_string(), thread_of(CHANNEL, ROOT)] {
+            assert_eq!(
+                h.gw.conversation(tool, &id).unwrap_err(),
+                REFUSAL,
+                "{tool} {id}"
+            );
+        }
+    }
+    assert!(h.gw.conversation("read_chat", CHANNEL).is_ok());
+    assert!(
+        h.gw.permit("send_draft", Resource::Channel(CHANNEL.into()))
+            .is_err()
+    );
+    assert!(
+        h.gw.permit("send_draft", Resource::Chat(CHANNEL.into()))
+            .is_err(),
+        "a channel key named as a chat is still read-only"
+    );
 }
 
 #[test]
@@ -439,27 +559,32 @@ async fn a_meeting_answer_is_sent_only_with_a_draft_permit_for_its_own_meeting()
 // --- many conversations ---
 
 #[tokio::test]
-async fn a_list_holds_only_allowed_chats_and_never_channels() {
+async fn a_list_holds_only_allowed_chats_and_channels() {
     let h = harness();
     h.allow(ALLOWED, Level::Read);
+    let call = h.gw.begin("list_chats").unwrap();
+    let ids = |got: Vec<Conversation>| got.into_iter().map(|c| c.id).collect::<Vec<_>>();
+    assert_eq!(ids(h.gw.chats(&call, 0).await.unwrap()), [ALLOWED]);
     h.allow(CHANNEL, Level::Read);
     let call = h.gw.begin("list_chats").unwrap();
-    let got = h.gw.chats(&call, 0).await.unwrap();
-    let ids: Vec<_> = got.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, [ALLOWED]);
+    assert_eq!(ids(h.gw.chats(&call, 0).await.unwrap()), [ALLOWED, CHANNEL]);
 }
 
 #[tokio::test]
-async fn the_footer_counts_the_chats_not_shared_and_nothing_else() {
+async fn the_footer_counts_the_chats_and_channels_not_shared_and_nothing_else() {
     let h = harness();
     let call = h.gw.begin("list_chats").unwrap();
-    // Nothing allowed: the three chats of the fake account (the channel is not a chat).
+    // Nothing allowed: the three chats and two channels of the fake account.
     h.gw.chats(&call, 0).await.unwrap();
-    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(3, false));
+    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(5, false));
     h.allow(ALLOWED, Level::Read);
-    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(2, false));
+    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(4, false));
+    h.allow(CHANNEL, Level::Read);
+    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(3, false));
     h.allow(BLOCKED, Level::Read);
     h.allow(NOTES, Level::ReadDraft);
+    assert_eq!(h.gw.footer(&call).await.unwrap(), footer(1, false));
+    h.allow(CHANNEL_BLOCKED, Level::Read);
     assert_eq!(h.gw.footer(&call).await.unwrap(), footer(0, false));
 }
 
@@ -541,7 +666,7 @@ async fn a_failed_list_read_is_an_error_when_there_is_no_cached_list() {
 }
 
 #[tokio::test]
-async fn a_mention_of_a_blocked_chat_a_channel_or_an_unknown_id_is_dropped_whole() {
+async fn a_mention_of_a_blocked_chat_or_channel_or_an_unknown_id_is_dropped_whole() {
     let h = harness();
     h.allow(ALLOWED, Level::Read);
     let call = h.gw.begin("catch_up").unwrap();
@@ -552,6 +677,13 @@ async fn a_mention_of_a_blocked_chat_a_channel_or_an_unknown_id_is_dropped_whole
         got[0].source_thread_id.starts_with(ALLOWED),
         "a thread maps to its chat"
     );
+    // An allowed channel's thread mention is kept; the blocked channel's is dropped whole.
+    h.allow(CHANNEL, Level::Read);
+    let call = h.gw.begin("catch_up").unwrap();
+    let got = h.gw.mentions(&call, 30).await.unwrap();
+    let actors: Vec<_> = got.iter().map(|m| m.actor_name.as_str()).collect();
+    assert_eq!(actors, ["Alex Allowed", "Chan Nel"]);
+    assert_eq!(got[1].source_thread_id, thread_of(CHANNEL, ROOT));
 }
 
 #[tokio::test]
@@ -627,6 +759,91 @@ async fn search_over_many_allowed_chats_reads_at_most_three_global_pages() {
         .filter(|c| c.starts_with("search"))
         .count();
     assert_eq!(searches, 3);
+}
+
+#[tokio::test]
+async fn search_in_a_few_allowed_channels_keeps_their_posts_and_replies_only() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    let call = h.gw.begin("search_messages").unwrap();
+    let req = SearchRequest {
+        query: "x",
+        in_chat: None,
+        from_mri: None,
+        limit: 10,
+    };
+    let hits = h.gw.search(&call, req).await.unwrap();
+    let calls = h.fake.calls();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].contains(&format!("in=Some({CHANNEL:?})")),
+        "{calls:?}"
+    );
+    let got: Vec<_> = hits
+        .iter()
+        .map(|h| (h.conversation_id.as_str(), h.root_id.as_str()))
+        .collect();
+    assert_eq!(got, [(CHANNEL, ""), (CHANNEL, ROOT)], "a post and a reply");
+    assert!(!h.fake.fetched(CHANNEL_BLOCKED));
+}
+
+#[tokio::test]
+async fn global_search_keeps_allowed_channels_and_drops_blocked_ones() {
+    let h = harness();
+    for n in 0..11 {
+        h.allow(&format!("19:many{n}@thread.v2"), Level::Read);
+    }
+    h.allow(CHANNEL, Level::Read);
+    let call = h.gw.begin("search_messages").unwrap();
+    let req = SearchRequest {
+        query: "x",
+        in_chat: None,
+        from_mri: None,
+        limit: 10,
+    };
+    let hits = h.gw.search(&call, req).await.unwrap();
+    assert!(
+        h.fake.calls().iter().all(|c| c.contains("in=None")),
+        "{:?}",
+        h.fake.calls()
+    );
+    assert_eq!(hits.len(), 2);
+    assert!(
+        hits.iter().all(|h| h.conversation_id == CHANNEL),
+        "{hits:?}"
+    );
+}
+
+#[tokio::test]
+async fn search_in_one_channel_or_thread_searches_the_channel() {
+    let h = harness();
+    h.allow(CHANNEL, Level::Read);
+    let call = h.gw.begin("search_messages").unwrap();
+    assert_eq!(
+        h.gw.call_conversation(&call, CHANNEL_BLOCKED).unwrap_err(),
+        REFUSAL
+    );
+    assert!(h.fake.calls().is_empty(), "refused before any network call");
+    for id in [CHANNEL.to_string(), thread_of(CHANNEL, ROOT)] {
+        let p = h.gw.call_conversation(&call, &id).unwrap();
+        let req = SearchRequest {
+            query: "x",
+            in_chat: Some(&p),
+            from_mri: None,
+            limit: 10,
+        };
+        let hits = h.gw.search(&call, req).await.unwrap();
+        assert_eq!(hits.len(), 2, "{id}");
+        assert!(hits.iter().all(|h| h.conversation_id == CHANNEL));
+    }
+    let calls = h.fake.calls();
+    assert_eq!(calls.len(), 2);
+    assert!(
+        calls
+            .iter()
+            .all(|c| c.contains(&format!("in=Some({CHANNEL:?})"))),
+        "the thread searches its channel: {calls:?}"
+    );
 }
 
 #[tokio::test]
