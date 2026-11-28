@@ -6,7 +6,9 @@
 use super::{UiHandle, model, model_sync, msg, row_fingerprint, settings};
 use crate::backend::settings::Look;
 use crate::data::MsgData;
-use crate::{AppWindow, CalStore, ChatWindow, MediaStore, Msg, SettingsStore, Theme};
+use crate::{
+    AiAccessStore, AppWindow, CalStore, ChatWindow, MediaStore, Msg, SettingsStore, Theme,
+};
 use slint::{CloseRequestResponse, ComponentHandle, Model, ModelRc, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -45,6 +47,16 @@ fn new_window(app: &AppWindow) -> Option<ChatWindow> {
             let arg = format!("{}\u{1f}{text}", cw.get_conv_id());
             app.global::<MediaStore>()
                 .invoke_command("popout-send".into(), arg.into());
+        }
+    });
+    // The AI access chip of this window sets the level through the main window's store.
+    let main = app.as_weak();
+    let me = cw.as_weak();
+    cw.on_ai_set_level(move |level| {
+        if let (Some(app), Some(cw)) = (main.upgrade(), me.upgrade()) {
+            let arg = format!("{}\t{level}", cw.get_conv_id());
+            app.global::<AiAccessStore>()
+                .invoke_command("set-level".into(), arg.into());
         }
     });
     let main = app.as_weak();
@@ -104,6 +116,42 @@ fn new_window(app: &AppWindow) -> Option<ChatWindow> {
     Some(cw)
 }
 
+/// Fills the pop-out's AI access chip from the main window's `AiAccessStore` (the pop-out has
+/// globals of its own, so it cannot read that one): available when this build has the feature and
+/// the chat is a chat, the level of this chat (a conversation that is not in the store's rows is
+/// Blocked), and why it is paused. Run when the pop-out opens a chat and whenever the store changes.
+pub(crate) fn sync_ai_access(app: &AppWindow) {
+    POPOUT.with(|p| {
+        let p = p.borrow();
+        let Some(cw) = p.as_ref() else { return };
+        let store = app.global::<AiAccessStore>();
+        let key = match mcp::Resource::from_conversation_id(cw.get_conv_id().as_str()) {
+            Ok(mcp::Resource::Chat(k)) => Some(k),
+            _ => None,
+        };
+        let level = key
+            .as_deref()
+            .and_then(|k| {
+                store
+                    .get_rows()
+                    .iter()
+                    .find(|r| r.id.as_str() == k)
+                    .map(|r| r.level.to_string())
+            })
+            .unwrap_or_else(|| "blocked".to_string());
+        let paused = if store.get_master_paused() {
+            "Paused by master switch"
+        } else if store.get_account_paused() {
+            "Paused for this account"
+        } else {
+            ""
+        };
+        cw.set_ai_available(store.get_available() && key.is_some());
+        cw.set_ai_level(level.into());
+        cw.set_ai_paused_text(paused.into());
+    });
+}
+
 impl UiHandle {
     /// Opens (or reuses) the chat window for `conv`.
     pub fn popout_open(&self, conv: String, title: String) {
@@ -133,6 +181,7 @@ impl UiHandle {
                 let _ = cw.show();
                 cw.set_scroll_tick(cw.get_scroll_tick() + 1);
             });
+            sync_ai_access(&app);
         });
     }
 

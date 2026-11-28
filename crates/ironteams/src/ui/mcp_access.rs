@@ -34,6 +34,7 @@ impl UiHandle {
             s.set_rows(model(d.rows.into_iter().map(row).collect()));
             s.set_connect_text(d.connect_text.into());
             s.set_account_label(d.account_label.into());
+            super::popout::sync_ai_access(&w);
         });
     }
 
