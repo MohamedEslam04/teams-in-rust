@@ -8,7 +8,7 @@ use super::{UiHandle, model};
 use crate::backend::{Cmd, McpAccessCmd};
 use crate::mcp_access_data::{AiAccessData, AiAccessRow};
 use crate::{AiAccessRow as SlintAiAccessRow, AiAccessStore, AppWindow};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, SharedString};
 use tokio::sync::mpsc::UnboundedSender;
 
 fn row(r: AiAccessRow) -> SlintAiAccessRow {
@@ -36,6 +36,12 @@ impl UiHandle {
             s.set_rows(model(d.rows.into_iter().map(row).collect()));
             s.set_connect_text(d.connect_text.into());
             s.set_account_label(d.account_label.into());
+            s.set_bulk_team(d.bulk_team.into());
+            s.set_bulk_names(model(
+                d.bulk_names.into_iter().map(SharedString::from).collect(),
+            ));
+            s.set_bulk_count(i32::try_from(d.bulk_count).unwrap_or(i32::MAX));
+            s.set_can_undo_bulk(d.can_undo_bulk);
             super::popout::sync_ai_access(&w);
         });
     }
@@ -43,6 +49,11 @@ impl UiHandle {
     /// Opens the first-time explainer (the first time something is set above Blocked).
     pub fn ai_access_explainer(&self) {
         self.run(|w: AppWindow| w.global::<AiAccessStore>().set_explainer_open(true));
+    }
+
+    /// Opens the confirmation of the Team menu's "Let AI read all channels…".
+    pub fn ai_access_bulk(&self) {
+        self.run(|w: AppWindow| w.global::<AiAccessStore>().set_bulk_open(true));
     }
 }
 
@@ -113,9 +124,18 @@ mod tests {
             }],
             connect_text: "claude mcp add".into(),
             account_label: "work".into(),
+            bulk_team: "Zebra".into(),
+            bulk_names: vec!["General".into(), "Roadmap".into()],
+            bulk_count: 2,
+            can_undo_bulk: true,
         });
         let s = w.global::<AiAccessStore>();
         assert!(s.get_master_paused() && s.get_account_paused() && s.get_calendar_people());
+        assert_eq!(s.get_bulk_team().as_str(), "Zebra");
+        let names: Vec<String> = s.get_bulk_names().iter().map(|n| n.to_string()).collect();
+        assert_eq!(names, ["General", "Roadmap"]);
+        assert_eq!(s.get_bulk_count(), 2);
+        assert!(s.get_can_undo_bulk());
         assert_eq!(s.get_target_id().as_str(), "19:x");
         assert_eq!(s.get_target_level().as_str(), "read");
         assert_eq!(s.get_meeting_id().as_str(), "19:meeting_x@thread.v2");
@@ -128,6 +148,9 @@ mod tests {
         handle(&w).ai_access(AiAccessData::default());
         assert_eq!(s.get_rows().row_count(), 0);
         assert!(!s.get_master_paused());
+        assert_eq!(s.get_bulk_names().row_count(), 0);
+        assert_eq!(s.get_bulk_count(), 0);
+        assert!(!s.get_can_undo_bulk());
     }
 
     #[test]
@@ -139,6 +162,14 @@ mod tests {
     }
 
     #[test]
+    fn the_bulk_confirmation_opens_from_rust() {
+        let w = window();
+        assert!(!w.global::<AiAccessStore>().get_bulk_open());
+        handle(&w).ai_access_bulk();
+        assert!(w.global::<AiAccessStore>().get_bulk_open());
+    }
+
+    #[test]
     fn commands_reach_the_engine_and_unknown_ones_do_not() {
         let w = window();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -146,6 +177,7 @@ mod tests {
         let s = w.global::<AiAccessStore>();
         s.invoke_command("block-all".into(), "".into());
         s.invoke_command("set-level".into(), "19:x\tread".into());
+        s.invoke_command("team-channels".into(), "19:t@thread.tacv2".into());
         s.invoke_command("nonsense".into(), "".into());
         assert!(matches!(
             rx.try_recv(),
@@ -154,6 +186,10 @@ mod tests {
         assert!(matches!(
             rx.try_recv(),
             Ok(Cmd::McpAccess(McpAccessCmd::SetLevel(_, Some(_))))
+        ));
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(Cmd::McpAccess(McpAccessCmd::TeamChannels(_)))
         ));
         assert!(rx.try_recv().is_err(), "the unknown command sent nothing");
     }

@@ -11,7 +11,7 @@ import { FindStore } from "../stores/find_store.slint";
 import { ChatHeaderStore, RemoveHistoryConfirm } from "chat_header.slint";
 import { LeaveConfirm } from "participants.slint";
 import { PeopleStore } from "../molecules/people.slint";
-import { AiAccessStore, AiConnectCard, AiExplainerCard, AiOverviewCard } from "ai_access.slint";
+import { AiAccessStore, AiBulkCard, AiConnectCard, AiExplainerCard, AiOverviewCard } from "ai_access.slint";
 
 // The OneDrive file picker, opened from the composer's "Attach cloud files".
 export component DrivePickerLayer inherits Rectangle {
@@ -120,6 +120,19 @@ export component AiExplainerLayer inherits Rectangle {
     AiExplainerCard {
         width: min(440px, root.width - 24px);
         height: min(330px, root.height - 16px);
+        x: (root.width - self.width) / 2;
+        y: max(8px, (root.height - self.height) / 2);
+    }
+}
+
+// AI access: let the AI read a team's channels? A press outside it does nothing: it has to be
+// answered.
+export component AiBulkLayer inherits Rectangle {
+    background: Theme.scrim;
+    TouchArea { }
+    AiBulkCard {
+        width: min(440px, root.width - 24px);
+        height: min(420px, root.height - 16px);
         x: (root.width - self.width) / 2;
         y: max(8px, (root.height - self.height) / 2);
     }

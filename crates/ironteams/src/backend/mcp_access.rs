@@ -8,6 +8,10 @@
 //! first time the user sets something above Blocked, a one-time explainer comes first
 //! (`mcp_ai_explainer_seen` in the account's store).
 //!
+//! Channels are read-only: a channel is Blocked or "Can read", never "Can read and draft". The
+//! Team menu's "Let AI read all channels…" sets "Can read" on the team's channels that are Blocked
+//! when the user confirms (a snapshot: channels made later stay Blocked) and keeps one undo of it.
+//!
 //! The UI talks to this module through the `AiAccessStore` commands (`McpAccessCmd::parse`) and
 //! gets the whole view back as one plain [`AiAccessData`] after every change.
 
@@ -17,11 +21,13 @@ use mcp::{Level, Master, Policy, PolicyReader, PolicyWriter, Resource, Scope, Sc
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use teams_proto::model::{ConversationKind, conversation_kind};
+use teams_proto::teams::TeamEntry;
 
 /// Store key of the "the first-time explainer was answered" flag.
 const KV_EXPLAINER: &str = "mcp_ai_explainer_seen";
 
-const NO_CHANNELS: &str = "AI access is not available for channels yet.";
+const CHANNELS_READ_ONLY: &str = "Channels can be shared for reading only.";
+const NO_TEAM_CHANNELS: &str = "The channels of this team are not known yet.";
 const NO_ACCOUNT: &str = "AI access is not available for this account.";
 const NOT_SAVED: &str = "AI access could not be saved. Update IronTeams and try again.";
 
@@ -53,6 +59,14 @@ pub enum McpAccessCmd {
     /// The first-time explainer's answer.
     ExplainerConfirm,
     ExplainerCancel,
+    /// The Team menu's "Let AI read all channels…" for this team id: snapshots the team's
+    /// channels that are Blocked now and asks the user.
+    TeamChannels(String),
+    /// The answer of that confirmation.
+    TeamChannelsConfirm,
+    TeamChannelsCancel,
+    /// Puts the channels the last bulk change set back to what they were.
+    TeamChannelsUndo,
 }
 
 impl McpAccessCmd {
@@ -93,16 +107,31 @@ impl McpAccessCmd {
             "connect" => McpAccessCmd::Connect,
             "explainer-confirm" => McpAccessCmd::ExplainerConfirm,
             "explainer-cancel" => McpAccessCmd::ExplainerCancel,
+            "team-channels" => McpAccessCmd::TeamChannels(id()?),
+            "team-channels-confirm" => McpAccessCmd::TeamChannelsConfirm,
+            "team-channels-cancel" => McpAccessCmd::TeamChannelsCancel,
+            "team-channels-undo" => McpAccessCmd::TeamChannelsUndo,
             _ => return None,
         })
     }
 }
+
+/// What the conversations a bulk change set were before it, by key: its undo.
+type Undo = Vec<(String, Option<Level>)>;
 
 /// One edit of the state file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Change {
     /// A conversation's key and its level (`None` removes the entry).
     Level(String, Option<Level>),
+    /// The bulk "Can read" on these channel keys of a team (named for the notice): only the
+    /// ones still Blocked change.
+    ReadChannels {
+        team: String,
+        keys: Vec<String>,
+    },
+    /// The undo of the last bulk change.
+    Restore(Undo),
     CalendarPeople(bool),
     AccountPaused(bool),
     Master(bool),
@@ -117,13 +146,17 @@ impl Change {
 
     /// Whether this change gives the AI more than it had: the first one asks the user first.
     fn widens(&self) -> bool {
-        matches!(
-            self,
-            Change::Level(_, Some(_)) | Change::CalendarPeople(true)
-        )
+        match self {
+            Change::Level(_, level) => level.is_some(),
+            Change::ReadChannels { keys, .. } => !keys.is_empty(),
+            Change::Restore(undo) => undo.iter().any(|(_, level)| level.is_some()),
+            Change::CalendarPeople(on) => *on,
+            Change::AccountPaused(_) | Change::Master(_) | Change::BlockAll => false,
+        }
     }
 
-    fn apply(&self, policy: &mut Policy, scope: Option<&ScopeId>) {
+    /// Edits the policy. The bulk change returns its undo.
+    fn apply(&self, policy: &mut Policy, scope: Option<&ScopeId>) -> Option<Undo> {
         match (self, scope) {
             (Change::Master(paused), _) => {
                 policy.master = if *paused {
@@ -136,12 +169,72 @@ impl Change {
                 // The key is already canonical, so this cannot fail.
                 let _ = policy.scope_entry(s).set_conversation(key, *level);
             }
+            (Change::ReadChannels { keys, .. }, Some(s)) => {
+                return Some(allow_read(policy.scope_entry(s), keys));
+            }
+            (Change::Restore(undo), Some(s)) => restore(policy.scope_entry(s), undo),
             (Change::CalendarPeople(on), Some(s)) => policy.scope_entry(s).calendar_people = *on,
             (Change::AccountPaused(on), Some(s)) => policy.scope_entry(s).paused = *on,
             (Change::BlockAll, Some(s)) => policy.scope_entry(s).conversations.clear(),
             (_, None) => {}
         }
+        None
     }
+}
+
+/// The current channels of a team for the bulk change, as (key, name): every channel that is not
+/// deleted, General first, then by name. An id that is not a channel's is left out.
+fn team_channels(team: &TeamEntry) -> Vec<(String, String)> {
+    let mut out: Vec<(bool, String, String)> = team
+        .channels
+        .iter()
+        .filter(|c| !c.is_deleted)
+        .filter_map(|c| match Resource::from_conversation_id(&c.id) {
+            Ok(Resource::Channel(key)) => Some((!c.is_general, key, c.name.clone())),
+            _ => None,
+        })
+        .collect();
+    out.sort_by_cached_key(|(later, key, name)| (*later, name.to_lowercase(), key.clone()));
+    out.into_iter().map(|(_, key, name)| (key, name)).collect()
+}
+
+/// The channels the AI cannot read yet in this scope (no scope: all of them): what the bulk
+/// change would set.
+fn still_blocked(scope: Option<&Scope>, channels: Vec<(String, String)>) -> Vec<(String, String)> {
+    channels
+        .into_iter()
+        .filter(|(key, _)| scope.is_none_or(|s| !s.conversations.contains_key(key)))
+        .collect()
+}
+
+/// Sets "Can read" on each key that is still Blocked and returns what each one it changed was
+/// before. A key that already has a level keeps it and is not in the undo.
+fn allow_read(scope: &mut Scope, keys: &[String]) -> Undo {
+    let mut undo = Undo::new();
+    for key in keys {
+        let before = scope.conversations.get(key).copied();
+        if before.is_none() && scope.set_conversation(key, Some(Level::Read)).is_ok() {
+            undo.push((key.clone(), before));
+        }
+    }
+    undo
+}
+
+/// Puts each conversation of an undo back to the level it had.
+fn restore(scope: &mut Scope, undo: &[(String, Option<Level>)]) {
+    for (key, level) in undo {
+        let _ = scope.set_conversation(key, *level);
+    }
+}
+
+/// The notice after the bulk change.
+fn read_channels_notice(n: usize, team: &str) -> String {
+    let what = if n == 1 {
+        "1 channel".to_string()
+    } else {
+        format!("{n} channels")
+    };
+    format!("The AI can now read {what} of {team}. To undo it, open AI access: review.")
 }
 
 /// The state file's reader and writer for the directories in use. One per engine: the writer's
@@ -164,9 +257,21 @@ pub(super) struct State {
     opened: Option<String>,
     /// A change waiting for the first-time explainer's answer.
     pending: Option<Change>,
+    /// The Team menu's bulk change waiting for the user's confirmation.
+    bulk: Option<Bulk>,
+    /// The undo of the last bulk change that was written (one level).
+    undo: Option<Undo>,
     /// Tests: the directories to use instead of the user's.
     #[cfg(test)]
     paths: Option<session::Paths>,
+}
+
+/// A team's channels the bulk change asks about: the team's name and its channels that were
+/// Blocked when the user chose it, as (key, name).
+#[derive(Debug)]
+struct Bulk {
+    team: String,
+    channels: Vec<(String, String)>,
 }
 
 #[cfg(not(test))]
@@ -191,9 +296,14 @@ impl Engine {
                 self.mcp_access.lock().unwrap().meeting = Some(id);
                 self.push_ai_access();
             }
-            McpAccessCmd::SetLevel(id, Some(level)) => match chat_key(&id) {
-                Some(key) => self.mcp_request(Change::Level(key, Some(level))),
-                None => self.ui.banner(NO_CHANNELS.into()),
+            // A channel is Blocked or "Can read": the AI never drafts in a channel.
+            McpAccessCmd::SetLevel(id, Some(level)) => match Resource::from_conversation_id(&id) {
+                Ok(Resource::Chat(key)) => self.mcp_request(Change::Level(key, Some(level))),
+                Ok(Resource::Channel(key)) if level == Level::Read => {
+                    self.mcp_request(Change::Level(key, Some(level)))
+                }
+                Ok(Resource::Channel(_)) => self.ui.banner(CHANNELS_READ_ONLY.into()),
+                _ => {}
             },
             // Taking a level away is always fine, for any id that has a key.
             McpAccessCmd::SetLevel(id, None) | McpAccessCmd::Block(id) => {
@@ -220,7 +330,57 @@ impl Engine {
                 self.mcp_access.lock().unwrap().pending = None;
                 self.push_ai_access();
             }
+            McpAccessCmd::TeamChannels(team) => self.mcp_bulk_ask(&team),
+            McpAccessCmd::TeamChannelsConfirm => {
+                let bulk = self.mcp_access.lock().unwrap().bulk.take();
+                match bulk {
+                    Some(b) => self.mcp_request(Change::ReadChannels {
+                        team: b.team,
+                        keys: b.channels.into_iter().map(|(key, _)| key).collect(),
+                    }),
+                    None => self.push_ai_access(),
+                }
+            }
+            McpAccessCmd::TeamChannelsCancel => {
+                self.mcp_access.lock().unwrap().bulk = None;
+                self.push_ai_access();
+            }
+            McpAccessCmd::TeamChannelsUndo => {
+                let undo = self.mcp_access.lock().unwrap().undo.clone();
+                if let Some(undo) = undo {
+                    self.mcp_request(Change::Restore(undo));
+                }
+            }
         }
+    }
+
+    /// The Team menu's "Let AI read all channels…": snapshots the team's channels that are
+    /// Blocked now and opens the confirmation. Channels made later are not in it, so they stay
+    /// Blocked.
+    fn mcp_bulk_ask(&self, team_id: &str) {
+        let team = {
+            let manage = self.manage.lock().unwrap();
+            manage
+                .page
+                .team(team_id)
+                .filter(|t| !t.is_deleted)
+                .map(|t| (t.name.clone(), team_channels(t)))
+        };
+        let Some((team, channels)) = team.filter(|(_, c)| !c.is_empty()) else {
+            self.ui.banner(NO_TEAM_CHANNELS.into());
+            return;
+        };
+        let policy = mcp_policy(self.mcp_view_files().as_ref());
+        let scope = self.mcp_scope();
+        let channels = still_blocked(scope.as_ref().and_then(|s| policy.scope(s)), channels);
+        if channels.is_empty() {
+            self.ui
+                .info(format!("The AI can already read every channel of {team}."));
+            return;
+        }
+        self.mcp_access.lock().unwrap().bulk = Some(Bulk { team, channels });
+        self.push_ai_access();
+        self.ui.ai_access_bulk();
     }
 
     /// The header was drawn: when the open chat is another one than before, the controls talk
@@ -279,11 +439,34 @@ impl Engine {
             self.ui.banner(NOT_SAVED.into());
             return;
         };
-        if let Err(err) = files.writer.update(|p| change.apply(p, scope.as_ref())) {
-            tracing::warn!(%err, "saving the AI access settings failed");
-            self.ui.banner(NOT_SAVED.into());
+        let mut undo = None;
+        let written = files
+            .writer
+            .update(|p| undo = change.apply(p, scope.as_ref()));
+        match written {
+            Ok(_) => self.mcp_written(&change, undo),
+            Err(err) => {
+                tracing::warn!(%err, "saving the AI access settings failed");
+                self.ui.banner(NOT_SAVED.into());
+            }
         }
         self.push_ai_access();
+    }
+
+    /// After a write: a bulk change keeps its undo in place of the one before and says what it
+    /// did; an undo is used up.
+    fn mcp_written(&self, change: &Change, undo: Option<Undo>) {
+        match change {
+            Change::ReadChannels { team, .. } => {
+                let undo = undo.filter(|u| !u.is_empty());
+                if let Some(u) = &undo {
+                    self.ui.info(read_channels_notice(u.len(), team));
+                }
+                self.mcp_access.lock().unwrap().undo = undo;
+            }
+            Change::Restore(_) => self.mcp_access.lock().unwrap().undo = None,
+            _ => {}
+        }
     }
 
     /// The scope of the account this engine runs, when it has one (only work and school accounts
@@ -310,11 +493,30 @@ impl Engine {
         Some(files)
     }
 
+    /// The files the view reads. None in demo mode, which shows the defaults and never reads the
+    /// user's real files.
+    fn mcp_view_files(&self) -> Option<Arc<Files>> {
+        if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
+            None
+        } else {
+            self.mcp_files()
+        }
+    }
+
     /// Builds the whole view and hands it to the UI.
     fn push_ai_access(&self) {
-        let (target, meeting) = {
+        let (target, meeting, bulk, can_undo_bulk) = {
             let st = self.mcp_access.lock().unwrap();
-            (st.target.clone(), st.meeting.clone())
+            let bulk = st.bulk.as_ref().map(|b| {
+                let names: Vec<String> = b.channels.iter().map(|(_, n)| n.clone()).collect();
+                (b.team.clone(), names)
+            });
+            (
+                st.target.clone(),
+                st.meeting.clone(),
+                bulk,
+                st.undo.is_some(),
+            )
         };
         let (label, scope) = {
             let cfg = self.cfg.lock().unwrap();
@@ -323,22 +525,31 @@ impl Engine {
                 ScopeId::from_identity(&cfg.account, &cfg.tenant, &self.me),
             )
         };
-        // Demo mode shows the defaults and never reads the user's real files.
-        let files = if self.offline.load(std::sync::atomic::Ordering::Relaxed) {
-            None
-        } else {
-            self.mcp_files()
-        };
-        let policy = files
-            .as_ref()
-            .map_or_else(|| Arc::new(Policy::default()), |f| f.reader.snapshot());
+        let files = self.mcp_view_files();
+        let policy = mcp_policy(files.as_ref());
         let reads = files
             .as_ref()
             .map(|f| mcp::last_reads(&f.paths.data_dir))
             .unwrap_or_default();
+        // A channel is named with its team: "General" alone could be any team's.
         let titles = |key: &str| {
-            let row = self.store.lock().unwrap().conversation(key).ok().flatten();
-            row.map(|r| r.title)
+            let row = self
+                .store
+                .lock()
+                .unwrap()
+                .conversation(key)
+                .ok()
+                .flatten()?;
+            Some(match row.team_name {
+                Some(team)
+                    if row.kind == store::ConvKind::Channel
+                        && !team.is_empty()
+                        && !row.title.is_empty() =>
+                {
+                    format!("{team} › {}", row.title)
+                }
+                _ => row.title,
+            })
         };
         let mut data = view_data(
             &policy,
@@ -354,6 +565,12 @@ impl Engine {
         if let Some(f) = &files {
             data.connect_text = connect_text(&label, &f.paths);
         }
+        if let Some((team, names)) = bulk {
+            data.bulk_team = team;
+            data.bulk_count = names.len();
+            data.bulk_names = names;
+        }
+        data.can_undo_bulk = can_undo_bulk;
         self.ui.ai_access(data);
     }
 
@@ -366,13 +583,27 @@ impl Engine {
     }
 }
 
-/// The key of a conversation the setting can be given to: a chat (also meetings' chats and the
-/// notes). A channel or an id of an unknown kind has none.
+/// The key of a chat (also meetings' chats and the notes): what a meeting's setting is given to.
+/// A channel or an id of an unknown kind has none.
 fn chat_key(id: &str) -> Option<String> {
     match Resource::from_conversation_id(id) {
         Ok(Resource::Chat(key)) => Some(key),
         _ => None,
     }
+}
+
+/// The key of a conversation the chip talks about: a chat or a channel (a channel thread is its
+/// channel). An id of an unknown kind has none.
+fn conversation_key(id: &str) -> Option<String> {
+    match Resource::from_conversation_id(id) {
+        Ok(Resource::Chat(key) | Resource::Channel(key)) => Some(key),
+        _ => None,
+    }
+}
+
+/// The policy the view shows: the state file's, or the defaults without one.
+fn mcp_policy(files: Option<&Arc<Files>>) -> Arc<Policy> {
+    files.map_or_else(|| Arc::new(Policy::default()), |f| f.reader.snapshot())
 }
 
 /// What a conversation is called when the store does not know its title.
@@ -444,8 +675,8 @@ fn view_data(
         })
         .unwrap_or_default();
     rows.sort_by_cached_key(|r| (r.title.to_lowercase(), r.id.clone()));
-    // A channel or an unknown kind cannot be set: the chip has nothing to talk about.
-    let target_key = target.and_then(chat_key);
+    // An unknown kind cannot be set: the chip has nothing to talk about.
+    let target_key = target.and_then(conversation_key);
     let target_level = target_key
         .as_ref()
         .and_then(|k| scope?.conversations.get(k))
@@ -457,8 +688,8 @@ fn view_data(
         target_id: target_key.unwrap_or_default(),
         target_level: target_level.into(),
         rows,
-        connect_text: String::new(),
-        account_label: String::new(),
+        // The meeting, the connect text, the account label and the bulk change are the engine's.
+        ..AiAccessData::default()
     }
 }
 
@@ -573,6 +804,10 @@ mod tests {
         assert_eq!(p("connect", ""), Some(C::Connect));
         assert_eq!(p("explainer-confirm", ""), Some(C::ExplainerConfirm));
         assert_eq!(p("explainer-cancel", ""), Some(C::ExplainerCancel));
+        assert_eq!(p("team-channels", TEAM), Some(C::TeamChannels(TEAM.into())));
+        assert_eq!(p("team-channels-confirm", ""), Some(C::TeamChannelsConfirm));
+        assert_eq!(p("team-channels-cancel", ""), Some(C::TeamChannelsCancel));
+        assert_eq!(p("team-channels-undo", ""), Some(C::TeamChannelsUndo));
     }
 
     #[test]
@@ -582,6 +817,7 @@ mod tests {
         assert_eq!(p("open", ""), None);
         assert_eq!(p("open-meeting", ""), None);
         assert_eq!(p("block", ""), None);
+        assert_eq!(p("team-channels", ""), None, "no team");
         assert_eq!(p("set-level", "19:x"), None, "no level");
         assert_eq!(p("set-level", "19:x\tfull"), None, "unknown level");
         assert_eq!(p("set-level", "\tread"), None, "no id");
@@ -648,6 +884,14 @@ mod tests {
         assert!(!Change::Master(false).widens());
         assert!(!Change::AccountPaused(false).widens());
         assert!(!Change::BlockAll.widens());
+        let read_all = |keys: Vec<String>| Change::ReadChannels {
+            team: "Zebra".into(),
+            keys,
+        };
+        assert!(read_all(vec![CHANNEL.into()]).widens());
+        assert!(!read_all(vec![]).widens(), "nothing to set");
+        assert!(!Change::Restore(vec![(CHANNEL.into(), None)]).widens());
+        assert!(Change::Restore(vec![(CHANNEL.into(), Some(Level::Read))]).widens());
     }
 
     #[test]
@@ -658,6 +902,157 @@ mod tests {
         assert_eq!(chat_key(CHANNEL), None, "a channel");
         assert_eq!(chat_key("48:calllogs"), None, "an unknown kind");
         assert_eq!(chat_key(""), None);
+    }
+
+    #[test]
+    fn chats_and_channels_have_a_key_the_chip_talks_about() {
+        assert_eq!(conversation_key(CHAT).as_deref(), Some(CHAT));
+        assert_eq!(conversation_key("48:notes").as_deref(), Some("48:notes"));
+        assert_eq!(conversation_key(CHANNEL).as_deref(), Some(CHANNEL));
+        let thread = format!("{CHANNEL};messageid=1");
+        assert_eq!(
+            conversation_key(&thread).as_deref(),
+            Some(CHANNEL),
+            "a channel thread is its channel"
+        );
+        assert_eq!(conversation_key("48:calllogs"), None, "an unknown kind");
+        assert_eq!(conversation_key(""), None);
+    }
+
+    // ---- the Team menu's bulk change ----
+
+    const TEAM: &str = "19:zebra@thread.tacv2";
+    const ROADMAP: &str = "19:roadmap@thread.tacv2";
+    const GONE: &str = "19:gone@thread.tacv2";
+
+    fn channel(id: &str, name: &str) -> teams_proto::teams::ChannelEntry {
+        use teams_proto::teams::{ChannelEntry, ChannelKind, Role};
+        ChannelEntry {
+            id: id.into(),
+            name: name.into(),
+            kind: ChannelKind::Standard,
+            is_general: name == "General",
+            is_shown: true,
+            is_pinned: false,
+            is_muted: false,
+            is_archived: false,
+            is_deleted: false,
+            is_member: true,
+            is_moderator: false,
+            role: Role::Member,
+            created_ms: 0,
+        }
+    }
+
+    fn team(id: &str, name: &str, channels: Vec<teams_proto::teams::ChannelEntry>) -> TeamEntry {
+        use teams_proto::teams::{Access, Role};
+        TeamEntry {
+            id: id.into(),
+            group_id: format!("g-{id}"),
+            name: name.into(),
+            description: String::new(),
+            access: Access::Private,
+            is_org_wide: false,
+            is_shown: true,
+            is_collapsed: false,
+            is_archived: false,
+            is_deleted: false,
+            role: Role::Member,
+            member_count: 3,
+            owner_count: 1,
+            email: String::new(),
+            channels,
+        }
+    }
+
+    /// Zebra: General, Roadmap, a deleted channel and an id that is not a channel's.
+    fn zebra() -> TeamEntry {
+        let mut gone = channel(GONE, "Gone");
+        gone.is_deleted = true;
+        team(
+            TEAM,
+            "Zebra",
+            vec![
+                channel(ROADMAP, "Roadmap"),
+                gone,
+                channel(TEAM, "General"),
+                channel("48:calllogs", "Not a channel"),
+            ],
+        )
+    }
+
+    fn pairs(v: &[(&str, &str)]) -> Vec<(String, String)> {
+        v.iter()
+            .map(|(k, n)| (k.to_string(), n.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_teams_channels_are_the_live_ones_general_first() {
+        assert_eq!(
+            team_channels(&zebra()),
+            pairs(&[(TEAM, "General"), (ROADMAP, "Roadmap")])
+        );
+        assert!(team_channels(&team(TEAM, "Empty", vec![])).is_empty());
+    }
+
+    #[test]
+    fn the_bulk_change_asks_only_about_the_channels_still_blocked() {
+        let all = team_channels(&zebra());
+        let mut s = Scope::new(OID);
+        assert_eq!(still_blocked(Some(&s), all.clone()), all);
+        assert_eq!(still_blocked(None, all.clone()), all, "no scope: all");
+        s.conversations.insert(ROADMAP.into(), Level::Read);
+        assert_eq!(still_blocked(Some(&s), all), pairs(&[(TEAM, "General")]));
+    }
+
+    #[test]
+    fn allow_read_sets_only_blocked_channels_and_its_undo_puts_them_back() {
+        let mut s = Scope::new(OID);
+        s.conversations.insert(ROADMAP.into(), Level::ReadDraft);
+        s.conversations.insert(CHAT.into(), Level::Read);
+        let before = s.clone();
+        let keys = [TEAM.to_string(), ROADMAP.to_string(), TEAM.to_string()];
+        let undo = allow_read(&mut s, &keys);
+        // Only General changed, once; Roadmap keeps its level and is not in the undo.
+        assert_eq!(undo, vec![(TEAM.to_string(), None)]);
+        assert_eq!(s.conversations.get(TEAM), Some(&Level::Read));
+        assert_eq!(s.conversations.get(ROADMAP), Some(&Level::ReadDraft));
+        restore(&mut s, &undo);
+        assert_eq!(s, before, "the exact state from before");
+        // Nothing left to set: an empty undo.
+        let mut all_read = before;
+        all_read.conversations.insert(TEAM.into(), Level::Read);
+        assert!(allow_read(&mut all_read, &[TEAM.to_string()]).is_empty());
+    }
+
+    #[test]
+    fn the_bulk_change_returns_its_undo_and_needs_a_scope() {
+        let mut policy = Policy::default();
+        let s = scope();
+        let change = Change::ReadChannels {
+            team: "Zebra".into(),
+            keys: vec![TEAM.into(), ROADMAP.into()],
+        };
+        assert_eq!(change.apply(&mut policy, None), None);
+        assert!(policy.scopes.is_empty());
+        let undo = change.apply(&mut policy, Some(&s)).unwrap();
+        assert_eq!(undo.len(), 2);
+        assert_eq!(
+            policy.scope(&s).unwrap().conversations.get(ROADMAP),
+            Some(&Level::Read)
+        );
+        assert_eq!(Change::Restore(undo).apply(&mut policy, Some(&s)), None);
+        assert!(policy.scope(&s).unwrap().conversations.is_empty());
+    }
+
+    #[test]
+    fn the_notice_counts_the_channels() {
+        assert_eq!(
+            read_channels_notice(1, "Zebra"),
+            "The AI can now read 1 channel of Zebra. To undo it, open AI access: review."
+        );
+        assert!(read_channels_notice(3, "Zebra").starts_with("The AI can now read 3 channels of"));
     }
 
     // ---- the view ----
@@ -776,11 +1171,33 @@ mod tests {
     }
 
     #[test]
-    fn a_channel_or_an_unknown_id_is_no_target() {
+    fn a_channel_is_a_target_and_its_thread_is_the_channel() {
+        let policy = policy_with(|s| {
+            s.conversations.insert(CHANNEL.into(), Level::Read);
+        });
+        let thread = format!("{CHANNEL};messageid=1");
+        for id in [CHANNEL, thread.as_str()] {
+            let d = view_data(
+                &policy,
+                Some(&scope()),
+                Some(id),
+                titles,
+                &BTreeMap::new(),
+                0,
+            );
+            assert_eq!(
+                (d.target_id.as_str(), d.target_level.as_str()),
+                (CHANNEL, READ)
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_id_is_no_target() {
         let policy = policy_with(|s| {
             s.conversations.insert(CHAT.into(), Level::Read);
         });
-        for id in [CHANNEL, "48:calllogs", ""] {
+        for id in ["48:calllogs", ""] {
             let d = view_data(
                 &policy,
                 Some(&scope()),
@@ -1006,15 +1423,160 @@ mod tests {
     }
 
     #[test]
-    fn a_channel_cannot_be_set() {
+    fn a_channel_can_be_read_but_never_drafted() {
         let (e, w, _dir) = work_engine();
         see_explainer(&e);
-        set(&e, CHANNEL, Some(Level::Read));
-        assert_eq!(w.get_banner().as_str(), NO_CHANNELS);
+        set(&e, CHANNEL, Some(Level::ReadDraft));
+        assert_eq!(w.get_banner().as_str(), CHANNELS_READ_ONLY);
         assert!(
             !mcp::file_path(&e.mcp_files().unwrap().paths.config_dir).exists(),
             "nothing written"
         );
+        set(&e, CHANNEL, Some(Level::Read));
+        assert_eq!(level_of(&e, CHANNEL), Some(Level::Read));
+        // A thread's id is its channel's.
+        set(&e, &format!("{CHANNEL};messageid=1"), None);
+        assert_eq!(level_of(&e, CHANNEL), None);
+    }
+
+    #[test]
+    fn the_first_channel_level_waits_for_the_explainer_too() {
+        let (e, w, _dir) = work_engine();
+        set(&e, CHANNEL, Some(Level::Read));
+        assert!(ai_store(&w).get_explainer_open());
+        assert_eq!(level_of(&e, CHANNEL), None);
+        e.mcp_access_cmd(McpAccessCmd::ExplainerConfirm);
+        assert_eq!(level_of(&e, CHANNEL), Some(Level::Read));
+    }
+
+    /// A work engine that knows the team Zebra (and Alpha, a second team).
+    fn team_engine() -> (Arc<Engine>, crate::AppWindow, tempfile::TempDir) {
+        let (e, w, dir) = work_engine();
+        e.manage_set_entries(vec![
+            zebra(),
+            team(ALPHA, "Alpha", vec![channel(ALPHA, "General")]),
+        ]);
+        (e, w, dir)
+    }
+
+    const ALPHA: &str = "19:alpha@thread.tacv2";
+
+    fn bulk(e: &Engine, team: &str) {
+        e.mcp_access_cmd(McpAccessCmd::TeamChannels(team.into()));
+    }
+
+    fn bulk_names(w: &crate::AppWindow) -> Vec<String> {
+        ai_store(w)
+            .get_bulk_names()
+            .iter()
+            .map(|n| n.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_team_bulk_asks_about_the_blocked_channels_and_confirm_lets_the_ai_read_them() {
+        let (e, w, _dir) = team_engine();
+        see_explainer(&e);
+        set(&e, ROADMAP, Some(Level::Read));
+        bulk(&e, TEAM);
+        let s = ai_store(&w);
+        assert!(s.get_bulk_open());
+        assert_eq!(s.get_bulk_team().as_str(), "Zebra");
+        assert_eq!(s.get_bulk_count(), 1, "Roadmap can be read already");
+        assert_eq!(bulk_names(&w), ["General"]);
+        assert_eq!(
+            level_of(&e, TEAM),
+            None,
+            "nothing is written before the answer"
+        );
+
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsConfirm);
+        assert_eq!(level_of(&e, TEAM), Some(Level::Read));
+        assert_eq!(level_of(&e, ROADMAP), Some(Level::Read));
+        assert_eq!(level_of(&e, GONE), None, "a deleted channel stays Blocked");
+        assert!(s.get_can_undo_bulk());
+        assert_eq!(s.get_bulk_count(), 0, "the snapshot is used up");
+        assert_eq!(w.get_banner().as_str(), read_channels_notice(1, "Zebra"));
+
+        // The undo puts back only what the bulk change set.
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsUndo);
+        assert_eq!(level_of(&e, TEAM), None);
+        assert_eq!(level_of(&e, ROADMAP), Some(Level::Read));
+        assert!(!s.get_can_undo_bulk(), "one undo");
+        // A second undo has nothing to do.
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsUndo);
+        assert_eq!(level_of(&e, ROADMAP), Some(Level::Read));
+    }
+
+    #[test]
+    fn the_team_bulk_waits_for_the_first_time_explainer() {
+        let (e, w, _dir) = team_engine();
+        bulk(&e, TEAM);
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsConfirm);
+        assert!(ai_store(&w).get_explainer_open());
+        assert_eq!(level_of(&e, TEAM), None);
+        e.mcp_access_cmd(McpAccessCmd::ExplainerConfirm);
+        assert_eq!(level_of(&e, TEAM), Some(Level::Read));
+        assert_eq!(level_of(&e, ROADMAP), Some(Level::Read));
+        assert!(ai_store(&w).get_can_undo_bulk());
+    }
+
+    #[test]
+    fn cancelling_the_team_bulk_writes_nothing() {
+        let (e, w, _dir) = team_engine();
+        see_explainer(&e);
+        bulk(&e, TEAM);
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsCancel);
+        assert_eq!(ai_store(&w).get_bulk_count(), 0);
+        assert!(bulk_names(&w).is_empty());
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsConfirm);
+        assert!(
+            !mcp::file_path(&e.mcp_files().unwrap().paths.config_dir).exists(),
+            "a confirm after the cancel has nothing to write"
+        );
+        assert!(!ai_store(&w).get_can_undo_bulk());
+    }
+
+    #[test]
+    fn a_new_bulk_change_replaces_the_undo_and_later_channels_stay_blocked() {
+        let (e, _w, _dir) = team_engine();
+        see_explainer(&e);
+        bulk(&e, TEAM);
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsConfirm);
+        // A channel made after the bulk change is Blocked.
+        const LATER: &str = "19:later@thread.tacv2";
+        let mut z = zebra();
+        z.channels.push(channel(LATER, "Later"));
+        e.manage_set_entries(vec![
+            z,
+            team(ALPHA, "Alpha", vec![channel(ALPHA, "General")]),
+        ]);
+        assert_eq!(level_of(&e, LATER), None);
+        // Alpha's bulk change is the one undo: Zebra's channels keep "Can read".
+        bulk(&e, ALPHA);
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsConfirm);
+        assert_eq!(level_of(&e, ALPHA), Some(Level::Read));
+        e.mcp_access_cmd(McpAccessCmd::TeamChannelsUndo);
+        assert_eq!(level_of(&e, ALPHA), None);
+        assert_eq!(level_of(&e, TEAM), Some(Level::Read));
+        assert_eq!(level_of(&e, ROADMAP), Some(Level::Read));
+        assert_eq!(level_of(&e, LATER), None);
+    }
+
+    #[test]
+    fn an_unknown_team_or_one_the_ai_can_read_already_opens_nothing() {
+        let (e, w, _dir) = team_engine();
+        see_explainer(&e);
+        bulk(&e, "19:unknown@thread.tacv2");
+        assert_eq!(w.get_banner().as_str(), NO_TEAM_CHANNELS);
+        assert!(!ai_store(&w).get_bulk_open());
+        set(&e, ALPHA, Some(Level::Read));
+        bulk(&e, ALPHA);
+        assert_eq!(
+            w.get_banner().as_str(),
+            "The AI can already read every channel of Alpha."
+        );
+        assert!(!ai_store(&w).get_bulk_open());
     }
 
     #[test]
@@ -1104,10 +1666,12 @@ mod tests {
         e.mcp_header_changed(Some(CHAT));
         assert_eq!(ai_store(&w).get_target_id().as_str(), GROUP);
         assert_eq!(ai_store(&w).get_target_level().as_str(), READ);
-        // Another chat opens: the controls follow it.
+        // A channel opens: the controls follow it too.
         e.mcp_header_changed(Some(CHANNEL));
-        assert_eq!(ai_store(&w).get_target_id().as_str(), "");
+        assert_eq!(ai_store(&w).get_target_id().as_str(), CHANNEL);
+        assert_eq!(ai_store(&w).get_target_level().as_str(), BLOCKED);
         e.mcp_header_changed(None);
+        assert_eq!(ai_store(&w).get_target_id().as_str(), "");
         assert_eq!(ai_store(&w).get_target_level().as_str(), BLOCKED);
     }
 

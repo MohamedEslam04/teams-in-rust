@@ -126,7 +126,7 @@ import { MessagePane } from "organisms/message_pane.slint";
 import { ProfileCardLayer, ParticipantsLayer, ForwardLayer, ReactionPickerLayer, SeenByLayer, MessageMenuLayer } from "organisms/chat_overlays.slint";
 import { AppKeys } from "organisms/app_keys.slint";
 import { NoticeBanner } from "organisms/notice_banner.slint";
-import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer, AiOverviewLayer, AiExplainerLayer, AiConnectLayer } from "organisms/app_dialogs.slint";
+import { DrivePickerLayer, SectionDialogLayer, RemindLayer, LeaveChannelLayer, AddTabLayer, RemoveHistoryLayer, LeaveChatLayer, AiOverviewLayer, AiExplainerLayer, AiConnectLayer, AiBulkLayer } from "organisms/app_dialogs.slint";
 import { AiAccessStore } from "organisms/ai_access.slint";
 export { WebParityStore } from "organisms/web_parity.slint";
 export { AppsStore, TasksStore, FlowsStore, NotesStore, ListsStore, RecapsStore, AppCard, AppNav, RailApp, RailFixed, PermRow, AppRow, BoardColumn, TableRow } from "stores/apps_store.slint";
@@ -565,9 +565,9 @@ export component AppWindow inherits Window {
         if cmd == "settings" { SettingsStore.show(arg); }
         if cmd == "toggle-theme" { SettingsStore.command("theme", SettingsStore.theme-shown == "dark" ? "light" : "dark"); root.palette-done(); }
         // AI access (the entries are hidden while the build has none).
-        if cmd == "ai-review" { AiAccessStore.command("overview", ""); root.palette-done(); }
+        if cmd == "ai-review" { AiAccessStore.overview-open = true; AiAccessStore.command("overview", ""); root.palette-done(); }
         if cmd == "ai-pause" { AiAccessStore.command("master", AiAccessStore.master-paused ? "active" : "paused"); root.palette-done(); }
-        if cmd == "ai-connect" { AiAccessStore.command("connect", ""); root.palette-done(); }
+        if cmd == "ai-connect" { AiAccessStore.connect-open = true; AiAccessStore.command("connect", ""); root.palette-done(); }
         if cmd == "reset-theme" { SettingsStore.command("reset-theme", ""); root.palette-done(); }
         if cmd == "shortcuts" { root.shortcuts-open = true; root.palette-done(); }
         if cmd == "report-problem" { SettingsStore.command("report-problem", ""); root.palette-done(); }
@@ -1265,7 +1265,9 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 
-    // AI access: the explainer is last, so it covers the others.
+    // AI access: the explainer is last, so it covers the others. The bulk confirmation comes
+    // from the Team menu, which the Teams page (z 40) also shows, so it and the explainer it may
+    // lead to sit over that page, like the Teams dialogs (z 50).
     if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.overview-open: AiOverviewLayer {
         width: root.width;
         height: root.height;
@@ -1276,7 +1278,14 @@ export component AppWindow inherits Window {
         height: root.height;
     }
 
+    if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.bulk-open: AiBulkLayer {
+        z: 50;
+        width: root.width;
+        height: root.height;
+    }
+
     if root.login-state == "ready" && AiAccessStore.available && AiAccessStore.explainer-open: AiExplainerLayer {
+        z: 51;
         width: root.width;
         height: root.height;
     }

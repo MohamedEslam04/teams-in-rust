@@ -24,8 +24,9 @@ pub struct AiAccessData {
     pub master_paused: bool,
     pub account_paused: bool,
     pub calendar_people: bool,
-    /// The conversation the chip and popover talk about (the open chat, or the row whose menu
-    /// was opened), and its level (`blocked`, `read`, `read_draft`).
+    /// The conversation the chip and popover talk about (the open chat or channel, or the row
+    /// whose menu was opened), and its level (`blocked`, `read`, `read_draft`; a channel is
+    /// never `read_draft`).
     pub target_id: String,
     pub target_level: String,
     /// The meeting chat the calendar event view's control talks about, and its level.
@@ -36,4 +37,12 @@ pub struct AiAccessData {
     /// The text of the copy-only connect dialog.
     pub connect_text: String,
     pub account_label: String,
+    /// The Team menu's "Let AI read all channels…" waiting for its confirmation: the team's
+    /// name, and the names and number of its channels that are still Blocked (empty and 0 when
+    /// nothing waits).
+    pub bulk_team: String,
+    pub bulk_names: Vec<String>,
+    pub bulk_count: usize,
+    /// The last bulk change can be undone.
+    pub can_undo_bulk: bool,
 }

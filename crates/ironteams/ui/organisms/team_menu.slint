@@ -1,6 +1,7 @@
 // A team's "…" menu entries, shared by the Teams page and the chat list's team rows.
 import { TTeam, TeamsStore, TeamsActions } from "../stores/teams_store.slint";
 import { MenuItem, MenuItemVariant } from "../atoms/menu.slint";
+import { AiAccessStore } from "ai_access.slint";
 
 // The whole page, drawn over the area right of the rail. `go(id, title)` opens a channel in Teams.
 // The team menu, shared by "Your teams and channels" and the Teams list in the sidebar.
@@ -17,6 +18,8 @@ export component TeamMenuItems inherits VerticalLayout {
     MenuItem { variant: MenuItemVariant.dialog; label: "Deleted channels"; clicked => { TeamsActions.open-dialog("deleted", root.t.id, ""); root.done(); } }
     MenuItem { variant: MenuItemVariant.dialog; label: root.t.shown ? "Hide team" : "Show team"; clicked => { TeamsStore.command("team-show", root.t.id + "\u{1f}" + (root.t.shown ? "0" : "1")); root.done(); } }
     MenuItem { variant: MenuItemVariant.dialog; label: "Get link to team"; clicked => { TeamsStore.command("team-link", root.t.id); root.done(); } }
+    // AI access (only where the build has it): asks to let the AI read the team's channels.
+    if AiAccessStore.available: MenuItem { variant: MenuItemVariant.dialog; label: "Let AI read all channels…"; clicked => { AiAccessStore.command("team-channels", root.t.id); root.done(); } }
     MenuItem { variant: MenuItemVariant.dialog; label: "Leave the team"; danger: true; clicked => { TeamsActions.confirm("Leave " + root.t.name + "?", "leave-team", root.t.id); root.done(); } }
     if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: root.t.archived ? "Restore team from the archive" : "Archive team"; clicked => { TeamsActions.confirm((root.t.archived ? "Restore " : "Archive ") + root.t.name + "?", "team-archive", root.t.id + "\u{1f}" + (root.t.archived ? "0" : "1")); root.done(); } }
     if root.t.owner: MenuItem { variant: MenuItemVariant.dialog; label: "Delete the team"; danger: true; clicked => { TeamsActions.confirm("Delete " + root.t.name + "? Its group stays in the recycle bin for 30 days.", "team-delete", root.t.id); root.done(); } }
