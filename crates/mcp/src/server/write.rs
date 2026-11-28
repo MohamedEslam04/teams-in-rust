@@ -3,26 +3,23 @@
 
 use super::Server;
 use super::drafts::{Action, DraftError, LIFETIME_MS};
-use super::guard::check_chat;
 use super::read::chat_kind_name;
 use super::text::{clip, iso_minute, plain};
+use crate::gateway::Permit;
+use crate::policy::Resource;
 use calendar::Rsvp;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use teams_proto::chatsvc::quoted_messages_property;
-use teams_proto::model::ConversationKind;
+use teams_proto::model::{ConversationKind, conversation_kind};
 use teams_proto::presence::Availability;
 use teams_proto::time::now_ms;
 
 /// The longest message a draft may hold, in characters.
 const MAX_MESSAGE: usize = 20_000;
 const MAX_NOTE: usize = 280;
-
-fn err(e: impl std::fmt::Display) -> String {
-    format!("{e}")
-}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DraftMessage {
@@ -122,19 +119,23 @@ fn draft_reply(id: &str, preview: &str) -> String {
 }
 
 impl Server {
-    /// Keeps a draft and returns what the tool answers.
-    fn keep(&self, action: Action, preview: String) -> String {
-        let id = self.drafts().add(action, preview.clone(), now_ms());
+    /// Keeps a draft, with the resource it was made for, and returns what the tool answers.
+    fn keep(&self, action: Action, resource: Resource, preview: String) -> String {
+        let id = self
+            .drafts()
+            .add(action, resource, preview.clone(), now_ms());
         draft_reply(&id, &preview)
     }
 
-    /// `the group chat "Topic" (5 members)`, as well as the service tells.
-    async fn describe_chat(&self, chat_id: &str) -> String {
+    /// `the group chat "Topic" (5 members)`, as well as the service tells. Only for a chat the
+    /// permit covers.
+    async fn describe_chat(&self, permit: &Permit) -> String {
+        let chat_id = permit.chat_id().unwrap_or_default();
         let kind = chat_kind_name(chat_id);
-        if check_chat(chat_id) == Ok(ConversationKind::Notes) {
+        if conversation_kind(chat_id, None) == ConversationKind::Notes {
             return kind.to_string();
         }
-        match self.client.thread_members(chat_id).await {
+        match self.gw.thread_members(permit).await {
             Ok((members, topic)) => {
                 let topic = topic
                     .filter(|t| !t.trim().is_empty())
@@ -149,79 +150,29 @@ impl Server {
     /// One of the chat's last 50 messages.
     async fn recent_message(
         &self,
-        chat_id: &str,
+        permit: &Permit,
         message_id: &str,
     ) -> Result<teams_proto::model::Message, String> {
-        let page = self.client.messages(chat_id, None, 50).await.map_err(err)?;
+        let page = self.gw.messages(permit, None, 50).await?;
         page.messages
             .into_iter()
             .find(|m| m.id == message_id)
             .ok_or_else(|| "that message is not among the chat's last 50 messages".to_string())
-    }
-
-    /// Does what a draft froze.
-    async fn execute(&self, a: &Action) -> Result<(), String> {
-        let c = &self.client;
-        match a {
-            Action::Message {
-                chat_id,
-                html,
-                quote: None,
-                client_message_id,
-            } => c
-                .send_message_as(chat_id, html, &self.display_name, None, client_message_id)
-                .await
-                .map_err(err),
-            Action::Message {
-                chat_id,
-                html,
-                quote: Some(qtd),
-                client_message_id,
-            } => c
-                .send_quote_reply_as(chat_id, html, &self.display_name, qtd, client_message_id)
-                .await
-                .map_err(err),
-            Action::Reaction {
-                chat_id,
-                message_id,
-                key,
-            } => c.add_reaction(chat_id, message_id, key).await.map_err(err),
-            Action::MarkRead { chat_id, message } => {
-                c.mark_read(chat_id, message).await.map_err(err)
-            }
-            Action::Presence {
-                availability: Some(av),
-                until_iso,
-            } => c.set_presence(*av, until_iso.as_deref()).await.map_err(err),
-            Action::Presence {
-                availability: None, ..
-            } => c.reset_presence().await.map_err(err),
-            Action::StatusNote { text, until_iso } => c
-                .set_status_note(text, until_iso.as_deref(), false)
-                .await
-                .map_err(err),
-            Action::MeetingResponse {
-                event_id,
-                rsvp,
-                comment,
-            } => calendar::respond(c, event_id, *rsvp, comment, true, None)
-                .await
-                .map_err(err),
-        }
     }
 }
 
 #[tool_router(router = write_router, vis = "pub(super)")]
 impl Server {
     #[tool(
-        description = "Draft a message (or a quoted reply) in a chat. Nothing is sent: returns a draft id and a preview for the user to approve; then send_draft sends it.",
+        description = "Draft a message (or a quoted reply) in a chat the user has shared with AI for reading and drafting. Nothing is sent: returns a draft id and a preview for the user to approve; then send_draft sends it.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_message(
+    pub(super) async fn draft_message(
         &self,
         Parameters(p): Parameters<DraftMessage>,
     ) -> Result<String, String> {
-        check_chat(&p.chat_id)?;
+        let permit = self.gw.conversation("draft_message", &p.chat_id)?;
+        let chat_id = permit.chat_id().unwrap_or_default().to_string();
         let text = p.text.trim_end();
         if text.trim().is_empty() {
             return Err("empty message".into());
@@ -234,7 +185,7 @@ impl Server {
         let (html, quote, answering) = match &p.reply_to_message_id {
             None => (render::text_to_teams_html(text), None, String::new()),
             Some(id) => {
-                let orig = self.recent_message(&p.chat_id, id).await?;
+                let orig = self.recent_message(&permit, id).await?;
                 let quoted = plain(&orig.content);
                 let html = render::reply_html(
                     &orig.id,
@@ -254,34 +205,34 @@ impl Server {
                 (html, Some(qtd), answering)
             }
         };
-        let to = self.describe_chat(&p.chat_id).await;
+        let to = self.describe_chat(&permit).await;
         let preview = format!("Send to {to}:{answering}\n---\n{text}\n---");
         let action = Action::Message {
-            chat_id: p.chat_id,
+            chat_id,
             html,
             quote,
             client_message_id: now_ms().to_string(),
         };
-        Ok(self.keep(action, preview))
+        Ok(self.keep(action, permit.resource().clone(), preview))
     }
 
     #[tool(
-        description = "Draft a reaction to a chat message. Nothing is sent until send_draft.",
+        description = "Draft a reaction to a message in a chat the user has shared with AI for reading and drafting. Nothing is sent until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_reaction(
+    pub(super) async fn draft_reaction(
         &self,
         Parameters(p): Parameters<DraftReaction>,
     ) -> Result<String, String> {
-        check_chat(&p.chat_id)?;
+        let permit = self.gw.conversation("draft_reaction", &p.chat_id)?;
         if !REACTIONS.contains(&p.reaction.as_str()) {
             return Err(format!(
                 "unknown reaction: use one of {}",
                 REACTIONS.join(", ")
             ));
         }
-        let m = self.recent_message(&p.chat_id, &p.message_id).await?;
-        let to = self.describe_chat(&p.chat_id).await;
+        let m = self.recent_message(&permit, &p.message_id).await?;
+        let to = self.describe_chat(&permit).await;
         let preview = format!(
             "React {} in {to} to {}'s message ({}): {}",
             p.reaction,
@@ -290,52 +241,49 @@ impl Server {
             clip(&plain(&m.content).replace('\n', " "), 200)
         );
         let action = Action::Reaction {
-            chat_id: p.chat_id,
+            chat_id: permit.chat_id().unwrap_or_default().to_string(),
             message_id: p.message_id,
             key: p.reaction,
         };
-        Ok(self.keep(action, preview))
+        Ok(self.keep(action, permit.resource().clone(), preview))
     }
 
     #[tool(
-        description = "Draft marking a chat as read (up to its newest message). Nothing changes until send_draft.",
+        description = "Draft marking a chat (shared with AI for reading and drafting) as read, up to its newest message. Nothing changes until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_mark_read(
+    pub(super) async fn draft_mark_read(
         &self,
         Parameters(p): Parameters<DraftMarkRead>,
     ) -> Result<String, String> {
-        check_chat(&p.chat_id)?;
-        let page = self
-            .client
-            .messages(&p.chat_id, None, 5)
-            .await
-            .map_err(err)?;
+        let permit = self.gw.conversation("draft_mark_read", &p.chat_id)?;
+        let page = self.gw.messages(&permit, None, 5).await?;
         let newest = page
             .messages
             .into_iter()
             .max_by_key(|m| m.compose_ms)
             .ok_or("the chat has no messages")?;
-        let to = self.describe_chat(&p.chat_id).await;
+        let to = self.describe_chat(&permit).await;
         let preview = format!(
             "Mark {to} as read, up to the message of {}.",
             iso_minute(newest.compose_ms)
         );
         let action = Action::MarkRead {
-            chat_id: p.chat_id,
+            chat_id: permit.chat_id().unwrap_or_default().to_string(),
             message: Box::new(newest),
         };
-        Ok(self.keep(action, preview))
+        Ok(self.keep(action, permit.resource().clone(), preview))
     }
 
     #[tool(
-        description = "Draft setting your Teams status (Available, Busy, DoNotDisturb, BeRightBack, Away, Offline) for some minutes, or Reset to the automatic status. Nothing changes until send_draft.",
+        description = "Draft setting the user's Teams status (Available, Busy, DoNotDisturb, BeRightBack, Away, Offline) for some minutes, or Reset to the automatic status. Refused in this version of IronTeams. Nothing changes until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_presence(
+    pub(super) async fn draft_presence(
         &self,
         Parameters(p): Parameters<DraftPresence>,
     ) -> Result<String, String> {
+        let permit = self.gw.permit("draft_presence", Resource::SelfStatus)?;
         let availability = parse_availability(&p.availability)?;
         let (until_iso, preview) = match availability {
             None => (None, "Reset your status to automatic.".to_string()),
@@ -357,18 +305,20 @@ impl Server {
                 availability,
                 until_iso,
             },
+            permit.resource().clone(),
             preview,
         ))
     }
 
     #[tool(
-        description = "Draft your Teams status message (empty text clears it). Nothing changes until send_draft.",
+        description = "Draft the user's Teams status message (empty text clears it). Refused in this version of IronTeams. Nothing changes until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_status_note(
+    pub(super) async fn draft_status_note(
         &self,
         Parameters(p): Parameters<DraftStatusNote>,
     ) -> Result<String, String> {
+        let permit = self.gw.permit("draft_status_note", Resource::SelfStatus)?;
         let text = p.text.trim().to_string();
         if text.chars().count() > MAX_NOTE {
             return Err(format!(
@@ -387,21 +337,26 @@ impl Server {
                 ),
             )
         };
-        Ok(self.keep(Action::StatusNote { text, until_iso }, preview))
+        Ok(self.keep(
+            Action::StatusNote { text, until_iso },
+            permit.resource().clone(),
+            preview,
+        ))
     }
 
     #[tool(
-        description = "Draft an answer (accept, tentative or decline) to a meeting invitation; the organizer gets it. Nothing is sent until send_draft.",
+        description = "Draft an answer (accept, tentative or decline) to a meeting invitation, if the user allowed calendar and people; the organizer gets it. Nothing is sent until send_draft.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn draft_meeting_response(
+    pub(super) async fn draft_meeting_response(
         &self,
         Parameters(p): Parameters<DraftMeetingResponse>,
     ) -> Result<String, String> {
+        let permit = self
+            .gw
+            .permit("draft_meeting_response", Resource::Calendar)?;
         let rsvp = parse_rsvp(&p.response)?;
-        let d = calendar::event_detail(&self.client, &p.event_id)
-            .await
-            .map_err(err)?;
+        let d = self.gw.event_detail(&permit, &p.event_id).await?;
         if d.is_organizer {
             return Err("you organize this meeting; there is nothing to answer".into());
         }
@@ -423,11 +378,11 @@ impl Server {
             rsvp,
             comment,
         };
-        Ok(self.keep(action, preview))
+        Ok(self.keep(action, permit.resource().clone(), preview))
     }
 
     #[tool(
-        description = "Send (do) a draft the user has approved in this conversation. Never call it without that approval.",
+        description = "Send (do) a draft the user has approved in this conversation. Never call it without that approval. Refused when the user no longer allows drafting for what the draft touches.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -435,7 +390,12 @@ impl Server {
             open_world_hint = true
         )
     )]
-    async fn send_draft(&self, Parameters(p): Parameters<DraftId>) -> Result<String, String> {
+    pub(super) async fn send_draft(
+        &self,
+        Parameters(p): Parameters<DraftId>,
+    ) -> Result<String, String> {
+        // A paused session refuses before the draft is touched.
+        let call = self.gw.begin("send_draft")?;
         let now = now_ms();
         let taken = self.drafts().take(&p.draft_id, now);
         let draft = match taken {
@@ -445,7 +405,8 @@ impl Server {
                     DraftError::Unknown => "unknown_draft",
                     DraftError::Expired => "expired",
                 };
-                self.audit.record(now, "-", None, &p.draft_id, outcome);
+                self.gw.audit().record(now, "-", None, &p.draft_id, outcome);
+                self.gw.finish(call, &[])?;
                 return Err(e.to_string());
             }
         };
@@ -453,15 +414,18 @@ impl Server {
             draft.action.kind(),
             draft.action.target().map(str::to_string),
         );
-        if let Some(chat) = draft.action.chat_id()
-            && let Err(e) = check_chat(chat)
-        {
-            self.audit
-                .record(now, kind, target.as_deref(), &p.draft_id, "refused");
-            return Err(e);
-        }
-        let result = self.execute(&draft.action).await;
-        self.audit.record(
+        // The same resource the draft froze, with the level it needs now, checked again.
+        let permit = match self.gw.permit("send_draft", draft.resource.clone()) {
+            Ok(permit) => permit,
+            Err(refusal) => {
+                self.gw
+                    .audit()
+                    .record(now, kind, target.as_deref(), &p.draft_id, "refused");
+                return Err(refusal);
+            }
+        };
+        let result = self.gw.execute(&permit, &draft.action).await;
+        self.gw.audit().record(
             now_ms(),
             kind,
             target.as_deref(),
@@ -471,7 +435,7 @@ impl Server {
         match result {
             Ok(()) => Ok(format!("Done.\n{}", draft.preview)),
             Err(e) => Err(format!(
-                "Teams refused it: {e}. The draft is used up; check the chat before you draft it again."
+                "{e} The draft is used up; check the chat before you draft it again."
             )),
         }
     }
@@ -480,12 +444,15 @@ impl Server {
         description = "Throw a draft away.",
         annotations(read_only_hint = true, idempotent_hint = true)
     )]
-    async fn discard_draft(&self, Parameters(p): Parameters<DraftId>) -> String {
-        if self.drafts().discard(&p.draft_id) {
-            "Discarded.".into()
-        } else {
-            "No such draft.".into()
-        }
+    pub(super) async fn discard_draft(
+        &self,
+        Parameters(p): Parameters<DraftId>,
+    ) -> Result<String, String> {
+        let call = self.gw.begin("discard_draft")?;
+        let done = self.drafts().discard(&p.draft_id);
+        self.gw.finish(call, &[])?;
+        let answer = if done { "Discarded." } else { "No such draft." };
+        Ok(answer.to_string())
     }
 }
 

@@ -1,22 +1,20 @@
 //! The read tools. None of them changes anything in Teams or in the server.
 
 use super::Server;
-use super::guard::{check_chat, is_chat, kind_name};
-use super::text::{MAX_BODY, chat_line, clip, iso_minute, message_line, plain};
+use super::text::{
+    MAX_BODY, chat_line, clip, is_unread, iso_minute, kind_name, message_line, plain,
+};
+use crate::gateway::SearchRequest;
+use crate::policy::{Need, Resource, canonical_key};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use teams_proto::model::conversation_kind;
-use teams_proto::search::SearchFilters;
 use teams_proto::time::now_ms;
 
 const HOUR_MS: i64 = 3_600_000;
 const DAY_MS: i64 = 24 * HOUR_MS;
-
-fn err(e: impl std::fmt::Display) -> String {
-    format!("{e}")
-}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListChats {
@@ -108,50 +106,69 @@ fn limit(v: Option<u32>, default: u32, max: u32) -> u32 {
     v.unwrap_or(default).clamp(1, max)
 }
 
+/// A list result: its lines (or `empty` when there are none), then the footer.
+fn with_footer(lines: &[String], empty: &str, footer: &str) -> String {
+    let body = if lines.is_empty() {
+        empty.to_string()
+    } else {
+        lines.join("\n")
+    };
+    format!("{body}\n\n{footer}")
+}
+
+/// The canonical key of a conversation id, or the id itself when it has none.
+fn key_of(id: &str) -> String {
+    canonical_key(id).unwrap_or_else(|_| id.to_string())
+}
+
 #[tool_router(router = read_router, vis = "pub(super)")]
 impl Server {
     #[tool(
-        description = "List your Teams chats (1:1, group and meeting chats and your notes; never channels), newest activity first. One line per chat: id | kind | title | read state | last activity (UTC) | last message.",
+        description = "List the Teams chats the user has shared with AI (1:1, group and meeting chats and the user's notes), newest activity first. One line per chat: id | kind | title | read state | last activity (UTC) | last message. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn list_chats(&self, Parameters(p): Parameters<ListChats>) -> Result<String, String> {
+    pub(super) async fn list_chats(
+        &self,
+        Parameters(p): Parameters<ListChats>,
+    ) -> Result<String, String> {
+        let call = self.gw.begin("list_chats")?;
         let n = limit(p.limit, 30, 100) as usize;
-        let mut convs = self.client.conversations(0, 100).await.map_err(err)?;
-        convs.retain(|c| is_chat(c.kind));
+        let mut convs = self.gw.chats(&call, 0).await?;
         convs.sort_by_key(|c| std::cmp::Reverse(c.last_activity_ms));
-        let lines: Vec<String> = convs
+        let me = self.gw.self_mri();
+        let shown: Vec<_> = convs
             .iter()
-            .filter(|c| !p.unread_only || super::text::is_unread(c, &self.self_mri))
+            .filter(|c| !p.unread_only || is_unread(c, me))
             .take(n)
-            .map(|c| chat_line(c, &self.self_mri))
             .collect();
-        if lines.is_empty() {
-            return Ok(if p.unread_only {
-                "No unread chats.".into()
-            } else {
-                "No chats.".into()
-            });
-        }
-        Ok(lines.join("\n"))
+        let lines: Vec<String> = shown.iter().map(|c| chat_line(c, me)).collect();
+        let ids: Vec<String> = shown.iter().map(|c| key_of(&c.id)).collect();
+        let footer = self.gw.footer(&call).await?;
+        self.gw.finish(call, &ids)?;
+        let empty = if p.unread_only {
+            "No unread chats."
+        } else {
+            "No chats."
+        };
+        Ok(with_footer(&lines, empty, &footer))
     }
 
     #[tool(
-        description = "Read the messages of one chat, oldest first. Each line: [time UTC] sender (message id, sender id): text. Use before_ms to page back.",
+        description = "Read the messages of one chat the user has shared with AI, oldest first. Each line: [time UTC] sender (message id, sender id): text. Use before_ms to page back.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn read_chat(&self, Parameters(p): Parameters<ReadChat>) -> Result<String, String> {
-        check_chat(&p.chat_id)?;
+    pub(super) async fn read_chat(
+        &self,
+        Parameters(p): Parameters<ReadChat>,
+    ) -> Result<String, String> {
+        let permit = self.gw.conversation("read_chat", &p.chat_id)?;
         let n = limit(p.limit, 30, 200);
-        let page = self
-            .client
-            .messages(&p.chat_id, p.before_ms, n)
-            .await
-            .map_err(err)?;
+        let page = self.gw.messages(&permit, p.before_ms, n).await?;
         let mut lines: Vec<String> = page
             .messages
             .iter()
             .filter(|m| m.is_chat_content())
-            .map(|m| message_line(m, &self.self_mri))
+            .map(|m| message_line(m, self.gw.self_mri()))
             .collect();
         if lines.is_empty() {
             lines.push("No messages.".into());
@@ -164,105 +181,117 @@ impl Server {
     }
 
     #[tool(
-        description = "What you missed: unread chats with their unread messages, and the chat messages that mention you. Use it for 'what did I miss' or a morning summary.",
+        description = "What the user missed in the chats shared with AI: unread chats with their unread messages, and the messages that mention the user. Use it for 'what did I miss' or a morning summary. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn catch_up(&self, Parameters(p): Parameters<CatchUp>) -> Result<String, String> {
+    pub(super) async fn catch_up(
+        &self,
+        Parameters(p): Parameters<CatchUp>,
+    ) -> Result<String, String> {
+        let call = self.gw.begin("catch_up")?;
+        let me = self.gw.self_mri();
         let since = now_ms() - i64::from(p.since_hours.unwrap_or(24).clamp(1, 336)) * HOUR_MS;
-        let mut convs = self.client.conversations(since, 100).await.map_err(err)?;
-        convs.retain(|c| is_chat(c.kind) && super::text::is_unread(c, &self.self_mri));
+        let mut convs = self.gw.chats(&call, since).await?;
+        convs.retain(|c| is_unread(c, me));
         convs.sort_by_key(|c| std::cmp::Reverse(c.last_activity_ms));
-        let mut out = vec![format!("Unread chats: {}", convs.len())];
+        let mut out: Vec<String> = Vec::new();
+        let mut ids: Vec<String> = Vec::new();
         for c in convs.iter().take(10) {
-            out.push(String::new());
-            out.push(chat_line(c, &self.self_mri));
-            let page = match self.client.messages(&c.id, None, 30).await {
-                Ok(p) => p,
-                Err(e) => {
-                    out.push(format!("  (could not read: {e})"));
-                    continue;
-                }
+            let key = key_of(&c.id);
+            let Some(permit) = self.gw.call_permit(&call, Resource::Chat(key.clone())) else {
+                continue;
             };
-            let unread: Vec<String> = page
-                .messages
-                .iter()
-                .filter(|m| {
-                    m.is_chat_content()
-                        && m.sender_mri != self.self_mri
-                        && m.compose_ms > c.read_horizon_ms
-                })
-                .map(|m| format!("  {}", message_line(m, &self.self_mri)))
-                .collect();
-            out.extend(unread);
+            let fetched = self.gw.messages(&permit, None, 30).await;
+            // Checked again right before the chat's content goes into the output.
+            if !self.gw.allows_now(&Resource::Chat(key.clone()), Need::Read) {
+                continue;
+            }
+            out.push(String::new());
+            out.push(chat_line(c, me));
+            ids.push(key);
+            match fetched {
+                Ok(page) => out.extend(
+                    page.messages
+                        .iter()
+                        .filter(|m| {
+                            m.is_chat_content()
+                                && m.sender_mri != me
+                                && m.compose_ms > c.read_horizon_ms
+                        })
+                        .map(|m| format!("  {}", message_line(m, me))),
+                ),
+                Err(e) => out.push(format!("  (could not read: {e})")),
+            }
         }
         if convs.len() > 10 {
-            out.push(format!(
-                "\n({} more unread chats: list_chats with unread_only)",
-                convs.len() - 10
-            ));
+            out.push("\n(more unread chats exist: list_chats with unread_only)".into());
         }
-        let mentions = self.client.mentions(30).await.map_err(err)?;
-        let mentions: Vec<String> = mentions
+        let mentions = self.gw.mentions(&call, 30).await?;
+        let mentions: Vec<_> = mentions
             .iter()
             .filter(|m| m.timestamp_ms >= since)
-            .filter(|m| is_chat(conversation_kind(&m.source_thread_id, None)))
-            .map(|m| {
-                format!(
-                    "[{}] {} in {} ({}, chat {}, message {}): {}",
-                    iso_minute(m.timestamp_ms),
-                    m.actor_name,
-                    if m.thread_topic.is_empty() {
-                        "a chat"
-                    } else {
-                        m.thread_topic.as_str()
-                    },
-                    if m.is_read { "read" } else { "unread" },
-                    m.source_thread_id,
-                    m.source_message_id,
-                    clip(&plain(&m.preview).replace('\n', " "), 300)
-                )
-            })
             .collect();
         out.push(String::new());
         out.push(format!("Mentions in chats: {}", mentions.len()));
-        out.extend(mentions);
+        for m in mentions {
+            ids.push(key_of(&m.source_thread_id));
+            out.push(format!(
+                "[{}] {} in {} ({}, chat {}, message {}): {}",
+                iso_minute(m.timestamp_ms),
+                m.actor_name,
+                if m.thread_topic.is_empty() {
+                    "a chat"
+                } else {
+                    m.thread_topic.as_str()
+                },
+                if m.is_read { "read" } else { "unread" },
+                m.source_thread_id,
+                m.source_message_id,
+                clip(&plain(&m.preview).replace('\n', " "), 300)
+            ));
+        }
+        ids.sort();
+        ids.dedup();
+        let footer = self.gw.footer(&call).await?;
+        self.gw.finish(call, &ids)?;
+        out.push(String::new());
+        out.push(footer);
         Ok(out.join("\n"))
     }
 
     #[tool(
-        description = "Search your chat messages (channels are left out). One line per hit: [time UTC] sender (chat id, message id): matching text.",
+        description = "Search the chats the user has shared with AI (channels are left out). One line per hit: [time UTC] sender (chat id, message id): matching text. Ends with how many other conversations are not shared.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn search_messages(
+    pub(super) async fn search_messages(
         &self,
         Parameters(p): Parameters<SearchMessages>,
     ) -> Result<String, String> {
+        let call = self.gw.begin("search_messages")?;
         if p.query.trim().is_empty() {
+            self.gw.finish(call, &[])?;
             return Err("empty query".into());
         }
-        if let Some(c) = &p.chat_id {
-            check_chat(c)?;
-        }
-        let filters = SearchFilters {
-            in_thread: p.chat_id.clone(),
-            from_mri: p.from_person.clone(),
-            since_day: None,
+        // A chat filter is checked before any network call, like read_chat.
+        let in_chat = match &p.chat_id {
+            Some(c) => Some(self.gw.call_conversation(&call, c)?),
+            None => None,
         };
         let n = limit(p.limit, 15, 50);
-        let page = self
-            .client
-            .search_messages(&self.self_mri, &p.query, &filters, 0, n)
-            .await
-            .map_err(err)?;
-        let hits: Vec<String> = page
-            .hits
+        let hits = self
+            .gw
+            .search(
+                &call,
+                SearchRequest {
+                    query: &p.query,
+                    in_chat: in_chat.as_ref(),
+                    from_mri: p.from_person.as_deref(),
+                    limit: n as usize,
+                },
+            )
+            .await?;
+        let lines: Vec<String> = hits
             .iter()
-            .filter(|h| {
-                h.root_id.is_empty()
-                    && h.thread_type != "space"
-                    && h.thread_type != "topic"
-                    && check_chat(&h.conversation_id).is_ok()
-            })
             .map(|h| {
                 format!(
                     "[{}] {} in {} (chat {}, message {}): {}",
@@ -279,36 +308,33 @@ impl Server {
                 )
             })
             .collect();
-        if hits.is_empty() {
-            return Ok("No matching chat messages.".into());
-        }
-        Ok(format!(
-            "{} hits in chats (of {} in all of Teams)\n{}",
-            hits.len(),
-            page.total,
-            hits.join("\n")
-        ))
+        let mut ids: Vec<String> = hits.iter().map(|h| key_of(&h.conversation_id)).collect();
+        ids.sort();
+        ids.dedup();
+        let footer = self.gw.footer(&call).await?;
+        self.gw.finish(call, &ids)?;
+        Ok(with_footer(&lines, "No matching chat messages.", &footer))
     }
 
     #[tool(
-        description = "Find people in your organization by name or email, with their presence. One line per person: name | email | job title | person id | availability, activity, status message.",
+        description = "Find people in the organization by name or email, with their presence, if the user allowed calendar and people. One line per person: name | email | job title | person id | availability, activity, status message.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn find_people(&self, Parameters(p): Parameters<FindPeople>) -> Result<String, String> {
+    pub(super) async fn find_people(
+        &self,
+        Parameters(p): Parameters<FindPeople>,
+    ) -> Result<String, String> {
+        let permit = self.gw.permit("find_people", Resource::Directory)?;
         if p.query.trim().is_empty() {
             return Err("empty query".into());
         }
-        let mut found = self
-            .client
-            .search_people(&self.self_mri, &p.query)
-            .await
-            .map_err(err)?;
+        let mut found = self.gw.search_people(&permit, &p.query).await?;
         found.truncate(10);
         if found.is_empty() {
             return Ok("Nobody found.".into());
         }
         let mris: Vec<String> = found.iter().map(|f| f.mri.clone()).collect();
-        let presence = self.client.get_presence(&mris).await.unwrap_or_default();
+        let presence = self.gw.presence(&permit, &mris).await.unwrap_or_default();
         Ok(found
             .iter()
             .map(|f| {
@@ -331,14 +357,18 @@ impl Server {
     }
 
     #[tool(
-        description = "Presence of people by person id: availability, activity, out of office and status message.",
+        description = "Presence of people by person id: availability, activity, out of office and status message. Needs the user to have allowed calendar and people.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn get_presence(&self, Parameters(p): Parameters<GetPresence>) -> Result<String, String> {
+    pub(super) async fn get_presence(
+        &self,
+        Parameters(p): Parameters<GetPresence>,
+    ) -> Result<String, String> {
+        let permit = self.gw.permit("get_presence", Resource::Directory)?;
         if p.people.is_empty() || p.people.len() > 50 {
             return Err("give 1 to 50 person ids".into());
         }
-        let found = self.client.get_presence(&p.people).await.map_err(err)?;
+        let found = self.gw.presence(&permit, &p.people).await?;
         Ok(found
             .iter()
             .map(|p| format!("{} | {}", p.mri, presence_text(p)))
@@ -347,18 +377,17 @@ impl Server {
     }
 
     #[tool(
-        description = "Your calendar: events from now (or from_day days from now) for the given number of days. One line per event: start-end (UTC) | subject | organizer | your response | location | event id.",
+        description = "The user's calendar, if the user allowed calendar and people: events from now (or from_day days from now) for the given number of days. One line per event: start-end (UTC) | subject | organizer | the user's response | location | event id.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn calendar_agenda(
+    pub(super) async fn calendar_agenda(
         &self,
         Parameters(p): Parameters<CalendarAgenda>,
     ) -> Result<String, String> {
+        let permit = self.gw.permit("calendar_agenda", Resource::Calendar)?;
         let start = now_ms() + i64::from(p.from_day.unwrap_or(0).clamp(-30, 60)) * DAY_MS;
         let end = start + i64::from(p.days.unwrap_or(1).clamp(1, 14)) * DAY_MS;
-        let mut events = calendar::Calendar::view(&self.client, start, end)
-            .await
-            .map_err(err)?;
+        let mut events = self.gw.calendar_view(&permit, start, end).await?;
         events.retain(|e| !e.is_cancelled);
         events.sort_by_key(|e| e.start_ms);
         if events.is_empty() {
@@ -391,16 +420,15 @@ impl Server {
     }
 
     #[tool(
-        description = "The details of one calendar event: time, organizer, attendees and their responses, and the invitation text.",
+        description = "The details of one calendar event, if the user allowed calendar and people: time, organizer, attendees and their responses, and the invitation text.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn meeting_detail(
+    pub(super) async fn meeting_detail(
         &self,
         Parameters(p): Parameters<MeetingDetail>,
     ) -> Result<String, String> {
-        let d = calendar::event_detail(&self.client, &p.event_id)
-            .await
-            .map_err(err)?;
+        let permit = self.gw.permit("meeting_detail", Resource::Calendar)?;
+        let d = self.gw.event_detail(&permit, &p.event_id).await?;
         let e = &d.event;
         let mut out = vec![
             format!("Subject: {}", e.subject),
@@ -436,13 +464,14 @@ impl Server {
     }
 
     #[tool(
-        description = "Suggest meeting times when you and the given attendees are free, within working hours.",
+        description = "Suggest meeting times when the user and the given attendees are free, within working hours. Needs the user to have allowed calendar and people.",
         annotations(read_only_hint = true, open_world_hint = true)
     )]
-    async fn find_free_time(
+    pub(super) async fn find_free_time(
         &self,
         Parameters(p): Parameters<FindFreeTime>,
     ) -> Result<String, String> {
+        let permit = self.gw.permit("find_free_time", Resource::Calendar)?;
         let start = now_ms();
         let q = calendar::FindTimes {
             required: p
@@ -458,9 +487,7 @@ impl Server {
             min_attendee_percentage: 100,
             work_hours_only: true,
         };
-        let found = calendar::find_meeting_times(&self.client, &q)
-            .await
-            .map_err(err)?;
+        let found = self.gw.find_times(&permit, &q).await?;
         if found.suggestions.is_empty() {
             return Ok(format!(
                 "No free time found ({}).",

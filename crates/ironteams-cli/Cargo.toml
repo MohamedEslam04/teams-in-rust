@@ -19,9 +19,6 @@ calendar = { version = "0.0.0", path = "../calendar" }
 render = { version = "0.0.0", path = "../render" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 reqwest = { version = "0.13.5", default-features = false }
-rmcp = { version = "3.11.0", features = ["transport-io"], optional = true }
-schemars = { version = "1.0", optional = true }
-serde = { version = "1.0.229", features = ["derive"], optional = true }
 serde_json = "1.0.154"
 onedrive = { version = "0.0.0", path = "../onedrive" }
 preview = { version = "0.0.0", path = "../preview" }
@@ -32,8 +29,3 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tray = { version = "0.0.0", path = "../tray" }
 url = "2.5.8"
 webhost = { version = "0.0.0", path = "../webhost" }
-
-[features]
-# The MCP server (`ironteams-cli mcp`, docs/mcp.md). Off by default: release builds do not
-# contain it.
-mcp = ["dep:rmcp", "dep:schemars", "dep:serde"]

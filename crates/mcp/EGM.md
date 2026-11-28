@@ -1,34 +1,47 @@
 # mcp
 
 ## Overview
-Per-conversation AI access control for IronTeams ([design](../../docs/designs/mcp-access-control.md)). The crate decides which conversations, and which of the calendar, people and status tools, an AI app may use through the MCP server, and holds the state file the decision reads. This first version is pure logic: no `rmcp`, no network, no `session`. The gateway, the tools and the access log join it in a later slice behind a `server` feature.
+Per-conversation AI access control for IronTeams ([design](../../docs/designs/mcp-access-control.md)). The crate decides which conversations, and which of the calendar, people and status tools, an AI app may use through the MCP server, holds the state file that decision reads, and, behind the `server` feature, is the MCP server itself. The server runs as a flag mode of the desktop binary (`ironteams --mcp-serve --account <label>`, `ironteams --mcp-setup --account <label>`); `ironteams-cli` no longer has an `mcp` command.
+
+Without `server` (the default) the crate is pure logic: no `rmcp`, no network, no `session`. With it, `rmcp`, `schemars`, `session`, `calendar`, `render`, `async-trait`, `sha2` and `tokio` join.
 
 ## Interface
-- Types [policy.rs]: `Level {Read, ReadDraft}` (serialized `read`, `read_draft`), `Need {Read, Draft}`, `Master {Active, Paused}`, the closed `Resource {Chat(key), Channel(key), Calendar, Directory, SelfStatus}` with `kind() -> ResourceKind`, `Scope`, `ScopeId::new(label, tenant_id, user_oid)`, `Policy`, `Decision {Allowed, Blocked, MasterPaused, AccountPaused, SettingsUnreadable}`.
-- `decide(policy, scope, resource, need) -> Decision` [policy.rs:decide]: pure.
-- `canonical_key(id) -> Result<String, KeyError>` and `Resource::from_conversation_id(id)` [policy.rs]: `KeyError {Empty, Malformed, Unknown}`.
-- Texts [policy.rs]: `REFUSAL`, `REFUSAL_CALENDAR_PEOPLE`, `REFUSAL_SELF_STATUS`, `REFUSAL_MASTER_PAUSED`, `REFUSAL_ACCOUNT_PAUSED`, `REFUSAL_UNREADABLE`, `footer(n, at_least)`, `Decision::refusal(kind)`, `Decision::audit_name()`.
+- Types [policy.rs]: `Level {Read, ReadDraft}` (serialized `read`, `read_draft`), `Need {Read, Draft}`, `Master {Active, Paused}`, the closed `Resource {Chat(key), Channel(key), Calendar, Directory, SelfStatus}` with `kind() -> ResourceKind`, `Scope`, `ScopeId::{new, from_identity(label, tenant, self_mri)}`, `Policy`, `Decision {Allowed, Blocked, MasterPaused, AccountPaused, SettingsUnreadable}`.
+- `decide(policy, scope, resource, need) -> Decision`, `decide_session(policy, scope)`, `canonical_key(id)`, `Resource::from_conversation_id(id)`; `KeyError {Empty, Malformed, Unknown}` [policy.rs].
+- `TOOL_GATES` and `gate_of(tool) -> Option<Gate>` [policy.rs]: the one table of what every tool needs. `Gate::Resource {kind, need}`, `Gate::FromDraft` (`send_draft`), `Gate::Session` (`discard_draft`).
+- Texts [policy.rs]: `REFUSAL`, `REFUSAL_CALENDAR_PEOPLE`, `REFUSAL_SELF_STATUS`, `REFUSAL_MASTER_PAUSED`, `REFUSAL_ACCOUNT_PAUSED`, `REFUSAL_UNREADABLE`, `footer(n, at_least)`, `Decision::{refusal(kind), audit_name()}`; `gateway::REFUSAL_LOG`, `ServiceError::text()`.
 - State [state.rs]: `FILE` (`mcp-access.json`), `file_path(config_dir)`, `PolicyReader::{new, snapshot, path}` (the server), `PolicyWriter::{new, update, purge_scope}` (the desktop app only).
+- Connect text [connect.rs]: `setup_text(exe, label, data_dir)`.
+- `server` feature:
+  - `gateway::Gateway` [gateway.rs]: `connect(paths, label, version)`, `permit(tool, resource)`, `conversation(tool, raw_id)`, `begin(tool)` / `finish(call, ids)`, `call_permit`, `call_conversation`, `allows_now`, and one fetch method per request (`messages`, `thread_members`, `chats`, `mentions`, `search`, `search_people`, `presence`, `calendar_view`, `event_detail`, `find_times`, `execute`, `footer`). `Permit` and `Call` have private fields: only the gateway makes them. `Backend` is the trait of everything asked of Teams; `Live` (private) wraps the client, tests use `testing::Fake`.
+  - `server::Server` [server/mod.rs] with the read tools [server/read.rs] and write tools [server/write.rs]; `serve_main(args, version)` and `setup_main(args)` are the two flag modes. Drafts [server/drafts.rs]: `Action`, `DraftStore`, `Draft.resource`. Formatting [server/text.rs]. Access log [audit.rs]: `Audit`, `hash_id`.
 
 ## Invariants
 - **Absence means Blocked.** A conversation with no entry, a scope that does not exist, and a scope whose `user_oid` is not the signed-in user's all decide `Blocked`. There is no default row and no backfill [policy.rs:decide, Policy::scope].
-- **One order of checks:** unreadable policy, master Paused, no scope, account Paused, then the resource. The master and account switches block every resource and keep the saved settings [policy.rs:decide].
+- **One order of checks:** unreadable policy, master Paused, no scope, account Paused, then the resource. The master and account switches block every resource and every tool (also `discard_draft` and `send_draft`) and keep the saved settings.
 - `Level::Read` satisfies only `Need::Read`; `ReadDraft` satisfies both. Calendar, Directory and SelfStatus follow the one `calendar_people` switch of the scope, which has no levels.
 - **Channels decide Blocked** whatever the file holds, until `CHANNELS_ALLOWED` is flipped (slice 6). **Self-status is refused** even with the switch on (`SELF_STATUS_ALLOWED`; an open question in the design) [policy.rs].
-- **Keys keep their case.** `canonical_key` trims and cuts a `;messageid=...` suffix; it refuses empty ids, anything but printable ASCII without `;`, `/` and `\`, and ids over 512 characters. Two ids that differ by case are two keys [policy.rs:canonical_key].
-- **The reader fails closed.** A corrupt, truncated, unreadable, unknown-field, unknown-level or newer-`format_version` file gives `Policy::deny_all` (`SettingsUnreadable`); a missing file gives the default policy (Active, nothing enabled). A failed read is tried once more, and a denied policy is never cached [state.rs:PolicyReader].
-- **The reader follows the file.** It stats on every call and parses again when the modified time or size changed, and always while the file is under two seconds old, because a rewrite can keep the same size (`"active"` and `"paused"`) and the same modified time [state.rs:SETTLE].
-- **The writer is the only writer.** Temporary file in the same directory, fsync, rename, `generation + 1`, all under one in-process mutex. It never overwrites a file from a newer app, and replaces a corrupt one with a fresh policy where everything is Blocked [state.rs:PolicyWriter].
-- Every field of the file is required and unknown fields are refused: a change to the format must bump `format_version`.
-- The refusal and footer texts are part of the security surface; tests pin every word. A text about a conversation never holds its id, title or anything else about it, and a blocked, unknown, malformed or channel id gets the one `REFUSAL`.
-- **One-way dependencies:** the crate depends on `teams-proto` only (`split_thread`, `conversation_kind`). It never depends on `store` or the GUI crate.
+- **Keys keep their case.** `canonical_key` trims and cuts a `;messageid=...` suffix; it refuses empty ids, anything but printable ASCII without `;`, `/` and `\`, and ids over 512 characters.
+- **The reader fails closed.** A corrupt, truncated, unreadable, unknown-field, unknown-level or newer-`format_version` file gives `Policy::deny_all`; a missing file gives the default policy (Active, nothing enabled). It follows the file by stat and always reparses a file under two seconds old [state.rs].
+- **The writer is the only writer** (the desktop app, in a later slice): temporary file, fsync, rename, `generation + 1`, one in-process mutex. It never overwrites a file from a newer app.
+- **One enforcement point.** Only [gateway.rs] names `teams_proto::Client` in the server code (`scripts/check-mcp-layers.sh` fails otherwise); every fetch method takes a `Permit` or a `Call`, and only the gateway builds them. A test fails when a tool registered by the routers has no row in `TOOL_GATES`, or a row has no tool.
+- **Checked before and after.** A fetch checks the policy before the request and again before the answer is handed back, so content fetched while the setting changed is dropped. A send is checked once, before it goes (a send that already happened is never reported as refused). `send_draft` re-checks the resource the draft froze, with `Need::Draft`.
+- **The refusal is one text.** A blocked, unknown, malformed or channel-thread id (any id with `;` until slice 6) all return `REFUSAL`, and nothing is fetched. Texts about a conversation never hold its id, title or anything else about it. Tests pin every refusal, footer and service-error text.
+- **What a list leaves out.** `list_chats`, `catch_up` and `search_messages` return allowed conversations only and end with `footer(n)`, where `n` is the account's chats minus the allowed ones, from a conversation list read at start, by `list_chats` and every ten minutes ("at least" when the list is capped at 100): the same for every tool and every query. Search prints no totals, makes no network call when nothing is allowed, searches each allowed chat when there are ten or fewer, else reads at most three global pages. `catch_up` drops a mention of a blocked chat, channel or unknown id whole, and prints no unread count.
+- **Service errors become fixed texts** (`ServiceError`); a raw error or response body never reaches the model.
+- **The log is fail-closed.** Every tool call writes one access line (`allowed`, `blocked`, `master_paused`, `account_paused`, `settings_unreadable`, the generation, the server version, a count and truncated SHA-256 hashes of the conversation ids); a call whose line cannot be written is refused. Never message text, titles or previews. Send attempts keep their older write line (best effort).
+- **The server never writes the sign-in token**: no save at start, on a timer or at exit; a refreshed token stays in memory. Nothing but MCP goes to stdout.
+- **One-way dependencies:** never `store` or the GUI crate; `ironteams-cli` does not depend on this crate.
 
 ## Side Effects
 - `PolicyReader::snapshot`: one `stat` per call, a file read when it changed; no writes.
-- `PolicyWriter::{update, purge_scope}`: create the config directory, write and rename `mcp-access.json` (plus a short-lived `mcp-access.json.tmp-<pid>`). `purge_scope` writes nothing when the account has no scope.
-- No network, no keyring, no logging.
+- `PolicyWriter::{update, purge_scope}`: create the config directory, write and rename `mcp-access.json`.
+- `Gateway::connect`: reads `config.json` and the keyring, resumes the session (network). Tools call Teams chat, search, people, presence and Graph/Outlook; `execute` (from `send_draft`) sends a message, reaction, read mark, status or meeting answer.
+- `Audit`: appends to `<data dir>/mcp-audit.jsonl`.
+- `setup_main` prints the connect text; edits nothing. Drafts live in memory only.
 
 ## Verification
-- Run: `cargo test -p mcp` (CI only; see the repository rules). Tests cover the `decide` table over every combination, `canonical_key`, each state-file failure mode, the same-size rewrite, concurrent readers and writers, and the pinned texts.
+- Run (CI only; see the repository rules): `cargo test -p mcp` (policy and state) and `cargo test -p mcp --features server` (gateway, tools, access log). Tests cover the `decide` table, `canonical_key`, each state-file failure mode, the gate matrix (every tool under Blocked, Read, ReadDraft and every pause or unreadable state, asserting a blocked conversation is never fetched), the design's journeys (share one chat, pause and resume, a draft outliving its permission, corrupt state), no totals in search, no blocked mention in `catch_up`, and the pinned texts.
+- `scripts/check-mcp-layers.sh` (run in CI).
 
 Parent crate contract: [crates](../EGM.md)

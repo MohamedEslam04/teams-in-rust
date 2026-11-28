@@ -2,6 +2,7 @@
 //! shows the user a preview; only `send_draft` with the draft's id does it, once, within
 //! [`LIFETIME_MS`]. The action is never rebuilt from what the send call says.
 
+use crate::policy::{KeyError, Resource, canonical_key};
 use calendar::Rsvp;
 use std::collections::HashMap;
 use teams_proto::model::Message;
@@ -74,13 +75,15 @@ impl Action {
         }
     }
 
-    /// The chat it writes to, which must still be a chat when it is sent.
-    pub fn chat_id(&self) -> Option<&str> {
+    /// What it touches, for the access check at send time: the chat (by canonical key), the
+    /// calendar for a meeting answer, the user's own status for presence and status message.
+    pub fn resource(&self) -> Result<Resource, KeyError> {
         match self {
             Action::Message { chat_id, .. }
             | Action::Reaction { chat_id, .. }
-            | Action::MarkRead { chat_id, .. } => Some(chat_id),
-            _ => None,
+            | Action::MarkRead { chat_id, .. } => Ok(Resource::Chat(canonical_key(chat_id)?)),
+            Action::MeetingResponse { .. } => Ok(Resource::Calendar),
+            Action::Presence { .. } | Action::StatusNote { .. } => Ok(Resource::SelfStatus),
         }
     }
 }
@@ -88,6 +91,8 @@ impl Action {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Draft {
     pub action: Action,
+    /// What the draft touches, kept so `send_draft` checks the same resource again.
+    pub resource: Resource,
     pub preview: String,
     created_ms: i64,
 }
@@ -130,7 +135,13 @@ impl DraftStore {
     }
 
     /// Keeps a draft and returns its id.
-    pub fn add(&mut self, action: Action, preview: String, now_ms: i64) -> String {
+    pub fn add(
+        &mut self,
+        action: Action,
+        resource: Resource,
+        preview: String,
+        now_ms: i64,
+    ) -> String {
         self.prune(now_ms);
         let id = format!("draft-{}-{}", self.prefix, self.next);
         self.next += 1;
@@ -138,6 +149,7 @@ impl DraftStore {
             id.clone(),
             Draft {
                 action,
+                resource,
                 preview,
                 created_ms: now_ms,
             },
@@ -180,7 +192,7 @@ mod tests {
     #[test]
     fn a_draft_is_sent_once() {
         let mut s = DraftStore::new(1_000);
-        let id = s.add(note("a"), "preview".into(), 5_000);
+        let id = s.add(note("a"), Resource::SelfStatus, "preview".into(), 5_000);
         let d = s.take(&id, 6_000).unwrap();
         assert_eq!(d.action, note("a"));
         assert_eq!(d.preview, "preview");
@@ -190,9 +202,9 @@ mod tests {
     #[test]
     fn an_old_draft_expires() {
         let mut s = DraftStore::new(1_000);
-        let id = s.add(note("a"), String::new(), 0);
+        let id = s.add(note("a"), Resource::SelfStatus, String::new(), 0);
         assert_eq!(s.take(&id, LIFETIME_MS + 1), Err(DraftError::Expired));
-        let id = s.add(note("b"), String::new(), 0);
+        let id = s.add(note("b"), Resource::SelfStatus, String::new(), 0);
         assert!(
             s.take(&id, LIFETIME_MS).is_ok(),
             "the last millisecond still counts"
@@ -202,11 +214,11 @@ mod tests {
     #[test]
     fn ids_are_unique_and_do_not_survive_a_restart() {
         let mut s = DraftStore::new(1_000);
-        let a = s.add(note("a"), String::new(), 0);
-        let b = s.add(note("b"), String::new(), 0);
+        let a = s.add(note("a"), Resource::SelfStatus, String::new(), 0);
+        let b = s.add(note("b"), Resource::SelfStatus, String::new(), 0);
         assert_ne!(a, b);
         let mut later = DraftStore::new(2_000);
-        let c = later.add(note("c"), String::new(), 0);
+        let c = later.add(note("c"), Resource::SelfStatus, String::new(), 0);
         assert_ne!(a, c, "a new server never reuses an old id");
         assert_eq!(later.take(&a, 0), Err(DraftError::Unknown));
     }
@@ -214,10 +226,45 @@ mod tests {
     #[test]
     fn a_discarded_draft_cannot_be_sent() {
         let mut s = DraftStore::new(1_000);
-        let id = s.add(note("a"), String::new(), 0);
+        let id = s.add(note("a"), Resource::SelfStatus, String::new(), 0);
         assert!(s.discard(&id));
         assert!(!s.discard(&id));
         assert_eq!(s.take(&id, 0), Err(DraftError::Unknown));
+    }
+
+    #[test]
+    fn a_draft_keeps_the_resource_it_was_made_for() {
+        let mut s = DraftStore::new(1_000);
+        let chat = Resource::Chat("48:notes".into());
+        let id = s.add(note("a"), chat.clone(), String::new(), 0);
+        assert_eq!(s.take(&id, 0).unwrap().resource, chat);
+    }
+
+    #[test]
+    fn an_action_names_the_resource_it_touches() {
+        let msg = Action::Message {
+            chat_id: " 19:abc@thread.v2 ".into(),
+            html: String::new(),
+            quote: None,
+            client_message_id: "1".into(),
+        };
+        assert_eq!(
+            msg.resource(),
+            Ok(Resource::Chat("19:abc@thread.v2".into()))
+        );
+        let bad = Action::Reaction {
+            chat_id: "a b".into(),
+            message_id: "1".into(),
+            key: "like".into(),
+        };
+        assert_eq!(bad.resource(), Err(KeyError::Malformed));
+        let rsvp = Action::MeetingResponse {
+            event_id: "E".into(),
+            rsvp: Rsvp::Accept,
+            comment: String::new(),
+        };
+        assert_eq!(rsvp.resource(), Ok(Resource::Calendar));
+        assert_eq!(note("x").resource(), Ok(Resource::SelfStatus));
     }
 
     #[test]
@@ -229,14 +276,12 @@ mod tests {
             client_message_id: "1".into(),
         };
         assert_eq!(reply.kind(), "reply");
-        assert_eq!(reply.chat_id(), Some("48:notes"));
         let rsvp = Action::MeetingResponse {
             event_id: "E1".into(),
             rsvp: Rsvp::Accept,
             comment: String::new(),
         };
         assert_eq!(rsvp.target(), Some("E1"));
-        assert_eq!(rsvp.chat_id(), None);
         assert_eq!(note("x").target(), None);
     }
 }

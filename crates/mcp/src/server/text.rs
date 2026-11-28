@@ -1,11 +1,23 @@
 //! Compact plain text for the model: one line per chat, message, person or event, with the ids
 //! the other tools take. Times are UTC.
 
-use crate::mcp::guard::kind_name;
-use teams_proto::model::{Conversation, Message};
+use teams_proto::model::{Conversation, ConversationKind, Message};
 
 /// The longest message body a tool returns, in characters.
 pub const MAX_BODY: usize = 4_000;
+
+/// A short name for a kind of conversation, as the tools print it. Informational: access never
+/// depends on the kind.
+pub fn kind_name(k: ConversationKind) -> &'static str {
+    match k {
+        ConversationKind::OneOnOne => "1:1 chat",
+        ConversationKind::Group => "group chat",
+        ConversationKind::Meeting => "meeting chat",
+        ConversationKind::Notes => "your own notes",
+        ConversationKind::Channel => "channel",
+        ConversationKind::Other => "other",
+    }
+}
 
 /// `2026-11-21T09:30Z`.
 pub fn iso_minute(ms: i64) -> String {
@@ -122,7 +134,6 @@ pub fn message_line(m: &Message, self_mri: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use teams_proto::model::ConversationKind;
 
     fn msg(sender: &str, html: &str, at: i64) -> Message {
         Message {

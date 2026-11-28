@@ -3,7 +3,7 @@
 ## Overview
 Command-line client for IronTeams, used for protocol testing and live checks against the Teams / Microsoft Graph backends (`Cargo.toml`: "Command-line client for IronTeams (protocol testing)", `publish = false`). It is a single binary crate: `src/main.rs` (`#[tokio::main] async fn main`) dispatches on the first CLI argument to inline commands or to one module per command family. Arguments are parsed by hand (no clap). Most commands call `connect(&paths)`, which loads the config, resumes the stored session and persists the refreshed one.
 
-An MCP server lives in [src/mcp](./src/mcp/EGM.md) behind the off-by-default cargo feature `mcp` (`mcp = ["dep:rmcp", "dep:schemars", "dep:serde"]`); release builds do not contain it.
+The CLI has no MCP server. It moved to the [`mcp`](../mcp/EGM.md) crate and runs as `ironteams --mcp-serve`; the `ironteams-cli mcp` command (with `allow`, `deny`, `status` and `setup`) no longer exists and fails like any unknown command.
 
 ## Interface
 Top-level commands handled in `[src/main.rs:main]`:
@@ -27,7 +27,6 @@ Top-level commands handled in `[src/main.rs:main]`:
   - `[src/appcard.rs]` `appcard`, `[src/delivery.rs]` `deliver`, `[src/images.rs]` `images`, `[src/preview_file.rs]` `preview-file`.
   - `[src/apps.rs]` `tasks`, `flows`, `onenote`, `lists`.
   - `[src/appearance.rs]` `appearance [show|watch]`, `[src/tray.rs]` `tray-demo`, `[src/tester.rs]` `calendar tester ...`.
-- `mcp` subcommand: `mcp::run` with the feature; without it `[src/main.rs]` bails with a "built without the MCP server" message.
 - Environment: `IRONTEAMS_LOG` (tracing filter directive, read via `compat::var`), `IRONTEAMS_SANDBOX_FILE` (sandbox ids file used by `team` and `find`), `IRONTEAMS_SHOW` (extra JSON keys whose string values `team`/`store` shape printing may show).
 - Unknown or missing commands print a usage text to stdout and exit successfully; that fallback usage is a subset of the real command list.
 
