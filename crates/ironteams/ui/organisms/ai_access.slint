@@ -1,0 +1,48 @@
+// AI access (docs/designs/mcp-access-control.md): the per-conversation setting, the master switch
+// and their dialogs. This file starts as the contract between the Rust backend
+// (`backend::mcp_access`, `ui::mcp_access`) and the UI: the store below. The components that
+// read it (chip, popover, overview, explainer, connect dialog) are added next to it.
+
+export struct AiAccessRow {
+    id: string,
+    title: string,
+    // "read" or "read_draft"
+    level: string,
+    // "last read by AI: <time>", empty when never read
+    last-read: string,
+}
+
+export global AiAccessStore {
+    // True when this build can serve AI access (the `mcp` cargo feature). Everything hides when
+    // false, which is the default and what a release build without the feature shows.
+    in property <bool> available: false;
+    in property <bool> master-paused;
+    in property <bool> account-paused;
+    in property <bool> calendar-people;
+    // The conversation the chip and popover talk about (the open chat, or the row whose menu
+    // was opened) and its level: "blocked", "read" or "read_draft".
+    in property <string> target-id;
+    in property <string> target-level: "blocked";
+    // Conversations above Blocked, for the overview.
+    in property <[AiAccessRow]> rows;
+    // The text of the copy-only connect dialog, and the label of the account it connects.
+    in property <string> connect-text;
+    in property <string> account-label;
+    // Dialogs: Rust opens the explainer (the first time something is set above Blocked); the UI
+    // opens the overview and the connect dialog through `command`, and closes all three itself.
+    in-out property <bool> overview-open;
+    in-out property <bool> explainer-open;
+    in-out property <bool> connect-open;
+    // Commands to the backend, (name, arg):
+    //   "open"             arg = conversation id: make it the target (the list-row menu)
+    //   "set-level"        arg = "<id>\t<level>", level = blocked | read | read_draft
+    //   "master"           arg = "active" | "paused"
+    //   "account-pause"    arg = "on" | "off"
+    //   "calendar-people"  arg = "on" | "off"
+    //   "block"            arg = conversation id (the overview's one-click Block)
+    //   "block-all"        arg = ""
+    //   "overview"         arg = "": refresh and open the overview
+    //   "connect"          arg = "": refresh and open the connect dialog
+    //   "explainer-confirm" / "explainer-cancel"  arg = "": answer the first-time explainer
+    callback command(string, string);
+}
