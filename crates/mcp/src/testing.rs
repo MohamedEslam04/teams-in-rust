@@ -10,6 +10,7 @@ use crate::server::drafts::Action;
 use crate::state::{PolicyReader, PolicyWriter, file_path};
 use async_trait::async_trait;
 use calendar::{Event, EventDetail, FindTimes, FoundTimes};
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use teams_proto::activity::{ActivityItem, ActivityKind};
 use teams_proto::chatsvc::HistoryPage;
@@ -23,11 +24,35 @@ pub const BLOCKED: &str = "19:blocked@thread.v2";
 pub const NOTES: &str = "48:notes";
 pub const CHANNEL: &str = "19:chan@thread.tacv2";
 
+/// Meeting chats, and the calendar events whose join link names them.
+pub const MEETING_ALLOWED: &str = "19:meeting_allowed@thread.v2";
+pub const MEETING_BLOCKED: &str = "19:meeting_blocked@thread.v2";
+pub const EV_ALLOWED: &str = "EV-allowed";
+pub const EV_BLOCKED: &str = "EV-blocked";
+/// A Teams meeting joined by `/meet/<code>`: no chat thread in its link.
+pub const EV_MEETCODE: &str = "EV-meetcode";
+/// An appointment with no online meeting at all.
+pub const EV_PLAIN: &str = "EV-plain";
+
 pub const ALLOWED_TITLE: &str = "Lunch plans";
 pub const BLOCKED_TITLE: &str = "SECRET devops";
 pub const BLOCKED_TEXT: &str = "password hunter2 for prod";
 pub const BLOCKED_SENDER: &str = "Mallory Blocked";
 pub const TOTAL: u64 = 98_765;
+
+/// Everything a blocked meeting (or one with no chat) holds besides its title and time.
+pub const MEETING_SECRETS: [&str; 6] = [
+    "dial-in code 99887766",
+    "Mallory Attendee",
+    "mallory@example.com",
+    "99887766",
+    "meeting_blocked",
+    "meet/9876543210",
+];
+pub const ALLOWED_AGENDA: &str = "Quarterly planning";
+pub const BLOCKED_AGENDA: &str = "SECRET budget review";
+pub const MEETCODE_AGENDA: &str = "Standup by link code";
+pub const PLAIN_AGENDA: &str = "Dentist";
 
 const ME: &str = "8:orgid:oid-1";
 const OTHER: &str = "8:orgid:other";
@@ -116,6 +141,75 @@ fn mention(thread: &str, topic: &str, preview: &str, actor: &str, at: i64) -> Ac
         timestamp_ms: at,
         is_read: false,
     }
+}
+
+/// The join link of a Teams meeting whose chat is `thread`.
+fn join_link(thread: &str) -> String {
+    format!(
+        "https://teams.microsoft.com/l/meetup-join/{}/0?context=%7b%22Tid%22%3a%22t1%22%7d",
+        thread.replace(':', "%3a").replace('@', "%40")
+    )
+}
+
+/// One calendar event as Graph sends it. The invitation text and the attendee carry the secrets
+/// of a blocked meeting; `join` is the link, if the event has one.
+fn event_json(id: &str, subject: &str, join: Option<String>, body: &str, attendee: &str) -> Value {
+    let mut v = json!({
+        "id": id,
+        "subject": subject,
+        "start": {"dateTime": "2026-11-18T09:00:00.0000000", "timeZone": "UTC"},
+        "end": {"dateTime": "2026-11-18T10:00:00.0000000", "timeZone": "UTC"},
+        "organizer": {"emailAddress": {"name": "Olivia Organizer", "address": "olivia@example.com"}},
+        "responseStatus": {"response": "notResponded"},
+        "isOnlineMeeting": join.is_some(),
+        "bodyPreview": body,
+        "body": {"contentType": "text", "content": body},
+        "attendees": [{
+            "emailAddress": {"name": attendee, "address": format!("{}@example.com", attendee.to_lowercase().replace(' ', "."))},
+            "type": "required",
+            "status": {"response": "accepted"}
+        }],
+    });
+    if let Some(url) = join {
+        v["onlineMeeting"] = json!({ "joinUrl": url });
+    }
+    v
+}
+
+/// The fake calendar: a meeting with a chat the tests allow, one with a chat they leave blocked,
+/// a Teams meeting by `/meet/<code>` and an appointment with no meeting. `None` for any other id.
+fn fake_event(id: &str) -> Option<Value> {
+    Some(match id {
+        EV_ALLOWED => event_json(
+            id,
+            ALLOWED_AGENDA,
+            Some(join_link(MEETING_ALLOWED)),
+            "Agenda: roadmap and budget",
+            "Alex Attendee",
+        ),
+        EV_BLOCKED => event_json(
+            id,
+            BLOCKED_AGENDA,
+            Some(join_link(MEETING_BLOCKED)),
+            "dial-in code 99887766",
+            "Mallory Attendee",
+        ),
+        EV_MEETCODE => event_json(
+            id,
+            MEETCODE_AGENDA,
+            Some("https://teams.microsoft.com/meet/9876543210?p=abc".into()),
+            "dial-in code 99887766",
+            "Mallory Attendee",
+        ),
+        EV_PLAIN => event_json(
+            id,
+            PLAIN_AGENDA,
+            None,
+            "dial-in code 99887766",
+            "Mallory Attendee",
+        ),
+        _ => return None,
+    })
 }
 
 fn hit(conv: &str, text: &str, at: i64) -> MessageHit {
@@ -270,12 +364,18 @@ impl Backend for Fake {
 
     async fn calendar_view(&self, start_ms: i64, end_ms: i64) -> BResult<Vec<Event>> {
         self.note(format!("calendar_view {start_ms} {end_ms}"));
-        Ok(vec![])
+        let all: Vec<Value> = [EV_ALLOWED, EV_BLOCKED, EV_MEETCODE, EV_PLAIN]
+            .into_iter()
+            .filter_map(fake_event)
+            .collect();
+        Ok(calendar::parse_events(&json!({ "value": all })))
     }
 
     async fn event_detail(&self, id: &str) -> BResult<EventDetail> {
         self.note(format!("event_detail {id}"));
-        Err(ServiceError::NotFound)
+        fake_event(id)
+            .and_then(|v| calendar::parse_event_detail(&v))
+            .ok_or(ServiceError::NotFound)
     }
 
     async fn find_times(&self, _q: &FindTimes) -> BResult<FoundTimes> {

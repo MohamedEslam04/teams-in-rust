@@ -37,6 +37,10 @@ pub struct PeekData {
     pub notes_url: String,
     pub recap_url: String,
     pub options_url: String,
+    /// The Teams chat of the meeting, from its join link (`19:meeting_…@thread.v2`): what the AI
+    /// access control of the full view sets. Empty when the event has no join link or the link
+    /// names no chat (a `/meet/<code>` link).
+    pub meeting_chat: String,
 }
 
 /// The web addresses in a text or an HTML body (an `href` or a bare link), in order.
@@ -221,6 +225,11 @@ pub fn peek_data(e: &Event, off: Offset) -> PeekData {
             .as_deref()
             .filter(|_| organizer)
             .and_then(::calendar::meeting_options_url)
+            .unwrap_or_default(),
+        meeting_chat: e
+            .join_url
+            .as_deref()
+            .and_then(::calendar::meeting_chat_thread_id)
             .unwrap_or_default(),
     };
     peek.add_links_from(&e.body_preview);
@@ -1000,6 +1009,28 @@ mod tests {
         );
         assert_eq!(p.recap_url, "https://teams.microsoft.com/l/recap/x");
         assert_eq!(p.notes_url, "https://contoso.loop.microsoft.com/p/n");
+    }
+
+    #[test]
+    fn the_peek_names_the_meeting_chat_only_when_the_join_link_has_one() {
+        let chat = |join: serde_json::Value| peek_data(&invited(join), &utc).meeting_chat;
+        assert_eq!(
+            chat(json!({"onlineMeeting": {"joinUrl":
+                "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%7d"}})),
+            "19:meeting_abc@thread.v2"
+        );
+        // A meeting by code, a link of another service and a link with no thread have no chat.
+        assert_eq!(
+            chat(
+                json!({"onlineMeeting": {"joinUrl": "https://teams.microsoft.com/meet/9876543210?p=abc"}})
+            ),
+            ""
+        );
+        assert_eq!(
+            chat(json!({"onlineMeeting": {"joinUrl": "https://zoom.example/j/1"}})),
+            ""
+        );
+        assert_eq!(chat(json!({})), "");
     }
 
     #[test]

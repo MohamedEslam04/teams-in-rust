@@ -37,6 +37,10 @@ export global AiAccessStore {
     // was opened) and its level: "blocked", "read" or "read_draft".
     in property <string> target-id;
     in property <string> target-level: "blocked";
+    // The meeting chat the calendar event view's control talks about (`open-meeting`) and its
+    // level. Apart from `target-*`, so a meeting never moves the open chat's chip.
+    in property <string> meeting-id;
+    in property <string> meeting-level: "blocked";
     // Conversations above Blocked, for the overview.
     in property <[AiAccessRow]> rows;
     // The text of the copy-only connect dialog, and the label of the account it connects.
@@ -49,6 +53,7 @@ export global AiAccessStore {
     in-out property <bool> connect-open;
     // Commands to the backend, (name, arg):
     //   "open"             arg = conversation id: make it the target (the list-row menu)
+    //   "open-meeting"     arg = meeting chat id: make it the calendar event view's target
     //   "set-level"        arg = "<id>\t<level>", level = blocked | read | read_draft
     //   "master"           arg = "active" | "paused"
     //   "account-pause"    arg = "on" | "off"
@@ -230,6 +235,49 @@ export component AiAccessHeaderChip inherits Rectangle {
         paused-text: AiAccessWords.paused(AiAccessStore.master-paused, AiAccessStore.account-paused);
         full: true;
         picked(l) => { AiAccessStore.command("set-level", AiAccessStore.target-id + "\u{9}" + l); }
+    }
+}
+
+// The control of the calendar's full event view: the setting of a meeting is the setting of its
+// Teams chat (`chat`, from the join link), so it is the same chip and levels, set on that chat.
+// With no chat (a meeting joined by a code link) it says why there is no control. Shown by the
+// event view only while `AiAccessStore.available`. It asks the backend for the chat's level when
+// it appears and when the event changes, and shows a level only if it is that chat's.
+export component AiMeetingAccess inherits VerticalLayout {
+    in property <string> chat;
+    spacing: 4px;
+    function ask() {
+        if (root.chat != "") {
+            AiAccessStore.command("open-meeting", root.chat);
+        }
+    }
+    init => { root.ask(); }
+    changed chat => { root.ask(); }
+    if root.chat == "": Text {
+        text: @tr("AI access: not available for this meeting (no Teams chat)");
+        color: Theme.fg-subtle;
+        font-size: 13px * Theme.font-scale;
+        wrap: word-wrap;
+        accessible-role: text;
+    }
+    if root.chat != "": HorizontalLayout {
+        alignment: start;
+        spacing: 10px;
+        AiAccessControl {
+            level: AiAccessStore.meeting-id == root.chat ? AiAccessStore.meeting-level : "blocked";
+            paused-text: AiAccessWords.paused(AiAccessStore.master-paused, AiAccessStore.account-paused);
+            full: true;
+            picked(l) => { AiAccessStore.command("set-level", root.chat + "\u{9}" + l); }
+        }
+        Text {
+            text: AiAccessStore.calendar-people ? @tr("The AI reaches this meeting through its Teams chat.") : @tr("The AI also needs Calendar and people to be allowed.");
+            color: Theme.fg-subtle;
+            font-size: 12px * Theme.font-scale;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            accessible-role: text;
+        }
     }
 }
 

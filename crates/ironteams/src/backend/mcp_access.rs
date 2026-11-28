@@ -33,6 +33,9 @@ const MIGRATED_NOTICE: &str = "AI access changed: IronTeams' MCP server no longe
 pub enum McpAccessCmd {
     /// A list row's menu: make this conversation the one the controls talk about.
     Open(String),
+    /// The calendar event view: the meeting chat its AI access control talks about. Kept apart
+    /// from `Open`, so the open chat's chip never takes a meeting's level.
+    OpenMeeting(String),
     /// A conversation's level; `None` is Blocked.
     SetLevel(String, Option<Level>),
     /// The master switch: true is Paused.
@@ -63,6 +66,7 @@ impl McpAccessCmd {
         };
         Some(match name {
             "open" => McpAccessCmd::Open(id()?),
+            "open-meeting" => McpAccessCmd::OpenMeeting(id()?),
             "set-level" => {
                 let (id, level) = arg.split_once('\t')?;
                 if id.is_empty() {
@@ -154,6 +158,8 @@ pub(super) struct State {
     /// The conversation the chip and popover talk about: the open chat, or the row whose menu
     /// was opened.
     target: Option<String>,
+    /// The meeting chat the calendar event view's control talks about.
+    meeting: Option<String>,
     /// The chat that was open when the header was last drawn (it moves `target` when it changes).
     opened: Option<String>,
     /// A change waiting for the first-time explainer's answer.
@@ -179,6 +185,10 @@ impl Engine {
         match cmd {
             McpAccessCmd::Open(id) => {
                 self.mcp_access.lock().unwrap().target = Some(id);
+                self.push_ai_access();
+            }
+            McpAccessCmd::OpenMeeting(id) => {
+                self.mcp_access.lock().unwrap().meeting = Some(id);
                 self.push_ai_access();
             }
             McpAccessCmd::SetLevel(id, Some(level)) => match chat_key(&id) {
@@ -302,7 +312,10 @@ impl Engine {
 
     /// Builds the whole view and hands it to the UI.
     fn push_ai_access(&self) {
-        let target = self.mcp_access.lock().unwrap().target.clone();
+        let (target, meeting) = {
+            let st = self.mcp_access.lock().unwrap();
+            (st.target.clone(), st.meeting.clone())
+        };
         let (label, scope) = {
             let cfg = self.cfg.lock().unwrap();
             (
@@ -335,6 +348,8 @@ impl Engine {
             &reads,
             teams_proto::time::now_ms(),
         );
+        (data.meeting_id, data.meeting_level) =
+            meeting_view(&policy, scope.as_ref(), meeting.as_deref());
         data.account_label = label.clone();
         if let Some(f) = &files {
             data.connect_text = connect_text(&label, &f.paths);
@@ -444,7 +459,24 @@ fn view_data(
         rows,
         connect_text: String::new(),
         account_label: String::new(),
+        meeting_id: String::new(),
+        meeting_level: String::new(),
     }
+}
+
+/// The meeting chat the calendar event view's control talks about and its level: the setting of a
+/// meeting is its chat's. A channel or an unknown id has no key, so no chat to talk about.
+fn meeting_view(
+    policy: &Policy,
+    scope: Option<&ScopeId>,
+    meeting: Option<&str>,
+) -> (String, String) {
+    let key = meeting.and_then(chat_key);
+    let level = key
+        .as_ref()
+        .and_then(|k| policy.scope(scope?)?.conversations.get(k))
+        .map_or(BLOCKED, |l| level_name(*l));
+    (key.unwrap_or_default(), level.into())
 }
 
 /// The text of the copy-only connect dialog, for this running binary.
@@ -516,6 +548,10 @@ mod tests {
         let p = C::parse;
         assert_eq!(p("open", "19:x"), Some(C::Open("19:x".into())));
         assert_eq!(
+            p("open-meeting", "19:meeting_x@thread.v2"),
+            Some(C::OpenMeeting("19:meeting_x@thread.v2".into()))
+        );
+        assert_eq!(
             p("set-level", "19:x\tread"),
             Some(C::SetLevel("19:x".into(), Some(Level::Read)))
         );
@@ -546,6 +582,7 @@ mod tests {
         let p = McpAccessCmd::parse;
         assert_eq!(p("nope", ""), None);
         assert_eq!(p("open", ""), None);
+        assert_eq!(p("open-meeting", ""), None);
         assert_eq!(p("block", ""), None);
         assert_eq!(p("set-level", "19:x"), None, "no level");
         assert_eq!(p("set-level", "19:x\tfull"), None, "unknown level");
@@ -698,6 +735,45 @@ mod tests {
         assert_eq!(
             (d.target_id.as_str(), d.target_level.as_str()),
             (GROUP, BLOCKED)
+        );
+    }
+
+    #[test]
+    fn the_meeting_view_is_the_level_of_the_meeting_chat() {
+        const MEETING: &str = "19:meeting_abc@thread.v2";
+        let policy = policy_with(|s| {
+            s.conversations.insert(MEETING.into(), Level::ReadDraft);
+            s.conversations.insert(CHAT.into(), Level::Read);
+        });
+        let view = |who: Option<&ScopeId>, id: Option<&str>| meeting_view(&policy, who, id);
+        let s = scope();
+        assert_eq!(
+            view(Some(&s), Some(MEETING)),
+            (MEETING.to_string(), READ_DRAFT.to_string())
+        );
+        // A thread suffix names the chat; a chat with no entry is Blocked.
+        let thread = format!("{MEETING};messageid=1");
+        assert_eq!(
+            view(Some(&s), Some(thread.as_str())),
+            (MEETING.to_string(), READ_DRAFT.to_string())
+        );
+        assert_eq!(
+            view(Some(&s), Some(GROUP)),
+            (GROUP.to_string(), BLOCKED.to_string())
+        );
+        // Nothing to talk about: no meeting, a channel, an unknown id, another user's scope.
+        let blocked = (String::new(), BLOCKED.to_string());
+        assert_eq!(view(Some(&s), None), blocked);
+        assert_eq!(view(Some(&s), Some(CHANNEL)), blocked);
+        assert_eq!(view(Some(&s), Some("48:calllogs")), blocked);
+        let other = ScopeId::new("work", "tenant-1", "someone-else");
+        assert_eq!(
+            view(Some(&other), Some(MEETING)),
+            (MEETING.to_string(), BLOCKED.to_string())
+        );
+        assert_eq!(
+            view(None, Some(MEETING)),
+            (MEETING.to_string(), BLOCKED.to_string())
         );
     }
 
@@ -1035,6 +1111,24 @@ mod tests {
         assert_eq!(ai_store(&w).get_target_id().as_str(), "");
         e.mcp_header_changed(None);
         assert_eq!(ai_store(&w).get_target_level().as_str(), BLOCKED);
+    }
+
+    #[test]
+    fn opening_a_meeting_shows_its_chats_level_and_leaves_the_header_target_alone() {
+        let (e, w, _dir) = work_engine();
+        see_explainer(&e);
+        set(&e, GROUP, Some(Level::ReadDraft));
+        e.mcp_header_changed(Some(CHAT));
+        e.mcp_access_cmd(McpAccessCmd::OpenMeeting(GROUP.into()));
+        let s = ai_store(&w);
+        assert_eq!(s.get_meeting_id().as_str(), GROUP);
+        assert_eq!(s.get_meeting_level().as_str(), READ_DRAFT);
+        // The open chat's chip still talks about the open chat.
+        assert_eq!(s.get_target_id().as_str(), CHAT);
+        assert_eq!(s.get_target_level().as_str(), BLOCKED);
+        // The same set-level command sets the meeting chat, and the view follows.
+        set(&e, GROUP, None);
+        assert_eq!(s.get_meeting_level().as_str(), BLOCKED);
     }
 
     #[test]

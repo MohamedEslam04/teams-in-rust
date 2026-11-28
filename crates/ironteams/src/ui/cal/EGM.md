@@ -18,7 +18,7 @@ Files:
 - `[form.rs:UiHandle::read_form_for_test]` #[cfg(test)] pub; reads the form via the weak window
 - `[push.rs:set]` pub(super) fn(&AppWindow, CalData); sets CalStore title/view_kind/day_count/scale/status/days/blocks/all_day/month/mini/week numbers/work hours/second tz/now marker
 - `[push.rs:set_panels]` pub(super) fn(&AppWindow, Panels); sets filter_opts, filtered, calendars, saved_views, settings, second_tz_label, categories
-- `[push.rs:peek_row]` pub(super) fn(PeekData) -> CalPeek
+- `[push.rs:peek_row]` pub(super) fn(PeekData) -> CalPeek (`meeting-chat` is the Teams chat of the event's join link; the full view's AI access control sets it)
 - `[push.rs:detail_row]` pub(super) fn(DetailData) -> CalDetail
 - `[wire.rs:UiHandle::calendar]` pub fn(&self, CalData); posts set() to the UI thread
 - `[wire.rs:UiHandle::calendar_loading]` pub fn(&self, bool); CalStore.loading

@@ -222,7 +222,11 @@ write it) and callbacks:
   (the contract with the backend), `AiAccessChip` (the header badge "AI: Blocked / Can read / Can
   read and draft", greyed with its reason when paused), `AiAccessLevels` (the three radio rows),
   `AiAccessMenu` (the popover), `AiAccessControl` (chip and popover, fed by properties so the
-  pop-out window can use it), `AiAccessHeaderChip` (the main window's, fed by the store) and the
+  pop-out window can use it), `AiAccessHeaderChip` (the main window's, fed by the store),
+  `AiMeetingAccess` (the full event view's control: the setting of a meeting is its Teams chat's, so
+  it is the same chip set on `CalStore.peek.meeting-chat`, or the reason when the event has no chat;
+  it asks for the chat's level with the `open-meeting` command and reads `meeting-id` and
+  `meeting-level`, apart from `target-*` so it never moves the open chat's chip) and the
   `AiOverviewCard`, `AiExplainerCard` and `AiConnectCard`. **Everything is hidden when
   `AiAccessStore.available` is false** (the default, and what a build without the `mcp` feature
   shows): the chip in `ChatPaneHeader`, "AI access…" in the chat list's `ItemMenu`, the three

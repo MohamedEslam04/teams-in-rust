@@ -8,6 +8,7 @@
 //!   settings.
 //! - `Level::Read` satisfies only `Need::Read`; `Level::ReadDraft` satisfies both.
 //! - Calendar, people and the user's own status hang off one on/off switch of the scope.
+//! - A meeting needs both that switch and its meeting chat's level ([`meeting_allows`]).
 //! - Channels decide Blocked until a later slice flips [`CHANNELS_ALLOWED`].
 
 use serde::{Deserialize, Serialize};
@@ -70,6 +71,9 @@ pub enum Resource {
     Chat(String),
     /// A team channel, by canonical key. Decides Blocked until slice 6.
     Channel(String),
+    /// A calendar meeting, by the canonical key of its meeting chat (`19:meeting_…@thread.v2`):
+    /// its setting is the setting of that chat, and it also needs the calendar switch.
+    Meeting(String),
     /// The calendar (agenda, free time, meeting answers).
     Calendar,
     /// People and presence.
@@ -83,6 +87,7 @@ pub enum Resource {
 pub enum ResourceKind {
     Chat,
     Channel,
+    Meeting,
     Calendar,
     Directory,
     SelfStatus,
@@ -93,6 +98,7 @@ impl Resource {
         match self {
             Resource::Chat(_) => ResourceKind::Chat,
             Resource::Channel(_) => ResourceKind::Channel,
+            Resource::Meeting(_) => ResourceKind::Meeting,
             Resource::Calendar => ResourceKind::Calendar,
             Resource::Directory => ResourceKind::Directory,
             Resource::SelfStatus => ResourceKind::SelfStatus,
@@ -111,6 +117,16 @@ impl Resource {
             | ConversationKind::Meeting
             | ConversationKind::Notes => Ok(Resource::Chat(key)),
             ConversationKind::Other => Err(KeyError::Unknown),
+        }
+    }
+
+    /// The meeting whose chat is `thread_id` (the thread of its join link): the same canonical
+    /// key as the chat. Only a chat can be a meeting chat; a channel or an unknown kind is an
+    /// error, which the caller treats like an event with no chat.
+    pub fn meeting(thread_id: &str) -> Result<Resource, KeyError> {
+        match Resource::from_conversation_id(thread_id)? {
+            Resource::Chat(key) => Ok(Resource::Meeting(key)),
+            _ => Err(KeyError::Unknown),
         }
     }
 }
@@ -340,6 +356,7 @@ impl Decision {
             Decision::SettingsUnreadable => REFUSAL_UNREADABLE,
             Decision::Blocked => match kind {
                 ResourceKind::Chat | ResourceKind::Channel => REFUSAL,
+                ResourceKind::Meeting => REFUSAL_MEETING,
                 ResourceKind::Calendar | ResourceKind::Directory => REFUSAL_CALENDAR_PEOPLE,
                 ResourceKind::SelfStatus => REFUSAL_SELF_STATUS,
             },
@@ -368,6 +385,7 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
             s.conversations.get(key).is_some_and(|l| l.allows(need))
         }
         Resource::Channel(_) => false,
+        Resource::Meeting(key) => meeting_allows(s, key, need),
         Resource::Calendar | Resource::Directory => s.calendar_people,
         Resource::SelfStatus => SELF_STATUS_ALLOWED && s.calendar_people,
     };
@@ -376,6 +394,22 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
     } else {
         Decision::Blocked
     }
+}
+
+/// How a meeting's access is composed. A meeting is allowed only when BOTH hold:
+///
+/// | `calendar_people` | the meeting chat's level | `Need::Read` | `Need::Draft` |
+/// |-------------------|--------------------------|--------------|---------------|
+/// | off               | any, or none             | Blocked      | Blocked       |
+/// | on                | none                     | Blocked      | Blocked       |
+/// | on                | `Read`                   | Allowed      | Blocked       |
+/// | on                | `ReadDraft`              | Allowed      | Allowed       |
+///
+/// The level is the entry of the meeting chat's key in `conversations`: the setting of a meeting
+/// is the setting of its chat, so the AI cannot learn the invitation text of a meeting whose chat
+/// it may not read. The pause switches and an unreadable file are decided before this.
+fn meeting_allows(s: &Scope, key: &str, need: Need) -> bool {
+    s.calendar_people && s.conversations.get(key).is_some_and(|l| l.allows(need))
 }
 
 /// The decision for a call that touches no resource of its own (a tool that only needs a live
@@ -428,18 +462,14 @@ pub const TOOL_GATES: &[ToolGate] = &[
     row("find_people", ResourceKind::Directory, Need::Read),
     row("get_presence", ResourceKind::Directory, Need::Read),
     row("calendar_agenda", ResourceKind::Calendar, Need::Read),
-    row("meeting_detail", ResourceKind::Calendar, Need::Read),
+    row("meeting_detail", ResourceKind::Meeting, Need::Read),
     row("find_free_time", ResourceKind::Calendar, Need::Read),
     row("draft_message", ResourceKind::Chat, Need::Draft),
     row("draft_reaction", ResourceKind::Chat, Need::Draft),
     row("draft_mark_read", ResourceKind::Chat, Need::Draft),
     row("draft_presence", ResourceKind::SelfStatus, Need::Draft),
     row("draft_status_note", ResourceKind::SelfStatus, Need::Draft),
-    row(
-        "draft_meeting_response",
-        ResourceKind::Calendar,
-        Need::Draft,
-    ),
+    row("draft_meeting_response", ResourceKind::Meeting, Need::Draft),
     ToolGate {
         tool: "send_draft",
         gate: Gate::FromDraft,
@@ -460,6 +490,9 @@ pub fn gate_of(tool: &str) -> Option<Gate> {
 
 /// A blocked, unknown, malformed or channel-thread conversation id: one text for all of them.
 pub const REFUSAL: &str = "Conversation not available: it does not exist, or the user has not allowed AI to use it in IronTeams.";
+/// A meeting that is blocked, or that has no Teams chat to take its setting from: one text for
+/// both, so it says nothing about the meeting.
+pub const REFUSAL_MEETING: &str = "Meeting not available: it is not shared with AI in IronTeams, or it has no Teams chat the user can share.";
 pub const REFUSAL_CALENDAR_PEOPLE: &str =
     "The user has not allowed AI to use the calendar and people in IronTeams.";
 pub const REFUSAL_SELF_STATUS: &str =

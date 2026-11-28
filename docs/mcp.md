@@ -47,12 +47,36 @@ Two more switches sit above them:
 - **AI access: Active / Paused** stops every tool at once (chats, calendar, people, drafts and
   `send_draft`) and keeps the saved settings, so setting it back to Active brings the same chats
   back. Each account also has its own pause switch.
-- **Calendar and people** (on or off, per account) covers the agenda, meeting details, free-time
-  search, people and presence. It is off until you turn it on.
+- **Calendar and people** (on or off, per account) covers the agenda, free-time search, people and
+  presence, and is the first of two keys for a meeting's details (below). It is off until you turn
+  it on.
 
 A change takes effect on the next tool call, and in the middle of a call that reads several
-conversations. Channels and meetings are not covered yet: channels stay Blocked, and so do meetings
-that have no chat link. The AI may not change your own status or status message in this version.
+conversations. Channels are not covered yet and stay Blocked. The AI may not change your own status
+or status message in this version.
+
+### Meetings
+
+The setting of a meeting is the setting of its **meeting chat**, and you set it in the meeting's
+full event view in the calendar (the same chip as in a chat). A meeting's details and answering an
+invitation need both keys:
+
+| Calendar and people | The meeting chat | `meeting_detail` | `draft_meeting_response` |
+|---|---|---|---|
+| Off | any | Refused (calendar) | Refused (calendar) |
+| On | Blocked | Refused (meeting) | Refused (meeting) |
+| On | Can read | Allowed | Refused (meeting) |
+| On | Can read and draft | Allowed | Allowed |
+
+- The recording and transcript notices inside a meeting chat are messages of that chat, so they
+  follow the chat's own setting through `read_chat`; the Calendar and people switch is not involved.
+- A meeting with **no Teams chat**, such as one joined by a `/meet/<code>` link, or an event that is
+  not a Teams meeting, stays Blocked: its details are refused and the full event view says "AI
+  access: not available for this meeting (no Teams chat)". With Calendar and people on, it is still
+  visible in `calendar_agenda` (title, time, organizer and place), never its attendees or invitation text.
+- A blocked meeting and a meeting with no chat get the same refusal, so the AI cannot tell them apart.
+- To find an event's chat, IronTeams has to ask Teams for the event, so the invitation text of a
+  blocked meeting is fetched inside the server and thrown away. It is never returned to the AI.
 
 ### What the AI sees about conversations it may not use
 
@@ -133,14 +157,14 @@ Times are UTC. A tool that needs something you have not allowed returns a short 
 | `find_people` | Calendar and people | People by name or email, with presence and status message |
 | `get_presence` | Calendar and people | Presence of people by id |
 | `calendar_agenda` | Calendar and people | Your events for a range of days |
-| `meeting_detail` | Calendar and people | One event: attendees, responses, invitation text |
+| `meeting_detail` | Calendar and people, and Can read on the meeting's chat | One Teams meeting: attendees, responses, invitation text |
 | `find_free_time` | Calendar and people | Free slots for you and the given attendees |
 | `draft_message` | Can read and draft | Drafts a message or a quoted reply |
 | `draft_reaction` | Can read and draft | Drafts a reaction (like, heart, laugh, surprised, sad, angry) |
 | `draft_mark_read` | Can read and draft | Drafts marking a chat read |
 | `draft_presence` | not allowed yet | Drafts your status. Refused in this version. |
 | `draft_status_note` | not allowed yet | Drafts your status message. Refused in this version. |
-| `draft_meeting_response` | Calendar and people | Drafts accept, tentative or decline; the organizer gets it |
+| `draft_meeting_response` | Calendar and people, and Can read and draft on the meeting's chat | Drafts accept, tentative or decline; the organizer gets it |
 | `send_draft` | The draft's own setting | Does one approved draft, after checking the setting again |
 | `discard_draft` | Not paused | Throws a draft away |
 
@@ -202,7 +226,7 @@ What you see if you had allowed an account in the old `mcp.json`:
 
 ## Not in this version
 
-- Channels and meetings as their own setting, and the controls in the desktop app.
+- Channels as their own setting.
 - Files and images.
 - Editing or deleting messages.
 - Scheduled messages.

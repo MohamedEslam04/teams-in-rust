@@ -13,8 +13,8 @@ use super::write::{
 use crate::gateway::NOTHING_ENABLED;
 use crate::policy::{
     Gate, Level, Master, Need, REFUSAL, REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE,
-    REFUSAL_MASTER_PAUSED, REFUSAL_SELF_STATUS, REFUSAL_UNREADABLE, ResourceKind, TOOL_GATES,
-    footer, gate_of,
+    REFUSAL_MASTER_PAUSED, REFUSAL_MEETING, REFUSAL_SELF_STATUS, REFUSAL_UNREADABLE, ResourceKind,
+    TOOL_GATES, footer, gate_of,
 };
 use crate::testing::*;
 use rmcp::handler::server::wrapper::Parameters;
@@ -692,6 +692,234 @@ async fn catch_up_leaves_out_every_mention_of_a_blocked_chat() {
     }
     assert!(!out.contains("Unread chats:"), "no unread count:\n{out}");
     assert!(out.contains("Mentions in chats: 1"));
+}
+
+// --- meetings: the setting of a meeting is its chat's, and the calendar switch comes first ---
+
+async fn meeting_call(s: &Server, tool: &str, event: &str) -> Result<String, String> {
+    match tool {
+        "meeting_detail" => {
+            s.meeting_detail(Parameters(MeetingDetail {
+                event_id: event.into(),
+            }))
+            .await
+        }
+        "draft_meeting_response" => {
+            s.draft_meeting_response(Parameters(DraftMeetingResponse {
+                event_id: event.into(),
+                response: "accept".into(),
+                comment: None,
+            }))
+            .await
+        }
+        other => panic!("not a meeting tool: {other}"),
+    }
+}
+
+const MEETING_TOOLS: [&str; 2] = ["meeting_detail", "draft_meeting_response"];
+
+/// Nothing a blocked meeting holds besides its title and time may appear in any output.
+fn assert_no_meeting_secrets(out: &str, what: &str) {
+    for secret in MEETING_SECRETS {
+        assert!(
+            !out.contains(secret),
+            "{what}: leaked {secret:?} in:\n{out}"
+        );
+    }
+}
+
+/// The calendar switch and the level of the allowed meeting's chat (`None`: no entry).
+fn meeting_setup(h: &Harness, calendar: bool, level: Option<Level>) {
+    let scope = h.scope.clone();
+    h.set(|p| p.scope_entry(&scope).calendar_people = calendar);
+    if let Some(l) = level {
+        h.allow(MEETING_ALLOWED, l);
+    }
+}
+
+#[tokio::test]
+async fn the_meeting_matrix_composes_the_calendar_switch_with_the_chats_level() {
+    for calendar in [false, true] {
+        for level in [None, Some(Level::Read), Some(Level::ReadDraft)] {
+            for tool in MEETING_TOOLS {
+                let h = harness();
+                meeting_setup(&h, calendar, level);
+                let out = meeting_call(&h.server(), tool, EV_ALLOWED).await;
+                let want_ok = calendar
+                    && matches!(
+                        (tool, level),
+                        ("meeting_detail", Some(_))
+                            | ("draft_meeting_response", Some(Level::ReadDraft))
+                    );
+                let what = format!("{tool}, calendar {calendar}, level {level:?}");
+                if want_ok {
+                    assert!(out.is_ok(), "{what}: {out:?}");
+                } else if calendar {
+                    assert_eq!(out, Err(REFUSAL_MEETING.to_string()), "{what}");
+                } else {
+                    assert_eq!(out, Err(REFUSAL_CALENDAR_PEOPLE.to_string()), "{what}");
+                    assert!(h.fake.calls().is_empty(), "{what}: nothing is fetched");
+                }
+                assert!(!h.fake.fetched("execute"), "{what}: nothing is sent");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_allowed_meeting_shows_its_detail() {
+    let h = harness();
+    meeting_setup(&h, true, Some(Level::Read));
+    let out = meeting_call(&h.server(), "meeting_detail", EV_ALLOWED)
+        .await
+        .unwrap();
+    for part in [
+        ALLOWED_AGENDA,
+        "Olivia Organizer",
+        "Alex Attendee",
+        "Agenda: roadmap and budget",
+    ] {
+        assert!(out.contains(part), "{part:?} in:\n{out}");
+    }
+}
+
+#[tokio::test]
+async fn a_blocked_meeting_and_one_with_no_chat_say_the_same_one_thing_and_show_nothing() {
+    for calendar_level in [None, Some(Level::Read), Some(Level::ReadDraft)] {
+        let h = harness();
+        // The allowed meeting's chat gets the level; the others never get an entry or have no chat.
+        meeting_setup(&h, true, calendar_level);
+        let s = h.server();
+        for tool in MEETING_TOOLS {
+            for event in [EV_BLOCKED, EV_MEETCODE, EV_PLAIN] {
+                let out = meeting_call(&s, tool, event).await;
+                assert_eq!(
+                    out,
+                    Err(REFUSAL_MEETING.to_string()),
+                    "{tool} {event} at {calendar_level:?}"
+                );
+                assert_no_meeting_secrets(&out.unwrap_err(), tool);
+            }
+        }
+        assert!(!h.fake.fetched("execute"));
+        assert_no_meeting_secrets(&h.log_text(), "the access log");
+    }
+}
+
+#[tokio::test]
+async fn the_agenda_shows_every_event_as_title_and_time_only() {
+    let h = harness();
+    meeting_setup(&h, true, None);
+    let out = call(&h.server(), "calendar_agenda", ALLOWED).await.unwrap();
+    for title in [
+        ALLOWED_AGENDA,
+        BLOCKED_AGENDA,
+        MEETCODE_AGENDA,
+        PLAIN_AGENDA,
+    ] {
+        assert!(out.contains(title), "{title:?} in:\n{out}");
+    }
+    assert!(out.contains("2026-11-18T09:00Z-2026-11-18T10:00Z"), "{out}");
+    // Neither the invitation text, the attendees nor a join link or chat id is in it.
+    assert_no_meeting_secrets(&out, "calendar_agenda");
+    assert!(
+        !out.contains("Alex Attendee") && !out.contains("roadmap"),
+        "{out}"
+    );
+}
+
+#[tokio::test]
+async fn a_meeting_draft_needs_drafting_in_the_chat_and_is_checked_again_when_sent() {
+    let h = harness();
+    meeting_setup(&h, true, Some(Level::ReadDraft));
+    let s = h.server();
+    let drafted = meeting_call(&s, "draft_meeting_response", EV_ALLOWED)
+        .await
+        .unwrap();
+    assert!(drafted.contains(ALLOWED_AGENDA), "{drafted}");
+    let id = drafted
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .trim_end_matches('.')
+        .to_string();
+    // The chat drops to Read: the draft is refused as a meeting, nothing is sent.
+    h.allow(MEETING_ALLOWED, Level::Read);
+    let sent = s
+        .send_draft(Parameters(DraftId {
+            draft_id: id.clone(),
+        }))
+        .await;
+    assert_eq!(sent, Err(REFUSAL_MEETING.to_string()));
+    assert!(!h.fake.fetched("execute"), "nothing was sent");
+    // A second draft, then the calendar switch is turned off before it is sent.
+    h.allow(MEETING_ALLOWED, Level::ReadDraft);
+    let drafted = meeting_call(&s, "draft_meeting_response", EV_ALLOWED)
+        .await
+        .unwrap();
+    let id = drafted
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .trim_end_matches('.')
+        .to_string();
+    meeting_setup(&h, false, None);
+    let sent = s.send_draft(Parameters(DraftId { draft_id: id })).await;
+    assert_eq!(sent, Err(REFUSAL_MEETING.to_string()));
+    assert!(!h.fake.fetched("execute"), "nothing was sent");
+}
+
+#[tokio::test]
+async fn an_approved_meeting_answer_is_sent_once_to_the_event_it_names() {
+    let h = harness();
+    meeting_setup(&h, true, Some(Level::ReadDraft));
+    let s = h.server();
+    let drafted = meeting_call(&s, "draft_meeting_response", EV_ALLOWED)
+        .await
+        .unwrap();
+    let id = drafted
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .trim_end_matches('.')
+        .to_string();
+    let done = s
+        .send_draft(Parameters(DraftId { draft_id: id }))
+        .await
+        .unwrap();
+    assert!(done.starts_with("Done."), "{done}");
+    let executed: Vec<_> = h
+        .fake
+        .calls()
+        .into_iter()
+        .filter(|c| c.starts_with("execute"))
+        .collect();
+    assert_eq!(executed.len(), 1);
+    assert!(executed[0].contains(EV_ALLOWED), "{}", executed[0]);
+}
+
+#[tokio::test]
+async fn the_notices_inside_a_meeting_chat_follow_the_chats_level_not_the_calendar_switch() {
+    // The recording and transcript notices are messages of the meeting chat, so reading them is
+    // `read_chat` of that chat: its own level decides, and the calendar switch is not involved.
+    let h = harness();
+    meeting_setup(&h, false, Some(Level::Read));
+    let s = h.server();
+    let out = call(&s, "read_chat", MEETING_ALLOWED).await.unwrap();
+    assert!(out.contains(&format!("body of {MEETING_ALLOWED}")), "{out}");
+    let blocked = call(&s, "read_chat", MEETING_BLOCKED).await;
+    assert_eq!(blocked, Err(REFUSAL.to_string()));
+    assert!(!h.fake.fetched(MEETING_BLOCKED), "{:?}", h.fake.calls());
+    // Taking the chat's level away blocks its notices at once.
+    h.set(|p| {
+        p.scope_entry(&h.scope)
+            .set_conversation(MEETING_ALLOWED, None)
+            .unwrap()
+    });
+    assert_eq!(
+        call(&s, "read_chat", MEETING_ALLOWED).await,
+        Err(REFUSAL.to_string())
+    );
 }
 
 // --- the tool table agrees with the gate rows ---

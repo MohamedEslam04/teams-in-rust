@@ -28,6 +28,9 @@ pub struct AiAccessData {
     /// was opened), and its level (`blocked`, `read`, `read_draft`).
     pub target_id: String,
     pub target_level: String,
+    /// The meeting chat the calendar event view's control talks about, and its level.
+    pub meeting_id: String,
+    pub meeting_level: String,
     /// Conversations above Blocked, for the overview.
     pub rows: Vec<AiAccessRow>,
     /// The text of the copy-only connect dialog.

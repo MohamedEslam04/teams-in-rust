@@ -1,9 +1,11 @@
 use super::*;
 use crate::access_log::hash_id;
 use crate::policy::{
-    Level, Master, REFUSAL_ACCOUNT_PAUSED, REFUSAL_MASTER_PAUSED, REFUSAL_UNREADABLE,
+    Level, Master, REFUSAL_ACCOUNT_PAUSED, REFUSAL_CALENDAR_PEOPLE, REFUSAL_MASTER_PAUSED,
+    REFUSAL_MEETING, REFUSAL_UNREADABLE,
 };
 use crate::testing::*;
+use calendar::Rsvp;
 
 fn chat(id: &str) -> Resource {
     Resource::Chat(id.into())
@@ -267,6 +269,171 @@ async fn a_send_is_refused_when_the_level_dropped_after_the_permit() {
         REFUSAL
     );
     assert!(!h.fake.fetched("execute"), "nothing was sent");
+}
+
+// --- meetings ---
+
+fn meeting(thread: &str) -> Resource {
+    Resource::Meeting(thread.into())
+}
+
+fn calendar_switch(h: &Harness, on: bool) {
+    h.set(|p| p.scope_entry(&scope()).calendar_people = on);
+}
+
+#[test]
+fn a_meeting_permit_needs_the_calendar_switch_and_the_chats_level() {
+    let h = harness();
+    h.allow(MEETING_ALLOWED, Level::Read);
+    // The chat's level alone is not enough while the calendar switch is off.
+    assert_eq!(
+        h.gw.permit("meeting_detail", meeting(MEETING_ALLOWED))
+            .unwrap_err(),
+        REFUSAL_MEETING
+    );
+    calendar_switch(&h, true);
+    let p =
+        h.gw.permit("meeting_detail", meeting(MEETING_ALLOWED))
+            .unwrap();
+    assert_eq!(p.resource(), &meeting(MEETING_ALLOWED));
+    assert_eq!(p.need(), Need::Read);
+    // Read does not let the AI answer for the user; ReadDraft does.
+    assert_eq!(
+        h.gw.permit("draft_meeting_response", meeting(MEETING_ALLOWED))
+            .unwrap_err(),
+        REFUSAL_MEETING
+    );
+    h.allow(MEETING_ALLOWED, Level::ReadDraft);
+    assert!(
+        h.gw.permit("draft_meeting_response", meeting(MEETING_ALLOWED))
+            .is_ok()
+    );
+    // A meeting whose chat has no entry stays blocked.
+    assert_eq!(
+        h.gw.permit("meeting_detail", meeting(MEETING_BLOCKED))
+            .unwrap_err(),
+        REFUSAL_MEETING
+    );
+    // The wrong kind of resource for a tool is never a grant.
+    assert_eq!(
+        h.gw.permit("meeting_detail", Resource::Calendar)
+            .unwrap_err(),
+        REFUSAL
+    );
+    assert_eq!(
+        h.gw.permit("calendar_agenda", meeting(MEETING_ALLOWED))
+            .unwrap_err(),
+        REFUSAL
+    );
+}
+
+#[tokio::test]
+async fn a_meeting_is_checked_against_the_calendar_switch_before_anything_is_fetched() {
+    let h = harness();
+    h.allow(MEETING_ALLOWED, Level::ReadDraft);
+    for tool in ["meeting_detail", "draft_meeting_response"] {
+        assert_eq!(
+            h.gw.meeting(tool, EV_ALLOWED).await.unwrap_err(),
+            REFUSAL_CALENDAR_PEOPLE,
+            "{tool}"
+        );
+    }
+    assert!(h.fake.calls().is_empty(), "{:?}", h.fake.calls());
+    assert_eq!(decisions(&h), ["blocked", "blocked"]);
+}
+
+#[tokio::test]
+async fn an_allowed_meeting_returns_its_event_and_logs_the_calendar_check_then_the_meeting() {
+    let h = harness();
+    h.allow(MEETING_ALLOWED, Level::Read);
+    calendar_switch(&h, true);
+    let (permit, detail) = h.gw.meeting("meeting_detail", EV_ALLOWED).await.unwrap();
+    assert_eq!(permit.resource(), &meeting(MEETING_ALLOWED));
+    assert_eq!(permit.need(), Need::Read);
+    assert_eq!(detail.event.subject, ALLOWED_AGENDA);
+    assert_eq!(h.fake.calls(), [format!("event_detail {EV_ALLOWED}")]);
+    let log = h.log();
+    assert_eq!(decisions(&h), ["allowed", "allowed"]);
+    assert_eq!(
+        log[0]["count"], 0,
+        "the calendar check names no conversation"
+    );
+    assert_eq!(log[1]["hashes"][0], hash_id(MEETING_ALLOWED));
+    assert!(!h.log_text().contains("meeting_allowed"), "hashes only");
+}
+
+#[tokio::test]
+async fn a_blocked_meeting_and_one_with_no_chat_get_the_same_refusal_and_return_nothing() {
+    let h = harness();
+    calendar_switch(&h, true);
+    h.allow(MEETING_ALLOWED, Level::ReadDraft);
+    for id in [EV_BLOCKED, EV_MEETCODE, EV_PLAIN] {
+        for tool in ["meeting_detail", "draft_meeting_response"] {
+            assert_eq!(
+                h.gw.meeting(tool, id).await.unwrap_err(),
+                REFUSAL_MEETING,
+                "{tool} {id}"
+            );
+        }
+    }
+    // Every call logged the calendar check, then the refused meeting.
+    assert_eq!(decisions(&h).len(), 12);
+    for pair in decisions(&h).chunks(2) {
+        assert_eq!(pair, ["allowed", "blocked"]);
+    }
+    let log = h.log_text();
+    for secret in MEETING_SECRETS {
+        assert!(!log.contains(secret), "{secret:?} in the access log");
+    }
+    // An event Teams does not know is Teams' fixed text, naming nothing.
+    assert_eq!(
+        h.gw.meeting("meeting_detail", "E1").await.unwrap_err(),
+        ServiceError::NotFound.text()
+    );
+}
+
+#[tokio::test]
+async fn a_meeting_answer_is_sent_only_with_a_draft_permit_for_its_own_meeting() {
+    let h = harness();
+    h.allow(MEETING_ALLOWED, Level::ReadDraft);
+    calendar_switch(&h, true);
+    let answer = |chat: &str| Action::MeetingResponse {
+        event_id: EV_ALLOWED.into(),
+        meeting_chat: chat.into(),
+        rsvp: Rsvp::Accept,
+        comment: String::new(),
+    };
+    let permit = h.gw.permit("send_draft", meeting(MEETING_ALLOWED)).unwrap();
+    // An answer that names another meeting than the permit covers.
+    assert_eq!(
+        h.gw.execute(&permit, &answer(MEETING_BLOCKED))
+            .await
+            .unwrap_err(),
+        REFUSAL
+    );
+    assert!(!h.fake.fetched("execute"));
+    h.gw.execute(&permit, &answer(MEETING_ALLOWED))
+        .await
+        .unwrap();
+    assert!(h.fake.fetched("execute"));
+    // The calendar switch turned off after the permit: refused at send time.
+    calendar_switch(&h, false);
+    assert_eq!(
+        h.gw.execute(&permit, &answer(MEETING_ALLOWED))
+            .await
+            .unwrap_err(),
+        REFUSAL_MEETING
+    );
+    // A chat draft permit never covers a meeting answer.
+    calendar_switch(&h, true);
+    h.allow(ALLOWED, Level::ReadDraft);
+    let chat_permit = h.gw.permit("send_draft", chat(ALLOWED)).unwrap();
+    assert_eq!(
+        h.gw.execute(&chat_permit, &answer(MEETING_ALLOWED))
+            .await
+            .unwrap_err(),
+        REFUSAL
+    );
 }
 
 // --- many conversations ---

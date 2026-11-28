@@ -1,5 +1,6 @@
 use super::*;
 
+mod ai_meeting;
 mod drag;
 mod form;
 mod grid;
