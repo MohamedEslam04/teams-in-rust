@@ -92,7 +92,10 @@ fn a_bad_file_blocks_everything() {
         let (_dir, path) = file();
         std::fs::write(&path, bytes).unwrap();
         let p = PolicyReader::new(&path).snapshot();
-        assert!(p.unreadable_reason().is_some(), "{name}: not flagged unreadable");
+        assert!(
+            p.unreadable_reason().is_some(),
+            "{name}: not flagged unreadable"
+        );
         assert_eq!(chat_decision(&p), Decision::SettingsUnreadable, "{name}");
     }
 }
@@ -195,7 +198,10 @@ fn an_unchanged_old_file_is_not_parsed_again() {
     let r = PolicyReader::new(&path);
     let a = r.snapshot();
     let b = r.snapshot();
-    assert!(Arc::ptr_eq(&a, &b), "the second call reused the parsed policy");
+    assert!(
+        Arc::ptr_eq(&a, &b),
+        "the second call reused the parsed policy"
+    );
 }
 
 #[test]
@@ -219,7 +225,11 @@ fn a_reader_that_runs_during_writes_never_sees_a_partial_file() {
         std::thread::spawn(move || {
             for i in 0..150 {
                 w.update(|p| {
-                    p.master = if i % 2 == 0 { Master::Paused } else { Master::Active };
+                    p.master = if i % 2 == 0 {
+                        Master::Paused
+                    } else {
+                        Master::Active
+                    };
                     let s = p.scope_entry(&id());
                     for n in 0..40 {
                         s.conversations
@@ -280,7 +290,8 @@ fn the_file_has_the_documented_shape() {
     w.update(|p| {
         let s = p.scope_entry(&id());
         s.calendar_people = true;
-        s.set_conversation("19:def_ghi@unq.gbl.spaces", Some(Level::ReadDraft)).unwrap();
+        s.set_conversation("19:def_ghi@unq.gbl.spaces", Some(Level::ReadDraft))
+            .unwrap();
         s.set_conversation(CHAT, Some(Level::Read)).unwrap();
     })
     .unwrap();
@@ -326,7 +337,11 @@ fn the_writer_replaces_a_corrupt_file_with_one_where_everything_is_blocked() {
     allow_chat(&w);
     let p = PolicyReader::new(&path).snapshot();
     assert_eq!(p.unreadable_reason(), None);
-    assert_eq!(chat_decision(&p), Decision::Allowed, "only what was just set");
+    assert_eq!(
+        chat_decision(&p),
+        Decision::Allowed,
+        "only what was just set"
+    );
     assert_eq!(p.scopes.len(), 1);
 }
 
@@ -437,7 +452,7 @@ fn a_file_of_the_design_example_loads() {
 #[test]
 fn the_state_file_sits_in_the_config_directory() {
     assert_eq!(
-        path(Path::new("/cfg")),
+        file_path(Path::new("/cfg")),
         PathBuf::from("/cfg").join("mcp-access.json")
     );
 }

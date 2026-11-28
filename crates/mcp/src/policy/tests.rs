@@ -30,7 +30,11 @@ fn nothing_is_allowed_without_an_entry() {
     for p in [Policy::default(), policy(|_| {})] {
         for r in &resources {
             for need in [Need::Read, Need::Draft] {
-                assert_eq!(decide(&p, &id(), r, need), Decision::Blocked, "{r:?} {need:?}");
+                assert_eq!(
+                    decide(&p, &id(), r, need),
+                    Decision::Blocked,
+                    "{r:?} {need:?}"
+                );
             }
         }
     }
@@ -42,10 +46,22 @@ fn read_allows_reading_and_read_draft_allows_both() {
         s.conversations.insert(CHAT.into(), Level::Read);
         s.conversations.insert(OTHER_CHAT.into(), Level::ReadDraft);
     });
-    assert_eq!(decide(&p, &id(), &chat(CHAT), Need::Read), Decision::Allowed);
-    assert_eq!(decide(&p, &id(), &chat(CHAT), Need::Draft), Decision::Blocked);
-    assert_eq!(decide(&p, &id(), &chat(OTHER_CHAT), Need::Read), Decision::Allowed);
-    assert_eq!(decide(&p, &id(), &chat(OTHER_CHAT), Need::Draft), Decision::Allowed);
+    assert_eq!(
+        decide(&p, &id(), &chat(CHAT), Need::Read),
+        Decision::Allowed
+    );
+    assert_eq!(
+        decide(&p, &id(), &chat(CHAT), Need::Draft),
+        Decision::Blocked
+    );
+    assert_eq!(
+        decide(&p, &id(), &chat(OTHER_CHAT), Need::Read),
+        Decision::Allowed
+    );
+    assert_eq!(
+        decide(&p, &id(), &chat(OTHER_CHAT), Need::Draft),
+        Decision::Allowed
+    );
 }
 
 #[test]
@@ -53,7 +69,10 @@ fn a_grant_covers_exactly_one_conversation() {
     let p = policy(|s| {
         s.conversations.insert(CHAT.into(), Level::ReadDraft);
     });
-    assert_eq!(decide(&p, &id(), &chat(OTHER_CHAT), Need::Read), Decision::Blocked);
+    assert_eq!(
+        decide(&p, &id(), &chat(OTHER_CHAT), Need::Read),
+        Decision::Blocked
+    );
     // Keys are compared as Teams sent them: a different case is a different key, so Blocked.
     assert_eq!(
         decide(&p, &id(), &chat(&CHAT.to_uppercase()), Need::Read),
@@ -114,14 +133,24 @@ fn the_master_switch_pauses_every_resource_and_keeps_the_settings() {
         Resource::Directory,
         Resource::SelfStatus,
     ] {
-        assert_eq!(decide(&p, &id(), &r, Need::Read), Decision::MasterPaused, "{r:?}");
+        assert_eq!(
+            decide(&p, &id(), &r, Need::Read),
+            Decision::MasterPaused,
+            "{r:?}"
+        );
     }
     // Paused even for an account that has no scope at all.
     let other = ScopeId::new("home", "tenant-2", "oid-2");
-    assert_eq!(decide(&p, &other, &chat(CHAT), Need::Read), Decision::MasterPaused);
+    assert_eq!(
+        decide(&p, &other, &chat(CHAT), Need::Read),
+        Decision::MasterPaused
+    );
     // Resuming brings the same grants back.
     p.master = Master::Active;
-    assert_eq!(decide(&p, &id(), &chat(CHAT), Need::Draft), Decision::Allowed);
+    assert_eq!(
+        decide(&p, &id(), &chat(CHAT), Need::Draft),
+        Decision::Allowed
+    );
 }
 
 #[test]
@@ -134,9 +163,18 @@ fn an_account_pause_stops_only_that_account() {
     let home = ScopeId::new("home", "tenant-2", "oid-2");
     let h = p.scope_entry(&home);
     h.conversations.insert(CHAT.into(), Level::Read);
-    assert_eq!(decide(&p, &id(), &chat(CHAT), Need::Read), Decision::AccountPaused);
-    assert_eq!(decide(&p, &id(), &Resource::Calendar, Need::Read), Decision::AccountPaused);
-    assert_eq!(decide(&p, &home, &chat(CHAT), Need::Read), Decision::Allowed);
+    assert_eq!(
+        decide(&p, &id(), &chat(CHAT), Need::Read),
+        Decision::AccountPaused
+    );
+    assert_eq!(
+        decide(&p, &id(), &Resource::Calendar, Need::Read),
+        Decision::AccountPaused
+    );
+    assert_eq!(
+        decide(&p, &home, &chat(CHAT), Need::Read),
+        Decision::Allowed
+    );
 }
 
 #[test]
@@ -147,8 +185,14 @@ fn a_scope_of_another_user_grants_nothing() {
     });
     // Same label and tenant, but a different signed-in user (the label was recreated).
     let recreated = ScopeId::new("work", "tenant-1", "oid-2");
-    assert_eq!(decide(&p, &recreated, &chat(CHAT), Need::Read), Decision::Blocked);
-    assert_eq!(decide(&p, &recreated, &Resource::Calendar, Need::Read), Decision::Blocked);
+    assert_eq!(
+        decide(&p, &recreated, &chat(CHAT), Need::Read),
+        Decision::Blocked
+    );
+    assert_eq!(
+        decide(&p, &recreated, &Resource::Calendar, Need::Read),
+        Decision::Blocked
+    );
     assert!(p.scope(&recreated).is_none());
     assert!(p.scope(&id()).is_some());
 }
@@ -173,7 +217,11 @@ fn calendar_and_people_follow_one_switch_with_no_levels() {
     for r in [Resource::Calendar, Resource::Directory] {
         for need in [Need::Read, Need::Draft] {
             assert_eq!(decide(&off, &id(), &r, need), Decision::Blocked);
-            assert_eq!(decide(&on, &id(), &r, need), Decision::Allowed, "{r:?} {need:?}");
+            assert_eq!(
+                decide(&on, &id(), &r, need),
+                Decision::Allowed,
+                "{r:?} {need:?}"
+            );
         }
     }
 }
@@ -182,7 +230,10 @@ fn calendar_and_people_follow_one_switch_with_no_levels() {
 fn self_status_is_refused_in_the_first_version_even_with_the_switch_on() {
     let on = policy(|s| s.calendar_people = true);
     for need in [Need::Read, Need::Draft] {
-        assert_eq!(decide(&on, &id(), &Resource::SelfStatus, need), Decision::Blocked);
+        assert_eq!(
+            decide(&on, &id(), &Resource::SelfStatus, need),
+            Decision::Blocked
+        );
     }
 }
 
@@ -190,8 +241,16 @@ fn self_status_is_refused_in_the_first_version_even_with_the_switch_on() {
 fn an_unreadable_policy_blocks_everything_and_says_so() {
     let p = Policy::deny_all("corrupt");
     assert_eq!(p.unreadable_reason(), Some("corrupt"));
-    for r in [chat(CHAT), Resource::Calendar, Resource::Directory, Resource::SelfStatus] {
-        assert_eq!(decide(&p, &id(), &r, Need::Read), Decision::SettingsUnreadable);
+    for r in [
+        chat(CHAT),
+        Resource::Calendar,
+        Resource::Directory,
+        Resource::SelfStatus,
+    ] {
+        assert_eq!(
+            decide(&p, &id(), &r, Need::Read),
+            Decision::SettingsUnreadable
+        );
     }
     assert_eq!(Policy::default().unreadable_reason(), None);
 }
@@ -222,12 +281,18 @@ fn a_scope_entry_for_a_new_user_starts_empty() {
 #[test]
 fn set_conversation_stores_the_canonical_key_and_none_removes_it() {
     let mut s = Scope::new("oid-1");
-    s.set_conversation(&format!(" {CHAT};messageid=1731234567890 "), Some(Level::Read))
-        .unwrap();
+    s.set_conversation(
+        &format!(" {CHAT};messageid=1731234567890 "),
+        Some(Level::Read),
+    )
+    .unwrap();
     assert_eq!(s.conversations.get(CHAT), Some(&Level::Read));
     s.set_conversation(CHAT, None).unwrap();
     assert!(s.conversations.is_empty());
-    assert_eq!(s.set_conversation("", Some(Level::Read)), Err(KeyError::Empty));
+    assert_eq!(
+        s.set_conversation("", Some(Level::Read)),
+        Err(KeyError::Empty)
+    );
     assert_eq!(
         s.set_conversation("19:a b@thread.v2", Some(Level::Read)),
         Err(KeyError::Malformed)
@@ -276,7 +341,10 @@ fn canonical_key_trims_and_strips_a_thread_suffix_to_the_root() {
 
 #[test]
 fn canonical_key_keeps_the_case_it_was_given() {
-    assert_eq!(canonical_key("19:AbC@thread.v2").as_deref(), Ok("19:AbC@thread.v2"));
+    assert_eq!(
+        canonical_key("19:AbC@thread.v2").as_deref(),
+        Ok("19:AbC@thread.v2")
+    );
     assert_ne!(
         canonical_key("19:abc@thread.v2"),
         canonical_key("19:ABC@thread.v2"),
@@ -306,7 +374,11 @@ fn canonical_key_refuses_odd_ids() {
         assert_eq!(canonical_key(id), Err(KeyError::Malformed), "{id:?}");
     }
     let long = format!("19:{}@thread.v2", "a".repeat(600));
-    assert_eq!(canonical_key(&long), Err(KeyError::Malformed), "over the length limit");
+    assert_eq!(
+        canonical_key(&long),
+        Err(KeyError::Malformed),
+        "over the length limit"
+    );
 }
 
 #[test]
@@ -319,7 +391,10 @@ fn canonical_key_cuts_at_the_first_thread_suffix() {
 
 #[test]
 fn a_conversation_id_becomes_a_chat_or_a_channel_and_unknown_kinds_are_refused() {
-    assert_eq!(Resource::from_conversation_id("48:notes"), Ok(chat("48:notes")));
+    assert_eq!(
+        Resource::from_conversation_id("48:notes"),
+        Ok(chat("48:notes"))
+    );
     assert_eq!(Resource::from_conversation_id(CHAT), Ok(chat(CHAT)));
     assert_eq!(
         Resource::from_conversation_id("19:aaa_bbb@unq.gbl.spaces"),
@@ -338,10 +413,19 @@ fn a_conversation_id_becomes_a_chat_or_a_channel_and_unknown_kinds_are_refused()
         Resource::from_conversation_id("19:c@thread.skype"),
         Ok(Resource::Channel("19:c@thread.skype".into()))
     );
-    assert_eq!(Resource::from_conversation_id("48:calllogs"), Err(KeyError::Unknown));
-    assert_eq!(Resource::from_conversation_id("hello"), Err(KeyError::Unknown));
+    assert_eq!(
+        Resource::from_conversation_id("48:calllogs"),
+        Err(KeyError::Unknown)
+    );
+    assert_eq!(
+        Resource::from_conversation_id("hello"),
+        Err(KeyError::Unknown)
+    );
     assert_eq!(Resource::from_conversation_id(""), Err(KeyError::Empty));
-    assert_eq!(Resource::from_conversation_id("a b"), Err(KeyError::Malformed));
+    assert_eq!(
+        Resource::from_conversation_id("a b"),
+        Err(KeyError::Malformed)
+    );
 }
 
 #[test]
@@ -361,7 +445,10 @@ fn decisions_have_fixed_audit_names() {
     assert_eq!(Decision::Blocked.audit_name(), "blocked");
     assert_eq!(Decision::MasterPaused.audit_name(), "master_paused");
     assert_eq!(Decision::AccountPaused.audit_name(), "account_paused");
-    assert_eq!(Decision::SettingsUnreadable.audit_name(), "settings_unreadable");
+    assert_eq!(
+        Decision::SettingsUnreadable.audit_name(),
+        "settings_unreadable"
+    );
     assert!(Decision::Allowed.is_allowed());
     for d in [
         Decision::Blocked,
@@ -405,7 +492,10 @@ fn the_refusal_texts_are_pinned() {
 fn a_decision_maps_to_its_refusal_by_resource_kind() {
     assert_eq!(Decision::Allowed.refusal(ResourceKind::Chat), None);
     assert_eq!(Decision::Blocked.refusal(ResourceKind::Chat), Some(REFUSAL));
-    assert_eq!(Decision::Blocked.refusal(ResourceKind::Channel), Some(REFUSAL));
+    assert_eq!(
+        Decision::Blocked.refusal(ResourceKind::Channel),
+        Some(REFUSAL)
+    );
     assert_eq!(
         Decision::Blocked.refusal(ResourceKind::Calendar),
         Some(REFUSAL_CALENDAR_PEOPLE)
@@ -425,9 +515,18 @@ fn a_decision_maps_to_its_refusal_by_resource_kind() {
         ResourceKind::Directory,
         ResourceKind::SelfStatus,
     ] {
-        assert_eq!(Decision::MasterPaused.refusal(k), Some(REFUSAL_MASTER_PAUSED));
-        assert_eq!(Decision::AccountPaused.refusal(k), Some(REFUSAL_ACCOUNT_PAUSED));
-        assert_eq!(Decision::SettingsUnreadable.refusal(k), Some(REFUSAL_UNREADABLE));
+        assert_eq!(
+            Decision::MasterPaused.refusal(k),
+            Some(REFUSAL_MASTER_PAUSED)
+        );
+        assert_eq!(
+            Decision::AccountPaused.refusal(k),
+            Some(REFUSAL_ACCOUNT_PAUSED)
+        );
+        assert_eq!(
+            Decision::SettingsUnreadable.refusal(k),
+            Some(REFUSAL_UNREADABLE)
+        );
     }
 }
 
@@ -460,6 +559,10 @@ fn the_footer_is_pinned_and_carries_one_number() {
 
 #[test]
 fn two_footers_differ_only_in_the_number() {
-    let strip = |s: String| s.chars().filter(|c| !c.is_ascii_digit()).collect::<String>();
+    let strip = |s: String| {
+        s.chars()
+            .filter(|c| !c.is_ascii_digit())
+            .collect::<String>()
+    };
     assert_eq!(strip(footer(3, false)), strip(footer(250, false)));
 }

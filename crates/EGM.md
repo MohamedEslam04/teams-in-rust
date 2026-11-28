@@ -5,6 +5,7 @@
 
 - `ironteams`: the Slint desktop app. Slint callbacks on the UI thread send `Cmd` values to a backend `Engine` running on a tokio runtime, and the engine pushes view data back through a `UiHandle`.
 - `ironteams-cli`: a hand-parsed command-line client used to test the protocol live. Its MCP server is behind the `mcp` cargo feature, which is off by default.
+- `mcp`: per-conversation AI access control (the policy, its state file, the refusal texts). A library with no binary; nothing depends on it yet.
 
 The libraries form layers. Lower crates never depend on higher ones (path dependencies in each `Cargo.toml`):
 
@@ -18,6 +19,7 @@ flowchart TD
   render --> emoji
   app -. feature calls .-> calling
   cli --> proto & calendar & onedrive & preview & apps & session & appearance & render & devices & tray & webhost & diag & calling & compat
+  mcp --> proto
   calendar --> proto
   onedrive --> proto
   apps --> proto
@@ -38,12 +40,14 @@ flowchart TD
 
 - **Protocol layer:** `teams-proto` owns sign-in, token minting and every Teams, Graph and Substrate request. It depends on no other workspace crate.
 - **Feature services:** `calendar`, `onedrive`, `preview`, `apps` and `calling` each wrap one service family on top of `teams-proto`.
+- **Access control:** `mcp` depends on `teams-proto` only, for `split_thread` and `conversation_kind`. It is pure logic (no `rmcp`, no network, no `session`) and never depends on `store` or the GUI crate. The binaries do not depend on it yet; the next slice makes `ironteams` depend on it (policy and state only, and the server behind its own `mcp` feature) and `ironteams-cli` never will.
 - **Local and platform crates:** `store` (SQLite), `session` (keyring and config; depends on `teams-proto` and `compat`), `appearance` (prefs and portal), `render` (pure HTML and Markdown), `emoji` (static table), `voice` (depends on `devices`), `devices`, `tray`, `webhost`, `diag` (depends on `session`). `render` depends on `emoji` (Teams' emoticon catalog); `store`, `emoji`, `tray`, `devices` and `teams-proto` have no workspace dependencies.
 - **`compat`:** reads `KELMA_*` env vars as a fallback and migrates old `kelma` data folders. `appearance`, `calling`, `session`, `diag`, `voice`, `webhost` and both binaries depend on it.
 - **Binaries:** `ironteams` depends on every library (`calling` only through the `calls` feature). `ironteams-cli` depends on all of them except `store`, `emoji` and `voice`; `calling` is not optional there. The `apps` package is imported as `app_store` in both.
 
 ## Subdirectories & System Boundaries
 - ironteams: [./ironteams/EGM.md](./ironteams/EGM.md) - Slint desktop app (binary). Build script, start-up, UI glue, backend engine, desktop cards, updater. `calls` feature (default) gates the `calling` dependency.
+- mcp: [./mcp/EGM.md](./mcp/EGM.md) - per-conversation AI access control: `decide`, `canonical_key`, the `mcp-access.json` state file (atomic writer, fail-closed reader) and the fixed refusal texts. Pure logic.
 - ironteams-cli: [./ironteams-cli/EGM.md](./ironteams-cli/EGM.md) - CLI for live protocol testing (binary). Commands make real writes to the signed-in account. Optional stdio MCP server in [./ironteams-cli/src/mcp/EGM.md](./ironteams-cli/src/mcp/EGM.md).
 - teams-proto: [./teams-proto/EGM.md](./teams-proto/EGM.md) - Teams protocol client: `Client`, `Session`, token broker, trouter push loop, and request builders and parsers for chat, teams, media, people, search, settings and M365 apps.
 - calling: [./calling/EGM.md](./calling/EGM.md) - native Teams calls: NGC signalling, trouter call pushes, TURN relay, WebRTC media (Opus, H.264, SCTP), audio I/O with echo cancellation, screen share, camera, effects, captions, history, voicemail.
