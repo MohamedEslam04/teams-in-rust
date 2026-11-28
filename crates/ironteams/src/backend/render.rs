@@ -911,6 +911,8 @@ impl Engine {
                 v.current_title.clone(),
             )
         };
+        // The AI access chip follows the open chat.
+        self.mcp_header_changed(cur.as_deref());
         let Some(id) = cur else {
             self.ui.header(HeaderData::default());
             return;
