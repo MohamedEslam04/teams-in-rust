@@ -54,6 +54,7 @@ mod lists;
 mod live;
 mod loop_paragraph;
 mod manage;
+mod mcp_access;
 mod media;
 pub(crate) mod meeting_cards;
 mod mentions;
@@ -123,6 +124,8 @@ pub use manage::{
     CommunityData, DeletedData, DialogData, DiscoverData, PersonData as TeamsPersonData, PostData,
     SettingData, TagData, TeamRowData, TeamsCmd, TeamsData,
 };
+pub use mcp_access::McpAccessCmd;
+pub(crate) use mcp_access::{purge_ai_access, set_migrated};
 pub use media::MediaCmd;
 #[cfg(test)]
 pub(crate) use media::decode_for_test;
@@ -237,6 +240,8 @@ pub enum Cmd {
     DraftEdited(String),
     /// The text of the open chat's private note changed (`chat_note`).
     NoteEdited(String),
+    /// Per-conversation AI access: the chip, popover, overview and connect dialog (`mcp_access`).
+    McpAccess(McpAccessCmd),
     /// IronTeams is quitting: write what is pending, end every live call (a connected one, one
     /// ringing out or being answered) and leave presence, then say so through the token.
     Quit(QuitDone),
@@ -406,6 +411,8 @@ pub struct Engine {
     lists: Mutex<lists::State>,
     remind: Mutex<remind::State>,
     chat_note: Mutex<chat_note::State>,
+    /// The AI access settings' files and pending change (`mcp_access`).
+    mcp_access: Mutex<mcp_access::State>,
     voice: Mutex<voice_messages::State>,
     clips: Mutex<video_clips::State>,
     channels: Mutex<channels::State>,
@@ -548,6 +555,7 @@ impl Engine {
             lists: Mutex::new(lists::State::default()),
             remind: Mutex::new(remind::State::default()),
             chat_note: Mutex::default(),
+            mcp_access: Mutex::default(),
             voice: Mutex::default(),
             clips: Mutex::default(),
             channels: Mutex::new(channels::State::default()),
@@ -706,6 +714,7 @@ impl Engine {
     fn start_local(self: &Arc<Self>) {
         crate::support::watchdog::start_runtime();
         self.push_prefs();
+        self.mcp_access_start();
         self.load_saved_calendar();
         let e = self.clone();
         tokio::spawn(async move { e.render_loop().await });
@@ -1069,6 +1078,7 @@ impl Engine {
             Cmd::RemoveAttachment(i) => self.remove_attachment(i),
             Cmd::DraftEdited(text) => self.draft_edited(text),
             Cmd::NoteEdited(text) => self.note_edited(text),
+            Cmd::McpAccess(c) => self.mcp_access_cmd(c),
             Cmd::Quit(done) => self.quit(done).await,
             Cmd::InFlight => self.answer_in_flight(),
             Cmd::SetEnterSends(on) => {

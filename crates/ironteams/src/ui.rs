@@ -41,6 +41,7 @@ mod engage;
 mod find;
 mod gifs;
 mod lists;
+pub(crate) mod mcp_access;
 mod media;
 pub(crate) mod message_toast;
 mod model_sync;

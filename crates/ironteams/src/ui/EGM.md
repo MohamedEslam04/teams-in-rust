@@ -18,6 +18,7 @@ Files:
 - `find.rs`: Fills FindStore for search results/filters/picks, quick views, in-chat find, channel tabs, Shared/Files tab and chat-tab state. Also the Unreads view's keyboard helpers (`unreads_step`, `unreads_index`, wired as pure FindStore callbacks).
 - `gifs.rs`: Fills GifStore items and status from GifRow results.
 - `lists.rs`: Fills ListStore (chat sections, move-to choices, list options, fixed sections open, channel menu) and switches the rail view.
+- `mcp_access.rs`: `UiHandle::ai_access` fills `AiAccessStore` (switches, target, overview rows, connect text) from `AiAccessData`; `ai_access_explainer` opens the first-time dialog; `install` wires the store's `command` to `Cmd::McpAccess` and sets `available` only with the `mcp` cargo feature (without it every AI access control stays hidden).
 - `media.rs`: Fills MediaStore picture viewer state (open, index, count, title, image, failed, status).
 - `message_toast.rs`: Maintains the bottom-right message card stack (max 3, thread-local VecModel), wires card actions to engine commands, and shows Settings pages from desktop cards.
 - `model_sync.rs`: Updates a list model in place: `patch` writes only the rows whose fingerprint changed, inserts older rows above and adds newer ones below; `is_shown`, `Synced`, `Print`. Used by `channels.rs`, `popout.rs`, `split.rs` and the chat lists in `ui.rs`.

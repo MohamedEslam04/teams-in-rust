@@ -34,7 +34,7 @@ Layers inside the crate:
 ## Global Invariants
 - UI objects live on the UI thread; backend code talks to them only through `UiHandle` (`src/ui_api.rs`) and sends work as `Cmd` values over an unbounded mpsc channel (`src/main.rs:main`, see `src/EGM.md`).
 - Startup order is fixed in `src/main.rs:main`: Velopack hook, `teams_proto::client::install_crypto_provider()` (before any HTTP client is built), CLI modes, fonts, logging, legacy dir migration, desktop entry, updater backup and guard before any store, config or portal use, then renderer selection (with fallback to the software renderer) before the window is built (see `src/EGM.md`).
-- The `mcp` feature gates only `mcp_mode`'s body; nothing in the UI depends on it yet.
+- The `mcp` feature gates `mcp_mode`'s body and, through `ui::mcp_access::install`, whether the AI access controls exist at all: `AiAccessStore.available` is set only with the feature, so a build without it shows none of them. The settings themselves (`backend::mcp_access`, the state file) compile in every build.
 - The `calls` feature gates all call code paths in `main.rs` (`#[cfg(feature = "calls")]`) and the `calling` dependency.
 - The app id is reverse-DNS and must match packaging files (`src/main.rs:APP_ID`).
 

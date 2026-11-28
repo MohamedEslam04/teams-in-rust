@@ -499,7 +499,13 @@ fn configure_fonts() {
 /// before any window exists so it works even when the UI is what is broken.
 fn report_problem(args: &[String]) -> anyhow::Result<()> {
     let paths = session::Paths::new()?;
-    let out = diag::report_from_args(&paths, env!("CARGO_PKG_VERSION"), args)?;
+    let mcp_section = mcp::bundle_text(&paths.config_dir, &paths.data_dir, 50);
+    let out = diag::report_from_args_with(
+        &paths,
+        env!("CARGO_PKG_VERSION"),
+        args,
+        &[("mcp.txt", mcp_section)],
+    )?;
     println!("Wrote {}", out.display());
     let _ = notify_rust::Notification::new()
         .appname("IronTeams")
@@ -653,6 +659,13 @@ fn main() -> anyhow::Result<()> {
             // the account a relaunch named is the one it moves into.
             if let Ok(cfg) = paths.load_config() {
                 backend::migrate_shared_cache(&paths.cache_dir, &cfg.active_token_key());
+            }
+            // The old MCP allowlist enables nothing in the new model: it moves away, and the
+            // engine tells the user once (backend::mcp_access).
+            match mcp::migrate_legacy_allowlist(&paths.config_dir) {
+                Ok(Some(labels)) => backend::set_migrated(labels),
+                Ok(None) => {}
+                Err(e) => tracing::warn!(error = %e, "could not move the old MCP allowlist"),
             }
             paths.data_dir
         });
@@ -858,6 +871,7 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "calls")]
     ui::calls_page::install(&window, tx.clone());
     ui::install_composer_apps(&window, tx.clone());
+    ui::mcp_access::install(&window, tx.clone());
     ui::install_voice(&window, tx.clone());
     ui::install_clip(&window, tx.clone());
     loop_compose::wire(&window, tx.clone());
