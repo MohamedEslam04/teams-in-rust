@@ -191,7 +191,7 @@ async fn content_fetched_while_the_setting_changed_is_dropped() {
             .unwrap();
     }));
     let r = h.gw.messages(&permit, None, 30).await;
-    assert_eq!(r.unwrap_err(), REFUSAL);
+    assert_eq!(r.err().unwrap(), REFUSAL);
     assert!(
         h.fake.fetched("messages"),
         "the request did go out; its answer was dropped"
