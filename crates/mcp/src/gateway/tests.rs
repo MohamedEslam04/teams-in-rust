@@ -603,6 +603,8 @@ fn only_an_account_with_a_legacy_entry_gets_the_note_and_only_while_nothing_is_e
 #[test]
 fn unreadable_settings_give_no_note_because_the_call_is_refused_anyway() {
     let h = harness_with_legacy_notice();
+    // No policy was written yet, so the config directory does not exist.
+    std::fs::create_dir_all(h.state_path().parent().unwrap()).unwrap();
     std::fs::write(h.state_path(), b"{broken").unwrap();
     assert_eq!(h.gw.nothing_enabled_note(), None);
 }
