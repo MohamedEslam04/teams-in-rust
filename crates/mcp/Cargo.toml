@@ -17,7 +17,7 @@ schemars = { version = "1.0", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 session = { version = "0.0.0", path = "../session", optional = true }
-sha2 = { version = "0.10.9", optional = true }
+sha2 = "0.10.9"
 teams-proto = { version = "0.0.0", path = "../teams-proto" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
 
@@ -34,6 +34,5 @@ server = [
     "dep:rmcp",
     "dep:schemars",
     "dep:session",
-    "dep:sha2",
     "dep:tokio",
 ]

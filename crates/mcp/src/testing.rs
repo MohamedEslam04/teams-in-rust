@@ -1,7 +1,8 @@
 //! Test support for the gateway and the server: a fake Teams backend that records every fetch,
 //! and a harness that wires it to a real state file and access log in a temp directory.
 
-use crate::audit::{Audit, FILE as AUDIT_FILE};
+use crate::access_log::AUDIT_FILE;
+use crate::audit::Audit;
 use crate::gateway::{BResult, Backend, Gateway, ServiceError};
 use crate::policy::{Level, Policy, ScopeId};
 use crate::server::Server;

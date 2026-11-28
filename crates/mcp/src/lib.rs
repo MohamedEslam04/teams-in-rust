@@ -9,6 +9,7 @@
 //! Teams client, which hands out the permits every fetch needs), the tools in [`server`], and the
 //! access log.
 
+mod access_log;
 mod connect;
 mod policy;
 mod state;
@@ -22,6 +23,7 @@ pub mod server;
 #[cfg(all(test, feature = "server"))]
 mod testing;
 
+pub use access_log::{AUDIT_FILE, hash_id, last_reads};
 pub use connect::setup_text;
 pub use policy::{
     Decision, FORMAT_VERSION, Gate, KeyError, Level, Master, Need, Policy, REFUSAL,

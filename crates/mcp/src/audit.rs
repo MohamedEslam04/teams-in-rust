@@ -11,28 +11,13 @@
 //! A read is refused when its access line cannot be written (fail closed). A write line is best
 //! effort: it never blocks the send, which was already allowed by its access line.
 
+use crate::access_log::{AUDIT_FILE, hash_id};
 use crate::policy::Decision;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-pub const FILE: &str = "mcp-audit.jsonl";
-
-/// How many hex characters of a SHA-256 an id hash keeps (48 bits: enough to tell conversations
-/// apart in a person's log, too short to be a stable identifier elsewhere).
-const HASH_CHARS: usize = 12;
-
-/// The truncated SHA-256 of a conversation key, as lowercase hex.
-pub fn hash_id(id: &str) -> String {
-    let digest = Sha256::digest(id.as_bytes());
-    let mut hex = String::with_capacity(64);
-    for b in digest {
-        hex.push_str(&format!("{b:02x}"));
-    }
-    hex.truncate(HASH_CHARS);
-    hex
-}
+pub const FILE: &str = AUDIT_FILE;
 
 #[derive(Serialize)]
 struct AccessLine<'a> {
@@ -226,19 +211,6 @@ mod tests {
             assert_eq!(v["count"], 0);
             assert_eq!(v["hashes"], serde_json::json!([]));
         }
-    }
-
-    #[test]
-    fn a_hash_is_twelve_lowercase_hex_characters_of_sha256() {
-        // SHA-256("abc") = ba7816bf8f01cfea...
-        assert_eq!(hash_id("abc"), "ba7816bf8f01");
-        let h = hash_id("19:abc@thread.v2");
-        assert_eq!(h.len(), 12);
-        assert!(
-            h.chars()
-                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
-        );
-        assert_ne!(hash_id("a"), hash_id("b"));
     }
 
     #[test]

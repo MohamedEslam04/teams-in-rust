@@ -1,5 +1,5 @@
 use super::*;
-use crate::audit::hash_id;
+use crate::access_log::hash_id;
 use crate::policy::{
     Level, Master, REFUSAL_ACCOUNT_PAUSED, REFUSAL_MASTER_PAUSED, REFUSAL_UNREADABLE,
 };
