@@ -64,6 +64,8 @@ jobs:
       - run: cargo machete
       # The Slint UI's layers and colour tokens (crates/ironteams/ui/README.md).
       - run: bash scripts/check-ui-layers.sh
+      # Only the MCP gateway may name the Teams client (docs/designs/mcp-access-control.md).
+      - run: bash scripts/check-mcp-layers.sh
       # clippy checks the GUI crate's binary and test targets at once; that outgrows the runner's
       # memory and GitHub kills the runner (exit 143, "shutdown signal"). Extra swap absorbs it.
       - name: More swap
@@ -85,7 +87,10 @@ jobs:
       - run: cargo clippy --workspace --exclude ironteams --all-targets -- -D warnings
       - run: cargo clippy -p ironteams --bins -- -D warnings
       - run: cargo clippy -p ironteams --all-targets -- -D warnings
-      - run: cargo clippy -p ironteams-cli --features mcp --all-targets -- -D warnings
+      # The MCP server (the `mcp` crate's `server` feature), then the desktop binary with it
+      # compiled in. The binary only: the GUI crate's test build is already checked above.
+      - run: cargo clippy -p mcp --features server --all-targets -- -D warnings
+      - run: cargo clippy -p ironteams --bins --features mcp -- -D warnings
 
   # The Linux tests. The job is named `check` so test-build.yml restores this job's cache.
   check:
@@ -148,7 +153,7 @@ jobs:
         timeout-minutes: 15
         run: |
           echo $$ | sudo tee /sys/fs/cgroup/ci-tests/cgroup.procs >/dev/null
-          cargo nextest run -p ironteams-cli --features mcp --profile ci
+          cargo nextest run -p mcp --features server --profile ci
       # How close the build and the tests came to the fence, and whether the kernel killed
       # anything in it (oom_kill).
       - name: Memory used

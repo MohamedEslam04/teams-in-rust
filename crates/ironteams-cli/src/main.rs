@@ -35,8 +35,6 @@
 //! ironteams-cli tail                  print live events until Ctrl+C
 //! ironteams-cli web <url> [--shim] [--theme T] [--browser P] [--profile D]  open a page in the web host window
 //! ironteams-cli diag [--log F] [--out P]  write a local, redacted problem-report bundle (nothing is uploaded)
-//! ironteams-cli mcp <serve --account L|allow L|deny L|status|setup --account L>
-//!                                 MCP server for Claude Code / Desktop; only in builds with `--features mcp` (docs/mcp.md)
 //! ironteams-cli accounts [tenants|use <label>|add <label>|remove <label>|org <tenant-id|home>]
 //!                                 several accounts and organizations (list and tenants are read-only)
 //! ironteams-cli preview-file <path>|--find <ext>|--local <file> [--page N] [--width W] [--out F.png]
@@ -58,8 +56,6 @@ mod devices;
 mod drive;
 mod find;
 mod images;
-#[cfg(feature = "mcp")]
-mod mcp;
 mod preview_file;
 mod search;
 mod settings;
@@ -547,12 +543,6 @@ async fn main() -> Result<()> {
             );
         }
         Some("accounts") => accounts::run(&paths, &args[1..]).await?,
-        #[cfg(feature = "mcp")]
-        Some("mcp") => mcp::run(&paths, &args[1..]).await?,
-        #[cfg(not(feature = "mcp"))]
-        Some("mcp") => bail!(
-            "this ironteams-cli was built without the MCP server (build it with `--features mcp`, see docs/mcp.md)"
-        ),
         Some("web") => web::run(&paths, &args[1..]).await?,
         Some("devices") => devices::run(&args[1..])?,
         Some("appearance") => appearance::run(&args[1..]).await?,

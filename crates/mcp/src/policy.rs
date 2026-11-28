@@ -214,6 +214,18 @@ impl ScopeId {
     }
 }
 
+impl ScopeId {
+    /// The scope of the signed-in account: its label, the tenant it works in, and the user's
+    /// object id taken from their MRI (`8:orgid:<oid>`). `None` for any other MRI: the server
+    /// then does not start, because no scope can be named.
+    pub fn from_identity(label: &str, tenant: &str, self_mri: &str) -> Option<ScopeId> {
+        let oid = self_mri
+            .strip_prefix("8:orgid:")
+            .filter(|o| !o.is_empty())?;
+        Some(ScopeId::new(label, tenant, oid))
+    }
+}
+
 /// The parsed state file, or the all-blocked stand-in for one that cannot be used.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -364,6 +376,83 @@ pub fn decide(policy: &Policy, scope: &ScopeId, resource: &Resource, need: Need)
     } else {
         Decision::Blocked
     }
+}
+
+/// The decision for a call that touches no resource of its own (a tool that only needs a live
+/// session, such as `discard_draft`): the unreadable-policy check and the two pause switches.
+pub fn decide_session(policy: &Policy, scope: &ScopeId) -> Decision {
+    if policy.unreadable.is_some() {
+        return Decision::SettingsUnreadable;
+    }
+    if policy.master == Master::Paused {
+        return Decision::MasterPaused;
+    }
+    if policy.scope(scope).is_some_and(|s| s.paused) {
+        return Decision::AccountPaused;
+    }
+    Decision::Allowed
+}
+
+/// What a tool needs before it may run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    /// The resource kind it works on, and what it needs from it.
+    Resource { kind: ResourceKind, need: Need },
+    /// `send_draft`: the resource the draft froze, with `Need::Draft`, checked again at send time.
+    FromDraft,
+    /// Only a live session (not paused, settings readable).
+    Session,
+}
+
+/// One row of [`TOOL_GATES`].
+#[derive(Debug, Clone, Copy)]
+pub struct ToolGate {
+    pub tool: &'static str,
+    pub gate: Gate,
+}
+
+const fn row(tool: &'static str, kind: ResourceKind, need: Need) -> ToolGate {
+    ToolGate {
+        tool,
+        gate: Gate::Resource { kind, need },
+    }
+}
+
+/// The one table that says what every MCP tool needs. A test lists the tools the routers
+/// register and fails when one is missing here, or listed here and not registered.
+pub const TOOL_GATES: &[ToolGate] = &[
+    row("list_chats", ResourceKind::Chat, Need::Read),
+    row("read_chat", ResourceKind::Chat, Need::Read),
+    row("catch_up", ResourceKind::Chat, Need::Read),
+    row("search_messages", ResourceKind::Chat, Need::Read),
+    row("find_people", ResourceKind::Directory, Need::Read),
+    row("get_presence", ResourceKind::Directory, Need::Read),
+    row("calendar_agenda", ResourceKind::Calendar, Need::Read),
+    row("meeting_detail", ResourceKind::Calendar, Need::Read),
+    row("find_free_time", ResourceKind::Calendar, Need::Read),
+    row("draft_message", ResourceKind::Chat, Need::Draft),
+    row("draft_reaction", ResourceKind::Chat, Need::Draft),
+    row("draft_mark_read", ResourceKind::Chat, Need::Draft),
+    row("draft_presence", ResourceKind::SelfStatus, Need::Draft),
+    row("draft_status_note", ResourceKind::SelfStatus, Need::Draft),
+    row(
+        "draft_meeting_response",
+        ResourceKind::Calendar,
+        Need::Draft,
+    ),
+    ToolGate {
+        tool: "send_draft",
+        gate: Gate::FromDraft,
+    },
+    ToolGate {
+        tool: "discard_draft",
+        gate: Gate::Session,
+    },
+];
+
+/// The gate of a tool, if it is in the table.
+pub fn gate_of(tool: &str) -> Option<Gate> {
+    TOOL_GATES.iter().find(|t| t.tool == tool).map(|t| t.gate)
 }
 
 // The refusal and footer texts are part of the security surface: tests pin every word. A text

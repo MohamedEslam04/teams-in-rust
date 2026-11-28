@@ -4,14 +4,36 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Per-conversation AI access control for IronTeams: the policy, its state file, and the refusal texts"
+description = "Per-conversation AI access control for IronTeams: the policy, its state file, the gateway and the MCP server"
 publish = false
 
 [dependencies]
 anyhow = "1.0.104"
+async-trait = { version = "0.1.92", optional = true }
+calendar = { version = "0.0.0", path = "../calendar", optional = true }
+render = { version = "0.0.0", path = "../render", optional = true }
+rmcp = { version = "3.11.0", features = ["transport-io"], optional = true }
+schemars = { version = "1.0", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+session = { version = "0.0.0", path = "../session", optional = true }
+sha2 = { version = "0.10.9", optional = true }
 teams-proto = { version = "0.0.0", path = "../teams-proto" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[features]
+# The rmcp server, the gateway and the access log. Off by default: the desktop app uses only the
+# policy and the state file unless it is built with its own `mcp` feature.
+server = [
+    "dep:async-trait",
+    "dep:calendar",
+    "dep:render",
+    "dep:rmcp",
+    "dep:schemars",
+    "dep:session",
+    "dep:sha2",
+    "dep:tokio",
+]

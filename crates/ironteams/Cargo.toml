@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 compat = { version = "0.0.0", path = "../compat" }
 anyhow = "1.0.104"
+mcp = { version = "0.0.0", path = "../mcp" }
 app_store = { package = "apps", version = "0.0.0", path = "../apps" }
 appearance = { version = "0.0.0", path = "../appearance" }
 devices = { version = "0.0.0", path = "../devices" }
@@ -63,6 +64,9 @@ smithay-client-toolkit = "0.20.0"
 [features]
 default = ["calls"]
 calls = ["dep:calling"]
+# The MCP server as a flag mode (`ironteams --mcp-serve`, docs/mcp.md). Off by default: release
+# builds do not contain it until the design's rollout enables it.
+mcp = ["mcp/server"]
 
 [build-dependencies]
 slint-build = "1.19"

@@ -1,53 +1,86 @@
 # Using IronTeams from Claude (MCP)
 
-`ironteams-cli mcp serve` is a [Model Context Protocol](https://modelcontextprotocol.io) server. An
-MCP client such as Claude Code or Claude Desktop starts it and can then do the following on one
-signed-in IronTeams account:
+`ironteams --mcp-serve` is a [Model Context Protocol](https://modelcontextprotocol.io) server. An
+MCP client such as Claude Code, Claude Desktop or OpenCode starts it and can then use one signed-in
+IronTeams account:
 
-- read your chats, calendar and people;
-- draft messages, reactions, status changes and meeting answers, which happen only after you
-  approve them.
+- read the chats you chose to share with AI;
+- read your calendar and people, if you allowed that;
+- draft messages and reactions in chats you allowed it to draft in. Nothing happens until you
+  approve the draft.
 
 It runs on stdio, uses the session the desktop app already saved in the keyring, and needs no API
-key.
+key. It is a mode of the `ironteams` binary, like `--report-problem`: no window opens.
 
-**It is not in release builds.** The server is behind the `mcp` cargo feature, which is off by
-default. Build it yourself to use it:
+**Status: not in release builds yet.** The server is behind the `mcp` cargo feature of the
+`ironteams` crate, which is off by default. Build it yourself to use it:
 
 ```sh
-cargo build --release -p ironteams-cli --features mcp
+cargo build --release -p ironteams --features mcp
 ```
 
-Without the feature, `ironteams-cli mcp` only says that the build has no MCP server.
+Without the feature, `ironteams --mcp-serve` only says that the build has no MCP server.
+
+**The controls are not in the desktop app yet.** The per-conversation settings below are read from
+a file that the desktop app will write in a later release. Until then nothing can switch a
+conversation on, so the server starts and refuses every conversation. Nothing is enabled for you.
 
 ## Before you start: where your data goes
 
-Whatever the client reads goes to its AI provider: messages, names, meeting text. For Claude, that
+Whatever the AI app reads goes to its AI provider: messages, names, meeting text. For Claude, that
 provider is Anthropic. For a work account, check that your organization allows this first. Because
-of this, the server is **off for every account** until you turn it on:
+of this, **every conversation starts Blocked**, including all that exist today, and so does every
+new one. Nothing is copied from the old account allowlist (see Upgrading).
 
-```sh
-ironteams-cli accounts                    # find the account label
-ironteams-cli mcp allow <label>           # turn it on for that account (prints this warning)
-ironteams-cli mcp deny <label>            # turn it off again
-ironteams-cli mcp status                  # allowed accounts, allowlist and audit log paths
-```
+## What you control
 
-The allowlist is `mcp.json` in the config directory (next to `config.json`). The server runs on
-exactly the account named when it starts, and never changes the account the app has active.
+Each chat has its own setting, shown in the chat itself (not in Settings):
+
+| Setting | What the AI may do in that chat |
+|---|---|
+| Blocked | Nothing. It cannot tell the chat's name, text, people or time. |
+| Can read | Read its messages, find them in a search. |
+| Can read and draft | The same, and draft messages and reactions there. |
+
+Two more switches sit above them:
+
+- **AI access: Active / Paused** stops every tool at once (chats, calendar, people, drafts and
+  `send_draft`) and keeps the saved settings, so setting it back to Active brings the same chats
+  back. Each account also has its own pause switch.
+- **Calendar and people** (on or off, per account) covers the agenda, meeting details, free-time
+  search, people and presence. It is off until you turn it on.
+
+A change takes effect on the next tool call, and in the middle of a call that reads several
+conversations. Channels and meetings are not covered yet: channels stay Blocked, and so do meetings
+that have no chat link. The AI may not change your own status or status message in this version.
+
+### What the AI sees about conversations it may not use
+
+One sentence at the end of every list: *"N other conversations are not shared with AI; the user can
+allow them in IronTeams."* `N` counts the chats of the account that are not shared. It is the same
+number for every tool and every query, so it says that blocked chats exist and roughly how many,
+and nothing about what any of them holds: no id, name, preview, sender, time or search hit count.
+A blocked chat, an unknown id and a channel id all get the same refusal text.
+
+## How the settings are stored
+
+`mcp-access.json` in the config directory (next to `config.json`), written only by the desktop app.
+A missing file means the default: Active, nothing enabled. The server reads the file again on every
+tool call. If the file is corrupt, unreadable or from a newer IronTeams, **everything is refused**
+with a message that says the settings could not be read; the server does not crash.
 
 ## Setup
 
 ```sh
-ironteams-cli mcp setup --account <label>
+ironteams --mcp-setup --account <label>
 ```
 
-This prints three things. It edits nothing.
+This prints what follows and edits nothing. (`ironteams-cli accounts` lists the labels.)
 
 - The Claude Code command:
 
   ```sh
-  claude mcp add --scope user ironteams -- /path/to/ironteams-cli mcp serve --account <label>
+  claude mcp add --scope user ironteams -- /path/to/ironteams --mcp-serve --account <label>
   ```
 
 - A permission rule that makes Claude Code ask you before every send. Add it to
@@ -58,51 +91,98 @@ This prints three things. It edits nothing.
   ```
 
 - The `mcpServers` entry for Claude Desktop's `claude_desktop_config.json`.
+- Deny rules for an AI app that can also run commands (see the next section).
+
+## What this protects, and what it does not
+
+The settings limit what an AI can reach **through the MCP tools**. They protect against a model that
+reaches further than you intended, and against a message in an allowed chat that tries to make the
+AI read other chats. No MCP tool can change a setting or widen access.
+
+They do **not** stop an AI app that can run commands or read files as your user. That user can read
+the local message cache, run `ironteams-cli`, read the sign-in token from the system keyring, or
+attach to the app. No storage location fixes this without a separate OS user or a sandbox. If your
+AI app can run commands, run it in a sandbox, and deny at least these in Claude Code (a deny rule on
+`Bash` alone can be bypassed with another interpreter):
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Bash(ironteams-cli:*)",
+      "Bash(sqlite3:*)",
+      "Bash(secret-tool:*)",
+      "Read(~/.local/share/ironteams/**)"
+    ]
+  }
+}
+```
+
+Turning access off stops new reads. It cannot take back what the AI app has already read.
 
 ## Tools
 
-Every tool works on **chats only**: 1:1 chats, group chats, meeting chats and your notes
-(`48:notes`). Team channels are refused everywhere. Times are UTC.
+Times are UTC. A tool that needs something you have not allowed returns a short refusal.
 
-| Tool | What it does |
-|---|---|
-| `list_chats` | Chats with id, kind, title, read state and last message, optionally unread only |
-| `read_chat` | The messages of one chat, with message and sender ids; pages back with `before_ms` |
-| `catch_up` | Unread chats with their unread messages, plus the chat messages that mention you |
-| `search_messages` | Message search, optionally in one chat or from one person |
-| `find_people` | People by name or email, with presence and status message |
-| `get_presence` | Presence of people by id |
-| `calendar_agenda` | Your events for a range of days |
-| `meeting_detail` | One event: attendees, responses, invitation text |
-| `find_free_time` | Free slots for you and the given attendees |
-| `draft_message` | Drafts a message or a quoted reply |
-| `draft_reaction` | Drafts a reaction (like, heart, laugh, surprised, sad, angry) |
-| `draft_mark_read` | Drafts marking a chat read |
-| `draft_presence` | Drafts your status for some minutes, or a reset to automatic |
-| `draft_status_note` | Drafts your status message (empty clears it) |
-| `draft_meeting_response` | Drafts accept, tentative or decline; the organizer gets it |
-| `send_draft` | Does one approved draft |
-| `discard_draft` | Throws a draft away |
+| Tool | Needs | What it does |
+|---|---|---|
+| `list_chats` | Chats you allowed | The allowed chats with id, kind, title, read state and last message, optionally unread only |
+| `read_chat` | Can read | The messages of one chat, with message and sender ids; pages back with `before_ms` |
+| `catch_up` | Chats you allowed | Unread allowed chats with their unread messages, plus the messages in them that mention you |
+| `search_messages` | Chats you allowed | Message search over the allowed chats, optionally in one chat or from one person. No totals. |
+| `find_people` | Calendar and people | People by name or email, with presence and status message |
+| `get_presence` | Calendar and people | Presence of people by id |
+| `calendar_agenda` | Calendar and people | Your events for a range of days |
+| `meeting_detail` | Calendar and people | One event: attendees, responses, invitation text |
+| `find_free_time` | Calendar and people | Free slots for you and the given attendees |
+| `draft_message` | Can read and draft | Drafts a message or a quoted reply |
+| `draft_reaction` | Can read and draft | Drafts a reaction (like, heart, laugh, surprised, sad, angry) |
+| `draft_mark_read` | Can read and draft | Drafts marking a chat read |
+| `draft_presence` | not allowed yet | Drafts your status. Refused in this version. |
+| `draft_status_note` | not allowed yet | Drafts your status message. Refused in this version. |
+| `draft_meeting_response` | Calendar and people | Drafts accept, tentative or decline; the organizer gets it |
+| `send_draft` | The draft's own setting | Does one approved draft, after checking the setting again |
+| `discard_draft` | Not paused | Throws a draft away |
 
 ## How a write happens
 
 1. A `draft_*` tool freezes exactly what would happen and returns a draft id and a preview: the
    chat (kind, title, member count) and the exact text or change. Nothing is sent.
-2. Claude shows you the preview. If you approve, it calls `send_draft` with the id, and Claude Code
+2. The AI shows you the preview. If you approve, it calls `send_draft` with the id, and Claude Code
    asks you once more because of the `ask` rule.
-3. `send_draft` does the frozen action. It never uses new parameters from the call. A draft can
-   be sent once, within 10 minutes. Drafts live only in the running server.
-
-Every send attempt adds a line to `mcp-audit.jsonl` in the data directory (`~/.local/share/ironteams/`):
-the time, account, kind of write, chat or event id, draft id and outcome (`sent`, `failed`,
-`expired`, `unknown_draft`, `refused`). The text is never logged.
+3. `send_draft` checks the setting **again** and refuses if the chat no longer allows drafting (for
+   example you lowered it to Can read after the draft was made). Then it does the frozen action. It
+   never uses new parameters from the call. A draft can be sent once, within 10 minutes. Drafts
+   live only in the running server. A refused draft is used up.
 
 Messages, names and meeting text come from other people. The server tells the client to treat them
 as data, not instructions, and nothing is written without your approval.
 
+## The access log
+
+`mcp-audit.jsonl` in the data directory (`~/.local/share/ironteams/`) gets one line for every tool
+call, allowed or refused: the time, account, tool, the decision (`allowed`, `blocked`,
+`master_paused`, `account_paused`, `settings_unreadable`), the version of the settings it saw, the
+server version, and a count with short hashes of the conversation ids involved. It never holds
+message text, titles or previews. If a line cannot be written the call is refused. Every send attempt
+also adds a line with the kind of write, the target, the draft id and the outcome (`sent`, `failed`,
+`expired`, `unknown_draft`, `refused`).
+
+## The sign-in
+
+The server never writes the sign-in token back to the keyring. It reads it at start and keeps any
+refreshed token in memory only. So a sign-out in the app stays a sign-out while the server runs. The
+tools also refuse when the account's settings no longer belong to the signed-in user.
+
+## Upgrading from `ironteams-cli mcp`
+
+`ironteams-cli mcp` (with `allow`, `deny`, `status` and `setup`) no longer exists; it fails like any
+unknown command. Update your AI app's setup with `ironteams --mcp-setup --account <label>`. An
+account you allowed before is not carried over: every conversation is Blocked until you choose.
+
 ## Not in this version
 
-- Channels.
+- Channels and meetings as their own setting, and the controls in the desktop app.
 - Files and images.
 - Editing or deleting messages.
 - Scheduled messages.

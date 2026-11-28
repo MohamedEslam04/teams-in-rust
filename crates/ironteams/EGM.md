@@ -13,7 +13,8 @@ Layers inside the crate:
 ## Local Interface & Invariants
 - `[build.rs:main]` Compiles `ui/app.slint` with `slint_build::compile_with_config`, bundles `translations/` (`with_bundled_translations`) and uses `DefaultTranslationContext::None`; compile failure panics via `expect`.
 - `[build.rs:main]` Slint debug info is enabled unless env `PROFILE` is `release`, so UI tests can find elements by id.
-- `[Cargo.toml:features]` `default = ["calls"]`; `calls` enables the optional `calling` dependency, so the crate still builds without native calls.
+- `[Cargo.toml:features]` `default = ["calls"]`; `calls` enables the optional `calling` dependency, so the crate still builds without native calls. `mcp` (off by default) is `["mcp/server"]`: it compiles the MCP server of the `mcp` crate into the binary. The `mcp` dependency itself is not optional, so the policy and state types are always available.
+- `[src/main.rs:mcp_mode]` The flag modes `--mcp-serve --account <label>` (the server on stdio) and `--mcp-setup --account <label>` (prints the connect lines) run next to `--report-problem` and `--self-check`, before any window or Slint code. Without the `mcp` feature they fail with a "no MCP server" message.
 - `[Cargo.toml:target.'cfg(target_os = "linux")']` `zbus` and `smithay-client-toolkit` are Linux-only dependencies (notification reply signal, Wayland layer-shell cards).
 - `[Cargo.toml:velopack]` `velopack` is pinned to an exact version and must stay equal to the `vpk` version in `release.yml` (comment in `Cargo.toml`).
 - `[translations/ar/LC_MESSAGES/ironteams.po]` The only shipped catalogue is Arabic; English strings in `@tr("...")` stay as source text until a language is selected (`build.rs` comment, `src/language.rs`).
@@ -33,6 +34,7 @@ Layers inside the crate:
 ## Global Invariants
 - UI objects live on the UI thread; backend code talks to them only through `UiHandle` (`src/ui_api.rs`) and sends work as `Cmd` values over an unbounded mpsc channel (`src/main.rs:main`, see `src/EGM.md`).
 - Startup order is fixed in `src/main.rs:main`: Velopack hook, `teams_proto::client::install_crypto_provider()` (before any HTTP client is built), CLI modes, fonts, logging, legacy dir migration, desktop entry, updater backup and guard before any store, config or portal use, then renderer selection (with fallback to the software renderer) before the window is built (see `src/EGM.md`).
+- The `mcp` feature gates only `mcp_mode`'s body; nothing in the UI depends on it yet.
 - The `calls` feature gates all call code paths in `main.rs` (`#[cfg(feature = "calls")]`) and the `calling` dependency.
 - The app id is reverse-DNS and must match packaging files (`src/main.rs:APP_ID`).
 

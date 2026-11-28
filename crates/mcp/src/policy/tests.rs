@@ -566,3 +566,72 @@ fn two_footers_differ_only_in_the_number() {
     };
     assert_eq!(strip(footer(3, false)), strip(footer(250, false)));
 }
+
+// --- the tool table and the call-level decision ---
+
+fn gate(kind: ResourceKind, need: Need) -> Gate {
+    Gate::Resource { kind, need }
+}
+
+#[test]
+fn every_tool_has_exactly_one_gate_and_the_table_is_pinned() {
+    use Need::{Draft, Read};
+    use ResourceKind::*;
+    let expected = [
+        ("list_chats", gate(Chat, Read)),
+        ("read_chat", gate(Chat, Read)),
+        ("catch_up", gate(Chat, Read)),
+        ("search_messages", gate(Chat, Read)),
+        ("find_people", gate(Directory, Read)),
+        ("get_presence", gate(Directory, Read)),
+        ("calendar_agenda", gate(Calendar, Read)),
+        ("meeting_detail", gate(Calendar, Read)),
+        ("find_free_time", gate(Calendar, Read)),
+        ("draft_message", gate(Chat, Draft)),
+        ("draft_reaction", gate(Chat, Draft)),
+        ("draft_mark_read", gate(Chat, Draft)),
+        ("draft_presence", gate(SelfStatus, Draft)),
+        ("draft_status_note", gate(SelfStatus, Draft)),
+        ("draft_meeting_response", gate(Calendar, Draft)),
+        ("send_draft", Gate::FromDraft),
+        ("discard_draft", Gate::Session),
+    ];
+    assert_eq!(TOOL_GATES.len(), expected.len());
+    for (tool, g) in expected {
+        assert_eq!(gate_of(tool), Some(g), "{tool}");
+    }
+    let mut names: Vec<_> = TOOL_GATES.iter().map(|t| t.tool).collect();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), TOOL_GATES.len(), "a tool is listed twice");
+    assert_eq!(gate_of("not_a_tool"), None);
+}
+
+#[test]
+fn a_session_decision_ignores_the_resource_but_not_the_switches() {
+    let on = policy(|_| {});
+    assert_eq!(decide_session(&on, &id()), Decision::Allowed);
+    // An account with no scope at all is still a live session: its resources are Blocked.
+    assert_eq!(decide_session(&Policy::default(), &id()), Decision::Allowed);
+    let mut paused = policy(|s| s.paused = true);
+    assert_eq!(decide_session(&paused, &id()), Decision::AccountPaused);
+    paused.master = Master::Paused;
+    assert_eq!(decide_session(&paused, &id()), Decision::MasterPaused);
+    assert_eq!(
+        decide_session(&Policy::deny_all("x"), &id()),
+        Decision::SettingsUnreadable
+    );
+}
+
+#[test]
+fn a_scope_id_comes_from_the_label_tenant_and_self_mri() {
+    let s = ScopeId::from_identity("work", "tenant-1", "8:orgid:0123-abcd").unwrap();
+    assert_eq!(s.key, "work@tenant-1");
+    assert_eq!(s.user_oid, "0123-abcd");
+    for bad in ["", "8:orgid:", "8:live:someone", "48:notes", "orgid:abc"] {
+        assert!(
+            ScopeId::from_identity("work", "t", bad).is_none(),
+            "{bad:?}"
+        );
+    }
+}

@@ -512,6 +512,28 @@ fn report_problem(args: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// `ironteams --mcp-serve --account <label>` runs the MCP server on stdio, and
+/// `ironteams --mcp-setup --account <label>` prints the lines that connect an AI app. Both run
+/// before any window or Slint code, so an AI app can start the binary with pipes (docs/mcp.md).
+#[cfg(feature = "mcp")]
+fn mcp_mode(args: &[String]) -> anyhow::Result<()> {
+    if args.first().map(String::as_str) == Some("--mcp-setup") {
+        return mcp::server::setup_main(&args[1..]);
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(mcp::server::serve_main(
+            &args[1..],
+            env!("CARGO_PKG_VERSION"),
+        ))
+}
+
+#[cfg(not(feature = "mcp"))]
+fn mcp_mode(_args: &[String]) -> anyhow::Result<()> {
+    anyhow::bail!("this IronTeams build has no MCP server (see docs/mcp.md)")
+}
+
 fn main() -> anyhow::Result<()> {
     start_timing::init();
     // Before any thread exists: two malloc arenas instead of one per thread (`malloc_arenas`).
@@ -527,6 +549,12 @@ fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--report-problem") {
         return report_problem(&args[1..]);
+    }
+    if matches!(
+        args.first().map(String::as_str),
+        Some("--mcp-serve" | "--mcp-setup")
+    ) {
+        return mcp_mode(&args);
     }
     if args.first().map(String::as_str) == Some("--self-check") {
         return updater::self_check::run(args.iter().any(|a| a == "--packaged"));

@@ -77,3 +77,30 @@ Checks (workspace root): `cargo fmt --all --check`, `cargo clippy --workspace --
 - [x] Memory: after 10 min idle with about 20 chats, under 120 MB PSS (`portstat -a kelma`). Record the result in the README. — ~29 MB PSS idle, ~62 MB PSS+swap with an image chat open
 - [x] `.desktop` file, an original icon (not Microsoft's), and release build and install instructions
 - [x] README: features, install, screenshots, disclaimer; roadmap ticked
+
+## /finish — 2026-11-28: finish the MCP access-control feature (slices 4 to 6 and 8)
+
+Spec: `docs/designs/mcp-access-control.md` (approved; do not re-draft). Slices 2 and 3 are done: PR #106 (`feat/mcp-access-core`) and PR #107 (`feat/mcp-access-gateway`, stacked), both green. Each next slice is its own branch stacked on the one before (`feat/mcp-access-ui`, `feat/mcp-access-meetings`, `feat/mcp-access-channels`, `feat/mcp-access-release`) and its own PR. Repo rules: never run cargo locally (CI on `feat/**` only), merge the latest `dev` before every push, never merge a PR without the user's go-ahead for that PR (`gh pr merge --merge`), no Claude attribution, cancel older duplicate CI runs, EGM.md and docs updated per slice, "Docs synced to commit" markers bumped only in the last slice.
+
+### Slice 4: desktop UI, writer, master switch, migration
+- [ ] `crates/ironteams/src/backend/mcp_access.rs`: owns the `PolicyWriter`; commands `SetConversationAccess`, `SetMaster`, `SetAccountPaused`, `SetCalendarPeople`, `BlockAll`; view model (open conversation level, pause states, enabled conversations with titles, "last read by AI" from the access log); local only, never sent to Teams. Registered in `backend/mod.rs` with its EGM.md. Tests first.
+- [ ] Legacy migration, run once at start: `mcp.json` allowed accounts move to `legacy_allowed_accounts`, `allowed_accounts` emptied, `migrated_legacy_allowlist` set, nothing enabled, one-time notice; the server says "AI access is active, but no conversation is enabled" for such an account. Tests for the migration (moves once, empties the list, enables nothing, old reader finds no account).
+- [ ] `PolicyWriter::purge_scope` called at every `Config::remove_account` call site and the sign-out handler; a test removes an account and checks its scope is gone.
+- [ ] Slint UI: `ui/organisms/ai_access.slint` (chip, three radio rows, consequence text, account pause, master switch, "Review all AI access…"), chip in `chat_header.slint` and the pop-out chat header, "AI access…" item in the list-row menu (`lists.slint`, `ui/lists.rs`), overview, first-time explainer and copy-only connect dialogs in `app_dialogs.slint`, palette actions, wiring in `ui_api.rs`/`ui.rs`; paused controls greyed with their text; every badge has an accessible label; hidden when the `mcp` feature is off. `scripts/check-ui-layers.sh` passes; UI tests in the style of `src/ui_tests/`.
+- [ ] `crates/diag/src/bundle.rs`: MCP section (switch states, counts, generation, last access-log lines through `diag::redact`, hashes only). EGM.md, `ui/README.md` and `docs/mcp.md` updated.
+
+### Slice 5: meetings and calendar
+- [ ] `Resource::Meeting(thread_id)` keyed by `calendar::meeting_chat_thread_id` with the series-master fallback; `meeting_detail` and the recording and transcript notices in `read_chat` follow the meeting chat's setting; an unmappable meeting stays Blocked; composition table of `calendar_people` and the meeting setting in `policy.rs`; `AiAccessChip` in `calendar_event.slint`; matrix tests extended; `crates/mcp/Cargo.toml` gets `calendar` where needed.
+
+### Slice 6: channels
+- [ ] Flip `CHANNELS_ALLOWED` only after the matrix tests cover the channel path; thread ids resolve to their channel (replaces the `;` rejection in `Gateway::conversation`); chip in the channel header; "Let AI read all channels…" in the Team menu (snapshot, only "Can read", confirmation with count and names, undo, new channels stay Blocked).
+
+### Slice 8: release enablement (CI and docs only)
+- [ ] `ci.yml` / `test-build.yml`: `cargo test -p mcp --features server` and a build of `-p ironteams --features mcp` on Windows and macOS (Apple Silicon and Intel), plus a Windows job that starts `ironteams --mcp-serve` with piped stdio and does an MCP `initialize` round trip; `release.yml` / `release-add.yml` build with `--features mcp` only when a repository variable (`IRONTEAMS_MCP=1`) is set and record binary size and dependency count in the job summary; stable command path per packaging channel (AppImage `APPIMAGE`, Flatpak `FLATPAK_ID`) in `connect.rs` callers. Do NOT set the repository variable.
+- [ ] Docs sync last: README and `site/` pages, bump the "Docs synced to commit" markers to the then-current HEAD, record the baseline commit in project memory, tell the user the short SHA.
+
+### Needs the user (cannot be done by the goal; list under BLOCKED, do not fake)
+- Live tests on the personal account only (`48:notes` and the 1:1 chat): enable one chat and read it through Claude Code, confirm a second chat is refused, pause with the master switch, confirm refusal, check the access log; confirm the server never writes the token, a sign-out in the app stays signed out while `--mcp-serve` runs, and a session over an hour leaves the stored token usable (refresh-token rotation risk); Windows stdio; AppImage and Flatpak command paths.
+- Merging any PR, the prerelease, setting `IRONTEAMS_MCP`.
+- Decisions still open in the design: self-status drafts (now refused), inactive accounts, meetings with no chat link, refusal wording for a meeting whose chat is open but whose invite is blocked.
+- Slice 7 (delete the migration) is one release after slice 4: not part of this run.

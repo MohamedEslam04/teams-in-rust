@@ -3631,6 +3631,7 @@ dependencies = [
  "i-slint-backend-testing",
  "iana-time-zone",
  "image",
+ "mcp",
  "notify-rust",
  "onedrive",
  "open",
@@ -3676,9 +3677,6 @@ dependencies = [
  "preview",
  "render",
  "reqwest",
- "rmcp",
- "schemars",
- "serde",
  "serde_json",
  "session",
  "teams-proto",
@@ -4109,10 +4107,18 @@ name = "mcp"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "calendar",
+ "render",
+ "rmcp",
+ "schemars",
  "serde",
  "serde_json",
+ "session",
+ "sha2 0.10.9",
  "teams-proto",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
