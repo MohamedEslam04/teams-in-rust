@@ -43,7 +43,7 @@ fn policy_text(out: &mut String, policy: &Policy) {
     };
     let _ = writeln!(out, "master: {master}");
     for (key, scope) in &policy.scopes {
-        let count = |level| {
+        let count = |level: Level| {
             scope
                 .conversations
                 .values()

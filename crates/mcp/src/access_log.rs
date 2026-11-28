@@ -55,12 +55,9 @@ pub fn last_reads(data_dir: &Path) -> BTreeMap<String, String> {
         }
         for hash in v["hashes"].as_array().into_iter().flatten() {
             let Some(hash) = hash.as_str() else { continue };
-            match out.get_mut(hash) {
-                Some(seen) if seen.as_str() >= time => {}
-                Some(seen) => *seen = time.to_string(),
-                None => {
-                    out.insert(hash.to_string(), time.to_string());
-                }
+            let seen = out.entry(hash.to_string()).or_default();
+            if seen.as_str() < time {
+                *seen = time.to_string();
             }
         }
     }
