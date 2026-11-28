@@ -13,6 +13,7 @@ mod access_log;
 mod connect;
 mod policy;
 mod state;
+mod summary;
 
 #[cfg(feature = "server")]
 pub mod audit;
@@ -34,3 +35,4 @@ pub use policy::{
 pub use state::{
     FILE, PolicyReader, PolicyWriter, file_path, legacy_allowed_accounts, migrate_legacy_allowlist,
 };
+pub use summary::bundle_text;
