@@ -16,6 +16,12 @@ export component ChatWindow inherits Window {
     callback send(string);
     callback react(string, string);
     callback open-url(string);
+    // The AI access chip (`ChatColumn`): this window has stores of its own, so the main window's
+    // state is passed in and a pick is reported (src/ui/popout.rs forwards both).
+    in property <bool> ai-available: false;
+    in property <string> ai-level: "blocked";
+    in property <string> ai-paused-text;
+    callback ai-set-level(string);
     // Rust bumps it when the window opens a chat: the list goes to the newest message.
     in-out property <int> scroll-tick;
     out property <bool> at-newest: column.at-newest;
@@ -39,6 +45,10 @@ export component ChatWindow inherits Window {
         send(t) => { root.send(t); }
         react(id, k) => { root.react(id, k); }
         open-url(u) => { root.open-url(u); }
+        ai-available: root.ai-available;
+        ai-level: root.ai-level;
+        ai-paused-text: root.ai-paused-text;
+        ai-set-level(l) => { root.ai-set-level(l); }
     }
 
     // Who reacted, under the chip being hovered.

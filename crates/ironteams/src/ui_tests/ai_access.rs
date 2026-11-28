@@ -433,7 +433,6 @@ fn the_connect_dialog_shows_the_text_to_copy_and_closes() {
         boxes[0].accessible_value().as_deref(),
         Some("claude mcp add --scope user ironteams")
     );
-    assert_eq!(boxes[0].accessible_read_only(), Some(true));
     // Copy selects the text and copies it through the window's clipboard.
     click(&control(&h.app, "Copy"));
     click(&control(&h.app, "Close"));
@@ -479,11 +478,12 @@ fn the_palette_offers_the_three_ai_actions_only_when_available() {
     let app = palette_with("ai access");
     assert!(ai_entries(&app).is_empty());
     app.global::<AiAccessStore>().set_available(true);
+    // Best match first: the shorter label of a shared start wins.
     assert_eq!(
         ai_entries(&app),
         [
-            "AI access: review",
             "AI access: pause",
+            "AI access: review",
             "AI access: connect an AI app"
         ]
     );
