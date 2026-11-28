@@ -6,6 +6,7 @@ fn id() -> ScopeId {
 
 const CHAT: &str = "19:abc@thread.v2";
 const OTHER_CHAT: &str = "19:def@thread.v2";
+const MEETING: &str = "19:meeting_abc@thread.v2";
 
 /// A policy where the scope `id()` exists and `f` has set it up.
 fn policy(f: impl FnOnce(&mut Scope)) -> Policy {
@@ -18,11 +19,16 @@ fn chat(key: &str) -> Resource {
     Resource::Chat(key.into())
 }
 
+fn meeting(key: &str) -> Resource {
+    Resource::Meeting(key.into())
+}
+
 #[test]
 fn nothing_is_allowed_without_an_entry() {
     let resources = [
         chat(CHAT),
         Resource::Channel("19:c@thread.tacv2".into()),
+        meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,
         Resource::SelfStatus,
@@ -129,6 +135,7 @@ fn the_master_switch_pauses_every_resource_and_keeps_the_settings() {
     p.master = Master::Paused;
     for r in [
         chat(CHAT),
+        meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,
         Resource::SelfStatus,
@@ -211,6 +218,94 @@ fn channels_stay_blocked_until_the_switch_is_flipped() {
 }
 
 #[test]
+fn a_meeting_needs_the_calendar_switch_and_its_chats_level() {
+    // The composition table of the design, row by row: (calendar_people, the meeting chat's
+    // level, the need) -> allowed.
+    use Need::{Draft, Read};
+    let table = [
+        (false, None, Read, false),
+        (false, None, Draft, false),
+        (false, Some(Level::Read), Read, false),
+        (false, Some(Level::ReadDraft), Read, false),
+        (false, Some(Level::ReadDraft), Draft, false),
+        (true, None, Read, false),
+        (true, None, Draft, false),
+        (true, Some(Level::Read), Read, true),
+        (true, Some(Level::Read), Draft, false),
+        (true, Some(Level::ReadDraft), Read, true),
+        (true, Some(Level::ReadDraft), Draft, true),
+    ];
+    for (calendar, level, need, allowed) in table {
+        let p = policy(|s| {
+            s.calendar_people = calendar;
+            if let Some(l) = level {
+                s.conversations.insert(MEETING.into(), l);
+            }
+        });
+        let want = if allowed {
+            Decision::Allowed
+        } else {
+            Decision::Blocked
+        };
+        assert_eq!(
+            decide(&p, &id(), &meeting(MEETING), need),
+            want,
+            "calendar {calendar}, level {level:?}, need {need:?}"
+        );
+    }
+}
+
+#[test]
+fn a_meeting_is_decided_by_its_own_key_and_the_pauses_keep_their_order() {
+    let mut p = policy(|s| {
+        s.calendar_people = true;
+        s.conversations.insert(MEETING.into(), Level::ReadDraft);
+    });
+    assert_eq!(
+        decide(
+            &p,
+            &id(),
+            &meeting("19:meeting_other@thread.v2"),
+            Need::Read
+        ),
+        Decision::Blocked
+    );
+    // The meeting chat's level also opens the chat itself, and the chat's entry is the meeting's.
+    assert_eq!(
+        decide(&p, &id(), &chat(MEETING), Need::Draft),
+        Decision::Allowed
+    );
+    p.scope_entry(&id()).paused = true;
+    assert_eq!(
+        decide(&p, &id(), &meeting(MEETING), Need::Read),
+        Decision::AccountPaused
+    );
+    p.master = Master::Paused;
+    assert_eq!(
+        decide(&p, &id(), &meeting(MEETING), Need::Read),
+        Decision::MasterPaused
+    );
+}
+
+#[test]
+fn a_meeting_resource_is_built_from_a_chat_thread_id_only() {
+    assert_eq!(Resource::meeting(MEETING), Ok(meeting(MEETING)));
+    assert_eq!(
+        Resource::meeting(" 19:meeting_abc@thread.v2;messageid=5 "),
+        Ok(meeting(MEETING)),
+        "the canonical key"
+    );
+    assert_eq!(
+        Resource::meeting("19:c@thread.tacv2"),
+        Err(KeyError::Unknown),
+        "a channel is no meeting chat"
+    );
+    assert_eq!(Resource::meeting("48:calllogs"), Err(KeyError::Unknown));
+    assert_eq!(Resource::meeting(""), Err(KeyError::Empty));
+    assert_eq!(Resource::meeting("a b"), Err(KeyError::Malformed));
+}
+
+#[test]
 fn calendar_and_people_follow_one_switch_with_no_levels() {
     let off = policy(|_| {});
     let on = policy(|s| s.calendar_people = true);
@@ -243,6 +338,7 @@ fn an_unreadable_policy_blocks_everything_and_says_so() {
     assert_eq!(p.unreadable_reason(), Some("corrupt"));
     for r in [
         chat(CHAT),
+        meeting(MEETING),
         Resource::Calendar,
         Resource::Directory,
         Resource::SelfStatus,
@@ -432,6 +528,7 @@ fn a_conversation_id_becomes_a_chat_or_a_channel_and_unknown_kinds_are_refused()
 fn resources_know_their_kind() {
     assert_eq!(chat(CHAT).kind(), ResourceKind::Chat);
     assert_eq!(Resource::Channel("c".into()).kind(), ResourceKind::Channel);
+    assert_eq!(meeting(MEETING).kind(), ResourceKind::Meeting);
     assert_eq!(Resource::Calendar.kind(), ResourceKind::Calendar);
     assert_eq!(Resource::Directory.kind(), ResourceKind::Directory);
     assert_eq!(Resource::SelfStatus.kind(), ResourceKind::SelfStatus);
@@ -471,6 +568,10 @@ fn the_refusal_texts_are_pinned() {
         "The user has not allowed AI to use the calendar and people in IronTeams."
     );
     assert_eq!(
+        REFUSAL_MEETING,
+        "Meeting not available: it is not shared with AI in IronTeams, or it has no Teams chat the user can share."
+    );
+    assert_eq!(
         REFUSAL_SELF_STATUS,
         "AI may not change the user's status or status message in this version of IronTeams."
     );
@@ -505,12 +606,17 @@ fn a_decision_maps_to_its_refusal_by_resource_kind() {
         Some(REFUSAL_CALENDAR_PEOPLE)
     );
     assert_eq!(
+        Decision::Blocked.refusal(ResourceKind::Meeting),
+        Some(REFUSAL_MEETING)
+    );
+    assert_eq!(
         Decision::Blocked.refusal(ResourceKind::SelfStatus),
         Some(REFUSAL_SELF_STATUS)
     );
     for k in [
         ResourceKind::Chat,
         ResourceKind::Channel,
+        ResourceKind::Meeting,
         ResourceKind::Calendar,
         ResourceKind::Directory,
         ResourceKind::SelfStatus,
@@ -535,6 +641,8 @@ fn the_refusal_for_a_blocked_conversation_says_nothing_about_it() {
     // One text for every blocked, unknown, malformed or channel id, and it holds no id.
     assert!(!REFUSAL.contains("19:"));
     assert!(!REFUSAL.contains('{'));
+    // The meeting refusal is one text for a blocked meeting and for one with no chat.
+    assert!(!REFUSAL_MEETING.contains("19:") && !REFUSAL_MEETING.contains('{'));
 }
 
 #[test]
@@ -585,14 +693,14 @@ fn every_tool_has_exactly_one_gate_and_the_table_is_pinned() {
         ("find_people", gate(Directory, Read)),
         ("get_presence", gate(Directory, Read)),
         ("calendar_agenda", gate(Calendar, Read)),
-        ("meeting_detail", gate(Calendar, Read)),
+        ("meeting_detail", gate(Meeting, Read)),
         ("find_free_time", gate(Calendar, Read)),
         ("draft_message", gate(Chat, Draft)),
         ("draft_reaction", gate(Chat, Draft)),
         ("draft_mark_read", gate(Chat, Draft)),
         ("draft_presence", gate(SelfStatus, Draft)),
         ("draft_status_note", gate(SelfStatus, Draft)),
-        ("draft_meeting_response", gate(Calendar, Draft)),
+        ("draft_meeting_response", gate(Meeting, Draft)),
         ("send_draft", Gate::FromDraft),
         ("discard_draft", Gate::Session),
     ];

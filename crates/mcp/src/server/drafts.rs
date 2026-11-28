@@ -42,9 +42,12 @@ pub enum Action {
         text: String,
         until_iso: Option<String>,
     },
-    /// Answers a meeting invitation; the organizer gets the answer.
+    /// Answers a meeting invitation; the organizer gets the answer. `meeting_chat` is the key of
+    /// the meeting's chat, whose setting the answer needs: it is frozen with the draft, because
+    /// the event id alone does not name it.
     MeetingResponse {
         event_id: String,
+        meeting_chat: String,
         rsvp: Rsvp,
         comment: String,
     },
@@ -76,13 +79,14 @@ impl Action {
     }
 
     /// What it touches, for the access check at send time: the chat (by canonical key), the
-    /// calendar for a meeting answer, the user's own status for presence and status message.
+    /// meeting (by its chat's key) for a meeting answer, the user's own status for presence and
+    /// status message.
     pub fn resource(&self) -> Result<Resource, KeyError> {
         match self {
             Action::Message { chat_id, .. }
             | Action::Reaction { chat_id, .. }
             | Action::MarkRead { chat_id, .. } => Ok(Resource::Chat(canonical_key(chat_id)?)),
-            Action::MeetingResponse { .. } => Ok(Resource::Calendar),
+            Action::MeetingResponse { meeting_chat, .. } => Resource::meeting(meeting_chat),
             Action::Presence { .. } | Action::StatusNote { .. } => Ok(Resource::SelfStatus),
         }
     }
@@ -260,10 +264,21 @@ mod tests {
         assert_eq!(bad.resource(), Err(KeyError::Malformed));
         let rsvp = Action::MeetingResponse {
             event_id: "E".into(),
+            meeting_chat: "19:meeting_abc@thread.v2".into(),
             rsvp: Rsvp::Accept,
             comment: String::new(),
         };
-        assert_eq!(rsvp.resource(), Ok(Resource::Calendar));
+        assert_eq!(
+            rsvp.resource(),
+            Ok(Resource::Meeting("19:meeting_abc@thread.v2".into()))
+        );
+        let no_chat = Action::MeetingResponse {
+            event_id: "E".into(),
+            meeting_chat: "19:c@thread.tacv2".into(),
+            rsvp: Rsvp::Accept,
+            comment: String::new(),
+        };
+        assert_eq!(no_chat.resource(), Err(KeyError::Unknown));
         assert_eq!(note("x").resource(), Ok(Resource::SelfStatus));
     }
 
@@ -278,6 +293,7 @@ mod tests {
         assert_eq!(reply.kind(), "reply");
         let rsvp = Action::MeetingResponse {
             event_id: "E1".into(),
+            meeting_chat: "19:meeting_abc@thread.v2".into(),
             rsvp: Rsvp::Accept,
             comment: String::new(),
         };

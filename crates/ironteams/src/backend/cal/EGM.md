@@ -20,7 +20,7 @@ Files:
 - `[grid.rs:look]` pub fn(&Event) -> Look; how an event is drawn (`Look`, `Kind` pub types)
 - `[grid.rs:iso_week]` pub fn(Date) -> u32; ISO 8601 week number
 - `[grid.rs:DayHead]`, `Block`, `AllDay`, `MonthItem`, `MonthCell`, `MiniCell` pub structs; the cells of a CalData
-- `[model.rs:PeekData]` pub struct (Default, PartialEq) of event-peek fields and button flags (can_respond, can_edit, can_cancel, can_delete, has_join, urls)
+- `[model.rs:PeekData]` pub struct (Default, PartialEq) of event-peek fields and button flags (can_respond, can_edit, can_cancel, can_delete, has_join, urls, meeting_chat)
 - `[reminders.rs:BANNER_LEAD_MS]` pub const i64 = 5 min; Join banner lead time
 - `[actions.rs:dispatch,event_ops,moves_and_forms,rooms_and_sharing]` private submodules holding the CalCmd handlers (not in this chunk)
 - `[grid.rs:MAX_DAYS]` pub const u32 = 7 (max Day(n) columns)
@@ -100,7 +100,7 @@ Files:
 - `[reminders.rs:due_reminders]` a non-snoozed reminder is due only in [start - reminder_minutes, start) and only if not in `fired`; no reminder_minutes means never
 - `[forms.rs:FormFields::to_new_event]` original HTML body is reused only when the plain body equals the form body, else markdown_to_teams_html re-renders (keeps rich bodies on title-only edits)
 - `[grid.rs:build:hide_weekends]` weekends dropped only for View::Week and View::Month when !show_weekends; Day(n) and WorkWeek show what was asked
-- `[model.rs:peek_data]` options_url is set only when the user is the organizer and a join_url exists
+- `[model.rs:peek_data]` options_url is set only when the user is the organizer and a join_url exists; meeting_chat is `meeting_chat_thread_id(join_url)` or empty (a `/meet/<code>` link or no link)
 - `[reminders.rs:due_reminders]` a snoozed key is due in [snooze_time, end_ms) and ignores `fired` and reminder_minutes
 - `[forms.rs:FormFields::recurrence]` repeat 'keep'/'none'/'' yields None (series pattern untouched); unknown repeat keys are an Err; interval must be >=1 (blank=1); end 'after' needs count >=1; end 'on' must not precede the start date
 - `[grid.rs:build]` month grid has month_cols 7, or 5 when weekends hidden; month_weeks chunked by month_cols; mini grid always 7-wide
