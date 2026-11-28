@@ -554,3 +554,55 @@ fn the_start_up_message_counts_enabled_conversations() {
     std::fs::write(h.state_path(), b"{broken").unwrap();
     assert_eq!(h.gw.enabled_count(), None);
 }
+
+// --- the notice for an account that had a legacy allow-list entry ---
+
+#[test]
+fn the_nothing_enabled_text_is_pinned() {
+    assert_eq!(
+        NOTHING_ENABLED,
+        "AI access is active, but no conversation is enabled."
+    );
+}
+
+#[test]
+fn only_an_account_with_a_legacy_entry_gets_the_note_and_only_while_nothing_is_enabled() {
+    let plain = harness();
+    assert_eq!(plain.gw.nothing_enabled_note(), None, "no legacy entry");
+
+    let h = harness_with_legacy_notice();
+    assert_eq!(
+        h.gw.nothing_enabled_note(),
+        Some(NOTHING_ENABLED),
+        "no state file yet"
+    );
+    h.allow(ALLOWED, Level::Read);
+    assert_eq!(h.gw.nothing_enabled_note(), None);
+    let scope = h.scope.clone();
+    h.set(|p| {
+        p.scope_entry(&scope)
+            .set_conversation(ALLOWED, None)
+            .unwrap();
+    });
+    assert_eq!(
+        h.gw.nothing_enabled_note(),
+        Some(NOTHING_ENABLED),
+        "a scope with an empty list"
+    );
+    // The notice speaks of the account's own scope: another user's scope under the same key is
+    // not it.
+    let other = ScopeId::new("work", "tenant-1", "someone-else");
+    h.set(|p| {
+        p.scope_entry(&other)
+            .set_conversation(ALLOWED, Some(Level::Read))
+            .unwrap();
+    });
+    assert_eq!(h.gw.nothing_enabled_note(), Some(NOTHING_ENABLED));
+}
+
+#[test]
+fn unreadable_settings_give_no_note_because_the_call_is_refused_anyway() {
+    let h = harness_with_legacy_notice();
+    std::fs::write(h.state_path(), b"{broken").unwrap();
+    assert_eq!(h.gw.nothing_enabled_note(), None);
+}

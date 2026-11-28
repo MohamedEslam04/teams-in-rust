@@ -116,6 +116,14 @@ fn with_footer(lines: &[String], empty: &str, footer: &str) -> String {
     format!("{body}\n\n{footer}")
 }
 
+/// What a list ends with: the notice that nothing is enabled, if there is one, then the footer.
+fn tail(note: Option<&str>, footer: &str) -> String {
+    match note {
+        Some(note) => format!("{note}\n\n{footer}"),
+        None => footer.to_string(),
+    }
+}
+
 /// The canonical key of a conversation id, or the id itself when it has none.
 fn key_of(id: &str) -> String {
     canonical_key(id).unwrap_or_else(|_| id.to_string())
@@ -143,7 +151,10 @@ impl Server {
             .collect();
         let lines: Vec<String> = shown.iter().map(|c| chat_line(c, me)).collect();
         let ids: Vec<String> = shown.iter().map(|c| key_of(&c.id)).collect();
-        let footer = self.gw.footer(&call).await?;
+        let footer = tail(
+            self.gw.nothing_enabled_note(),
+            &self.gw.footer(&call).await?,
+        );
         self.gw.finish(call, &ids)?;
         let empty = if p.unread_only {
             "No unread chats."
@@ -252,7 +263,10 @@ impl Server {
         }
         ids.sort();
         ids.dedup();
-        let footer = self.gw.footer(&call).await?;
+        let footer = tail(
+            self.gw.nothing_enabled_note(),
+            &self.gw.footer(&call).await?,
+        );
         self.gw.finish(call, &ids)?;
         out.push(String::new());
         out.push(footer);
@@ -311,7 +325,10 @@ impl Server {
         let mut ids: Vec<String> = hits.iter().map(|h| key_of(&h.conversation_id)).collect();
         ids.sort();
         ids.dedup();
-        let footer = self.gw.footer(&call).await?;
+        let footer = tail(
+            self.gw.nothing_enabled_note(),
+            &self.gw.footer(&call).await?,
+        );
         self.gw.finish(call, &ids)?;
         Ok(with_footer(&lines, "No matching chat messages.", &footer))
     }

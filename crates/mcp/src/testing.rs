@@ -303,18 +303,31 @@ pub fn scope() -> ScopeId {
 }
 
 pub fn harness() -> Harness {
+    build(false)
+}
+
+/// A harness for an account that had an entry in the old allow list: its lists say when no
+/// conversation is enabled.
+pub fn harness_with_legacy_notice() -> Harness {
+    build(true)
+}
+
+fn build(legacy_notice: bool) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let config = dir.path().join("config");
     let data = dir.path().join("data");
     let fake = Arc::new(Fake::default());
-    let gw = Arc::new(Gateway::new(
-        fake.clone(),
-        PolicyReader::new(file_path(&config)),
-        scope(),
-        Audit::new(&data, "work", "9.9.9"),
-        ME.into(),
-        "Me".into(),
-    ));
+    let gw = Arc::new(
+        Gateway::new(
+            fake.clone(),
+            PolicyReader::new(file_path(&config)),
+            scope(),
+            Audit::new(&data, "work", "9.9.9"),
+            ME.into(),
+            "Me".into(),
+        )
+        .with_legacy_notice(legacy_notice),
+    );
     Harness {
         writer: Arc::new(PolicyWriter::new(file_path(&config))),
         dir,
